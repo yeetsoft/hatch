@@ -46,7 +46,7 @@ public class IssuePlaybookController(
     /// so a request naming a bad model and a good effort writes neither.
     /// </remarks>
     [HttpPatch("{key}/playbook")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<IssueDto>> PatchIssuePlaybook(
         string key, IssuePlaybookRequest request, CancellationToken ct)
     {

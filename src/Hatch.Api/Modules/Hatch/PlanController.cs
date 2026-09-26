@@ -20,7 +20,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/plan")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class PlanController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
 {

@@ -16,17 +16,16 @@ namespace Hatch.Api.Models.People;
 /// this person actually get in?" - and computing it here costs one GROUP BY
 /// against a table with a household's worth of rows in it.
 /// </param>
-/// <param name="IsAdmin">
-/// Whether this person is served the admin app and may take the operator verbs
-/// behind it - enforced only while Auth:EnforceAdmin is on, which is off until
-/// an operator asks for it. Read openly on purpose: this list is what the
-/// family shell renders names and faces from, and who the administrators are is
-/// not a secret in a household. See EfPerson.IsAdmin.
+/// <param name="Role">
+/// What this person may reach: <c>pending</c>, <c>user</c> or <c>admin</c>.
+/// Read openly on purpose: this list is what the family shell renders names and
+/// faces from, and who may do what is not a secret in a household. See
+/// EfPerson.Role.
 /// </param>
 public record PersonDto(
     Guid Id,
     string Name,
-    bool IsAdmin,
+    string Role,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? PhotoUpdatedAt,
@@ -44,13 +43,42 @@ public record PersonDto(
 /// (<see cref="Hatch.Api.Common.PersonName"/>), because a client that
 /// normalizes is a client that can be replaced by one that does not.
 ///
-/// <paramref name="IsAdmin"/> defaults to false so that an older client, or a
-/// caller who only meant to rename someone, cannot promote anyone by omission.
-/// That default mattered less when the flag granted nothing; it is now the
-/// difference between a rename and a promotion, and the endpoint that accepts
-/// this request is guarded by the very flag it writes (PeopleController).
+/// <paramref name="Role"/> is required and has no default, because a default
+/// is a demotion by omission: a client that only meant to rename someone would
+/// silently reset their role. A write that names no role, or one that is not
+/// <c>pending</c>, <c>user</c> or <c>admin</c>, is refused with a sentence.
 /// </summary>
-public record PersonWriteRequest(string? Name, bool IsAdmin = false);
+public record PersonWriteRequest(string? Name, string? Role);
+
+/// <summary>The wire spelling of <see cref="Hatch.Api.Ef.PersonRole"/>: lowercase, and never a number.</summary>
+public static class PersonRoles
+{
+    public const string Sentence = "Role must be one of: pending, user, admin.";
+
+    public static string ToWire(Hatch.Api.Ef.PersonRole role) => role switch
+    {
+        Hatch.Api.Ef.PersonRole.Pending => "pending",
+        Hatch.Api.Ef.PersonRole.User => "user",
+        Hatch.Api.Ef.PersonRole.Admin => "admin",
+        _ => throw new ArgumentOutOfRangeException(nameof(role), role, null),
+    };
+
+    /// <summary>
+    /// Case-insensitive, and deliberately not <c>Enum.TryParse</c>, which
+    /// would accept "1" and "7".
+    /// </summary>
+    public static bool TryParse(string? value, out Hatch.Api.Ef.PersonRole role)
+    {
+        role = default;
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case "pending": role = Hatch.Api.Ef.PersonRole.Pending; return true;
+            case "user": role = Hatch.Api.Ef.PersonRole.User; return true;
+            case "admin": role = Hatch.Api.Ef.PersonRole.Admin; return true;
+            default: return false;
+        }
+    }
+}
 
 /// <summary>
 /// One enrolled device on a person's row. A deliberately thinner view than

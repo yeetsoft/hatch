@@ -111,7 +111,7 @@ public class CallerIdentityTests
     /// <summary>
     /// The row, not the key - the one question that needs a column off the
     /// person rather than something to compare a foreign key against, which is
-    /// AdminGate reading IsAdmin.
+    /// RoleGate reading Role.
     /// </summary>
     [Fact]
     public async Task Person_IsTheRowTheWallAlreadyLoaded()
@@ -120,7 +120,7 @@ public class CallerIdentityTests
         {
             Id = Guid.NewGuid(),
             Name = "Ada",
-            IsAdmin = true,
+            Role = PersonRole.Admin,
             CreatedAt = DateTimeOffset.UnixEpoch,
             UpdatedAt = DateTimeOffset.UnixEpoch,
         };
@@ -331,7 +331,7 @@ public class CallerIdentityTests
 
     /// <summary>
     /// The local person is an actor, not a row in People. Answering here would
-    /// give Quill notes owned by somebody who does not exist and AdminGate a
+    /// give Quill notes owned by somebody who does not exist and RoleGate a
     /// role to read off a row that is not there.
     /// </summary>
     [Fact]

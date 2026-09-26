@@ -1,4 +1,6 @@
 using Hatch.Api.Common;
+using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using System.Reflection;
@@ -6,13 +8,13 @@ using System.Reflection;
 namespace Hatch.Api.Tests.Auth;
 
 /// <summary>
-/// The audit, made executable. Which verbs an administrator alone may take is a
+/// The audit, made executable. Which role each verb asks for is a
 /// judgement about this house rather than a rule a compiler can derive, so it
 /// is written down once - here - and the test is that the code agrees with it.
 ///
 /// It exists because the failure mode is silence. A new endpoint added to
 /// DevicesController next year is unguarded by default, which is the correct
-/// default (see RequireAdminAttribute on why this is opt-in) and also the
+/// default (see RequireRoleAttribute on why this is opt-in) and also the
 /// reason nobody would notice. This turns "I did not think about it" into a
 /// red build with the action's name in it, and the fix is to think about it and
 /// then edit one of the two lists below.
@@ -34,6 +36,13 @@ namespace Hatch.Api.Tests.Auth;
 ///   ownership, expressed as a WHERE clause in the module
 ///   (docs/auth-architecture.md, "A person is an authorization input"), and a
 ///   global role has nothing to say about them.
+/// - **Two levels, and the level is not a judgement per action.** Everything
+///   under Modules/Hatch asks for User, with `AcceptScope = "hatch"` except the
+///   person-only routes named in <c>PersonOnly</c>; everything else that is
+///   guarded asks for Admin, except the People reads, which ask for User so
+///   that a Pending person - who is let into nothing - sees no names either.
+///   Two tests below hold the code to that, so a new controller cannot land
+///   at the wrong level unnoticed.
 /// - **Hatch is the exception, and it is not really one.** It lives under
 ///   Modules/ for the schema and the migration history, but it is not a family
 ///   app - it is the operator's own tooling wearing a module's clothes, like
@@ -46,7 +55,7 @@ namespace Hatch.Api.Tests.Auth;
 public class AdminSurfaceTests
 {
     /// <summary>
-    /// Every action an administrator alone may take, as "Controller.Action".
+    /// Every action that asks for a role, as "Controller.Action".
     /// Adding one here without adding the attribute fails, and the reverse
     /// fails too - the list is the audit, not a subset of it.
     /// </summary>
@@ -69,16 +78,19 @@ public class AdminSurfaceTests
         "ApiKeysController.CreateKey",
         "ApiKeysController.RevokeKey",
 
-        // People. The writes above all, because IsAdmin is set here: an
+        // People. The writes above all, because Role is set here: an
         // unguarded PUT would let any enrolled device promote itself, which
-        // makes the whole boundary a formality. The name and the photo stay
-        // readable - the family apps render both.
+        // makes the whole boundary a formality. The reads ask for User only -
+        // the family apps render a name and a photo - and sit at the end.
         "PeopleController.Create",
         "PeopleController.Update",
         "PeopleController.Delete",
         "PeopleController.PutPhoto",
         "PeopleController.DeletePhoto",
         "PeopleController.GetSessions",
+        "PeopleController.GetAll",
+        "PeopleController.Get",
+        "PeopleController.GetPhoto",
 
         // The domain model: zones, devices, channels, panels, routines. Every
         // GET on all five is open.
@@ -197,7 +209,7 @@ public class AdminSurfaceTests
         // than either of the two below: it refuses a person outright, in the
         // action, because the only honest writer of a meter reading is the
         // dispatcher that read the meter. That check cannot live in the
-        // attribute, which is dormant wherever Auth:EnforceAdmin is off. See
+        // attribute, which is dormant wherever the wall is off. See
         // IssueWorkLogController.NotAKey.
         "IssueWorkLogController.GetWorkLog",
         "IssueWorkLogController.PostEntry",
@@ -234,8 +246,8 @@ public class AdminSurfaceTests
         //
         // The one narrowing is not expressible here. A DELETE with no token is
         // the operator prising a ticket off whoever holds it, and that lane
-        // alone refuses an API key - checked in the action, because AdminGate
-        // is dormant wherever Auth:EnforceAdmin is off. See
+        // alone refuses an API key - checked in the action, because RoleGate
+        // is dormant wherever the wall is off. See
         // IssueClaimController.NotAPerson.
         "IssueClaimController.TakeClaim",
         "IssueClaimController.Heartbeat",
@@ -342,17 +354,15 @@ public class AdminSurfaceTests
         // redirect loop the wall's own allow-list exists to avoid.
         "AuthController.Verify",
         "AuthController.Redeem",
+        // Me and sign-out ask the wall for a credential and nothing more, on
+        // purpose: a Pending person has to be able to read who they are and to
+        // sign out, and both work off the grant alone.
         "AuthController.Me",
         "AuthController.SignOutDevice",
 
         // Where Google sends the browser back. Guarded by the single-use state
         // row, which is a stronger claim than "an admin is holding this tab".
         "CalendarOAuthController.Callback",
-
-        // A name and a face, rendered next to a note in the family apps.
-        "PeopleController.GetAll",
-        "PeopleController.Get",
-        "PeopleController.GetPhoto",
     ];
 
     [Fact]
@@ -363,6 +373,75 @@ public class AdminSurfaceTests
         // Set comparison rather than sequence: the lists above are grouped for
         // a reader, not sorted for a machine.
         Assert.Equal(Guarded.OrderBy(a => a), actual.OrderBy(a => a));
+    }
+
+    /// <summary>
+    /// The routes under Modules/Hatch that name no scope, so a key is refused
+    /// them: a playbook, an override, a runner bound, an assignee, an expedite,
+    /// the settings and the runner binary each choose what the next agent may
+    /// do or spend. Each still asks for User - a person, not an Admin.
+    /// </summary>
+    private static readonly string[] PersonOnly =
+    [
+        "PlaybooksController.CreatePlaybook",
+        "PlaybooksController.PatchPlaybook",
+        "PlaybooksController.DeletePlaybook",
+        "IssuePlaybookController.PatchIssuePlaybook",
+        "RunnersController.PatchRunner",
+        "AssigneeController.PutIssueAssignee",
+        "IssueExpediteController.PutIssueExpedite",
+        "SettingsController.GetHatchSettings",
+        "SettingsController.PutHatchSettings",
+        "RunnerController.Get",
+        "RunnerController.Download",
+    ];
+
+    private static readonly string[] UserOutsideHatch =
+    [
+        "PeopleController.GetAll",
+        "PeopleController.Get",
+        "PeopleController.GetPhoto",
+    ];
+
+    [Fact]
+    public void EveryGuardedActionAsksForTheLevelItWasAuditedAt()
+    {
+        foreach (var (name, method) in GuardedActions())
+        {
+            var attribute = RequiredRole(method)!;
+            var expected = IsHatch(method) || UserOutsideHatch.Contains(name) ? PersonRole.User : PersonRole.Admin;
+
+            Assert.True(expected == attribute.Minimum, $"{name} asks for {attribute.Minimum}, audited at {expected}");
+        }
+    }
+
+    [Fact]
+    public void HatchRoutesAcceptTheHatchScopeExactlyWhereTheyDidBefore()
+    {
+        foreach (var (name, method) in GuardedActions())
+        {
+            var scope = RequiredRole(method)!.AcceptScope;
+            var expected = IsHatch(method) && !PersonOnly.Contains(name) ? ApiKeyScopes.Hatch : null;
+
+            Assert.True(expected == scope, $"{name} accepts scope '{scope}', audited at '{expected}'");
+        }
+    }
+
+    /// <summary>
+    /// A method-level attribute does not replace a class-level one - MVC runs
+    /// both - so "the method wins" would be a claim about something that does
+    /// not happen. Nothing may carry both.
+    /// </summary>
+    [Fact]
+    public void NoActionCarriesARoleOnBothTheMethodAndItsController()
+    {
+        foreach (var (name, method) in GuardedActions())
+        {
+            Assert.False(
+                method.GetCustomAttribute<RequireRoleAttribute>() is not null
+                && method.DeclaringType!.GetCustomAttribute<RequireRoleAttribute>() is not null,
+                $"{name} carries a role on the method and the class");
+        }
     }
 
     [Fact]
@@ -392,17 +471,25 @@ public class AdminSurfaceTests
         }
     }
 
-    private static IEnumerable<string> ActionsWhere(bool guarded) =>
+    private static IEnumerable<(string Name, MethodInfo Method)> AllActions() =>
         typeof(Program).Assembly.GetTypes()
             .Where(t => t is { IsAbstract: false, IsPublic: true } && typeof(ControllerBase).IsAssignableFrom(t))
             .SelectMany(t => t
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(m => !m.IsSpecialName && m.GetCustomAttributes<HttpMethodAttribute>().Any())
-                .Where(m => IsGuarded(m) == guarded)
-                .Select(m => $"{t.Name}.{m.Name}"));
+                .Select(m => ($"{t.Name}.{m.Name}", m)));
+
+    private static IEnumerable<(string Name, MethodInfo Method)> GuardedActions() =>
+        AllActions().Where(a => RequiredRole(a.Method) is not null);
+
+    private static IEnumerable<string> ActionsWhere(bool guarded) =>
+        AllActions().Where(a => (RequiredRole(a.Method) is not null) == guarded).Select(a => a.Name);
+
+    private static bool IsHatch(MethodInfo action) =>
+        action.DeclaringType!.Namespace == "Hatch.Api.Modules.Hatch";
 
     /// <summary>An attribute on the controller covers every action in it - which is how SettingsController is guarded whole.</summary>
-    private static bool IsGuarded(MethodInfo action) =>
-        action.GetCustomAttribute<RequireAdminAttribute>() is not null
-        || action.DeclaringType!.GetCustomAttribute<RequireAdminAttribute>() is not null;
+    private static RequireRoleAttribute? RequiredRole(MethodInfo action) =>
+        action.GetCustomAttribute<RequireRoleAttribute>()
+        ?? action.DeclaringType!.GetCustomAttribute<RequireRoleAttribute>();
 }

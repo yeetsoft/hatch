@@ -29,7 +29,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/work-log")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class WorkLogController(HatchContext db, TimeProvider time) : ControllerBase
 {
     /// <summary>

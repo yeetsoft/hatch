@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// every question at once, not a tour of the tickets that happen to have one.
 /// </summary>
 [ApiController]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class QuestionsController(HatchContext db) : ControllerBase
 {
     /// <summary>

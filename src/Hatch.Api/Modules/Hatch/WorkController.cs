@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/work")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
 {

@@ -300,14 +300,14 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
-    public async Task ABrowserSession_CannotWriteAnEntryWhateverTheAdminGateSays()
+    public async Task ABrowserSession_CannotWriteAnEntryWhateverTheRoleGateSays()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        // A person, not a key. RequireAdmin would let this through - it accepts
+        // A person, not a key. RequireRole would let this through - it accepts
         // both - and the check in the action is what makes the guarantee hold
-        // where Auth:EnforceAdmin is off.
+        // where the wall is off.
         h.Caller.Key = null;
 
         var refused = Assert.IsType<ObjectResult>((await h.WorkLog.PostEntry(issue.Key, Reported(), default)).Result);
@@ -389,8 +389,8 @@ public class IssueWorkLogControllerTests
     public void TheRoute_AcceptsTheHatchScope()
     {
         var guard = typeof(IssueWorkLogController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);

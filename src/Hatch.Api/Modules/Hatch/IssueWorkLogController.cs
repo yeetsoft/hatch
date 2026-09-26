@@ -25,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/work-log")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>
@@ -163,7 +163,7 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
     /// meant to be one.
     ///
     /// Checked in the action rather than expressed in the attribute on purpose:
-    /// <c>AdminGate</c> is dormant wherever <c>Auth:EnforceAdmin</c> is off,
+    /// <c>RoleGate</c> is dormant wherever the wall is off,
     /// which is all of local development, and a guarantee that evaporates under
     /// a switch is not a guarantee.
     ///

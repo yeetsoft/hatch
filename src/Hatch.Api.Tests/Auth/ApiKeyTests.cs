@@ -201,11 +201,11 @@ public class ApiKeyTests
     [Fact]
     public async Task AKeyCarryingTheScope_IsAllowed()
     {
-        var gate = NewAdminGate(key: Key("Claude", ApiKeyScopes.Hatch));
+        var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
 
-        Assert.Equal(AdminOutcome.Key, decision.Outcome);
+        Assert.Equal(RoleOutcome.Key, decision.Outcome);
         Assert.True(decision.IsAllowed);
         Assert.Equal("Claude", decision.ApiKey?.Name);
     }
@@ -213,16 +213,16 @@ public class ApiKeyTests
     [Fact]
     public async Task AKeyWithoutTheScope_IsRefused()
     {
-        var gate = NewAdminGate(key: Key("Claude"));
+        var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
 
         Assert.False(decision.IsAllowed);
-        Assert.Equal(AdminDecision.ScopeMismatch, decision.Reason);
+        Assert.Equal(RoleDecision.ScopeMismatch, decision.Reason);
     }
 
     /// <summary>
-    /// The boundary the whole scheme rests on. Every plain <c>[RequireAdmin]</c>
+    /// The boundary the whole scheme rests on. Every route naming no scope
     /// - minting credentials, revoking sessions, editing the house - stays the
     /// operator's, and a key reaching one is refused rather than treated as an
     /// unnamed administrator.
@@ -230,29 +230,29 @@ public class ApiKeyTests
     [Fact]
     public async Task AKeyReachingAnUnscopedRoute_IsRefused()
     {
-        var gate = NewAdminGate(key: Key("Claude", ApiKeyScopes.Hatch));
+        var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptScope: null, default);
 
         Assert.False(decision.IsAllowed);
-        Assert.Equal(AdminDecision.KeyNotAccepted, decision.Reason);
+        Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
     }
 
     /// <summary>
-    /// Naming a scope widens nothing for a person. A household member who is
-    /// not an administrator is refused from a scoped route exactly as they are
+    /// Naming a scope widens nothing for a person. A person who has not
+    /// been let in is refused from a scoped route exactly as they are
     /// from every other one.
     /// </summary>
     [Fact]
-    public async Task AScopedRoute_IsStillClosedToANonAdmin()
+    public async Task AScopedRoute_IsStillClosedToAPendingPerson()
     {
-        var person = new EfPerson { Name = "Ada", IsAdmin = false, CreatedAt = Now, UpdatedAt = Now };
-        var gate = NewAdminGate(grant: Grant("Ada's iPhone", person));
+        var person = new EfPerson { Name = "Ada", Role = PersonRole.Pending, CreatedAt = Now, UpdatedAt = Now };
+        var gate = NewRoleGate(grant: Grant("Ada's iPhone", person));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
 
         Assert.False(decision.IsAllowed);
-        Assert.Equal(AdminDecision.NotAdmin, decision.Reason);
+        Assert.Equal(RoleDecision.PendingApproval, decision.Reason);
     }
 
     // ---- The actor a key writes ----
@@ -414,10 +414,10 @@ public class ApiKeyTests
             Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
             NullLogger<AuthGate>.Instance);
 
-    private static AdminGate NewAdminGate(EfApiKey? key = null, EfAuthGrant? grant = null) =>
+    private static RoleGate NewRoleGate(EfApiKey? key = null, EfAuthGrant? grant = null) =>
         new(NewCaller(key, grant),
-            Options.Create(new AuthOptions { Enabled = true, EnforceAdmin = true }),
-            NullLogger<AdminGate>.Instance);
+            Options.Create(new AuthOptions { Enabled = true }),
+            NullLogger<RoleGate>.Instance);
 
     /// <summary>
     /// A caller identity backed by a real <see cref="CallerIdentity"/> over a

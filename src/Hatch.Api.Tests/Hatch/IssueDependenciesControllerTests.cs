@@ -369,8 +369,8 @@ public class IssueDependenciesControllerTests
     public void BothVerbs_AreOpenToAnApiKey()
     {
         var guard = typeof(IssueDependenciesController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         // Unlike a playbook and unlike the per-issue override, which name no
@@ -383,7 +383,7 @@ public class IssueDependenciesControllerTests
             new[] { nameof(IssueDependenciesController.AddDependency), nameof(IssueDependenciesController.RemoveDependency) },
             name => Assert.Empty(
                 typeof(IssueDependenciesController).GetMethod(name)!
-                    .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)));
+                    .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)));
     }
 
     // ---- Harness ----

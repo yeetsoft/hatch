@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/utilization")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class UtilizationController(UtilizationCache cache) : ControllerBase
 {
     /// <summary><paramref name="refresh"/> is the modal's refresh control: it bypasses both the freshness window and the failure backoff, because it is one person asking once.</summary>

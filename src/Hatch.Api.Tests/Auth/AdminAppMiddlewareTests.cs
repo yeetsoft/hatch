@@ -2,6 +2,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using System.Net;
 
 namespace Hatch.Api.Tests.Auth;
@@ -51,7 +52,7 @@ public class AdminAppMiddlewareTests
     /// A 404 rather than a 403 on purpose: it is indistinguishable from an
     /// install built without the bundle, which several are - Program.cs mounts
     /// each SPA only if its directory exists. The API's refusals go the other
-    /// way, and RequireAdminAttribute says why.
+    /// way, and RequireRoleAttribute says why.
     /// </summary>
     [Fact]
     public async Task TheRefusalNeverAdmitsThereIsSomethingThere()
@@ -61,6 +62,57 @@ public class AdminAppMiddlewareTests
         Assert.NotEqual(StatusCodes.Status403Forbidden, context.Response.StatusCode);
         Assert.Empty(context.Response.Headers.Location.ToString());
         Assert.Equal(0, context.Response.ContentLength ?? 0);
+    }
+
+    /// <summary>
+    /// A person - signed in, but nobody yet, or a device nobody has claimed -
+    /// navigating to the bundle is sent to the sign-in shell, with no ?r=: there
+    /// is nowhere for them to return to yet, and the shell can say they are
+    /// waiting. Still no-store, for the same reason as the 404.
+    /// </summary>
+    [Theory]
+    [InlineData(RoleDecision.PendingApproval)]
+    [InlineData(RoleDecision.NoPerson)]
+    public async Task SendsAPersonWhoIsNotInToTheSignInShell_OnANavigation(string reason)
+    {
+        var gate = new StubRoleGate { Decision = RoleDecision.Refuse(reason) };
+
+        var (context, served) = await Run("/apps/hatch/issues/AER-12", gate: gate,
+            configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "navigate");
+
+        Assert.False(served);
+        Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
+        Assert.Equal(new AuthOptions().SignInPath, context.Response.Headers.Location.ToString());
+        Assert.DoesNotContain("?r=", context.Response.Headers.Location.ToString());
+        Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
+    }
+
+    /// <summary>A fetch cannot follow a 302 usefully; it gets the flat 404 like anyone else.</summary>
+    [Fact]
+    public async Task ADocumentRedirectIsForNavigationsOnly()
+    {
+        var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.PendingApproval) };
+
+        var (context, _) = await Run("/apps/hatch/assets/index.js", gate: gate,
+            configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "cors");
+
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.Empty(context.Response.Headers.Location.ToString());
+    }
+
+    /// <summary>An API key has no browser and no sign-in screen: 404, even on something that looks like a navigation.</summary>
+    [Fact]
+    public async Task AKeyIsRefusedWithTheFlat404_EvenOnANavigation()
+    {
+        var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.KeyNotAccepted) };
+
+        var (context, served) = await Run("/apps/hatch/", gate: gate,
+            configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "navigate");
+
+        Assert.False(served);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
+        Assert.Empty(context.Response.Headers.Location.ToString());
     }
 
     [Theory]
@@ -98,13 +150,13 @@ public class AdminAppMiddlewareTests
 
     /// <summary>
     /// The rollback, and the whole of local development. Nothing is looked at -
-    /// not the path, not the caller - so an install that has not turned
-    /// enforcement on pays nothing for this being in the pipeline.
+    /// not the path, not the caller - so an install with no wall
+    /// pays nothing for this being in the pipeline.
     /// </summary>
     [Fact]
-    public async Task NoOpsEntirelyWhileEnforcementIsDormant()
+    public async Task NoOpsEntirelyWhileTheWallIsOff()
     {
-        var gate = new StubAdminGate { Enabled = false };
+        var gate = new StubRoleGate { Enabled = false };
 
         var (_, served) = await Run("/apps/admin/", gate: gate);
 
@@ -120,16 +172,16 @@ public class AdminAppMiddlewareTests
     [Fact]
     public async Task AsksTheGateWithTheRequestItIsAbout()
     {
-        var gate = new StubAdminGate { Decision = AdminDecision.Refuse(AdminDecision.NotAdmin) };
+        var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.NotAdmin) };
 
         await Run("/apps/admin/settings", gate: gate);
 
         // No scope: a bundle is for a browser, and an API key has no browser.
-        Assert.Equal(("GET", "/apps/admin/settings", "10.0.0.7", null), gate.LastAsked);
+        Assert.Equal(("GET", "/apps/admin/settings", "10.0.0.7", PersonRole.User, null), gate.LastAsked);
     }
 
     private static async Task<(HttpContext Context, bool Served)> Run(
-        string path, bool isAdmin = false, IAdminGate? gate = null)
+        string path, bool isAdmin = false, IRoleGate? gate = null, Action<DefaultHttpContext>? configure = null)
     {
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("10.0.0.7");
@@ -137,19 +189,20 @@ public class AdminAppMiddlewareTests
         context.Request.Scheme = "https";
         context.Request.Host = new HostString("home.example.com");
         context.Request.Path = path;
+        configure?.Invoke(context);
 
-        gate ??= new StubAdminGate
+        gate ??= new StubRoleGate
         {
             Decision = isAdmin
-                ? AdminDecision.Allow(new EfPerson
+                ? RoleDecision.Allow(new EfPerson
                 {
                     Id = Guid.NewGuid(),
                     Name = "Ada",
-                    IsAdmin = true,
+                    Role = PersonRole.Admin,
                     CreatedAt = DateTimeOffset.UnixEpoch,
                     UpdatedAt = DateTimeOffset.UnixEpoch,
                 })
-                : AdminDecision.Refuse(AdminDecision.NotAdmin),
+                : RoleDecision.Refuse(RoleDecision.NotAdmin),
         };
 
         var served = false;
@@ -157,7 +210,7 @@ public class AdminAppMiddlewareTests
         {
             served = true;
             return Task.CompletedTask;
-        });
+        }, Options.Create(new AuthOptions()));
 
         await middleware.InvokeAsync(context, gate);
 
@@ -170,20 +223,20 @@ public class AdminAppMiddlewareTests
 /// prove the dormant path never asked at all, which is the property that keeps
 /// this middleware free on an install that has not turned enforcement on.
 /// </summary>
-internal sealed class StubAdminGate : IAdminGate
+internal sealed class StubRoleGate : IRoleGate
 {
     public bool Enabled { get; set; } = true;
 
-    public AdminDecision Decision { get; set; } = AdminDecision.Refuse(AdminDecision.NotAdmin);
+    public RoleDecision Decision { get; set; } = RoleDecision.Refuse(RoleDecision.NotAdmin);
 
     public int Evaluations { get; private set; }
 
-    public (string? Method, string? Path, string? ClientIp, string? AcceptScope) LastAsked { get; private set; }
+    public (string? Method, string? Path, string? ClientIp, PersonRole Minimum, string? AcceptScope) LastAsked { get; private set; }
 
-    public Task<AdminDecision> EvaluateAsync(string? method, PathString path, string? clientIp, string? acceptScope, CancellationToken ct)
+    public Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, string? acceptScope, CancellationToken ct)
     {
         Evaluations++;
-        LastAsked = (method, path.Value, clientIp, acceptScope);
+        LastAsked = (method, path.Value, clientIp, minimum, acceptScope);
         return Task.FromResult(Decision);
     }
 }

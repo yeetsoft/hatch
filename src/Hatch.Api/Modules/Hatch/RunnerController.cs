@@ -1,3 +1,4 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Common;
 using Hatch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -24,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/runner")]
-[RequireAdmin]
+[RequireRole(PersonRole.User)]
 public class RunnerController(IHatchRevision revision, IWebHostEnvironment env) : ControllerBase
 {
     /// <summary>

@@ -33,7 +33,7 @@ namespace Hatch.Api.Modules.Quill;
 /// the rows are loaded, and "who may read this" is one expression that sharing
 /// widens rather than a second one beside it.
 ///
-/// What that deliberately is not: nothing here reads Person.IsAdmin. There is
+/// What that deliberately is not: nothing here reads Person.Role. There is
 /// a global role now - it guards the admin app and the operator verbs behind
 /// it (docs/auth-architecture.md, "The admin flag") - and it has nothing to say
 /// about a note. An administrator is not a person who may read everyone's

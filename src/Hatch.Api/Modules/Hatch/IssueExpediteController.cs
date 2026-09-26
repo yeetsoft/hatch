@@ -53,7 +53,7 @@ public class IssueExpediteController(
     /// was set, because it is written here and nowhere else.
     /// </remarks>
     [HttpPut("{key}/expedite")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<IssueDto>> PutIssueExpedite(
         string key, ExpediteRequest request, CancellationToken ct)
     {

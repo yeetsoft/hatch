@@ -514,8 +514,8 @@ public class WorkLogControllerTests
     public void TheRoute_AcceptsTheHatchScope()
     {
         var guard = typeof(WorkLogController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);

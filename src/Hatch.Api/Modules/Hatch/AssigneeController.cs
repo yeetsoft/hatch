@@ -51,7 +51,7 @@ public class AssigneeController(
     /// belongs to when it declines to take it.
     /// </remarks>
     [HttpGet("assignees")]
-    [RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<AssigneeDirectoryDto>> GetAssignees(CancellationToken ct)
     {
         var live = await actors.LiveAsync(ct);
@@ -80,7 +80,7 @@ public class AssigneeController(
     /// so an assignee this route accepts is one the board will draw.
     /// </remarks>
     [HttpPut("issues/{key}/assignee")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<IssueDto>> PutIssueAssignee(
         string key, AssigneeRequest request, CancellationToken ct)
     {

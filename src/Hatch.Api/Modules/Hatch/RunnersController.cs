@@ -49,7 +49,7 @@ public class RunnersController(
     /// a key anybody indexed.
     /// </remarks>
     [HttpGet]
-    [RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -90,7 +90,7 @@ public class RunnersController(
     /// runner is turned away.</para>
     /// </remarks>
     [HttpPost("{name}")]
-    [RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<RunnerInstructionDto>> Heartbeat(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {
@@ -154,7 +154,7 @@ public class RunnersController(
     /// hostname into a URL is not a runner.</para>
     /// </remarks>
     [HttpPatch("{name}")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<RunnerDto>> PatchRunner(
         string name, RunnerPatchRequest request, CancellationToken ct)
     {
@@ -222,8 +222,8 @@ public class RunnersController(
     /// </summary>
     /// <remarks>
     /// Checked in the action as well as declared in the attribute, for
-    /// <c>IssueClaimController.NotAPerson</c>'s reason: <c>AdminGate</c> is
-    /// dormant wherever <c>Auth:EnforceAdmin</c> is off, which is all of local
+    /// <c>IssueClaimController.NotAPerson</c>'s reason: <c>RoleGate</c> is
+    /// dormant wherever the wall is off, which is all of local
     /// development, and a guarantee that evaporates under a switch is not a
     /// guarantee. A keyless runner that named itself with the runner header is
     /// refused here too - it is an agent whether or not it carries a

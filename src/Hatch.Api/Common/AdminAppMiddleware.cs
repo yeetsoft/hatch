@@ -1,14 +1,16 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Common;
 
 /// <summary>
 /// Keeps the operator's own apps off screens that have no business rendering
-/// them. The admin app was the first; Hatch is the second, and the boundary is
+/// them: it serves them to a User and above. The admin app was the first; Hatch is the second, and the boundary is
 /// the same one rather than a second copy of it.
 ///
 /// The bundle is the boundary here, not the data behind it - every verb that
-/// matters carries <see cref="RequireAdminAttribute"/> of its own, so a copy of
+/// matters carries <see cref="RequireRoleAttribute"/> of its own, so a copy of
 /// the JavaScript would buy an attacker nothing. What this buys is the far more
 /// ordinary thing: a household where the operator's tools are not one tap away
 /// on a family member's phone, and a page that never renders half-loaded with a
@@ -20,7 +22,7 @@ namespace Hatch.Api.Common;
 /// indistinguishable from an install that was built without the bundle, which
 /// several are - Program.cs mounts each SPA only if its directory is present.
 /// The API's refusals are 403s for exactly the inverse reason
-/// (<see cref="RequireAdminAttribute"/>).
+/// (<see cref="RequireRoleAttribute"/>).
 ///
 /// Registered immediately after <see cref="AuthMiddleware"/> and before the
 /// /apps static file handlers, because a path check in middleware is the only
@@ -29,7 +31,7 @@ namespace Hatch.Api.Common;
 /// client-side deep link beneath it. Guarding one and not the other would leave
 /// /apps/admin/devices serving index.html to anyone.
 /// </summary>
-public class AdminAppMiddleware(RequestDelegate next)
+public class AdminAppMiddleware(RequestDelegate next, IOptions<AuthOptions> options)
 {
     /// <summary>
     /// The operator-only bundles. Matched by segment, so /apps/admin and
@@ -46,7 +48,7 @@ public class AdminAppMiddleware(RequestDelegate next)
     /// </remarks>
     private static readonly PathString[] GatedApps = ["/apps/admin", "/apps/hatch"];
 
-    public async Task InvokeAsync(HttpContext context, IAdminGate gate)
+    public async Task InvokeAsync(HttpContext context, IRoleGate gate)
     {
         if (!gate.Enabled || !IsGated(context.Request.Path))
         {
@@ -58,6 +60,7 @@ public class AdminAppMiddleware(RequestDelegate next)
             context.Request.Method,
             context.Request.Path,
             context.Connection.RemoteIpAddress?.ToString(),
+            PersonRole.User,
             // No scope, deliberately: these are bundles for a browser to run,
             // and an API key has no browser. A key that asks for one gets the
             // same 404 a non-admin does.
@@ -75,10 +78,23 @@ public class AdminAppMiddleware(RequestDelegate next)
         // says the page doesn't exist" is not a symptom anyone will connect to
         // a cache entry.
         //
-        // No log line of its own: AdminGate already emitted the Warning, with
+        // No log line of its own: RoleGate already emitted the Warning, with
         // the reason and the grant on it. One refusal, one line - a second one
         // here would double every entry an operator greps for.
         context.Response.Headers.CacheControl = "no-store";
+
+        // A refusal for a *person* - a device nobody has claimed, or somebody
+        // waiting to be let in - is not a secret worth keeping: they are
+        // signed in, and the shell can tell them so. Sent to the sign-in path
+        // with no return address, because there is nowhere for them to return
+        // to yet. Only for a navigation; a fetch or an asset gets the flat 404.
+        if (decision.Reason is RoleDecision.NoPerson or RoleDecision.PendingApproval
+            && AuthChallenge.PrefersRedirect(context.Request.Headers, context.Request.Method))
+        {
+            context.Response.Redirect(options.Value.SignInPath);
+            return;
+        }
+
         context.Response.StatusCode = StatusCodes.Status404NotFound;
     }
 

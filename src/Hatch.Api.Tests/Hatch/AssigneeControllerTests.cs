@@ -395,8 +395,8 @@ public class AssigneeControllerTests
     {
         var guard = typeof(AssigneeController)
             .GetMethod(nameof(AssigneeController.PutIssueAssignee))!
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
         // No scope named, and no class-level attribute to inherit one from:
@@ -406,7 +406,7 @@ public class AssigneeControllerTests
         Assert.Null(guard.AcceptScope);
 
         Assert.Empty(typeof(AssigneeController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false));
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
     [Fact]
@@ -414,8 +414,8 @@ public class AssigneeControllerTests
     {
         var guard = typeof(AssigneeController)
             .GetMethod(nameof(AssigneeController.GetAssignees))!
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         // Reading stays open, like everything else a dispatch needs: an agent

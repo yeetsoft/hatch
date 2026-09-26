@@ -235,11 +235,10 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAuthGate, AuthGate>();
 
 // The second question, asked only by the routes that ask it: not "is this
-// device enrolled" but "may this person do operator things". Separate from
-// IAuthGate on purpose - see Services/Auth/AdminGate.cs - and dormant until
-// Auth:EnforceAdmin says otherwise, which is why registering it changes nothing
-// on an install that has not turned it on.
-builder.Services.AddScoped<IAdminGate, AdminGate>();
+// device enrolled" but "does this person's role reach this". Separate from
+// IAuthGate on purpose - see Services/Auth/RoleGate.cs - and dormant wherever
+// the wall is off, which is why registering it changes nothing there.
+builder.Services.AddScoped<IRoleGate, RoleGate>();
 
 // "Who is making this request", for everything that isn't the wall itself. The
 // accessor is the only reason this needs a line here at all: ICallerIdentity is
@@ -514,7 +513,7 @@ app.UseMiddleware<AuthMiddleware>();
 // grant the wall just attached, and before the /apps handlers below because it
 // has to cover both the static bundle and the MapFallbackToFile route that
 // answers every client-side path underneath it. No-ops entirely unless
-// Auth:EnforceAdmin is on (docs/auth-architecture.md, "The admin flag").
+// the wall is on (docs/auth-architecture.md, "The admin flag").
 app.UseMiddleware<AdminAppMiddleware>();
 
 // Placed after the wall so an unauthenticated flood is refused before it can

@@ -1,3 +1,4 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
@@ -6,8 +7,9 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace Hatch.Api.Common;
 
 /// <summary>
-/// Marks an action - or a whole controller - as one only an administrator may
-/// take. Runs as an MVC authorization filter, so it refuses before model
+/// Marks an action - or a whole controller - with the lowest role that may take
+/// it. Pending is refused everywhere; <see cref="PersonRole.User"/> reaches the
+/// everyday surfaces; <see cref="PersonRole.Admin"/> the operator's own verbs. Runs as an MVC authorization filter, so it refuses before model
 /// binding and before the action's own body, which is what keeps a guarded
 /// endpoint from doing half its work.
 ///
@@ -29,8 +31,11 @@ namespace Hatch.Api.Common;
 /// is nothing left for a 404 to hide and a great deal for it to confuse.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class RequireAdminAttribute : Attribute, IAsyncAuthorizationFilter
+public class RequireRoleAttribute(PersonRole minimum) : Attribute, IAsyncAuthorizationFilter
 {
+    /// <summary>The lowest role this route serves.</summary>
+    public PersonRole Minimum { get; } = minimum;
+
     /// <summary>
     /// The one scope this route will accept from an API key, or null - the
     /// default, and the right default - for operators only.
@@ -42,7 +47,7 @@ public sealed class RequireAdminAttribute : Attribute, IAsyncAuthorizationFilter
     /// is what makes adding a key a bounded act rather than a broad one.
     ///
     /// It widens nothing for a person: a route that accepts a scope is still
-    /// closed to a household member who is not an administrator.
+    /// closed to a person below <see cref="Minimum"/>.
     /// </summary>
     public string? AcceptScope { get; init; }
 
@@ -53,12 +58,13 @@ public sealed class RequireAdminAttribute : Attribute, IAsyncAuthorizationFilter
         // Resolved from the request rather than injected: an attribute's
         // constructor arguments have to be compile-time constants, so the
         // alternative is a ServiceFilter indirection that buys nothing here.
-        var gate = http.RequestServices.GetRequiredService<IAdminGate>();
+        var gate = http.RequestServices.GetRequiredService<IRoleGate>();
 
         var decision = await gate.EvaluateAsync(
             http.Request.Method,
             http.Request.Path,
             http.Connection.RemoteIpAddress?.ToString(),
+            Minimum,
             AcceptScope,
             http.RequestAborted);
 
@@ -68,10 +74,17 @@ public sealed class RequireAdminAttribute : Attribute, IAsyncAuthorizationFilter
         // authenticated, and the two refusals it distinguishes want different
         // sentences on screen - "this device is not linked to anyone" is fixed
         // on the Sessions page, "you are not an administrator" is fixed by
-        // someone else.
+        // someone else, and "pending approval" is fixed by an administrator.
         context.Result = new ObjectResult(new AuthErrorDto(decision.Reason!))
         {
             StatusCode = StatusCodes.Status403Forbidden,
         };
     }
 }
+
+/// <summary>
+/// The operator's verbs: <see cref="RequireRoleAttribute"/> at
+/// <see cref="PersonRole.Admin"/>. It exists so the household-era controllers,
+/// which have always meant exactly this, are not touched.
+/// </summary>
+public sealed class RequireAdminAttribute() : RequireRoleAttribute(PersonRole.Admin);
