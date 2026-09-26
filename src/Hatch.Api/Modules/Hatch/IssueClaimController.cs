@@ -31,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/claim")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class IssueClaimController(
     HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
@@ -186,8 +186,8 @@ public class IssueClaimController(
     /// </summary>
     /// <remarks>
     /// Checked in the action rather than expressed in the attribute, for the
-    /// reason <c>IssueWorkLogController.NotAKey</c> gives: <c>AdminGate</c> is
-    /// dormant wherever <c>Auth:EnforceAdmin</c> is off, which is all of local
+    /// reason <c>IssueWorkLogController.NotAKey</c> gives: <c>RoleGate</c> is
+    /// dormant wherever the wall is off, which is all of local
     /// development, and a guarantee that evaporates under a switch is not a
     /// guarantee.
     ///

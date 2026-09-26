@@ -83,7 +83,7 @@ public interface ICallerIdentity
     /// is up, and null whenever a grant or a key already answered.
     ///
     /// A third lane rather than a synthetic <see cref="EfApiKey"/>, and the
-    /// reason is worth stating: <see cref="AdminGate"/> branches on the key
+    /// reason is worth stating: <see cref="RoleGate"/> branches on the key
     /// being a row, so a fabricated one would satisfy the compiler and then be
     /// asked for scopes no table could answer. A lane that is explicit refuses
     /// to be mistaken for one that is not.
@@ -111,7 +111,7 @@ public interface ICallerIdentity
     /// needs a column off that row instead of something to compare a foreign
     /// key against.
     ///
-    /// That caller is <see cref="AdminGate"/>, and the distinction is the whole
+    /// That caller is <see cref="RoleGate"/>, and the distinction is the whole
     /// reason this method exists next to the one above. Ownership scoping wants
     /// an id, because <c>WHERE PersonId = @me</c> is the safe shape and a loaded
     /// entity would only tempt someone into filtering in memory. An
@@ -257,7 +257,7 @@ public class CallerIdentity(
     /// The local person is an <em>actor</em> - a name for a trail and a target
     /// for an assignee - and not a row in <c>People</c>. Answering with a
     /// synthetic id here would give Quill notes owned by a person who does not
-    /// exist and <see cref="AdminGate"/> a role to read off a row that is not
+    /// exist and <see cref="RoleGate"/> a role to read off a row that is not
     /// there. That line is why the blast radius of local mode's identity stops
     /// at Hatch.
     /// </summary>

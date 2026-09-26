@@ -22,18 +22,18 @@ namespace Hatch.Api.Controllers;
 /// (<c>AuthController.LinkGrantPerson</c>) - one FK with one write path. What
 /// this controller offers is the read of it, on <see cref="GetSessions"/>.
 ///
-/// Every write here is guarded, and one of them is the reason the guard is
-/// worth having at all: <c>IsAdmin</c> is set on this page, so an unguarded
+/// Every write here is guarded at Admin, and one of them is the reason the guard is
+/// worth having at all: <c>Role</c> is set on this page, so an unguarded
 /// PUT would let any enrolled device make itself an administrator, which turns
-/// the whole boundary into a formality. The reads stay open - a name and a
-/// photo are what the family apps render next to a note - and so does
-/// <see cref="GetPhoto"/>, because an &lt;img src&gt; carries no more
-/// authority than the page around it.
+/// the whole boundary into a formality. The reads, photo included, ask only for
+/// User - a name and a photo are what the family apps render next to a note -
+/// so a Pending person, who has not been let in, sees none of it.
 /// </summary>
 [ApiController]
 [Route("api/people")]
 public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBase
 {
+    [RequireRole(PersonRole.User)]
     [HttpGet]
     public async Task<IReadOnlyList<PersonDto>> GetAll(CancellationToken ct)
         => await db.People.AsNoTracking()
@@ -44,6 +44,7 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
             .Select(ToDto)
             .ToListAsync(ct);
 
+    [RequireRole(PersonRole.User)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PersonDto>> Get(Guid id, CancellationToken ct)
     {
@@ -56,16 +57,17 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
     public async Task<ActionResult<PersonDto>> Create(PersonWriteRequest request, CancellationToken ct)
     {
         if (!PersonName.TryNormalize(request.Name, out var name, out var error)) return BadRequest(error);
+        if (!PersonRoles.TryParse(request.Role, out var role)) return BadRequest(PersonRoles.Sentence);
 
         var now = time.GetUtcNow();
-        var person = new EfPerson { Name = name, IsAdmin = request.IsAdmin, CreatedAt = now, UpdatedAt = now };
+        var person = new EfPerson { Name = name, Role = role, CreatedAt = now, UpdatedAt = now };
         db.People.Add(person);
         await db.SaveChangesAsync(ct);
 
         // Two people may share a name and that is not an error - households
         // contain a Sam and a Sam, and the id is what anything actually keys
         // on. There is deliberately no unique index behind this.
-        return CreatedAtAction(nameof(Get), new { id = person.Id }, new PersonDto(person.Id, person.Name, person.IsAdmin, person.CreatedAt, person.UpdatedAt, null, 0));
+        return CreatedAtAction(nameof(Get), new { id = person.Id }, new PersonDto(person.Id, person.Name, PersonRoles.ToWire(person.Role), person.CreatedAt, person.UpdatedAt, null, 0));
     }
 
     [RequireAdmin]
@@ -73,12 +75,13 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
     public async Task<ActionResult<PersonDto>> Update(Guid id, PersonWriteRequest request, CancellationToken ct)
     {
         if (!PersonName.TryNormalize(request.Name, out var name, out var error)) return BadRequest(error);
+        if (!PersonRoles.TryParse(request.Role, out var role)) return BadRequest(PersonRoles.Sentence);
 
         var person = await db.People.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (person is null) return NotFound();
 
         person.Name = name;
-        person.IsAdmin = request.IsAdmin;
+        person.Role = role;
         person.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
 
@@ -135,6 +138,7 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
     /// stable across uploads on purpose (so an &lt;img src&gt; never has to be
     /// rebuilt), which means the freshness has to come from the validator.
     /// </summary>
+    [RequireRole(PersonRole.User)]
     [HttpGet("{id:guid}/photo")]
     public async Task<IActionResult> GetPhoto(Guid id, CancellationToken ct)
     {
@@ -223,7 +227,7 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
         p => new PersonDto(
             p.Id,
             p.Name,
-            p.IsAdmin,
+            p.Role == PersonRole.Admin ? "admin" : p.Role == PersonRole.User ? "user" : "pending",
             p.CreatedAt,
             p.UpdatedAt,
             p.Photo == null ? null : p.Photo.UpdatedAt,

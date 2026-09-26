@@ -66,8 +66,8 @@ is a program rather than a browser.
 
 6. Controller at `/api/<name>/*` — `AddControllers` already finds it anywhere in
    the assembly. A module the household uses needs nothing more; one that is the
-   operator's carries [`RequireAdmin`](../Common/RequireAdminAttribute.cs), and
-   naming a scope on it (`[RequireAdmin(AcceptScope = …)]`) is what opens a
+   operator's carries [`RequireRole`](../Common/RequireRoleAttribute.cs), and
+   naming a scope on it (`[RequireRole(PersonRole.User, AcceptScope = …)]`) is what opens a
    route to an API key. Hatch is the worked example of both —
    [`docs/hatch.md`](../../../docs/hatch.md), "The wall, the admin gate, and API
    keys".
@@ -113,12 +113,12 @@ wire.
     belonging to a real person.
   - Ask who is calling through `ICallerIdentity` and nothing else.
 
-  Two things are still nobody's to invent in a module folder. **`IsAdmin` is
-  read in one place and it is not here** — `Services/Auth/AdminGate.cs`, guarding
+  Two things are still nobody's to invent in a module folder. **A person's role is
+  read in one place and it is not here** — `Services/Auth/RoleGate.cs`, guarding
   the operator's own tools, and a module reaching for a household-wide role is
   a module answering a question about the house rather than about its own rows.
   Hatch is entirely the operator's and still reads it that way: every controller
-  carries the attribute, and the gate answers ([`docs/hatch.md`](../../../docs/hatch.md)).
+  carries a role attribute, and the gate answers ([`docs/hatch.md`](../../../docs/hatch.md)).
   And no endpoint changes *what a verb does* based on who is asking; that is the
   permission model arriving, and it should arrive on purpose rather than as one
   module's `if`.

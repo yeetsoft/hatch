@@ -4,6 +4,24 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Hatch.Api.Ef;
 
 /// <summary>
+/// What a person may reach. Ordered, and the order is the meaning: a gate asks
+/// "at least this role", so a new level goes in its place rather than at the
+/// end. Stored as the integer, so an existing value never moves - see
+/// DeviceChannelMetric for the rule every enum in this folder follows.
+/// </summary>
+public enum PersonRole
+{
+    /// <summary>Known to the house, not yet let in. Reaches nothing behind the wall; only the sign-in screen and their own identity.</summary>
+    Pending = 0,
+
+    /// <summary>The everyday apps, including the ones that are the operator's tools without being their controls.</summary>
+    User = 1,
+
+    /// <summary>Everything: people, devices, credentials, and the house itself.</summary>
+    Admin = 2,
+}
+
+/// <summary>
 /// One human the household knows about - primarily but not necessarily a family
 /// member. This is the row <see cref="EfAuthGrant"/> spent its first release
 /// deliberately not pointing at ("grants become people when people exist"), and
@@ -18,7 +36,7 @@ namespace Hatch.Api.Ef;
 ///
 /// Being an authorization input is where this goes rather than an exception to
 /// it: sharing a note with a named person, read or write, is authorization
-/// keyed on this row and nothing else. IsAdmin below is the first column read
+/// keyed on this row and nothing else. Role below is the first column read
 /// that way - one global role, guarding the operator's own tools. What is still
 /// missing is a permission model to express any of it generally.
 ///
@@ -45,31 +63,27 @@ public class EfPerson
     public required string Name { get; set; }
 
     /// <summary>
-    /// Whether this person is an administrator - who is served the admin app,
-    /// and who may take the operator verbs behind it. The one global role in
-    /// Hatch, read in exactly one place
-    /// (<see cref="Hatch.Api.Services.Auth.AdminGate"/>) and inert until an
-    /// operator sets Auth:EnforceAdmin.
+    /// What this person may reach: nothing yet (<see cref="PersonRole.Pending"/>),
+    /// the everyday apps (<see cref="PersonRole.User"/>), or the operator's
+    /// verbs as well (<see cref="PersonRole.Admin"/>). Read in exactly one place
+    /// (<see cref="Hatch.Api.Services.Auth.RoleGate"/>), and enforced whenever
+    /// the wall is on.
     ///
-    /// The column was carried for a release before anything read it, and that
-    /// was the point: a column added on the day enforcement lands starts empty,
-    /// so the deploy that turns enforcement on is also the deploy that locks
-    /// everyone out. This one had real answers in it first.
+    /// Stored as the enum's integer, and the CLR default is Pending on purpose:
+    /// a row written by a code path that forgot to say is a person who reaches
+    /// nothing, not one who reaches everything. The migration that introduced it
+    /// made every existing person a User or an Admin, never Pending, so an
+    /// upgrade cannot lock out the person running it.
     ///
-    /// Two things about the enforcement are load-bearing and easy to undo by
-    /// accident. It is switched from *config*, never inferred from whether
-    /// anybody is flagged - otherwise a checkbox on the People page becomes the
-    /// thing that turns it on, and ticking it for the wrong person locks the
-    /// household out of the page they would fix it from. And the write path for
-    /// this column is itself guarded by it (PeopleController), or any enrolled
-    /// device could promote itself and the boundary would be a formality.
+    /// The write path for this column is itself guarded at Admin
+    /// (PeopleController), or any enrolled device could promote itself and the
+    /// boundary would be a formality.
     ///
     /// What it is not: a permission model. "May this person operate the house"
-    /// is a question with two answers; "may Ada read this note" is not a
-    /// coarser version of it and will not be built by adding a second bool
-    /// next to this one. See docs/auth-architecture.md, "The admin flag".
+    /// is a question with an ordered answer; "may Ada read this note" is not a
+    /// finer version of it. See docs/auth-architecture.md, "The admin flag".
     /// </summary>
-    public bool IsAdmin { get; set; }
+    public PersonRole Role { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
 

@@ -230,8 +230,8 @@ public class IssuePlaybookControllerTests
     {
         var guard = typeof(IssuePlaybookController)
             .GetMethod(nameof(IssuePlaybookController.PatchIssuePlaybook))!
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
         // No scope named, and no class-level attribute to inherit one from:
@@ -241,7 +241,7 @@ public class IssuePlaybookControllerTests
         Assert.Null(guard.AcceptScope);
 
         Assert.Empty(typeof(IssuePlaybookController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false));
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
     [Fact]

@@ -234,7 +234,7 @@ public class SettingsControllerTests
     /// a Hatch-scoped key because a keyless runner is its ordinary caller, and
     /// the two routes beside it still take a person and nothing else. Read off
     /// the attributes because that is where the decision lives - and because
-    /// RequireAdminAttribute is AllowMultiple = false, so an attribute added at
+    /// RequireRoleAttribute is AllowMultiple = false, so an attribute added at
     /// the class level later would silently replace all three.
     /// </summary>
     [Fact]
@@ -244,8 +244,8 @@ public class SettingsControllerTests
         Assert.Null(Guard(nameof(SettingsController.GetHatchSettings)).AcceptScope);
         Assert.Null(Guard(nameof(SettingsController.PutHatchSettings)).AcceptScope);
 
-        static RequireAdminAttribute Guard(string action) =>
-            typeof(SettingsController).GetMethod(action)!.GetCustomAttribute<RequireAdminAttribute>()
+        static RequireRoleAttribute Guard(string action) =>
+            typeof(SettingsController).GetMethod(action)!.GetCustomAttribute<RequireRoleAttribute>()
             ?? throw new Xunit.Sdk.XunitException($"{action} carries no [RequireAdmin] of its own.");
     }
 

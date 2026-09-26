@@ -258,12 +258,11 @@ public class AuthController(
     /// another, not by looking this one up.
     ///
     /// Guarded, which puts the only way to enrol a device behind being an
-    /// administrator - so an install that turns Auth:EnforceAdmin on with
-    /// nobody flagged can no longer let anybody in. That is not an oversight
+    /// administrator - so an install where nobody is an Admin can no
+    /// longer let anybody in. That is not an oversight
     /// and it is not unrecoverable: the migrate Job still mints a bootstrap
-    /// invite into an install with no live access (Program.cs), and the switch
-    /// itself is deploy-time config precisely so that the way out of this is a
-    /// deploy rather than a database edit. See docs/auth-architecture.md,
+    /// invite into an install with no live access (Program.cs), and the migration that
+    /// introduced roles made nobody Pending, so an upgrade keeps its operator. See docs/auth-architecture.md,
     /// "Bootstrap and lockout recovery".
     /// </summary>
     [RequireAdmin]

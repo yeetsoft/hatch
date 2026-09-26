@@ -744,10 +744,10 @@ matter under a hundred lines of tidying.
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type from one column to the next. See [the dispatcher](#the-dispatcher).
 
-## The wall, the admin gate, and API keys
+## The wall, the roles, and API keys
 
 Hatch adds no authentication of its own. It sits behind the two boundaries
-every other app in the house does — the wall, and the admin gate on top of it —
+every other app in the house does — the wall, and the role gate on top of it —
 and Phase 6 of its build taught the outer one a second lane.
 
 ### The posture
@@ -755,21 +755,34 @@ and Phase 6 of its build taught the outer one a second lane.
 - **The wall** (`AuthGate` + `AuthMiddleware`, enforced at Traefik and in
   process) decides whether a request reaches the app at all. `hatch.${DOMAIN}`
   carries the same `hatch-auth` middleware annotation as `home` and `kiosk`.
-- **The admin gate** (`AdminGate`) decides whether an already-authenticated
-  request may do an operator's things. Every Hatch controller carries
-  `[RequireAdmin(AcceptScope = "hatch")]`, and the bundle is in
-  `AdminAppMiddleware`'s `GatedApps` beside `/apps/admin`.
+- **The role gate** (`RoleGate`) decides whether an already-authenticated
+  request reaches what it asked for, by the role on the person the device
+  belongs to — `pending`, `user` or `admin`, an ordered enum on `EfPerson.Role`.
+  It asks "at least this role", and it is on whenever the wall is: there is no
+  switch. Every Hatch controller carries
+  `[RequireRole(PersonRole.User, AcceptScope = "hatch")]` (a handful of
+  person-only routes carry `[RequireRole(PersonRole.User)]` with no scope), and
+  the bundle is in `AdminAppMiddleware`'s `GatedApps` beside `/apps/admin`,
+  also at User. The operator's own verbs — people writes and sessions, grants,
+  invites, API keys, the core settings — are `[RequireRole(PersonRole.Admin)]`,
+  spelled `[RequireAdmin]`.
 
-The refusals differ by design, and are the admin app's exactly:
+A Pending person is refused at every level, and reaches only the sign-in screen
+and the two routes that say who they are (`/api/auth/me`, `/api/auth/sign-out`),
+which ask the wall for a credential and nothing more.
 
 | Reaching | As | Answer |
 |---|---|---|
-| `/apps/hatch/…` | a device not linked to an admin | **404** — indistinguishable from an install built without it |
-| `/api/hatch/…` | a device not linked to an admin | **403** |
-| anything | no credential at all | **401**, or a redirect to sign-in for a browser navigation |
+| `/apps/hatch/…` navigation | no credential | **302** to sign-in with `?r=` |
+| `/api/…` | no credential, or a key nobody minted | **401** |
+| `/apps/hatch/…` navigation | signed in, Pending (or a device nobody has claimed) | **302** to sign-in with no `?r=`, where the shell says they are waiting |
+| `/api/hatch/…` | signed in, Pending | **403** `pending_approval` |
+| an Admin route | signed in, User | **403** `not_admin` |
+| `/apps/hatch/…` | an API key, or any non-navigation | **404** — indistinguishable from an install built without it |
+| an Admin route | an API key | **403** `key_not_accepted` |
 
 The two gates stay separate rather than being folded into one. The wall runs on
-every request and is enforced in two places; the admin gate runs on the handful
+every request and is enforced in two places; the role gate runs on the handful
 of routes that ask and is enforced only in this process. Folding them would put
 a person lookup on the health probes and the media stream, which is precisely
 what the wall's allow-list exists to prevent.
@@ -849,7 +862,7 @@ Three things fall out of that, none of them added on purpose:
 
 ### What a scope is, and what it is not
 
-`AcceptScope` on `[RequireAdmin]` names the one scope that route will take from
+`AcceptScope` on `[RequireRole]` names the one scope that route will take from
 a key. It is **opt-in**: naming a scope is a claim that this surface has been
 thought through for a caller that is a program rather than a person, and the
 honest number of surfaces that have been is one. Every route that names none —
@@ -858,8 +871,8 @@ minting credentials, revoking sessions, editing the house, roughly forty verbs
 a bounded act rather than a broad one.
 
 A scope widens nothing for a person: a route that accepts `hatch` is still
-closed to a household member who is not an administrator. And a key is never an
-*administrator* — `AdminOutcome.Key` is its own outcome, and it means "this
+closed to a person below the role it asks for. And a key is never an
+*administrator* — `RoleOutcome.Key` is its own outcome, and it means "this
 program reaches what its scopes name", not "this program is the operator".
 
 If a request comes back `403`, the key is working and the route is not one a key
@@ -868,7 +881,7 @@ may take.
 ### The one edge that is deliberately cut
 
 **Writing a playbook is closed to a key.** The three write verbs on
-`PlaybooksController` carry plain `[RequireAdmin]` naming no scope, while the
+`PlaybooksController` carry a plain `[RequireRole(PersonRole.User)]` naming no scope, while the
 read carries the scope like everything else.
 
 **So is writing an issue's override**, and it is the same edge rather than a
@@ -923,8 +936,8 @@ worth a column until somebody wants one.
 
 ## API surface
 
-Everything under `/api/hatch`, every route `[RequireAdmin(AcceptScope =
-"hatch")]` except where noted. Issue routes take the display key (`AER-12`).
+Everything under `/api/hatch`, every route `[RequireRole(PersonRole.User,
+AcceptScope = "hatch")]` except where noted. Issue routes take the display key (`AER-12`).
 
 | Route | Verbs | Notes |
 |---|---|---|
@@ -940,10 +953,10 @@ Everything under `/api/hatch`, every route `[RequireAdmin(AcceptScope =
 | `/issues/{key}/comments` | GET, POST | POST carries the kind, the `answersId`, and a question's options |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
-| `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireAdmin]`. The issue's own model and effort; `""` hands either back to the playbook |
+| `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
-| `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireAdmin]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
-| `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireAdmin]`. `{ expedited }` — *this one first*, floated on the board and taken first by the dispatcher. Setting what it already holds writes nothing |
+| `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
+| `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expedited }` — *this one first*, floated on the board and taken first by the dispatcher. Setting what it already holds writes nothing |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
@@ -951,19 +964,19 @@ Everything under `/api/hatch`, every route `[RequireAdmin(AcceptScope =
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on — see [what a pass skipped](#what-a-pass-skipped) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireAdmin]` |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, and every open question in the house. One read for both halves — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
-| `/settings` | GET, PUT | **Person only** — plain `[RequireAdmin]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
+| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is `host:/path/to/checkout`, escaped — a slash in it stays `%2F` |
-| `/runners/{name}` | PATCH | **Person only** — plain `[RequireAdmin]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
+| `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
 
 Two of the filters are worth knowing: `ancestorKey` returns everything below an
 issue at any depth — an epic's stories and their tasks in one request — and
@@ -1018,7 +1031,7 @@ class.
 
 ### What the endpoint answers
 
-`GET /api/hatch/utilization` is `[RequireAdmin(AcceptScope = "hatch")]` like the
+`GET /api/hatch/utilization` is `[RequireRole(PersonRole.User, AcceptScope = "hatch")]` like the
 rest of the module. It answers `204 No Content` when no token is configured, and
 otherwise:
 
@@ -1093,7 +1106,7 @@ Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
 `GET /api/hatch/attention` answers both halves in one read, carrying
-`[RequireAdmin(AcceptScope = "hatch")]` like the rest of the module:
+`[RequireRole(PersonRole.User, AcceptScope = "hatch")]` like the rest of the module:
 
 ```json
 {

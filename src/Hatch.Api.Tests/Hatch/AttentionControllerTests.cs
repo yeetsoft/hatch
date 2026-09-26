@@ -205,8 +205,8 @@ public class AttentionControllerTests
     public void ReadingAttention_IsOpenToAHatchScopedKey()
     {
         var guard = typeof(AttentionController)
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         // The same gate /board and /questions carry: it is the same house data,

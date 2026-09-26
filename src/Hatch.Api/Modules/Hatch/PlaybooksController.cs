@@ -30,7 +30,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>
     [HttpGet]
-    [RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<IReadOnlyList<PlaybookDto>>> GetPlaybooks(CancellationToken ct)
     {
         var rows = await db.Playbooks.AsNoTracking()
@@ -47,7 +47,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     }
 
     [HttpPost]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<PlaybookDto>> CreatePlaybook(PlaybookCreateRequest request, CancellationToken ct)
     {
         var types = EfHatchPlaybook.NormalizeTypes(request.Types);
@@ -81,7 +81,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     }
 
     [HttpPatch("{id:int}")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<PlaybookDto>> PatchPlaybook(int id, PlaybookPatchRequest request, CancellationToken ct)
     {
         var playbook = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -116,7 +116,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     }
 
     [HttpDelete("{id:int}")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<IActionResult> DeletePlaybook(int id, CancellationToken ct)
     {
         var playbook = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == id, ct);

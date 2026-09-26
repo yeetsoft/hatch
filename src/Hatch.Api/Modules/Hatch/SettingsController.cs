@@ -48,7 +48,7 @@ public class SettingsController(
     private const string Redacted = "••••••••";
 
     [HttpGet]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<HatchSettingsDto> GetHatchSettings(CancellationToken ct) => await ReadAsync(ct);
 
     /// <summary>
@@ -75,7 +75,7 @@ public class SettingsController(
     /// gates read alike from outside.</para>
     /// </remarks>
     [HttpGet("claude-token")]
-    [RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<ClaudeTokenDto>> GetClaudeToken(CancellationToken ct)
     {
         if (authOptions.Value.Enabled)
@@ -109,7 +109,7 @@ public class SettingsController(
     /// answers null for both.
     /// </summary>
     [HttpPut]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<HatchSettingsDto> PutHatchSettings(HatchSettingsWriteRequest request, CancellationToken ct)
     {
         var wrote = false;

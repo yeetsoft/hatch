@@ -1219,8 +1219,8 @@ public class WorkControllerTests
         foreach (var name in writes)
         {
             var guard = typeof(PlaybooksController).GetMethod(name)!
-                .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-                .Cast<RequireAdminAttribute>()
+                .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+                .Cast<RequireRoleAttribute>()
                 .SingleOrDefault();
 
             // No scope named is the whole point: an agent that could widen its
@@ -1236,8 +1236,8 @@ public class WorkControllerTests
     public void ReadingAPlaybook_IsOpenToAnApiKey()
     {
         var guard = typeof(PlaybooksController).GetMethod(nameof(PlaybooksController.GetPlaybooks))!
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .Single();
 
         // An agent has to be able to read what it was dispatched with.

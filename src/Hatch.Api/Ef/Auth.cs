@@ -59,8 +59,8 @@ public class EfAuthGrant
     /// somebody is the next thing to key on this column (docs/quill.md).
     ///
     /// Which makes what this is *not* worth stating: there is no permission
-    /// model behind it yet. There is one global role - AdminGate reads
-    /// Person.IsAdmin off this link to decide who is served the admin app -
+    /// model behind it yet. There is one global role - RoleGate reads
+    /// Person.Role off this link to decide who is served the admin app -
     /// and outside the operator verbs it guards, no endpoint answers
     /// differently for one person than for another.
     ///

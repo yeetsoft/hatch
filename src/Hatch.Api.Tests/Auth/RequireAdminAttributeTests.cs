@@ -23,13 +23,13 @@ public class RequireAdminAttributeTests
     [Fact]
     public async Task LetsAnAdministratorThrough()
     {
-        var context = NewContext(new StubAdminGate
+        var context = NewContext(new StubRoleGate
         {
-            Decision = AdminDecision.Allow(new EfPerson
+            Decision = RoleDecision.Allow(new EfPerson
             {
                 Id = Guid.NewGuid(),
                 Name = "Ada",
-                IsAdmin = true,
+                Role = PersonRole.Admin,
                 CreatedAt = DateTimeOffset.UnixEpoch,
                 UpdatedAt = DateTimeOffset.UnixEpoch,
             }),
@@ -43,14 +43,14 @@ public class RequireAdminAttributeTests
     }
 
     /// <summary>
-    /// The rollback. An install that has not turned enforcement on behaves
+    /// The rollback. An install with no wall behaves
     /// exactly as it did before these attributes existed, which is the only
     /// reason it was safe to put them on thirty-odd actions at once.
     /// </summary>
     [Fact]
-    public async Task LetsEveryoneThroughWhileEnforcementIsDormant()
+    public async Task LetsEveryoneThroughWhileTheWallIsOff()
     {
-        var context = NewContext(new StubAdminGate { Enabled = false, Decision = AdminDecision.Dormant });
+        var context = NewContext(new StubRoleGate { Enabled = false, Decision = RoleDecision.Dormant });
 
         await new RequireAdminAttribute().OnAuthorizationAsync(context);
 
@@ -63,12 +63,13 @@ public class RequireAdminAttributeTests
     /// left for a 404 to conceal and a great deal for it to confuse.
     /// </summary>
     [Theory]
-    [InlineData(AdminDecision.NotAdmin)]
-    [InlineData(AdminDecision.NoPerson)]
-    [InlineData(AdminDecision.NoGrant)]
+    [InlineData(RoleDecision.NotAdmin)]
+    [InlineData(RoleDecision.NoPerson)]
+    [InlineData(RoleDecision.PendingApproval)]
+    [InlineData(RoleDecision.NoGrant)]
     public async Task RefusesEveryoneElseWithAReasonTheAdminAppCanRender(string reason)
     {
-        var context = NewContext(new StubAdminGate { Decision = AdminDecision.Refuse(reason) });
+        var context = NewContext(new StubRoleGate { Decision = RoleDecision.Refuse(reason) });
 
         await new RequireAdminAttribute().OnAuthorizationAsync(context);
 
@@ -83,17 +84,30 @@ public class RequireAdminAttributeTests
     [Fact]
     public async Task AsksAboutTheRequestItIsGuarding()
     {
-        var gate = new StubAdminGate();
+        var gate = new StubRoleGate();
         var context = NewContext(gate);
         context.HttpContext.Request.Method = HttpMethods.Delete;
         context.HttpContext.Request.Path = "/api/zones/2b1a";
 
         await new RequireAdminAttribute().OnAuthorizationAsync(context);
 
-        Assert.Equal(("DELETE", "/api/zones/2b1a", "10.0.0.7", null), gate.LastAsked);
+        Assert.Equal(("DELETE", "/api/zones/2b1a", "10.0.0.7", PersonRole.Admin, null), gate.LastAsked);
     }
 
-    private static AuthorizationFilterContext NewContext(IAdminGate gate)
+    /// <summary>The level and the scope both reach the gate: what the attribute declares is what is asked.</summary>
+    [Fact]
+    public async Task AsksForTheLevelAndScopeItDeclares()
+    {
+        var gate = new StubRoleGate();
+        var context = NewContext(gate);
+
+        await new RequireRoleAttribute(PersonRole.User) { AcceptScope = ApiKeyScopes.Hatch }.OnAuthorizationAsync(context);
+
+        Assert.Equal(PersonRole.User, gate.LastAsked.Minimum);
+        Assert.Equal(ApiKeyScopes.Hatch, gate.LastAsked.AcceptScope);
+    }
+
+    private static AuthorizationFilterContext NewContext(IRoleGate gate)
     {
         var services = new ServiceCollection();
         services.AddSingleton(gate);

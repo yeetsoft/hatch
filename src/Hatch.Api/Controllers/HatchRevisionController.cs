@@ -37,7 +37,7 @@ public class HatchRevisionController(IHatchRevision revision, IFluxRevisionReade
 
         // The cluster's state is for an operator, not for every device on the
         // LAN. "Holds a grant" was once the strongest notion of an admin caller
-        // available here; it no longer is, since Person.IsAdmin is read now
+        // available here; it no longer is, since Person.Role is read now
         // (docs/auth-architecture.md, "The admin flag"). This deliberately
         // stays as it is anyway: the flag's first release put a constraint
         // where a boundary already existed and left every other route exactly

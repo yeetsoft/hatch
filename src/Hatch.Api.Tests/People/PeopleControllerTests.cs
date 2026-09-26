@@ -32,7 +32,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("   Ada    Lovelace  "), CancellationToken.None);
+        var created = await controller.Create(new PersonWriteRequest("   Ada    Lovelace  ", "user"), CancellationToken.None);
 
         var dto = Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value);
         Assert.Equal("Ada Lovelace", dto.Name);
@@ -43,43 +43,81 @@ public class PeopleControllerTests
         Assert.Equal("Ada Lovelace", (await db.People.SingleAsync()).Name);
     }
 
-    [Fact]
-    public async Task CarriesTheAdminFlagWithoutEnforcingIt()
+    /// <summary>
+    /// Pins <c>Role</c> on the wire, and with it the migration's mapping. The
+    /// migration that replaced the IsAdmin bool made <c>IsAdmin = true</c> an
+    /// <c>"admin"</c> and <c>IsAdmin = false</c> a <c>"user"</c>, and made nobody
+    /// <c>"pending"</c>: before roles an enrolled person could do everything, and
+    /// an upgrade must not lock out the person running it. A person written
+    /// with an explicit role reads back as exactly that word.
+    /// </summary>
+    [Theory]
+    [InlineData("admin", PersonRole.Admin)]
+    [InlineData("user", PersonRole.User)]
+    [InlineData("pending", PersonRole.Pending)]
+    [InlineData("Admin", PersonRole.Admin)]
+    public async Task CarriesTheRoleOnTheWire(string wire, PersonRole stored)
     {
-        // Deliberately a column and an input with no branch behind it. The
-        // reason it exists before the thing that reads it is on EfPerson.
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("Ada", IsAdmin: true), CancellationToken.None);
+        var created = await controller.Create(new PersonWriteRequest("Ada", wire), CancellationToken.None);
 
-        Assert.True(Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value).IsAdmin);
-        Assert.True((await db.People.SingleAsync()).IsAdmin);
+        Assert.Equal(PersonRoles.ToWire(stored), Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value).Role);
+        Assert.Equal(stored, (await db.People.SingleAsync()).Role);
     }
 
-    [Fact]
-    public async Task DefaultsToNotAnAdministrator()
+    /// <summary>
+    /// The omission case, which is the one that matters: a role that defaulted
+    /// would demote by omission on a rename, so a write without one is refused
+    /// with a sentence and nothing is written.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("root")]
+    // Enum.TryParse would accept these; the wire does not spell a role as a number.
+    [InlineData("1")]
+    [InlineData("7")]
+    public async Task RefusesACreateWhoseRoleIsMissingOrUnknown(string? role)
     {
-        // The omission case, which is the one that matters: a caller who only
-        // meant to name someone must not promote them by leaving a field out.
-        var (controller, _, _) = NewController();
+        var (controller, db, _) = NewController();
 
-        await controller.Create(new PersonWriteRequest("Ada"), CancellationToken.None);
+        var created = await controller.Create(new PersonWriteRequest("Ada", role), CancellationToken.None);
 
-        Assert.False((await controller.GetAll(CancellationToken.None)).Single().IsAdmin);
+        Assert.Equal(PersonRoles.Sentence, Assert.IsType<BadRequestObjectResult>(created.Result).Value);
+        Assert.Empty(await db.People.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("root")]
+    [InlineData("2")]
+    public async Task RefusesAnUpdateWhoseRoleIsMissingOrUnknown_AndLeavesTheStoredRoleAlone(string? role)
+    {
+        var (controller, db, _) = NewController();
+        var id = await Create(controller, "Ada", "admin");
+
+        var updated = await controller.Update(id, new PersonWriteRequest("Ada Renamed", role), CancellationToken.None);
+
+        Assert.Equal(PersonRoles.Sentence, Assert.IsType<BadRequestObjectResult>(updated.Result).Value);
+        var stored = await db.People.SingleAsync();
+        Assert.Equal(PersonRole.Admin, stored.Role);
+        Assert.Equal("Ada", stored.Name);
     }
 
     [Fact]
-    public async Task TogglesTheAdminFlagBothWays()
+    public async Task ChangesTheRoleInEitherDirection()
     {
         var (controller, _, _) = NewController();
         var id = await Create(controller, "Ada");
 
-        await controller.Update(id, new PersonWriteRequest("Ada", IsAdmin: true), CancellationToken.None);
-        Assert.True((await controller.GetAll(CancellationToken.None)).Single().IsAdmin);
+        await controller.Update(id, new PersonWriteRequest("Ada", "admin"), CancellationToken.None);
+        Assert.Equal("admin", (await controller.GetAll(CancellationToken.None)).Single().Role);
 
-        // The half that a "set it if true" implementation would silently drop.
-        await controller.Update(id, new PersonWriteRequest("Ada", IsAdmin: false), CancellationToken.None);
-        Assert.False((await controller.GetAll(CancellationToken.None)).Single().IsAdmin);
+        // The half that a "set it if promoting" implementation would silently drop.
+        await controller.Update(id, new PersonWriteRequest("Ada", "pending"), CancellationToken.None);
+        Assert.Equal("pending", (await controller.GetAll(CancellationToken.None)).Single().Role);
     }
 
     [Fact]
@@ -87,7 +125,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("   "), CancellationToken.None);
+        var created = await controller.Create(new PersonWriteRequest("   ", "user"), CancellationToken.None);
 
         Assert.Equal(PersonName.EmptyError, Assert.IsType<BadRequestObjectResult>(created.Result).Value);
         Assert.Empty(db.People);
@@ -100,8 +138,8 @@ public class PeopleControllerTests
         // index behind this, and the id is what anything actually keys on.
         var (controller, _, _) = NewController();
 
-        await controller.Create(new PersonWriteRequest("Sam"), CancellationToken.None);
-        var second = await controller.Create(new PersonWriteRequest("Sam"), CancellationToken.None);
+        await controller.Create(new PersonWriteRequest("Sam", "user"), CancellationToken.None);
+        var second = await controller.Create(new PersonWriteRequest("Sam", "user"), CancellationToken.None);
 
         Assert.IsType<CreatedAtActionResult>(second.Result);
         Assert.Equal(2, (await controller.GetAll(CancellationToken.None)).Count);
@@ -114,7 +152,7 @@ public class PeopleControllerTests
 
         foreach (var name in new[] { "Zoe", "Adam", "Mia" })
         {
-            await controller.Create(new PersonWriteRequest(name), CancellationToken.None);
+            await controller.Create(new PersonWriteRequest(name, "user"), CancellationToken.None);
         }
 
         Assert.Equal(["Adam", "Mia", "Zoe"], (await controller.GetAll(CancellationToken.None)).Select(p => p.Name));
@@ -127,7 +165,7 @@ public class PeopleControllerTests
         var id = await Create(controller, "Ada");
 
         time.Advance(TimeSpan.FromDays(1));
-        var updated = await controller.Update(id, new PersonWriteRequest("Ada Lovelace"), CancellationToken.None);
+        var updated = await controller.Update(id, new PersonWriteRequest("Ada Lovelace", "user"), CancellationToken.None);
 
         var dto = Assert.IsType<PersonDto>(updated.Value);
         Assert.Equal("Ada Lovelace", dto.Name);
@@ -140,7 +178,7 @@ public class PeopleControllerTests
     {
         var (controller, _, _) = NewController();
 
-        var updated = await controller.Update(Guid.NewGuid(), new PersonWriteRequest("Ada"), CancellationToken.None);
+        var updated = await controller.Update(Guid.NewGuid(), new PersonWriteRequest("Ada", "user"), CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(updated.Result);
     }
@@ -336,9 +374,9 @@ public class PeopleControllerTests
 
     // ---- Harness ----
 
-    private static async Task<Guid> Create(PeopleController controller, string name)
+    private static async Task<Guid> Create(PeopleController controller, string name, string role = "user")
     {
-        var created = await controller.Create(new PersonWriteRequest(name), CancellationToken.None);
+        var created = await controller.Create(new PersonWriteRequest(name, role), CancellationToken.None);
         return ((PersonDto)((CreatedAtActionResult)created.Result!).Value!).Id;
     }
 

@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/dependencies")]
-[RequireAdmin(AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class IssueDependenciesController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

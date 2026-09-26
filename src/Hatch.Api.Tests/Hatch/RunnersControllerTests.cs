@@ -414,13 +414,13 @@ public class RunnersControllerTests
         Assert.Null(patch.AcceptScope);
 
         // And no class-level attribute for the PATCH to inherit a scope from.
-        Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false));
+        Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
-    private static RequireAdminAttribute? Scope(string method) =>
+    private static RequireRoleAttribute? Scope(string method) =>
         typeof(RunnersController).GetMethod(method)!
-            .GetCustomAttributes(typeof(RequireAdminAttribute), inherit: false)
-            .Cast<RequireAdminAttribute>()
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
     // ---- Harness ----
