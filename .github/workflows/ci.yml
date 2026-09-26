@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [design, hatch]
+        app: [auth, design, hatch]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

@@ -26,6 +26,7 @@ WORKDIR /repo
 # ahead of the sources: an edit to any app's *code* then reuses this layer.
 COPY src/Hatch.Web/package.json src/Hatch.Web/package-lock.json src/Hatch.Web/
 COPY src/Hatch.Web/apps/design/package.json src/Hatch.Web/apps/design/
+COPY src/Hatch.Web/apps/auth/package.json src/Hatch.Web/apps/auth/
 COPY src/Hatch.Web/apps/hatch/package.json src/Hatch.Web/apps/hatch/
 # The shared package is a workspace too: `npm ci` reads the lockfile, finds a
 # link: entry for it, and fails outright if this package.json is not on disk.

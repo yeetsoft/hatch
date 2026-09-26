@@ -616,6 +616,11 @@ if (Directory.Exists(Path.Combine(appsPath, "design")))
     app.MapFallbackToFile("/apps/design/{*path:nonfile}", "apps/design/index.html");
 }
 
+if (Directory.Exists(Path.Combine(appsPath, "auth")))
+{
+    app.MapFallbackToFile("/apps/auth/{*path:nonfile}", "apps/auth/index.html");
+}
+
 var opt = new RewriteOptions();
 // Hatch is the only app this install serves, so both of the house's old
 // general-purpose addresses land straight on it.
@@ -623,6 +628,8 @@ opt.AddRedirect("^$", "apps/hatch/");
 opt.AddRedirect("^apps/?$", "apps/hatch/");
 opt.AddRedirect("^apps/hatch$", "apps/hatch/");
 opt.AddRedirect("^apps/design$", "apps/design/");
+opt.AddRedirect("^auth/?$", "apps/auth/");
+opt.AddRedirect("^apps/auth$", "apps/auth/");
 app.UseRewriter(opt);
 
 app.UseSwagger();
