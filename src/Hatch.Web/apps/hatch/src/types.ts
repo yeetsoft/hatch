@@ -669,18 +669,23 @@ export interface Attention {
 
 // ---- Who is sitting here ----
 
-/** Who Hatch thinks is at this machine. Mirrors LocalPersonDto.
+/** Who is at the browser. Mirrors MeDto.
 
-    Read only where there is no wall: the route answers 204 on any install with
-    one, because there a person is a person because they enrolled and their name
-    is already on everything they write. */
-export interface LocalPerson {
-  /** What events written from this browser will say, instead of `operator`. */
+    Answered in both modes; 204 (read as null) only for a key or runner, which
+    is nobody the strip should draw. */
+export interface Me {
+  /** `local` when the wall is off, `person` when a grant holds a person. */
+  kind: 'local' | 'person';
+  /** What events written from this browser will say. */
   name: string;
+  /** Null for `local`, which has no role to gate on. */
+  role: 'user' | 'admin' | null;
   /** Whether anybody actually said so, or whether this is the built-in
       default. False is what makes the strip explain what to set - the one thing
       a first run needs told and the one thing correct behaviour cannot say. */
   configured: boolean;
+  /** Whether there is a grant to end. */
+  canSignOut: boolean;
 }
 
 // ---- Settings ----
