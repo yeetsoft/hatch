@@ -180,6 +180,12 @@ public class AuthGate(
         "/apps/auth",
         "/api/auth/verify",
         "/api/auth/redeem",
+
+        // Both ends of Sign in with Google: start is where a caller with no
+        // grant begins, and callback is where Google sends the browser back
+        // with none. Gating the way in is a redirect loop. What makes callback
+        // safe to leave open is the single-use state row it spends.
+        "/api/auth/google",
     ];
 
     /// <summary>

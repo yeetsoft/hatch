@@ -53,6 +53,15 @@ public class AuthOptions
     public LocalPersonOptions LocalPerson { get; set; } = new();
 
     /// <summary>
+    /// The Google client "Sign in with Google" runs on (the "Auth:Google"
+    /// subsection). Config rather than site settings: the wall needs these
+    /// before there is a session to set them from. Unrelated to the calendar's
+    /// GoogleClientId site setting, which is a different client for a
+    /// different consent.
+    /// </summary>
+    public GoogleAuthOptions Google { get; set; } = new();
+
+    /// <summary>
     /// The cookie the grant token rides in. The <c>__Secure-</c> prefix is
     /// correct rather than <c>__Host-</c>: <c>__Host-</c> forbids a Domain
     /// attribute, and the Domain attribute is the entire single-sign-on story
@@ -150,4 +159,27 @@ public class LocalPersonOptions
     /// the one place that knows it.
     /// </summary>
     public string Name { get; set; } = "";
+}
+
+/// <summary>
+/// The OAuth client for signing in (the "Auth:Google" subsection, so
+/// <c>Auth__Google__ClientId</c> is the environment spelling). Unset is the
+/// ordinary state: the start route answers <c>google_not_configured</c> and
+/// nothing links to it.
+/// </summary>
+public class GoogleAuthOptions
+{
+    public string ClientId { get; set; } = "";
+
+    public string ClientSecret { get; set; } = "";
+
+    /// <summary>
+    /// The redirect URI registered in the operator's Cloud console. Empty
+    /// derives it from the request (see GoogleSignInController), which is right
+    /// behind a proxy that forwards scheme and host and wrong behind one that
+    /// rewrites either - the reason this exists.
+    /// </summary>
+    public string RedirectUri { get; set; } = "";
+
+    public bool Configured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 }

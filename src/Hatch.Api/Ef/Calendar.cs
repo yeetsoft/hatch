@@ -176,6 +176,10 @@ public class EfOAuthState
     /// <summary>The exact redirect URI sent to the provider, kept because the token exchange has to repeat it byte-for-byte.</summary>
     public required string RedirectUri { get; set; }
 
+    /// <summary>Where a sign-in flow sends the browser afterwards, already checked by AuthChallenge.SafeReturnTo. Null for the calendar flow, which always ends on the same page.</summary>
+    [MaxLength(512)]
+    public string? ReturnTo { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>Short (minutes). Expired rows are swept opportunistically when a new flow starts, rather than by a job.</summary>

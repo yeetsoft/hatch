@@ -34,6 +34,7 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<EfAuthInvite> AuthInvites => Set<EfAuthInvite>();
     public DbSet<EfApiKey> ApiKeys => Set<EfApiKey>();
 
+    public DbSet<EfExternalIdentity> ExternalIdentities => Set<EfExternalIdentity>();
     public DbSet<EfPerson> People => Set<EfPerson>();
     public DbSet<EfPersonPhoto> PersonPhotos => Set<EfPersonPhoto>();
 
@@ -177,6 +178,15 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         // their photo with it, and an orphaned two-megabyte blob is not
         // something anything else in the app would ever notice.
         modelBuilder.Entity<EfPerson>();
+
+        // Cascade: an identity proves who somebody is and means nothing without
+        // them. The opposite call from a grant's, which must outlive its owner.
+        modelBuilder.Entity<EfExternalIdentity>()
+            .HasOne(i => i.Person)
+            .WithMany()
+            .HasForeignKey(i => i.PersonId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<EfPersonPhoto>()
             .HasOne(p => p.Person)
             .WithOne(p => p.Photo)
