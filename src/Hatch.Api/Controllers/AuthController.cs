@@ -4,6 +4,7 @@ using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Controllers;
@@ -22,6 +23,7 @@ namespace Hatch.Api.Controllers;
 [ApiController]
 [Route("api/auth")]
 public class AuthController(
+    AppDbContext db,
     IAuthGate gate,
     IAuthService auth,
     ICallerIdentity caller,
@@ -143,12 +145,30 @@ public class AuthController(
         return Ok(AuthGrantDto.From(result.Grant!, isCurrent: true));
     }
 
-    /// <summary>Who this device is. Gated in the ordinary way, so an unenrolled caller gets the same refusal it would get anywhere else.</summary>
+    /// <summary>
+    /// Who this device is, and who holds it. Gated in the ordinary way, so an
+    /// unenrolled caller gets the same refusal it would get anywhere else. A
+    /// grant nobody has claimed answers with the person fields null, and one
+    /// enrolled by invite has no provider or email to report.
+    /// </summary>
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
         var grant = await CurrentGrantAsync(ct);
-        return grant is null ? Unauthorized() : Ok(AuthGrantDto.From(grant, isCurrent: true));
+        if (grant is null) return Unauthorized();
+
+        if (grant.PersonId is not { } personId)
+            return Ok(new AuthMeDto(grant.Id, grant.Label, null, null, null, null, null));
+
+        // Queried rather than read off grant.Person: the middleware's copy may
+        // have been loaded without the owner, and the identity is not on it.
+        var person = await db.People.AsNoTracking().FirstOrDefaultAsync(p => p.Id == personId, ct);
+        var identity = await db.ExternalIdentities.AsNoTracking()
+            .Where(i => i.PersonId == personId)
+            .OrderByDescending(i => i.LastSignInAt)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(new AuthMeDto(grant.Id, grant.Label, personId, person?.Name, person?.Role, identity?.Email, identity?.Provider));
     }
 
     /// <summary>

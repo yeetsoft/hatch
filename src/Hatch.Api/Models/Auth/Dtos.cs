@@ -42,6 +42,21 @@ public record AuthGrantDto(
 }
 
 /// <summary>
+/// What <c>GET /api/auth/me</c> answers: the device and the person holding it.
+/// The person fields are null for a grant nobody has claimed; Email and
+/// Provider are null for a person who came in by invite rather than by an
+/// outside identity.
+/// </summary>
+public record AuthMeDto(
+    Guid GrantId,
+    string Label,
+    Guid? PersonId,
+    string? Name,
+    PersonRole? Role,
+    string? Email,
+    string? Provider);
+
+/// <summary>
 /// What the sign-in shell posts. <paramref name="Label"/> is the device name
 /// the person confirmed ("Ada's iPhone"), pre-filled from the user agent so the
 /// Sessions list is legible instead of a wall of Mozilla/5.0.

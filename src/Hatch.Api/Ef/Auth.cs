@@ -105,6 +105,46 @@ public class EfAuthGrant
 }
 
 /// <summary>
+/// A person's account at an outside identity provider - today only Google. The
+/// match is on <see cref="Subject"/> (Google's <c>sub</c>) and nothing else:
+/// an email address can be reassigned to a different human, a <c>sub</c>
+/// cannot, so <see cref="Email"/> is a label that follows the account and never
+/// a key.
+///
+/// Cascade from the person, unlike a grant's SetNull: an identity is only a
+/// way of proving who someone is, and one whose person is gone would let a
+/// sign-in mint a grant for nobody.
+/// </summary>
+[Table("ExternalIdentities")]
+[Index(nameof(Provider), nameof(Subject), IsUnique = true)]
+public class EfExternalIdentity
+{
+    public const string GoogleProvider = "google";
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public Guid Id { get; set; }
+
+    [MaxLength(32)]
+    public required string Provider { get; set; }
+
+    /// <summary>The provider's stable id for the account - Google's <c>sub</c>.</summary>
+    [MaxLength(255)]
+    public required string Subject { get; set; }
+
+    /// <summary>The address the provider last reported. Refreshed on every sign-in; display only.</summary>
+    [MaxLength(320)]
+    public required string Email { get; set; }
+
+    public Guid PersonId { get; set; }
+
+    public EfPerson? Person { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    public required DateTimeOffset LastSignInAt { get; set; }
+}
+
+/// <summary>
 /// One outstanding enrollment code - the ceremony by which a device acquires a
 /// grant. Short-lived and single use, modeled on <see cref="EfOAuthState"/>:
 /// same shape, same opportunistic sweep of expired rows when a new one is

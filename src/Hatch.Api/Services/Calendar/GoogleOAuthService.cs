@@ -31,8 +31,56 @@ public record GoogleTokenResult(GoogleTokens? Tokens, string? Error)
     public bool IsInvalidGrant => Error == InvalidGrant;
 }
 
+/// <summary>
+/// The claims of a sign-in id token that Hatch reads. Parsed from the payload
+/// with no signature check, for the reason
+/// <see cref="GoogleOAuthService.EmailFromIdToken"/> gives.
+/// </summary>
+public record GoogleIdToken(string? Sub, string? Email, bool EmailVerified, string? Name, string? Picture, string? Aud, string? Iss)
+{
+    public static GoogleIdToken? Parse(string? idToken)
+    {
+        if (string.IsNullOrWhiteSpace(idToken)) return null;
+
+        var segments = idToken.Split('.');
+        if (segments.Length != 3) return null;
+
+        try
+        {
+            using var payload = JsonDocument.Parse(WebEncoders.Base64UrlDecode(segments[1]));
+            var root = payload.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+
+            return new GoogleIdToken(
+                Str(root, "sub"), Str(root, "email"), Flag(root, "email_verified"),
+                Str(root, "name"), Str(root, "picture"), Str(root, "aud"), Str(root, "iss"));
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Str(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()
+            : null;
+
+    /// <summary>Google sends <c>email_verified</c> as a JSON bool, but has been seen to send the string form; both count, anything else does not.</summary>
+    private static bool Flag(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) &&
+        (value.ValueKind == JsonValueKind.True ||
+         value.ValueKind == JsonValueKind.String && string.Equals(value.GetString(), "true", StringComparison.OrdinalIgnoreCase));
+}
+
 public interface IGoogleOAuthService
 {
+    /// <summary>The sign-in shape: identity scopes only, and the account chooser. No refresh token is asked for because nothing is refreshed later.</summary>
+    string BuildSignInUrl(string clientId, string redirectUri, string state, string codeChallenge);
+
+    /// <summary>The sign-in exchange, with the client named by the caller rather than read from site settings.</summary>
+    Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, string clientId, string clientSecret, CancellationToken ct);
+
     /// <summary>The URL to send the admin's browser to. Everything the callback needs to finish the flow is carried in <paramref name="state"/>, which indexes the EfOAuthState row.</summary>
     string BuildAuthorizationUrl(string clientId, string redirectUri, string state, string codeChallenge);
 
@@ -72,6 +120,9 @@ public class GoogleOAuthService(
     public const string Scope = "openid email https://www.googleapis.com/auth/calendar.readonly";
 
     /// <summary>What to assume when Google omits <c>expires_in</c>. Its access tokens are an hour today; assuming less only costs an early refresh.</summary>
+    /// <summary>What signing in asks for: who the person is, and nothing else.</summary>
+    public const string SignInScope = "openid email profile";
+
     private const int DefaultExpiresInSeconds = 3600;
 
     public string BuildAuthorizationUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
@@ -94,8 +145,25 @@ public class GoogleOAuthService(
             ["code_challenge_method"] = "S256",
         });
 
+    public string BuildSignInUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
+        QueryHelpers.AddQueryString(AuthorizationEndpoint, new Dictionary<string, string?>
+        {
+            ["client_id"] = clientId,
+            ["redirect_uri"] = redirectUri,
+            ["response_type"] = "code",
+            ["scope"] = SignInScope,
+            // The chooser, so a browser signed in to several Google accounts is
+            // asked which one rather than silently using the first. Neither
+            // access_type=offline nor prompt=consent: no refresh token is
+            // wanted, and consent on every sign-in would be a screen for nothing.
+            ["prompt"] = "select_account",
+            ["state"] = state,
+            ["code_challenge"] = codeChallenge,
+            ["code_challenge_method"] = "S256",
+        });
+
     public Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct) =>
-        PostTokenAsync(new Dictionary<string, string>
+        PostSettingsTokenAsync(new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
@@ -103,8 +171,18 @@ public class GoogleOAuthService(
             ["redirect_uri"] = redirectUri,
         }, ct);
 
-    public Task<GoogleTokenResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
+    public Task<GoogleTokenResult> ExchangeCodeAsync(
+        string code, string codeVerifier, string redirectUri, string clientId, string clientSecret, CancellationToken ct) =>
         PostTokenAsync(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["code"] = code,
+            ["code_verifier"] = codeVerifier,
+            ["redirect_uri"] = redirectUri,
+        }, clientId, clientSecret, ct);
+
+    public Task<GoogleTokenResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
+        PostSettingsTokenAsync(new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
@@ -153,12 +231,18 @@ public class GoogleOAuthService(
         }
     }
 
-    private async Task<GoogleTokenResult> PostTokenAsync(Dictionary<string, string> form, CancellationToken ct)
+    /// <summary>The calendar's client, which lives in site settings.</summary>
+    private async Task<GoogleTokenResult> PostSettingsTokenAsync(Dictionary<string, string> form, CancellationToken ct)
     {
         var settings = await siteSettings.GetAsync(ct);
         if (settings.GoogleClientId is not { } clientId || settings.GoogleClientSecret is not { } clientSecret)
             return GoogleTokenResult.Failed("not_configured");
 
+        return await PostTokenAsync(form, clientId, clientSecret, ct);
+    }
+
+    private async Task<GoogleTokenResult> PostTokenAsync(Dictionary<string, string> form, string clientId, string clientSecret, CancellationToken ct)
+    {
         form["client_id"] = clientId;
         form["client_secret"] = clientSecret;
 

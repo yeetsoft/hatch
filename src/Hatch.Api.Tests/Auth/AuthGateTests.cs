@@ -39,6 +39,8 @@ public class AuthGateTests
     [InlineData("/apps/auth/assets/index-BGJobmXl.js")]
     [InlineData("/api/auth/verify")]
     [InlineData("/api/auth/redeem")]
+    [InlineData("/api/auth/google/start")]
+    [InlineData("/api/auth/google/callback")]
     // The short alias, the form a person is told over the phone. Program.cs
     // redirects it into the shell, and the caller following it has no grant
     // yet by definition.
@@ -68,6 +70,7 @@ public class AuthGateTests
     [InlineData("/api/auth/verifyer")]
     [InlineData("/api/app-versions")]
     [InlineData("/api/auth/grants")]
+    [InlineData("/api/auth/googlex")]
     [InlineData("/apps/authoring/")]
     // The alias is exempt exactly, so nothing a later phase mounts under it
     // inherits the exemption.

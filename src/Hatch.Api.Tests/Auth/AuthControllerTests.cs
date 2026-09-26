@@ -6,6 +6,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Net;
@@ -274,7 +275,7 @@ public class AuthControllerTests
 
         var result = Assert.IsType<OkObjectResult>(await controller.Me(CancellationToken.None));
 
-        Assert.Equal("Kitchen tablet", Assert.IsType<AuthGrantDto>(result.Value).Label);
+        Assert.Equal("Kitchen tablet", Assert.IsType<AuthMeDto>(result.Value).Label);
         var (presented, ip) = Assert.Single(auth.Verified);
         Assert.Equal(["a-token"], presented);
         Assert.Equal("10.0.0.7", ip);
@@ -290,6 +291,44 @@ public class AuthControllerTests
 
         Assert.IsType<OkObjectResult>(await controller.Me(CancellationToken.None));
         Assert.Empty(auth.Verified);
+    }
+
+    [Fact]
+    public async Task MeNamesThePersonAndTheGoogleAccountBehindTheGrant()
+    {
+        var db = NewDb();
+        var person = new EfPerson { Name = "Ada", Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now };
+        db.People.Add(person);
+        db.ExternalIdentities.Add(new EfExternalIdentity
+        {
+            Provider = EfExternalIdentity.GoogleProvider, Subject = "sub-1", Email = "ada@example.com",
+            Person = person, CreatedAt = Now, LastSignInAt = Now,
+        });
+        await db.SaveChangesAsync();
+        var grant = Grant();
+        grant.PersonId = person.Id;
+        var controller = NewController(out var context, new StubAuthService(grant), db: db);
+        context.SetAuthGrant(grant);
+
+        var result = Assert.IsType<OkObjectResult>(await controller.Me(CancellationToken.None));
+
+        var me = Assert.IsType<AuthMeDto>(result.Value);
+        Assert.Equal(new AuthMeDto(grant.Id, grant.Label, person.Id, "Ada", PersonRole.User, "ada@example.com", "google"), me);
+    }
+
+    [Fact]
+    public async Task MeLeavesThePersonFieldsNullForAnUnclaimedGrant()
+    {
+        var grant = Grant();
+        var controller = NewController(out var context, new StubAuthService(grant));
+        context.SetAuthGrant(grant);
+
+        var result = Assert.IsType<OkObjectResult>(await controller.Me(CancellationToken.None));
+
+        var me = Assert.IsType<AuthMeDto>(result.Value);
+        Assert.Null(me.PersonId);
+        Assert.Null(me.Role);
+        Assert.Null(me.Provider);
     }
 
     [Fact]
@@ -503,13 +542,17 @@ public class AuthControllerTests
         Assert.Equal([("Ada's iPhone", (Guid?)personId, false)], auth.InvitesCreated);
     }
 
+    private static AppDbContext NewDb() =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
     private static AuthController NewController(
         out HttpContext context,
         IAuthService? auth = null,
         bool enabled = true,
         bool enforceInProcess = true,
         string[]? exemptHosts = null,
-        string cookieDomain = ".example.com")
+        string cookieDomain = ".example.com",
+        AppDbContext? db = null)
     {
         var options = Options.Create(new AuthOptions
         {
@@ -538,7 +581,7 @@ public class AuthControllerTests
         var caller = new CallerIdentity(
             new HttpContextAccessor { HttpContext = httpContext }, auth, options, new StubSiteSettings());
 
-        return new AuthController(gate, auth, caller, options, NullLogger<AuthController>.Instance)
+        return new AuthController(db ?? NewDb(), gate, auth, caller, options, NullLogger<AuthController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
         };

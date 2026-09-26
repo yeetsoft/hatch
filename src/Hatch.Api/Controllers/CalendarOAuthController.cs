@@ -196,7 +196,7 @@ public class CalendarOAuthController(
     /// clamping to that shape keeps anything else from being reflected onward
     /// into the admin page's URL or a log line.
     /// </summary>
-    private static string Sanitize(string error)
+    internal static string Sanitize(string error)
     {
         var clamped = new StringBuilder();
         foreach (var c in error.Trim().Take(64))
