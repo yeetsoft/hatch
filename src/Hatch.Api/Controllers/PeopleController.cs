@@ -54,20 +54,74 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
 
     [RequireAdmin]
     [HttpPost]
-    public async Task<ActionResult<PersonDto>> Create(PersonWriteRequest request, CancellationToken ct)
+    public async Task<ActionResult<PersonDto>> Create(PersonCreateRequest request, CancellationToken ct)
     {
-        if (!PersonName.TryNormalize(request.Name, out var name, out var error)) return BadRequest(error);
+        var typed = request.Email?.Trim();
+        var email = string.IsNullOrEmpty(typed) ? null : typed.ToLowerInvariant();
+        if (email is not null && !IsPlausibleEmail(email)) return BadRequest("Enter a valid email address.");
+
+        string name;
+        if (email is not null && string.IsNullOrWhiteSpace(request.Name))
+        {
+            name = PersonName.FromEmail(typed, fallback: email);
+        }
+        else if (!PersonName.TryNormalize(request.Name, out name, out var error))
+        {
+            return BadRequest(error);
+        }
+
         if (!PersonRoles.TryParse(request.Role, out var role)) return BadRequest(PersonRoles.Sentence);
+
+        // Claimed or not: an address already on a signed-in person would
+        // otherwise become a second person for one human. The unique index is
+        // the backstop for a race; this is the tested path.
+        if (email is not null && await db.ExternalIdentities.AnyAsync(
+                i => i.Provider == EfExternalIdentity.GoogleProvider && i.Email.ToLower() == email, ct))
+            return Conflict(AlreadyListedSentence(email));
 
         var now = time.GetUtcNow();
         var person = new EfPerson { Name = name, Role = role, CreatedAt = now, UpdatedAt = now };
         db.People.Add(person);
-        await db.SaveChangesAsync(ct);
+        if (email is not null)
+        {
+            db.ExternalIdentities.Add(new EfExternalIdentity
+            {
+                Provider = EfExternalIdentity.GoogleProvider,
+                Subject = null,
+                Email = email,
+                Person = person,
+                CreatedAt = now,
+            });
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) when (email is not null)
+        {
+            return Conflict(AlreadyListedSentence(email));
+        }
 
         // Two people may share a name and that is not an error - households
         // contain a Sam and a Sam, and the id is what anything actually keys
         // on. There is deliberately no unique index behind this.
-        return CreatedAtAction(nameof(Get), new { id = person.Id }, new PersonDto(person.Id, person.Name, PersonRoles.ToWire(person.Role), person.CreatedAt, person.UpdatedAt, null, 0));
+        return CreatedAtAction(nameof(Get), new { id = person.Id }, new PersonDto(
+            person.Id, person.Name, PersonRoles.ToWire(person.Role), person.CreatedAt, person.UpdatedAt, null, 0,
+            email, email is null ? null : EfExternalIdentity.GoogleProvider, null));
+    }
+
+    private static string AlreadyListedSentence(string email) => $"{email} is already on this list.";
+
+    /// <summary>
+    /// Deliberately minimal: one <c>@</c>, something either side, no spaces.
+    /// Whether the address is real is Google's to say at sign-in.
+    /// </summary>
+    private static bool IsPlausibleEmail(string email)
+    {
+        if (email.Length > 320 || email.Any(char.IsWhiteSpace)) return false;
+        var at = email.IndexOf('@');
+        return at > 0 && at == email.LastIndexOf('@') && at < email.Length - 1;
     }
 
     [RequireAdmin]

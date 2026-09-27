@@ -980,6 +980,14 @@ export interface PersonWriteRequest {
   role: PersonRole;
 }
 
+/** What the Add user form posts. The email pre-approves that address: the
+    person's first Google sign-in lands with this role rather than Pending. */
+export interface PersonCreateRequest {
+  name?: string;
+  email: string;
+  role: PersonRole;
+}
+
 /** One enrolled device on a person's row. Mirrors PersonSessionDto. */
 export interface PersonSession {
   id: string;

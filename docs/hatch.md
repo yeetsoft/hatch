@@ -746,15 +746,15 @@ some type from one column to the next. See [the dispatcher](#the-dispatcher).
 
 ## The wall, the roles, and API keys
 
-Hatch adds no authentication of its own. It sits behind the two boundaries
-every other app in the house does — the wall, and the role gate on top of it —
-and Phase 6 of its build taught the outer one a second lane.
+Hatch ships its own wall, off by default (`HATCH_AUTH` in `compose.yaml`), with
+Google sign-in. Turning it on is the walkthrough's *Putting a front door on it*
+(`hatch-at-home.md`). Two boundaries follow: the wall, and the role gate on top
+of it — and the wall has a second lane, the API key.
 
 ### The posture
 
-- **The wall** (`AuthGate` + `AuthMiddleware`, enforced at Traefik and in
-  process) decides whether a request reaches the app at all. `hatch.${DOMAIN}`
-  carries the same `hatch-auth` middleware annotation as `home` and `kiosk`.
+- **The wall** (`AuthGate` + `AuthMiddleware`, enforced in process)
+  decides whether a request reaches the app at all.
 - **The role gate** (`RoleGate`) decides whether an already-authenticated
   request reaches what it asked for, by the role on the person the device
   belongs to — `pending`, `user` or `admin`, an ordered enum on `EfPerson.Role`.
@@ -770,6 +770,11 @@ and Phase 6 of its build taught the outer one a second lane.
 A Pending person is refused at every level, and reaches only the sign-in screen
 and the two routes that say who they are (`/api/auth/me`, `/api/auth/sign-out`),
 which ask the wall for a credential and nothing more.
+
+An Admin can skip the waiting by adding an email on the Users page first. The
+address becomes an *unclaimed* identity (no `Subject` yet) carrying the chosen
+role, and the first verified Google sign-in with that address binds it: from
+then on the `sub` is the identity, and the email is never used to find it again.
 
 | Reaching | As | Answer |
 |---|---|---|
@@ -833,9 +838,10 @@ The bearer header is **not a second authentication system**. `AuthMiddleware`
 reads `Authorization: Bearer` alongside the cookies and hands both to the same
 `AuthGate.EvaluateAsync`, which hashes the secret, matches an unrevoked key, and
 returns an ordinary `AuthDecision` carrying the key. `AuthController.Verify` —
-the endpoint Traefik's forwardAuth calls — reads the header off the forwarded
-request exactly as it reads the cookie, so the proxy half and the in-process
-half agree without either learning a new concept.
+the endpoint a fronting proxy may call (the system this repository came from
+used Traefik's forwardAuth) — reads the header off the forwarded request
+exactly as it reads the cookie, so a proxy and the in-process half agree
+without either learning a new concept.
 
 That is the whole of the rationale, and it is worth stating plainly because it
 is what the design is *for*: **there is one place that decides whether a request
@@ -2207,6 +2213,13 @@ ten minutes; `queue` is where the counts turn back into tickets.
   what makes that search short. The pull request is a field rather than a
   sentence — `hatch pr AER-12 <url>` puts it there, and the issue page draws
   it as something to click.
+- **Name the ticket in the pull request, in two places.** The title is the key,
+  one space, then the subject in house style — `AER-12 Auth: the first Admin`,
+  with no brackets and no second colon. The first line of the description is
+  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
+  line, then the summary. `<origin>` is the address Hatch was reached at
+  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
+  AER-12 --dry-run` prints the exact line. Never write a relative link.
 - **Plan on the ticket, not in a chat log.** A planning session `PATCH`es
   acceptance criteria into the description and `POST`s the stories or tasks the
   work breaks into. An epic takes stories; a story takes tasks.

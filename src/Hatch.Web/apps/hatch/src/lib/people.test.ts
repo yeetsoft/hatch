@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Person, PersonRole } from '../types';
-import { canChangeRole, canDelete, deleteSentence, demotionSentence, isDemotion, loneAdmin, sortPeople } from './people';
+import { canAddUser, canChangeRole, canDelete, deleteSentence, demotionSentence, isDemotion, loneAdmin, sortPeople } from './people';
 
 const person = (name: string, role: PersonRole, id = name): Person => ({
   id,
@@ -58,5 +58,13 @@ describe('sorting', () => {
     const input = [person('bea', 'user', '2'), person('Ada', 'user', '9'), person('Ada', 'user', '1')];
     expect(sortPeople(input).map((p) => p.id)).toEqual(['1', '9', '2']);
     expect(input[0].id).toBe('2');
+  });
+});
+
+describe('the Add user form', () => {
+  it('needs an address, and nothing else', () => {
+    expect(canAddUser('')).toBe(false);
+    expect(canAddUser('   ')).toBe(false);
+    expect(canAddUser('someone@example.com')).toBe(true);
   });
 });
