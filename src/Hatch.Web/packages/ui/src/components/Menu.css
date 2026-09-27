@@ -109,7 +109,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--card);
-  color: var(--text);
+  color: var(--ink);
   box-shadow: var(--shadow);
 }
 
