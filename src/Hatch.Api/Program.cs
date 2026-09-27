@@ -391,47 +391,20 @@ if (migrateMode)
 
     await haConnection.ApplyAsync(CancellationToken.None);
 
-    // The chicken-and-egg: the thing that generates an invite lives behind the
-    // wall. An install with no grant and no live invite has no way in at all,
-    // so the migrate Job mints one - here rather than at replica startup,
-    // because three replicas racing this would mint three invites, and this
-    // branch runs exactly once per deploy ahead of any of them.
-    //
-    // This is the only place in the app a code is ever written to a log, and it
-    // is correct here: it is reachable only when there is nothing to protect
-    // the log from that isn't already reachable. On an install that has grants,
-    // nothing below runs and nothing is printed.
-    //
-    // Gated on Auth:Enabled. The objection this used to carry was that gating
-    // it would put the one recovery path behind a second piece of config
-    // reaching this Job correctly - and it was right, because nothing was
-    // passing that config: charts/hatch/templates/migrate-job.yaml handed the
-    // Job DOTNET_ENVIRONMENT, the postgres env and HATCH_MIGRATE, so it read
-    // `false` out of appsettings.json even on a cluster whose wall is up. That
-    // is answered rather than ignored - the Job is now given Auth__Enabled from
-    // the same `ne .Values.auth.mode "none"` the api Deployment renders, so the
-    // two cannot disagree. And turning the wall on is a chart change, which is
-    // an upgrade, which re-runs this Job with Auth__Enabled=true and mints
-    // then. On an install with no wall, a sign-in code in the log is a code
-    // nothing will ever accept, printed on every deploy.
-    var authEnabled = scope.ServiceProvider.GetRequiredService<IOptions<AuthOptions>>().Value.Enabled;
-    var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
-    if (!authEnabled)
-    {
-        app.Logger.LogInformation("Auth is disabled, so there is no wall to get through and no bootstrap invite is needed.");
-    }
-    else if (!await authService.HasAnyAccessAsync(CancellationToken.None))
-    {
-        var bootstrap = await authService.CreateInviteAsync("Bootstrap", personId: null, isBootstrap: true, CancellationToken.None);
-        app.Logger.LogWarning(
-            "\n" +
-            "========================================================\n" +
-            " No enrolled devices and no live invite - minted one.\n" +
-            " Sign in at /auth and enter:  {Code}\n" +
-            " Valid until {ExpiresAt:u}. It can be used once.\n" +
-            "========================================================",
-            bootstrap.FormattedCode, bootstrap.ExpiresAt);
-    }
+    // The chicken-and-egg: only an Admin can promote a person, and every
+    // person sign-in creates is Pending. So the first person to sign in on an
+    // install with no Admin becomes one (GoogleSignInController), and this
+    // says so before anybody has. It is here rather than at replica startup
+    // because this branch runs exactly once per deploy ahead of any replica,
+    // and three replicas would say it three times. Gated on Auth:Enabled: with
+    // no wall there is no sign-in to describe. The Job must be given the same
+    // Auth__* settings as the api, or it describes a different install.
+    var authOptions = scope.ServiceProvider.GetRequiredService<IOptions<AuthOptions>>().Value;
+    var anyAdmin = await db.People.AnyAsync(p => p.Role == PersonRole.Admin);
+    if (!authOptions.Enabled)
+        app.Logger.LogInformation("Auth is disabled, so there is no wall to get through and no Administrator is needed.");
+    else if (FirstAdminNotice.For(authOptions, anyAdmin) is { } notice)
+        app.Logger.LogWarning("{Notice}", notice);
 
     return;
 }

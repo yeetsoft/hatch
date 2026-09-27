@@ -42,7 +42,12 @@ services:
         condition: service_healthy
     environment:
       DOTNET_ENVIRONMENT: Docker
-      Auth__Enabled: "false"
+      # `migrate` and `api` must agree on every Auth__* line: migrate is where
+      # the log says how the first Administrator comes to exist, and it can only
+      # describe the wall the api is actually running with.
+      Auth__Enabled: "${HATCH_AUTH:-false}"
+      Auth__Google__ClientId: "${HATCH_GOOGLE_CLIENT_ID:-}"
+      Auth__Google__ClientSecret: "${HATCH_GOOGLE_CLIENT_SECRET:-}"
       HATCH_MIGRATE: "1"
 
   api:
@@ -59,7 +64,12 @@ services:
       - ./src/Hatch.Api/.env.json:/App/.env.json
     environment:
       DOTNET_ENVIRONMENT: Docker
-      Auth__Enabled: "false"
+      # `migrate` and `api` must agree on every Auth__* line: migrate is where
+      # the log says how the first Administrator comes to exist, and it can only
+      # describe the wall the api is actually running with.
+      Auth__Enabled: "${HATCH_AUTH:-false}"
+      Auth__Google__ClientId: "${HATCH_GOOGLE_CLIENT_ID:-}"
+      Auth__Google__ClientSecret: "${HATCH_GOOGLE_CLIENT_SECRET:-}"
       # Whoever ran the command, by whichever name their OS uses: USERNAME on
       # Windows, USER on macOS and Linux. Read from the invoking shell's own
       # environment - no .env file, nothing to export first.

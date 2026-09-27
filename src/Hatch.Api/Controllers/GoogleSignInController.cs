@@ -131,10 +131,17 @@ public class GoogleSignInController(
 
         if (identity is null)
         {
+            // The first person to sign in on an install with no Admin becomes
+            // one, since only an Admin can promote anybody and Pending is a
+            // locked door otherwise. The rule is "no Admin", not "no people".
+            // Accepted race: two first sign-ins in the same instant could both
+            // read "no Admin" and both become one. An Admin can demote, and it
+            // is a one-time window on a fresh install.
+            var firstAdmin = !await db.People.AnyAsync(p => p.Role == PersonRole.Admin, ct);
             var person = new EfPerson
             {
                 Name = NameFor(token),
-                Role = PersonRole.Pending,
+                Role = firstAdmin ? PersonRole.Admin : PersonRole.Pending,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -148,7 +155,10 @@ public class GoogleSignInController(
                 LastSignInAt = now,
             };
             db.ExternalIdentities.Add(identity);
-            logger.LogInformation("Google sign-in created person {PersonId} (Pending)", person.Id);
+            if (firstAdmin)
+                logger.LogWarning("Google sign-in created person {PersonId} as the first Administrator", person.Id);
+            else
+                logger.LogInformation("Google sign-in created person {PersonId} ({Role})", person.Id, person.Role);
         }
         else
         {
