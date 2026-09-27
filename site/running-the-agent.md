@@ -325,7 +325,7 @@ directory at the front of the session's `PATH`, so `hatch` inside the session
 is the same binary that spawned it, already pointed at the same board.
 
 What the session knows about the board beyond that is your repository's
-`CLAUDE.md`. Your Hatch ships the block to paste under **Docs** in the nav.
+`CLAUDE.md`. Your Hatch ships the block to paste under **Docs**, behind the gear.
 
 ## The `work-log` row
 

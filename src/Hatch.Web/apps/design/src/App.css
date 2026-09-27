@@ -260,36 +260,6 @@
   padding: var(--sp-5);
 }
 
-/* The accent fill these two controls are drawn for, so their hover, focus and
-   ink can be judged against the ground they actually sit on. Flat --primary
-   rather than a copy of the bar's gradient: a second copy of the bar's paint
-   is a thing that can drift from the bar. */
-.switcher-ground {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r);
-  background: var(--primary);
-  color: var(--on-accent);
-}
-
-.switcher-ground .swatch-use {
-  color: var(--on-accent);
-}
-
-.tone-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-4);
-}
-
-.tone-sample {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
 /* ---------------------------------------------------------------------------
    Color and series swatches */
 

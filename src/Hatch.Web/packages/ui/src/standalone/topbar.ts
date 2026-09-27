@@ -20,7 +20,7 @@
    on both pages, and on the logo page it would be React's *second* copy.
 
    The rule that keeps the two in step: this file may not invent a class name.
-   Every one below appears in TopBar.tsx or ThemeSwitch.tsx.
+   Every one below appears in TopBar.tsx, ThemeSwitch.tsx or Menu.tsx.
 
    base.css is deliberately NOT imported. It paints the body - face, ground,
    heading scale - and these are host pages with their own designs. The bar
@@ -42,6 +42,7 @@ import '../tokens.css';
 import './topbar.css';
 import '../components/TopBar.css';
 import '../components/ThemeSwitch.css';
+import '../components/Menu.css';
 
 /**
  * How the host page answers the theme.
@@ -88,6 +89,12 @@ const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
    other's checked state - the same hazard useId answers in <ThemeSwitch>. */
 let groupSeq = 0;
 
+/* Likewise for the gear's own ids: two bars on one page must not share an
+   aria-controls target. */
+let menuSeq = 0;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 /** The brand link in TopBar.tsx. An <a>, so middle-click and "copy link address" work. */
 function brand(href: string, name: string): HTMLAnchorElement {
   const link = document.createElement('a');
@@ -112,7 +119,8 @@ function brand(href: string, name: string): HTMLAnchorElement {
 }
 
 /**
- * ThemeSwitch.tsx, in the `accent` tone the bar always uses.
+ * ThemeSwitch.tsx, in the `surface` tone: it sits inside the gear's own
+ * card-surfaced panel now, not directly on the bar's fill.
  *
  * Real radio inputs, for the reason the component gives: the browser then
  * supplies the whole keyboard contract - one tab stop for the group, arrows to
@@ -123,7 +131,9 @@ function themeSwitch(): HTMLFieldSetElement {
   const current = readChoice();
 
   const fieldset = document.createElement('fieldset');
-  fieldset.className = 'hatch-theme-switch hatch-theme-switch--accent';
+  /* --surface, not --accent: the switch now sits inside the gear's own
+     card-surfaced panel rather than directly on the bar's fill. */
+  fieldset.className = 'hatch-theme-switch hatch-theme-switch--surface';
 
   const legend = document.createElement('legend');
   legend.className = 'hatch-theme-switch__legend';
@@ -155,6 +165,107 @@ function themeSwitch(): HTMLFieldSetElement {
   return fieldset;
 }
 
+/** GearIcon.tsx's artwork, restated in DOM calls - see themeSwitch() above
+    for why this file restates markup rather than importing a React
+    component. Same viewBox, same hub-and-teeth construction. */
+function gearIcon(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '20');
+  svg.setAttribute('height', '20');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+
+  const hub = document.createElementNS(SVG_NS, 'path');
+  hub.setAttribute('fill-rule', 'evenodd');
+  hub.setAttribute(
+    'd',
+    'M16,12 A4,4 0 1 1 8,12 A4,4 0 1 1 16,12 Z M14.2,12 A2.2,2.2 0 1 1 9.8,12 A2.2,2.2 0 1 1 14.2,12 Z',
+  );
+  svg.appendChild(hub);
+
+  for (const angle of [0, 45, 90, 135, 180, 225, 270, 315]) {
+    const tooth = document.createElementNS(SVG_NS, 'rect');
+    tooth.setAttribute('x', '10.5');
+    tooth.setAttribute('y', '3');
+    tooth.setAttribute('width', '3');
+    tooth.setAttribute('height', '5');
+    tooth.setAttribute('rx', '0.8');
+    if (angle) tooth.setAttribute('transform', `rotate(${angle} 12 12)`);
+    svg.appendChild(tooth);
+  }
+
+  return svg;
+}
+
+/**
+ * The gear: a trigger and the panel it opens, holding the Theme row.
+ *
+ * `Menu.tsx` carries the full disclosure pattern for the React apps - hover
+ * intent, one-open-per-bar, focus management. This page has exactly one menu
+ * ever on it, so it hand-rolls the minimum that pattern reduces to for a
+ * single, always-standalone instance: click toggles, Escape closes and
+ * refocuses the trigger, and an outside pointerdown closes. The classes are
+ * `Menu.tsx`'s own, imported above, so the two draw identically.
+ */
+function settingsMenu(): HTMLDivElement {
+  const panelId = `hatch-topbar-menu-${(menuSeq += 1)}`;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'hatch-menu';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'hatch-menu__trigger hatch-menu__trigger--accent';
+  trigger.setAttribute('aria-label', 'Settings and theme');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-controls', panelId);
+  trigger.appendChild(gearIcon());
+
+  const panel = document.createElement('div');
+  panel.id = panelId;
+  panel.className = 'hatch-menu__panel hatch-menu__panel--end';
+
+  const surface = document.createElement('div');
+  surface.className = 'hatch-menu__surface';
+
+  const row = document.createElement('div');
+  row.className = 'hatch-menu__row';
+
+  const rowLabel = document.createElement('span');
+  rowLabel.className = 'hatch-menu__row-label';
+  rowLabel.textContent = 'Theme';
+
+  row.append(rowLabel, themeSwitch());
+  surface.appendChild(row);
+  panel.appendChild(surface);
+
+  let open = false;
+  const setOpen = (next: boolean) => {
+    open = next;
+    trigger.setAttribute('aria-expanded', String(open));
+    panel.classList.toggle('hatch-menu__panel--open', open);
+  };
+
+  trigger.addEventListener('click', () => setOpen(!open));
+
+  wrapper.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && open) {
+      event.stopPropagation();
+      setOpen(false);
+      trigger.focus();
+    }
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (open && !wrapper.contains(event.target as Node)) setOpen(false);
+  });
+
+  wrapper.append(trigger, panel);
+  return wrapper;
+}
+
 /** Builds the bar. TopBar.tsx's structure, element for element. */
 export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
   const { appName, homeHref = '/', theme = 'switch' } = config;
@@ -172,7 +283,7 @@ export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
   const end = document.createElement('div');
   end.className = 'hatch-topbar__side hatch-topbar__side--end';
   if (theme === 'switch') {
-    end.appendChild(themeSwitch());
+    end.appendChild(settingsMenu());
   }
 
   inner.append(start, end);

@@ -27,6 +27,15 @@
   gap: var(--sp-4);
 }
 
+/* This div also wears .hatch-menu-bar (it now hosts the gear's Menu), whose
+   own gap (--sp-1) is equal specificity with the rule above - the winner
+   would otherwise depend on which stylesheet's import happens to run last.
+   The compound selector outranks both single-class rules regardless of
+   import order. */
+.hatch-topbar__inner.hatch-menu-bar {
+  gap: var(--sp-4);
+}
+
 .hatch-topbar__side {
   display: flex;
   align-items: center;

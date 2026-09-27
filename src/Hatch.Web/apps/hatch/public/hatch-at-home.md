@@ -503,7 +503,7 @@ code already settles is a round trip through a person for nothing.
 
 Two things in it point at documentation rather than restating it —
 `hatch-planning.md` and `auth-architecture.md` — and both are on your Hatch's
-own **Docs** page, in the nav beside this one. Every Hatch image carries the
+own **Docs** page, under the gear beside this one. Every Hatch image carries the
 whole of this documentation, so the sessions your board dispatches can read it
 without leaving the machine.
 

@@ -58,8 +58,15 @@ export function writeChoice(choice: ThemeChoice): void {
   }
 }
 
+/**
+ * `window` itself is absent under `renderToStaticMarkup` in a test - there is
+ * no partitioned-storage equivalent for a media query, so the guard is a
+ * plain existence check rather than the try/catch `readChoice` uses. No
+ * preference to read means light, the same default an unset choice resolves
+ * to server-side.
+ */
 export function prefersDark(): boolean {
-  return window.matchMedia(DARK_QUERY).matches;
+  return typeof window !== 'undefined' && window.matchMedia(DARK_QUERY).matches;
 }
 
 /**
