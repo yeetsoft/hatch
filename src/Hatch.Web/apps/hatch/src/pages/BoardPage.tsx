@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -32,6 +33,10 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useLoaded } from '../lib/useLoaded';
 import type { AssigneeDirectory, Board, IssueCard, Project, Status } from '../types';
 
+/** The URL's whole vocabulary here: which project, by key - the same param
+    PlanPage's picker uses. */
+const PROJECT = 'project';
+
 export function BoardPage() {
   const { data: board, setData: setBoard, error, setError, reload } = useLoaded<Board>(getBoard);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -42,7 +47,29 @@ export function BoardPage() {
      which leaves the press unoffered and the state still drawn. */
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
   const [filing, setFiling] = useState(false);
-  const [filter, setFilter] = useState<CardFilter>(NO_FILTER);
+  const [params, setParams] = useSearchParams();
+  /* Only the project half of the filter lives in the URL - see setFilter
+     below - so it is read once here, on the way into local state, rather than
+     off `params` on every render. */
+  const [filter, setFilter] = useState<CardFilter>(() => ({ ...NO_FILTER, project: params.get(PROJECT) ?? '' }));
+
+  /* Wraps the plain setter so a change to the project also writes (or drops)
+     `?project=` - replaced rather than pushed, exactly as PlanPage's picker
+     does, since flipping a filter is not a place worth six presses of Back. */
+  const changeFilter = useCallback(
+    (next: CardFilter) => {
+      setFilter((prev) => {
+        if (next.project !== prev.project) {
+          const nextParams = new URLSearchParams(params);
+          if (next.project) nextParams.set(PROJECT, next.project);
+          else nextParams.delete(PROJECT);
+          setParams(nextParams, { replace: true });
+        }
+        return next;
+      });
+    },
+    [params, setParams],
+  );
 
   // The card under the cursor and the column it is over, kept only for the
   // duration of a drag: one paints the overlay, the other lights up the column
@@ -58,10 +85,23 @@ export function BoardPage() {
   const { ask } = closing;
 
   useEffect(() => {
-    getProjects().then(setProjects).catch(() => {
-      // The board is readable without the project list; only the New issue
-      // dialog needs it, and it says so itself when there is nothing to pick.
-    });
+    getProjects()
+      .then((ps) => {
+        setProjects(ps);
+        // A key in the URL that names no project reads as all projects, and
+        // the param is dropped - the picker has nothing to show it as chosen.
+        setFilter((prev) => {
+          if (prev.project === '' || ps.some((p) => p.key === prev.project)) return prev;
+          const nextParams = new URLSearchParams(params);
+          nextParams.delete(PROJECT);
+          setParams(nextParams, { replace: true });
+          return { ...prev, project: '' };
+        });
+      })
+      .catch(() => {
+        // The board is readable without the project list; only the New issue
+        // dialog needs it, and it says so itself when there is nothing to pick.
+      });
 
     getAssignees().then(setDirectory).catch(() => {
       // And without the directory: every card still draws, and the summary
@@ -158,8 +198,9 @@ export function BoardPage() {
 
       <BoardFilters
         filter={filter}
-        onChange={setFilter}
+        onChange={changeFilter}
         assignees={assignees}
+        projects={projects}
         showing={visible.length}
         total={board.issues.length}
       />
@@ -203,6 +244,7 @@ export function BoardPage() {
       <NewIssueDialog
         open={filing}
         projects={projects}
+        defaultProjectKey={filter.project}
         onClose={() => setFiling(false)}
         onCreated={() => void reload()}
       />
