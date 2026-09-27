@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -145,6 +147,31 @@ public sealed class CheckoutTests : IDisposable
         // part that survives.
         Assert.StartsWith("...", runner, StringComparison.Ordinal);
         Assert.EndsWith("/Hatch", runner, StringComparison.Ordinal);
+    }
+
+    // ---- What a runner serves ----
+
+    [Fact]
+    public void A_checkout_with_no_origin_declares_standing_and_no_remote()
+    {
+        var tree = Tree("no-origin");
+        Git(tree, "init", "--quiet");
+
+        var checkouts = Checkouts.Discover(tree);
+
+        var entry = Assert.Single(checkouts);
+        Assert.Equal(tree, entry.Path);
+        Assert.True(entry.Standing);
+        Assert.Null(entry.Remote);
+    }
+
+    private static void Git(string dir, params string[] args)
+    {
+        var start = new ProcessStartInfo { FileName = "git", WorkingDirectory = dir, UseShellExecute = false };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        process.WaitForExit();
     }
 
     public void Dispose()

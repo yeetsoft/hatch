@@ -115,4 +115,55 @@ public sealed class PromptTests
 
         Assert.Equal("model and effort from AER-12, not the playbook", Prompt.OverrideLine(pinned, "opus", "xhigh"));
     }
+
+    // ---- Which checkouts the dispatch carries ----
+
+    [Fact]
+    public void Repositories_are_named_matched_first_unmatched_after_the_primary_marked()
+    {
+        var repositories = new[]
+        {
+            new Checkouts.RepositoryLine("/Users/x/code/hatch", "https://example.test/hatch.git", true, null),
+            new Checkouts.RepositoryLine(null, "https://example.test/other.git", false, null),
+        };
+
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), repositories);
+
+        Assert.Contains("## Repositories", prompt, StringComparison.Ordinal);
+        Assert.Contains("/Users/x/code/hatch  https://example.test/hatch.git  (primary)", prompt, StringComparison.Ordinal);
+        Assert.Contains("https://example.test/other.git  (no checkout here)", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void No_repositories_section_when_the_dispatch_carries_none()
+    {
+        Assert.DoesNotContain("## Repositories", Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+        Assert.DoesNotContain("## Repositories", Prompt.Compose(Fixtures.Work("AER-12"), []), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void More_than_one_repository_names_which_root_the_tail_means()
+    {
+        var repositories = new[]
+        {
+            new Checkouts.RepositoryLine("/Users/x/code/hatch", "https://example.test/hatch.git", true, null),
+            new Checkouts.RepositoryLine("/Users/x/code/other", "https://example.test/other.git", false, null),
+        };
+
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), repositories);
+
+        Assert.Contains(
+            "Run these from the repository root - https://example.test/hatch.git's checkout, not the others named above.",
+            prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_single_repository_does_not_need_to_say_which_root_it_means()
+    {
+        var repositories = new[] { new Checkouts.RepositoryLine("/Users/x/code/hatch", "https://example.test/hatch.git", true, null) };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), repositories);
+
+        Assert.Contains("Run these from the repository root. The key is already in the environment.",
+            prompt, StringComparison.Ordinal);
+    }
 }

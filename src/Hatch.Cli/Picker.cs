@@ -17,12 +17,17 @@ public enum Pick
 }
 
 /// <param name="Busy">One line per candidate that was taken, naming the key and who has it.</param>
+/// <param name="Chosen">
+/// Where the claimed dispatch spawns, and what it resets - set only when
+/// <see cref="Outcome"/> is <see cref="Pick.Claimed"/>.
+/// </param>
 public sealed record Picked(
     Pick Outcome,
     WorkDto? Work,
     Claim? Claim,
     IReadOnlyList<QueueEntryDto> Queue,
-    IReadOnlyList<string> Busy);
+    IReadOnlyList<string> Busy,
+    Checkouts.Choice? Chosen = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -42,7 +47,9 @@ public sealed record Picked(
 /// meantime comes back from the second read carrying their sentence, and this
 /// walks on rather than spawning into it.</para>
 /// </remarks>
-public sealed class Picker(Board board, string runner, Terminal say)
+public sealed class Picker(
+    Board board, string runner, Terminal say,
+    IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch)
 {
     /// <summary>
     /// How many clear rows to try before calling the board busy. A bounded walk,
@@ -58,7 +65,7 @@ public sealed class Picker(Board board, string runner, Terminal say)
         IReadOnlyList<QueueEntryDto> queue;
         try
         {
-            queue = await board.QueueAsync(under, offsetMinutes, ct);
+            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct);
         }
         catch (HatchException e)
         {
@@ -100,7 +107,7 @@ public sealed class Picker(Board board, string runner, Terminal say)
             WorkDto? work;
             try
             {
-                work = await board.WorkAsync(key, claim.Token, ct);
+                work = await board.WorkAsync(checkouts, key, claim.Token, ct);
             }
             catch (HatchException e)
             {
@@ -110,16 +117,22 @@ public sealed class Picker(Board board, string runner, Terminal say)
             }
 
             // The ticket changed under us between the two reads - somebody
-            // answered a question, something landed, a dependency closed. The
-            // lease goes back and the walk goes on.
-            if (work is null || work.Blocked is { Length: > 0 })
+            // answered a question, something landed, a dependency closed - or
+            // its primary repository matched no checkout this runner holds,
+            // which the queue's own fold would have caught a moment later
+            // anyway. The lease goes back and the walk goes on.
+            var chosen = work is null || work.Blocked is { Length: > 0 }
+                ? null
+                : Checkouts.Choose(work.Repositories, checkouts, standingRoot, standingBaseBranch);
+
+            if (work is null || work.Blocked is { Length: > 0 } || chosen is null)
             {
                 await claim.ReleaseAsync();
                 busy.Add($"  {key}  {work?.Blocked ?? "it left the dispatcher's path between two reads"}");
                 continue;
             }
 
-            return new Picked(Pick.Claimed, work, claim, queue, busy);
+            return new Picked(Pick.Claimed, work, claim, queue, busy, chosen);
         }
 
         return new Picked(Pick.Busy, null, null, queue, busy);

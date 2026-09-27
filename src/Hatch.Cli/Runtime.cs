@@ -17,6 +17,7 @@ public sealed record Runtime(
     string Root,
     string RunnerName,
     string TempDirectory,
+    IReadOnlyList<CheckoutEntry> Checkouts,
     TimeSpan? Heartbeat = null)
 {
     /// <summary>The clock, so a test can put the loop at a particular hour.</summary>
@@ -32,11 +33,11 @@ public sealed record Runtime(
 
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say);
+    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch);
 
-    public Idle Idle() => new(Board, Say);
+    public Idle Idle() => new(Board, Say, Checkouts);
 
-    public Increment Increment() => new(Board, Sessions, Settings, Say);
+    public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts);
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back
@@ -47,11 +48,12 @@ public sealed record Runtime(
     public Runners Runners() => new(Board.Client, RunnerName);
 
     /// <summary>
-    /// How the tree is made current between increments. Replaceable so a test
-    /// can assert the order a pass does things in - the claim, then the reset,
-    /// then the spawn - without a remote to fetch from.
+    /// How a checkout is made current between increments - one path, and the
+    /// base branch to reset it to. Replaceable so a test can assert the order a
+    /// pass does things in - the claim, then the reset, then the spawn - without
+    /// a remote to fetch from.
     /// </summary>
-    public Func<IWorkspace> Workspace { get; init; } = () =>
+    public Func<string, string?, IWorkspace> Workspace { get; init; } = (_, _) =>
         throw new InvalidOperationException("no workspace was configured");
 
     /// <summary>
@@ -62,10 +64,10 @@ public sealed record Runtime(
     public Func<ISelf> Self { get; init; } = () =>
         throw new InvalidOperationException("no source reader was configured");
 
-    /// <summary>The real ones, over this checkout.</summary>
+    /// <summary>The real ones, over whichever checkout each call names.</summary>
     public Runtime WithGit() => this with
     {
-        Workspace = () => new Workspace(Root, Settings.BaseBranch, Say.Line, Say.Complain),
+        Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Self = () => new LoopSource(Root),
     };
 }

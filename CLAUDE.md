@@ -51,13 +51,16 @@ back — the next actionable issue, one increment, ask again — so assume nobod
 reading the terminal, and that the next increment starts the moment yours ends.
 
 - **The tree is already the trunk, and it is current.** The loop fetches and
-  resets the checkout onto the default branch before it spawns you, so branch
-  straight from where you are and do not go looking for a base. Anything you
-  leave uncommitted is stashed before the next increment starts — recoverable
-  with `git stash pop`, but not where you left it — so work that matters is work
-  that is committed and pushed. And a tree that cannot be reset ends the night:
-  clear a half-finished merge or a conflicted file before you stop, rather than
-  leaving it for whoever runs next.
+  resets every checkout the ticket's project is bound to onto its default
+  branch before it spawns you, so branch straight from where you are and do
+  not go looking for a base. Anything you leave uncommitted is stashed before
+  the next increment starts — recoverable with `git stash pop`, but not where
+  you left it — so work that matters is work that is committed and pushed. And
+  a tree that cannot be reset ends the night: clear a half-finished merge or a
+  conflicted file before you stop, rather than leaving it for whoever runs
+  next. A ticket for a repository this loop does not have is folded past, with
+  the reason, rather than dispatched — so nothing here is ever spawned in the
+  wrong checkout.
 - **Leave the ticket somewhere new.** An increment that ends with the ticket in
   the column it started in is a *stall*: the loop comments, opens a question
   against the issue, and moves on — and nothing further is dispatched there

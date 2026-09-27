@@ -62,6 +62,11 @@ if (root is null && command is "work" or "go-to-work")
     return 1;
 }
 
+// This story's only source is the checkout the process is standing in. A
+// person's named checkouts and the clones a runner makes for itself are later
+// stories on the same epic - see Checkouts.Discover.
+var checkouts = root is null ? (IReadOnlyList<CheckoutEntry>)[] : Checkouts.Discover(root);
+
 // This checkout's own settings, at higher precedence than the per-user file, so
 // a repository that pins its own origin keeps it. Absent outside one.
 var checkoutEnv = root is null ? null : Path.Combine(root, "scripts", ".env");
@@ -111,7 +116,8 @@ try
             Say: say,
             Root: root!,
             RunnerName: runnerName,
-            TempDirectory: Path.GetTempPath())
+            TempDirectory: Path.GetTempPath(),
+            Checkouts: checkouts)
         {
             // Set by the supervisor in scripts/hatch.sh and by nobody else,
             // which is how a runner started by hand knows there is nothing
@@ -125,7 +131,7 @@ try
             : await new GoToWorkCommand(runtime).RunAsync(rest, cancelling.Token);
     }
 
-    var cli = new Cli(board, say, new Input(), settings, runnerName);
+    var cli = new Cli(board, say, new Input(), settings, runnerName) { Checkouts = checkouts };
 
     return command switch
     {

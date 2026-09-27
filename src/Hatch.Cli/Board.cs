@@ -24,11 +24,12 @@ public sealed class Board(HatchClient client)
     /// Every issue a pass would look at, in the order it looks, each with the
     /// reason it would be folded past - or nothing, where it is clear.
     /// </summary>
-    public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(string? under, int offsetMinutes, CancellationToken ct)
+    public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts)}", ct) ?? [];
     }
 
     /// <summary>
@@ -38,10 +39,15 @@ public sealed class Board(HatchClient client)
     /// The claim this runner is holding, so that its own lease does not fold its
     /// own dispatch. Absent everywhere a caller holds nothing.
     /// </param>
-    public async Task<WorkDto?> WorkAsync(string key, Guid? heldToken, CancellationToken ct)
+    public async Task<WorkDto?> WorkAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string key, Guid? heldToken, CancellationToken ct)
     {
-        var held = heldToken is { } token ? $"?heldToken={token}" : "";
-        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{held}", ct));
+        var parts = new List<string>();
+        if (heldToken is { } token) parts.Add($"heldToken={token}");
+        parts.AddRange(DeclareParts(checkouts));
+
+        var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
+        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
     }
 
     /// <summary>
@@ -54,10 +60,30 @@ public sealed class Board(HatchClient client)
     /// follows, the queue picks and the claim decides; see <see cref="Picker"/>
     /// for why the second read there is the named one.
     /// </remarks>
-    public async Task<WorkDto?> NextAsync(string? under, int offsetMinutes, CancellationToken ct)
+    public async Task<WorkDto?> NextAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
-        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}", ct));
+        return WithIssueUrl(await Client.GetAsync<WorkDto>(
+            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts)}", ct));
+    }
+
+    /// <summary>
+    /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
+    /// per checkout that has one, and <c>standing=true</c> where one of them is
+    /// the process's own. Prefixed with <c>&amp;</c> for a query that already has
+    /// something in it, which every caller's does.
+    /// </summary>
+    private static string Declare(IReadOnlyList<CheckoutEntry> checkouts) =>
+        DeclareParts(checkouts) is { Count: > 0 } parts ? $"&{string.Join('&', parts)}" : "";
+
+    private static List<string> DeclareParts(IReadOnlyList<CheckoutEntry> checkouts)
+    {
+        var parts = checkouts.Where(c => c.Remote is not null)
+            .Select(c => $"remote={Uri.EscapeDataString(c.Remote!)}")
+            .ToList();
+        if (checkouts.Any(c => c.Standing)) parts.Add("standing=true");
+        return parts;
     }
 
     /// <summary>

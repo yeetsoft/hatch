@@ -86,8 +86,8 @@ public sealed class WorkCommand(Runtime runtime)
         try
         {
             work = key is { Length: > 0 }
-                ? await runtime.Board.WorkAsync(key, null, ct)
-                : await runtime.Board.NextAsync(under, runtime.OffsetMinutes, ct);
+                ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct)
+                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct);
         }
         catch (HatchException e)
         {
@@ -103,6 +103,13 @@ public sealed class WorkCommand(Runtime runtime)
 
         if (Refuse(work)) return 2;
 
+        var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
+        if (chosen is null)
+        {
+            runtime.Say.Complain(Changed(work.Issue.Key));
+            return 2;
+        }
+
         model ??= work.Playbook?.Model ?? "";
         effort ??= work.Playbook?.Effort ?? "";
 
@@ -110,9 +117,17 @@ public sealed class WorkCommand(Runtime runtime)
         runtime.Say.Line($"# model {model}, effort {effort}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
         runtime.Say.Line("");
-        runtime.Say.Lines(Prompt.Compose(work).Split('\n'));
+        runtime.Say.Lines(Prompt.Compose(work, chosen.Repositories).Split('\n'));
         return 0;
     }
+
+    /// <summary>
+    /// The project's repositories no longer match what the queue said a moment
+    /// before - the same "changed under us" a picked-up dispatch walks past,
+    /// said here because a named or dry-run read has nowhere to walk on to.
+    /// </summary>
+    private static string Changed(string key) =>
+        $"hatch: {key} - the project's repositories changed under us since this was read - try again";
 
     private async Task<int> SpendAsync(
         string? key, string? under, string? model, string? effort, bool attach, bool quiet, CancellationToken ct)
@@ -135,6 +150,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         WorkDto work;
         Claim claim;
+        Checkouts.Choice chosen;
 
         if (key is { Length: > 0 })
         {
@@ -144,7 +160,7 @@ public sealed class WorkCommand(Runtime runtime)
             WorkDto? named;
             try
             {
-                named = await runtime.Board.WorkAsync(key, null, ct);
+                named = await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct);
             }
             catch (HatchException e)
             {
@@ -160,6 +176,13 @@ public sealed class WorkCommand(Runtime runtime)
 
             if (Refuse(named)) return 2;
 
+            var resolved = Checkouts.Choose(named.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
+            if (resolved is null)
+            {
+                runtime.Say.Complain(Changed(key));
+                return 2;
+            }
+
             // And the race between that read and this take, which the server
             // decides and this only reports.
             var (taken, refused) = await Claim.TakeAsync(
@@ -170,7 +193,7 @@ public sealed class WorkCommand(Runtime runtime)
                 return 2;
             }
 
-            (work, claim) = (named, taken);
+            (work, claim, chosen) = (named, taken, resolved);
         }
         else
         {
@@ -192,7 +215,7 @@ public sealed class WorkCommand(Runtime runtime)
                     return 1;
             }
 
-            (work, claim) = (picked.Work!, picked.Claim!);
+            (work, claim, chosen) = (picked.Work!, picked.Claim!, picked.Chosen!);
         }
 
         try
@@ -204,13 +227,14 @@ public sealed class WorkCommand(Runtime runtime)
             model ??= work.Playbook?.Model ?? "";
             effort ??= work.Playbook?.Effort ?? "";
 
-            if (attach) return await AttachAsync(work, model, effort, claim, ct);
+            if (attach) return await AttachAsync(work, model, effort, claim, chosen, ct);
 
             // Zero for an increment that happened, whatever the session exited
             // with: the report is where "it went badly" is said, and a shell
             // that treated a hard ticket as a broken command would be one more
             // thing an operator has to work around.
-            await runtime.Increment().RunAsync(work, runtime.Root, model, effort, quiet, claim, ct);
+            await runtime.Increment().RunAsync(
+                work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories);
             return 0;
         }
         finally
@@ -230,7 +254,7 @@ public sealed class WorkCommand(Runtime runtime)
     /// is not the heartbeat's call.
     /// </remarks>
     private async Task<int> AttachAsync(
-        WorkDto work, string model, string effort, Claim claim, CancellationToken ct)
+        WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
         runtime.Say.Line($"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
@@ -238,7 +262,8 @@ public sealed class WorkCommand(Runtime runtime)
         runtime.Say.Line("");
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(runtime.Root, model, effort, Prompt.Compose(work), Quiet: false), ct);
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories), Quiet: false, chosen.AddDirs),
+            ct);
     }
 
     /// <summary>

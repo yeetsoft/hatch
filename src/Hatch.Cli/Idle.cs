@@ -12,7 +12,7 @@ namespace Hatch.Cli;
 /// true of a subtree rather than of the dispatcher's path and so is said last
 /// and separately.
 /// </remarks>
-public sealed class Idle(Board board, Terminal say)
+public sealed class Idle(Board board, Terminal say, IReadOnlyList<CheckoutEntry> checkouts)
 {
     public async Task ReportAsync(
         string? under, IReadOnlyList<QueueEntryDto>? queue, int offsetMinutes, CancellationToken ct)
@@ -27,7 +27,7 @@ public sealed class Idle(Board board, Terminal say)
         {
             try
             {
-                queue = await board.QueueAsync(under, offsetMinutes, ct);
+                queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct);
             }
             catch (HatchException)
             {

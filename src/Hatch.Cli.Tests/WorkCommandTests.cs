@@ -76,6 +76,20 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_named_tickets_primary_matching_no_checkout_here_refuses_before_it_claims()
+    {
+        using var h = new Harness();
+        var repos = new[] { Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null) };
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
+
+        Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_named_ticket_is_claimed_before_it_is_spawned_at_and_released_after()
     {
         using var h = new Harness();

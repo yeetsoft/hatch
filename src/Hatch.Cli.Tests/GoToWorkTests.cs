@@ -52,7 +52,7 @@ public sealed class GoToWorkTests
 
         Assert.True(claimedByThen, "the ticket was claimed before the workspace was reset");
         Assert.False(spawnedByThen, "nothing was spawned before the workspace was reset");
-        Assert.Equal(1, h.Workspace.Prepared);
+        Assert.Single(h.Workspace.Prepared);
         Assert.Single(h.Sessions.Spawned);
 
         // ...and let go of when the increment ended.
@@ -109,7 +109,7 @@ public sealed class GoToWorkTests
         // Nothing was spawned, and the tree was never touched for a pass that
         // had nothing to do.
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Equal(0, h.Workspace.Prepared);
+        Assert.Empty(h.Workspace.Prepared);
         Assert.Contains(h.Say.Said, l => l.Contains("--once, and the pass is done", StringComparison.Ordinal));
     }
 
@@ -163,6 +163,71 @@ public sealed class GoToWorkTests
 
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("increment(s) in", StringComparison.Ordinal));
+    }
+
+    // ---- More than one checkout in play ----
+
+    private static (CheckoutEntry Primary, CheckoutEntry Other, WorkRepositoryDto[] Repositories) TwoCheckouts(Harness h)
+    {
+        var other = Path.Combine(h.Temp, "other");
+        Directory.CreateDirectory(other);
+
+        var primary = h.Runtime.Checkouts[0];
+        var entry = new CheckoutEntry(other, "https://example.test/other.git", Standing: false);
+
+        var repos = new[]
+        {
+            Fixtures.Repository(primary.Remote!, primary: true, matchedRemote: primary.Remote),
+            Fixtures.Repository(entry.Remote!, matchedRemote: entry.Remote),
+        };
+
+        return (primary, entry, repos);
+    }
+
+    [Fact]
+    public async Task Two_checkouts_reset_in_order_before_one_spawn()
+    {
+        using var h = new Harness();
+        var (primary, other, repos) = TwoCheckouts(h);
+        var runtime = h.Runtime with { Checkouts = [primary, other] };
+
+        var token = Guid.NewGuid();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", repositories: repos));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Equal([primary.Path, other.Path], h.Workspace.Prepared);
+        var spawned = Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(primary.Path, spawned.Root);
+        Assert.Equal([other.Path], spawned.AddDirs);
+    }
+
+    [Fact]
+    public async Task Never_on_the_second_checkout_ends_the_increment_with_nothing_spawned()
+    {
+        using var h = new Harness();
+        var (primary, other, repos) = TwoCheckouts(h);
+        var runtime = h.Runtime with { Checkouts = [primary, other] };
+        h.Workspace.AnswerFor[other.Path] = Reset.Never;
+
+        var token = Guid.NewGuid();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
+
+        await new GoToWorkCommand(runtime).RunAsync([], default);
+
+        Assert.Equal([primary.Path, other.Path], h.Workspace.Prepared);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
     }
 
     [Fact]

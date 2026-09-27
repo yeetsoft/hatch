@@ -13,7 +13,7 @@ namespace Hatch.Cli;
 /// </remarks>
 public static class Prompt
 {
-    public static string Compose(WorkDto work)
+    public static string Compose(WorkDto work, IReadOnlyList<Checkouts.RepositoryLine>? repositories = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
@@ -39,6 +39,16 @@ public static class Prompt
             ? issue.Description
             : "_No description. That is itself worth noting on the ticket._");
         lines.Add("");
+
+        if (repositories is { Count: > 0 })
+        {
+            lines.Add("## Repositories");
+            lines.Add("");
+            lines.AddRange(repositories.Select(r => r.Path is { } path
+                ? $"{path}  {r.Remote}{(r.Primary ? "  (primary)" : "")}"
+                : $"{r.Remote}  (no checkout here)"));
+            lines.Add("");
+        }
 
         if (work.Children.Count > 0)
         {
@@ -82,7 +92,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to, work.IssueUrl));
+        lines.AddRange(Tail(key, to, work.IssueUrl, repositories));
         return string.Join('\n', lines);
     }
 
@@ -91,11 +101,12 @@ public static class Prompt
     /// do with a decision that is not the implementer's, and where the
     /// increment ends.
     /// </summary>
-    private static IEnumerable<string> Tail(string key, string to, string? issueUrl) =>
+    private static IEnumerable<string> Tail(
+        string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories) =>
     [
         "## Reaching Hatch",
         "",
-        "Run these from the repository root. The key is already in the environment.",
+        $"Run these from the repository root{WhichRoot(repositories)}. The key is already in the environment.",
         "",
         "```",
         $"hatch show {key}              the ticket and its comments",
@@ -168,6 +179,15 @@ public static class Prompt
         "marked as never having said what it did - so the block is worth the two",
         "lines it takes. Write it last, and write it once.",
     ];
+
+    /// <summary>
+    /// Which checkout "the repository root" means, said only once there is more
+    /// than one in play - with exactly one, the sentence is already unambiguous.
+    /// </summary>
+    private static string WhichRoot(IReadOnlyList<Checkouts.RepositoryLine>? repositories) =>
+        repositories is { Count: > 1 } list
+            ? $" - {list.First(r => r.Primary).Remote}'s checkout, not the others named above"
+            : "";
 
     /// <summary>
     /// Which of the model and the effort the ticket chose rather than the
