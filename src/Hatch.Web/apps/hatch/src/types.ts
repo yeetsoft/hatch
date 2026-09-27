@@ -1,4 +1,4 @@
-/* The wire shapes, mirroring src/Hatch.Api/Modules/Hatch/Dtos.cs.
+/* The wire shapes, mirroring src/Hatch.Contracts/Dtos.cs.
 
    Hand-written rather than generated, like every other app here. The one rule
    that keeps that honest: a field added there and not here is invisible, so
@@ -25,6 +25,21 @@ export interface Project {
   name: string;
   issueCount: number;
   createdAt: string;
+  repositories: ProjectRepository[];
+}
+
+/** One git remote bound to a project, as the server reads it back. */
+export interface ProjectRepository {
+  remote: string;
+  /** What RemoteIdentity.Canonical folded `remote` to - display only, never recomputed here. */
+  canonical: string;
+  baseBranch: string | null;
+}
+
+/** One entry in the ordered list a PUT replaces the whole set with - the first is the primary. */
+export interface ProjectRepositoryWriteRequest {
+  remote: string;
+  baseBranch?: string | null;
 }
 
 export interface Status {
