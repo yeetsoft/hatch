@@ -5,6 +5,7 @@ import { CreatedIssuesProvider } from './components/CreatedIssues';
 import { NavAttention } from './components/NavAttention';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavUtilization } from './components/NavUtilization';
+import { PrimaryNav } from './components/PrimaryNav';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
@@ -20,7 +21,7 @@ import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
-import { MeProvider, useMe } from './lib/useMe';
+import { MeProvider } from './lib/useMe';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
 
@@ -33,8 +34,6 @@ export function App() {
 }
 
 function AppShell() {
-  const { isAdmin } = useMe();
-
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
        on the board and then read on the issue page it links to, so the stack
@@ -43,37 +42,13 @@ function AppShell() {
       <div className="hatch-app">
         <TopBar appName="Hatch" homeHref={appHref('/')} />
 
-        <nav className="hatch-nav">
+        <div className="hatch-nav">
           <div className="hatch-nav-content">
-            {/* `end` so the board link is only lit on the board itself - every
-                other route is beneath "/" and would otherwise light it too. */}
-            <NavLink to="/" className={navLinkClass} end>Board</NavLink>
-            <NavLink to="/plan" className={navLinkClass}>Plan</NavLink>
-            {/* Beside Plan: the two pages that read across the whole board rather
-                than about one ticket belong together. */}
-            <NavLink to="/leaderboard" className={navLinkClass}>Leaderboard</NavLink>
-            <NavLink to="/bulk" className={navLinkClass}>Bulk edit</NavLink>
-            <NavLink to="/projects" className={navLinkClass}>Projects</NavLink>
-            <NavLink to="/statuses" className={navLinkClass}>Statuses</NavLink>
-            <NavLink to="/playbooks" className={navLinkClass}>Playbooks</NavLink>
-            {/* Beside Playbooks: the two pages that are about the loop rather
-                than about the board. One says what an agent is told, the other
-                says which agents are running and what they may spend. */}
-            <NavLink to="/runners" className={navLinkClass}>Runners</NavLink>
-            <NavLink to="/import" className={navLinkClass}>Import</NavLink>
-            {/* Where the runner comes from: this image publishes it, so a friend
-                who has the stack up needs nothing else to join the loop. Beside
-                Settings because both are about the installation rather than
-                about the board. */}
-            <NavLink to="/runner" className={navLinkClass}>Runner</NavLink>
+            <PrimaryNav tone="surface" />
             {/* A page like any other rather than a strip element: what it holds
                 is this installation's own configuration, and it is the only place
                 a Hatch with no admin app beside it can be configured at all. */}
             <NavLink to="/settings" className={navLinkClass}>Settings</NavLink>
-            {/* Admin only, and only where the wall gives anybody a role: the
-                pages behind these are the operator's controls. */}
-            {isAdmin ? <NavLink to="/users" className={navLinkClass}>Users</NavLink> : null}
-            {isAdmin ? <NavLink to="/api-keys" className={navLinkClass}>API keys</NavLink> : null}
             {/* A static file shipped beside this bundle rather than a route, so
                 a plain anchor and a real page navigation - a NavLink would hand
                 the path to this app's router, which owns none of it. It is
@@ -99,7 +74,7 @@ function AppShell() {
               <NavAttention />
             </div>
           </div>
-        </nav>
+        </div>
 
         <main className="hatch-content">
           <Routes>

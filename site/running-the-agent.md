@@ -29,11 +29,11 @@ Nothing else. The binary is self-contained: no .NET, no Node, no `gh`, no
 
 ## Getting the binary
 
-The **Runner** page in your board's nav offers the download for your platform
-(`win-x64`, `osx-arm64`, `osx-x64`, `linux-x64`) and prints the revision it
-was built from, which is the same commit as the image serving the page. Put it
-on your `PATH` as `hatch` (`hatch.exe` on Windows); `chmod +x hatch` on macOS
-and Linux.
+**Agents → Get the runner** in your board's nav offers the download for your
+platform (`win-x64`, `osx-arm64`, `osx-x64`, `linux-x64`) and prints the
+revision it was built from, which is the same commit as the image serving the
+page. Put it on your `PATH` as `hatch` (`hatch.exe` on Windows); `chmod +x
+hatch` on macOS and Linux.
 
 Inside a checkout of Hatch itself, `./scripts/hatch.sh` reaches the same
 commands and builds the CLI on demand with the .NET SDK. `make build-hatch`

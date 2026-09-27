@@ -75,13 +75,13 @@ stack is running. They are in the order to do them in.
    has none. **Settings → Your name** fixes that, and every comment and event
    from then on carries it.
 
-2. **Make a project.** **Projects → New project**, with a short key. `HOME`
-   gives you `HOME-1`, `HOME-2`. Until there is a project there is nothing for
-   an issue key to be made of.
+2. **Make a project.** **Manage → Projects → New project**, with a short key.
+   `HOME` gives you `HOME-1`, `HOME-2`. Until there is a project there is
+   nothing for an issue key to be made of.
 
-3. **Download the runner.** **Runner** in the nav detects your platform and
-   offers the matching binary. Put it on your `PATH` as `hatch` (`hatch.exe`
-   on Windows). On macOS and Linux, `chmod +x hatch` first.
+3. **Download the runner.** **Agents → Get the runner** detects your platform
+   and offers the matching binary. Put it on your `PATH` as `hatch`
+   (`hatch.exe` on Windows). On macOS and Linux, `chmod +x hatch` first.
 
 4. **Point it at the board.** Once, from any directory:
 
@@ -195,8 +195,8 @@ Steps:
 
    - Run `claude` once in a terminal and follow the browser prompt to log in.
    - Open the board. Settings -> Your name: set it.
-   - Projects -> New project: give it a short key such as HOME.
-   - Runner (in the nav): download the binary for this machine, put it on
+   - Manage -> Projects -> New project: give it a short key such as HOME.
+   - Agents -> Get the runner: download the binary for this machine, put it on
      the PATH as `hatch` (chmod +x on macOS/Linux).
    - Run `hatch config --origin http://localhost:<port>` and leave the key
      blank.

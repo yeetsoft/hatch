@@ -37,6 +37,15 @@
   flex: none;
 }
 
+/* Sized and weighted to sit in the same row as a plain nav link (App.css's
+   .hatch-nav-link): the base trigger's own padding and min-height are an icon
+   button's, sized for the gear rather than for the primary nav. */
+.hatch-menu__trigger--surface {
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 0;
+  font-weight: 600;
+}
+
 .hatch-menu__trigger--surface:hover,
 .hatch-menu__trigger--surface[aria-expanded='true'] {
   background-color: var(--primary-bg);
