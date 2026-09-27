@@ -342,6 +342,14 @@ public class ApiKeyTests
     }
 
     [Fact]
+    public void TheScopesRead_IsExactlyTheScopesAKeyMayCarry()
+    {
+        var controller = NewKeysController(new StubAuthService(null));
+
+        Assert.Equal(ApiKeyScopes.All, Value(controller.ListScopes()));
+    }
+
+    [Fact]
     public async Task AKeyWithNoName_IsRefused()
     {
         var controller = NewKeysController(new StubAuthService(null));
