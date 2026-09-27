@@ -85,7 +85,7 @@ filed under it is numbered from that key onwards (`HOME` gives you `HOME-1`,
 `HOME-2`). One board holds every project you make, because switching boards to
 find out what is next is the thing a folder of plan files already did badly.
 
-By default there is no sign-in. A Hatch started this way runs with its wall off, which
+Unless you put up the wall (*Putting a front door on it*, below) there is no sign-in. A Hatch started this way runs with its wall off, which
 means it does not ask who you are and does not have anywhere to look it up — so
 it signs what you do with whatever your shell already called you (`USER` on
 macOS and Linux, `USERNAME` on Windows), and calls you `friend` when neither is
@@ -97,38 +97,64 @@ comment, every move and every event on this board is signed with that name
 forever afterwards, and a board where half the trail says `friend` is a board
 that cannot answer "who did this." The field appears only on an install with
 its wall off, which is every install that started from the line above unless
-you put the wall up (next section).
+you put the wall up (*Putting a front door on it*, next).
 
-## Putting the wall up: signing in with Google
+## Putting a front door on it
 
-Optional. With the wall up Hatch asks who you are, and people sign in with
-Google. You need a Google OAuth client (a "Web application" client in the Google
-Cloud console) whose authorised redirect URI is:
+Optional, and off until you turn it on. With the wall up Hatch asks who you
+are, and people sign in with Google. It takes one file and six steps.
+
+**1. Make a Google OAuth client.** In the Google Cloud console, create an OAuth
+client of type *Web application*. Add this as an authorized redirect URI:
 
 ```
 <your-hatch-origin>/api/auth/google/callback
 ```
 
-Then set three variables in the shell that runs `docker compose`:
+Configure the consent screen too, and while it is unpublished, add as test
+users the Google accounts that may sign in.
+
+**2. Write a `.env` beside `compose.yaml`.** Compose reads it on its own, and
+git ignores it:
 
 ```
 HATCH_AUTH=true
 HATCH_GOOGLE_CLIENT_ID=<your client id>
 HATCH_GOOGLE_CLIENT_SECRET=<your client secret>
-docker compose up -d
 ```
 
-Before anyone has signed in, the migrate step says how the first Administrator
-comes to exist. Confirm it with `docker compose logs migrate`; the line reads
-"No Administrator exists yet. The next person to sign in with Google becomes the
-Administrator." If it adds that Google sign-in is not configured, a variable
-above did not arrive.
+On `http://localhost:8080` that is all: the redirect address is worked out from
+the request. Behind TLS, where the address people type is not the one the api
+sees, add `HATCH_GOOGLE_REDIRECT_URI=<your-hatch-origin>/api/auth/google/callback`.
 
-**The first person to sign in becomes the Administrator**, so the Google account
-you use first matters: sign in yourself, straight away, before you share the
-address. Everyone who signs in after that arrives Pending and can do nothing
-until an Administrator promotes them on the Users page. Signing in again never
-changes anybody's role.
+**3. Run `docker compose up -d` again,** then open `<your-hatch-origin>/apps/hatch/`
+and sign in. Confirm the wall arrived with `docker compose logs migrate`; if it
+says Google sign-in is not configured, a variable above did not arrive.
+
+**4. The first Admin, then everyone else.** The first person to sign in becomes
+the Administrator — the migrate log says so ("No Administrator exists yet. The
+next person to sign in with Google becomes the Administrator."). So sign in
+yourself, straight away, before you share the address. Everyone after arrives
+Pending and can do nothing until an Administrator approves them under
+**Users**. Signing in again never changes anybody's role.
+
+**5. The runner now needs a key.** Open **Runner → API keys**, mint one, and
+give it to the runner:
+
+```
+hatch config --origin <your-hatch-origin> --key <the key>
+```
+
+A runner in a container takes it as `HATCH_KEY=<the key>` in the same `.env`.
+
+**6. If you are locked out,** set `HATCH_AUTH=false` (or delete the line) and
+run `docker compose up -d`. That is the whole rollback, and nothing is lost:
+your projects, issues and people are all still there when you turn it back on.
+
+A note on http: the sign-in cookie is `Secure`. Chromium and Firefox accept that
+from `http://localhost`, but not from any other http address (a LAN IP, say),
+and Safari does not accept it even on localhost. For those, put TLS in front of
+Hatch and set `HATCH_GOOGLE_REDIRECT_URI` to the https address.
 
 ## Getting the runner and pointing it at the board
 
@@ -160,7 +186,7 @@ hatch go-to-work
 platform's application-data directory, outside every repository — so it follows
 you between checkouts and you do it once. A Hatch with its wall off needs no
 key; `hatch config` asks for one anyway, and against this stack you can leave
-it blank.
+it blank. With the wall up it needs one (*Putting a front door on it*, step 5).
 
 Run `go-to-work` from inside a checkout of the repository the board is about.
 

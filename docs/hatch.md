@@ -746,15 +746,15 @@ some type from one column to the next. See [the dispatcher](#the-dispatcher).
 
 ## The wall, the roles, and API keys
 
-Hatch adds no authentication of its own. It sits behind the two boundaries
-every other app in the house does — the wall, and the role gate on top of it —
-and Phase 6 of its build taught the outer one a second lane.
+Hatch ships its own wall, off by default (`HATCH_AUTH` in `compose.yaml`), with
+Google sign-in. Turning it on is the walkthrough's *Putting a front door on it*
+(`hatch-at-home.md`). Two boundaries follow: the wall, and the role gate on top
+of it — and the wall has a second lane, the API key.
 
 ### The posture
 
-- **The wall** (`AuthGate` + `AuthMiddleware`, enforced at Traefik and in
-  process) decides whether a request reaches the app at all. `hatch.${DOMAIN}`
-  carries the same `hatch-auth` middleware annotation as `home` and `kiosk`.
+- **The wall** (`AuthGate` + `AuthMiddleware`, enforced in process)
+  decides whether a request reaches the app at all.
 - **The role gate** (`RoleGate`) decides whether an already-authenticated
   request reaches what it asked for, by the role on the person the device
   belongs to — `pending`, `user` or `admin`, an ordered enum on `EfPerson.Role`.
@@ -833,9 +833,10 @@ The bearer header is **not a second authentication system**. `AuthMiddleware`
 reads `Authorization: Bearer` alongside the cookies and hands both to the same
 `AuthGate.EvaluateAsync`, which hashes the secret, matches an unrevoked key, and
 returns an ordinary `AuthDecision` carrying the key. `AuthController.Verify` —
-the endpoint Traefik's forwardAuth calls — reads the header off the forwarded
-request exactly as it reads the cookie, so the proxy half and the in-process
-half agree without either learning a new concept.
+the endpoint a fronting proxy may call (the system this repository came from
+used Traefik's forwardAuth) — reads the header off the forwarded request
+exactly as it reads the cookie, so a proxy and the in-process half agree
+without either learning a new concept.
 
 That is the whole of the rationale, and it is worth stating plainly because it
 is what the design is *for*: **there is one place that decides whether a request
