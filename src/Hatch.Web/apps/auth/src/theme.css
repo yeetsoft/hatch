@@ -1,0 +1,34 @@
+@import '@hatch/ui/tokens.css';
+@import '@hatch/ui/base.css';
+
+/* The two rules base.css leaves to the app: a full-height root, so the card can
+   sit in the middle of it, and paragraphs that take their gaps from the layout. */
+html, body, #root {
+  width: 100%;
+  height: 100%;
+}
+
+p {
+  margin: 0;
+}
+
+.auth-shell {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.auth-card {
+  width: min(24rem, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.auth-mark {
+  width: 3rem;
+  height: 3rem;
+}
