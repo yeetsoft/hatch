@@ -197,12 +197,10 @@ public class AdminSurfaceTests
         // rather than about the house.
         "UtilizationController.Get",
 
-        // Who Hatch thinks is sitting at this machine, where there is no wall
-        // to ask. Guarded like the rest of the module, and Hatch-scoped for
-        // consistency rather than for need: the route answers 204 wherever the
-        // wall is up, so on any install where the guard is awake there is
-        // nothing here to read.
-        "LocalPersonController.GetLocalPerson",
+        // Who is at the browser, so the nav strip can say so and know the
+        // role. Guarded like the rest of the module, and Hatch-scoped for
+        // consistency: a key reads as nobody and gets a 204.
+        "MeController.GetMe",
 
         // What each ticket cost, one row per agent session. Hatch-scoped like
         // the rest of the module - and the write is cut a third way, tighter

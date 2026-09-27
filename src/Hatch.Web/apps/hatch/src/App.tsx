@@ -17,10 +17,24 @@ import { BulkPage } from './pages/BulkPage';
 import { ImportPage } from './pages/ImportPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MeProvider, useMe } from './lib/useMe';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
 
+/** Stands where an Admin page will be until the stories that build them land. */
+const ComingSoon = () => <p>Coming soon.</p>;
+
 export function App() {
+  return (
+    <MeProvider>
+      <AppShell />
+    </MeProvider>
+  );
+}
+
+function AppShell() {
+  const { isAdmin } = useMe();
+
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
        on the board and then read on the issue page it links to, so the stack
@@ -61,6 +75,10 @@ export function App() {
                 is this installation's own configuration, and it is the only place
                 a Hatch with no admin app beside it can be configured at all. */}
             <NavLink to="/settings" className={navLinkClass}>Settings</NavLink>
+            {/* Admin only, and only where the wall gives anybody a role: the
+                pages behind these are the operator's controls. */}
+            {isAdmin ? <NavLink to="/users" className={navLinkClass}>Users</NavLink> : null}
+            {isAdmin ? <NavLink to="/api-keys" className={navLinkClass}>API keys</NavLink> : null}
             {/* A static file shipped beside this bundle rather than a route, so
                 a plain anchor and a real page navigation - a NavLink would hand
                 the path to this app's router, which owns none of it. It is
@@ -102,6 +120,8 @@ export function App() {
             <Route path="/import" element={<ImportPage />} />
             <Route path="/runner" element={<RunnerPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/users" element={<ComingSoon />} />
+            <Route path="/api-keys" element={<ComingSoon />} />
             {/* An unknown deep link lands on the board rather than on nothing -
                 the board is the app, and there is no page worth writing that
                 says "that URL was wrong". */}
