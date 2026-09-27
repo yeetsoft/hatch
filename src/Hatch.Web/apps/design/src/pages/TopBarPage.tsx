@@ -27,7 +27,7 @@ export function TopBarPage() {
     >
       <GallerySection
         title="As it ships"
-        note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; every other app leaves the default and gets a centred, --measure-capped bar instead."
+        note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; every other app leaves the default and gets a centred, --measure-capped bar instead. Board is forced active here (the page this specimen actually renders on is not `/color`), Plan sits at rest, and Agents is forced open with defaultOpen, so a resting link, the active link and an open menu are all on the bar at once. Hover any of them to see the hover paint live."
       >
         <div className="stage">
           <TopBar
@@ -36,9 +36,15 @@ export function TopBarPage() {
             leading={
               <nav aria-label="Primary">
                 <Menu.Bar>
-                  <NavLink to="/color" end className={navLinkClass}>Board</NavLink>
+                  <NavLink
+                    to="/color"
+                    end
+                    className="hatch-menu__trigger hatch-menu__trigger--accent hatch-menu__trigger--active"
+                  >
+                    Board
+                  </NavLink>
                   <NavLink to="/typography" className={navLinkClass}>Plan</NavLink>
-                  <Menu label="Agents" tone="accent">
+                  <Menu label="Agents" tone="accent" defaultOpen>
                     <Menu.Item href="/">Runners</Menu.Item>
                     <Menu.Item href="/">Playbooks</Menu.Item>
                   </Menu>
@@ -57,7 +63,7 @@ export function TopBarPage() {
               </>
             }
           />
-          <div className="stage-page">
+          <div className="stage-page menu-stage">
             <h3>Board</h3>
             <p className="gallery-note">The page starts here.</p>
           </div>

@@ -2381,7 +2381,7 @@ button.hatch-option.chosen {
   border: 1px solid transparent;
   border-radius: var(--r-ctl);
   background: none;
-  color: var(--on-accent);
+  color: var(--on-chrome);
   font-size: var(--t-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -2390,13 +2390,13 @@ button.hatch-option.chosen {
 }
 
 .hatch-battery:hover {
-  background-color: var(--on-accent-wash);
+  background-color: var(--on-chrome-wash);
 }
 
-/* --on-accent rather than --primary, the same reason the brand link's ring
-   is (TopBar.css): a --primary ring on this gradient is next to invisible. */
+/* --chrome-glow rather than --on-chrome, the same reason the brand link's
+   ring is (TopBar.css): an --on-chrome ring on --on-chrome ink is invisible. */
 .hatch-battery:focus-visible {
-  outline: 2px solid var(--on-accent);
+  outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
 }
 
@@ -2411,7 +2411,7 @@ button.hatch-option.chosen {
    circle rather than a stub floating on the gradient. */
 .hatch-battery-track {
   fill: none;
-  stroke: var(--on-accent-wash);
+  stroke: var(--on-chrome-wash);
   stroke-width: 2;
 }
 
@@ -2441,17 +2441,25 @@ button.hatch-option.chosen {
 }
 
 /* The three tones, and the only place any of them names a colour. Normal is
-   the bar's own --on-accent ink, so a calm battery is furniture rather than a
+   the bar's own --on-chrome ink, so a calm battery is furniture rather than a
    third thing competing with the nav. --warn and --danger cannot be ink on
    this gradient (HA-25's "Tones on the bar" rule - they measure 1.0-1.8:1 on
    it), so warn and danger are a fill under --on-accent ink instead of a
-   colour swap. HA-26 moves this onto the chrome tokens. */
+   colour swap.
+
+   The rule the rest of this file follows from here: ink on the bar's own
+   ground or its wash is --on-chrome; ink on an accent fill - including a tone
+   chip that happens to sit on the bar - stays --on-accent, wherever the fill
+   sits. A warn chip grounds in --warn-ink rather than --warn: white on --warn
+   is the same 4.24:1 shortfall as --warn text on a white card app-wide
+   (see HA-26's "Contrast, measured"); --warn-ink clears it, 6.39 light and
+   12.13 dark. --danger chips are fine as they are. */
 .hatch-battery-normal {
-  color: var(--on-accent);
+  color: var(--on-chrome);
 }
 
 .hatch-battery-warn {
-  background: var(--warn);
+  background: var(--warn-ink);
   color: var(--on-accent);
 }
 
@@ -2463,7 +2471,7 @@ button.hatch-option.chosen {
 .hatch-battery-warn:hover {
   /* A tone that is saying something keeps saying it on hover, rather than
      fading into the bar's own wash. */
-  background: var(--warn);
+  background: var(--warn-ink);
 }
 
 .hatch-battery-danger:hover {
@@ -2510,7 +2518,7 @@ button.hatch-option.chosen {
   border: 1px solid transparent;
   border-radius: var(--r-ctl);
   background: none;
-  color: var(--on-accent);
+  color: var(--on-chrome);
   font-size: var(--t-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -2519,30 +2527,30 @@ button.hatch-option.chosen {
 }
 
 .hatch-attention-control:hover {
-  background-color: var(--on-accent-wash);
+  background-color: var(--on-chrome-wash);
 }
 
 .hatch-attention-control:focus-visible {
-  outline: 2px solid var(--on-accent);
+  outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
 }
 
-/* Nothing is waiting. Furniture: the same --on-accent ink the nav wears, so a
+/* Nothing is waiting. Furniture: the same --on-chrome ink the nav wears, so a
    quiet control is not a third thing competing with it. */
 .hatch-attention-rest {
-  color: var(--on-accent);
+  color: var(--on-chrome);
 }
 
 /* Something is waiting. A tinted ground rather than a fill, so it reads as lit
    without becoming the loudest thing on a page that also draws overdue cards. */
 .hatch-attention-asking {
-  color: var(--on-accent);
-  border-color: var(--on-accent-wash);
-  background: var(--on-accent-wash);
+  color: var(--on-chrome);
+  border-color: var(--on-chrome-wash);
+  background: var(--on-chrome-wash);
 }
 
 .hatch-attention-asking:hover {
-  border-color: var(--on-accent);
+  border-color: var(--on-chrome);
 }
 
 .hatch-attention-glyph {
@@ -2567,7 +2575,7 @@ button.hatch-option.chosen {
    whole point of the glyph having two states is that the bar reads as lit
    from the corner of an eye, before the pills are legible. currentColor
    rather than --primary: --primary cannot be ink on this gradient (HA-25's
-   "Tones on the bar" rule), and currentColor is already --on-accent here. */
+   "Tones on the bar" rule), and currentColor is already --on-chrome here. */
 .hatch-attention-lamp,
 .hatch-attention-eye {
   fill: none;
@@ -2632,16 +2640,17 @@ button.hatch-option.chosen {
 
 /* One colour each, so which half is loud is legible before the panel opens.
    Which half is which is arbitrary and only has to be stable. Review is
-   inverted - --on-accent ground, --primary digit - because --primary is the
-   bar's own first stop, and a --primary pill on it would vanish; question
-   keeps its usual --warn ground and --on-accent digit, which already reads. */
+   inverted - --on-chrome ground, --chrome digit - because a --primary digit
+   on --on-chrome would be 1.92:1 in dark mode; question grounds in --warn-ink
+   rather than --warn, for the same shortfall the battery's warn tone settles
+   above, with its usual --on-accent digit. */
 .hatch-attention-pill-review {
-  background: var(--on-accent);
-  color: var(--primary);
+  background: var(--on-chrome);
+  color: var(--chrome);
 }
 
 .hatch-attention-pill-question {
-  background: var(--warn);
+  background: var(--warn-ink);
 }
 
 /* The panel: a dropdown anchored under the control, not a modal. What it holds

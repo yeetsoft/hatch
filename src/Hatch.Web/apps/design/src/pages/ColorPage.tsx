@@ -70,8 +70,19 @@ const GROUPS: ColorGroup[] = [
     title: 'Ink on an accent',
     note: 'These flip with the theme rather than being white forever: the dark accents are light blues and corals, and white on them is a label nobody can read.',
     tokens: [
-      { name: '--on-accent', use: 'A primary button’s label' },
+      { name: '--on-accent', use: 'A primary button’s label, and a tone chip on the bar' },
       { name: '--on-accent-wash', use: 'The same ink at hover strength' },
+    ],
+  },
+  {
+    title: 'Chrome',
+    note: "The bar's own ground, apart from the accent fills above: in dark mode the bar stays dark while the accents turn light, so --on-chrome is light in both themes where --on-accent flips.",
+    tokens: [
+      { name: '--chrome', use: "The gradient's near stop" },
+      { name: '--chrome-end', use: 'The far stop, violet' },
+      { name: '--on-chrome', use: 'Ink on the bar' },
+      { name: '--on-chrome-wash', use: "Hover and active ground on the bar; the bar's hairline" },
+      { name: '--chrome-glow', use: "Hover ink, the active rule's far end, the focus ring on the bar" },
     ],
   },
   {
@@ -126,6 +137,40 @@ export function ColorPage() {
               {accent.label}
             </div>
           ))}
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="On the bar"
+        note="Token pairings, not the component - see the Top bar page for the bar itself. The strip is wide enough that the samples sit at different points of the gradient; the worst figures are at the left end, where the resting and hover samples sit."
+      >
+        <div className="chrome-ground row">
+          <span style={{ fontWeight: 600, color: 'var(--on-chrome)' }}>Resting</span>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--r-ctl)',
+              backgroundColor: 'var(--on-chrome-wash)',
+              color: 'var(--chrome-glow)',
+            }}
+          >
+            Hovered
+          </span>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--r-ctl)',
+              backgroundColor: 'var(--on-chrome-wash)',
+              backgroundImage: 'linear-gradient(90deg, var(--on-chrome), var(--chrome-glow))',
+              backgroundSize: '100% 2px',
+              backgroundPosition: 'bottom',
+              backgroundRepeat: 'no-repeat',
+              color: 'var(--on-chrome)',
+            }}
+          >
+            Active
+          </span>
+          <span style={{ color: 'var(--chrome-glow)' }}>Glow</span>
         </div>
       </GallerySection>
     </GalleryPage>

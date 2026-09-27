@@ -10,7 +10,8 @@
      2. Radius     — four steps plus a pill
      3. Type       — named registers, not sizes
      4. Spacing    — one base, one ladder
-     5. Color      — light on bare :root, dark in BOTH guards
+     5. Color      — light on bare :root, dark in BOTH guards, plus Chrome:
+                     the bar's own five tokens, apart from the accent fills
      6. Motion and elevation
 
    The dark palette is authored, not derived. It is stated twice on purpose -
@@ -165,6 +166,25 @@
   --on-accent: #ffffff;
   --on-accent-wash: rgba(255, 255, 255, 0.15);
 
+  /* The bar's own ground and ink, apart from the accent fills above.
+
+     In dark mode the bar stays dark while the accents turn light, so
+     --on-accent cannot paint both: it flips per theme, --on-chrome does not -
+     it is light in BOTH themes. --on-accent stays the ink of an accent fill,
+     including a tone chip that happens to sit on the bar (a warn or danger
+     battery, the question pill) - only the bar's own ground and wash take
+     --on-chrome / --on-chrome-wash.
+
+     The light values are pinned by the worst figures along the bar: the
+     active pill and the hover ink at the bar's near end, where Board and Plan
+     sit. A designer moving --chrome or --chrome-glow re-measures there first;
+     see "Contrast, measured" on HA-26. */
+  --chrome: #0052a3;
+  --chrome-end: #4b2fc4;
+  --on-chrome: #ffffff;
+  --on-chrome-wash: rgba(255, 255, 255, 0.15);
+  --chrome-glow: #f0edff;
+
   /* The letterbox behind a video or an image whose aspect is not the frame's.
      Black in both themes - it is the absence of picture, not a surface. */
   --letterbox: #000000;
@@ -198,7 +218,9 @@
    Stated twice, identically: the media block is the OS default and steps aside
    for an explicit light choice; the attribute block is the manual override and
    wins regardless of the OS. ThemeProvider writes the attribute; `auto`
-   removes it. Keep the two blocks in sync - they are the same palette. */
+   removes it. Keep the two blocks in sync - they are the same palette.
+   apps/hatch/src/lib/tokens.test.ts fails, naming the token, when they drift
+   apart, or when a token in the dark blocks has no definition on light :root. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --bg: #1a1a1a;
@@ -223,6 +245,12 @@
 
     --on-accent: #1a1a1a;
     --on-accent-wash: rgba(0, 0, 0, 0.18);
+
+    --chrome: #0f2f6b;
+    --chrome-end: #2c1f6e;
+    --on-chrome: #e6efff;
+    --on-chrome-wash: rgba(230, 239, 255, 0.14);
+    --chrome-glow: #c4b5ff;
 
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     --overlay: rgba(0, 0, 0, 0.65);
@@ -263,6 +291,12 @@
 
   --on-accent: #1a1a1a;
   --on-accent-wash: rgba(0, 0, 0, 0.18);
+
+  --chrome: #0f2f6b;
+  --chrome-end: #2c1f6e;
+  --on-chrome: #e6efff;
+  --on-chrome-wash: rgba(230, 239, 255, 0.14);
+  --chrome-glow: #c4b5ff;
 
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   --overlay: rgba(0, 0, 0, 0.65);

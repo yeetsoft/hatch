@@ -116,7 +116,7 @@ export function MenuPage() {
 
       <GallerySection
         title="Both tones, on their grounds"
-        note="tone=surface on a page, tone=accent on the bar's fill, where the ink, the hover wash and the focus ring come from --on-accent. The panel is a card either way. active lights the trigger."
+        note="tone=surface on a page, tone=accent on the bar's fill, where the ink, the hover wash and the focus ring come from --on-chrome, --on-chrome-wash and --chrome-glow. The panel is a card either way. active lights the trigger."
       >
         <div className="stage">
           <TopBar

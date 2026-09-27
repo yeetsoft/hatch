@@ -93,6 +93,7 @@ is the whole vocabulary. It states values and paints nothing.
 | Ground | `--bg`, `--card`, `--ink`, `--muted`, `--line`, `--line-strong` | `--line-strong` is a line that has to carry weight: a pressed secondary button, a divider read against `--card` rather than `--bg` |
 | Accents | `--primary`, `--danger`, `--success`, `--warn`, each with a `-bg` wash and a `-ink` | Four meanings, not four colors. `--warn` is amber rather than orange so it is not mistaken for `--danger` at a glance down a column |
 | On-accent | `--on-accent`, `--on-accent-wash` | Ink laid *on* an accent fill. It flips with the theme: the dark accents are light blues and corals, and white on them is a ~2.2:1 label nobody can read |
+| Chrome | `--chrome`, `--chrome-end`, `--on-chrome`, `--on-chrome-wash`, `--chrome-glow` | The bar's own ground: dark in dark mode, where the accents are light, so its ink is light in *both* themes. `--on-accent` stays the ink of an accent fill, including a tone chip that happens to sit on the bar |
 | Series | `--series-1` … `--series-8` | The categorical ramp, fixed order, CVD-validated. Not a ramp to improvise on |
 | Letterbox | `--letterbox` | Black in both themes — it is the absence of picture, not a surface |
 | Motion & elevation | `--transition`, `--shadow`, `--overlay` | Calm: nothing moves unless a person moved it |
@@ -270,7 +271,8 @@ extending it by forking it is the failure this package exists to prevent. Its
 left corner is the Hatch logo and the app name, one link to the app's own home
 (`homeHref`). The logo is bundled from `packages/ui/src/assets` rather than
 served from a public path, because the package must not know where an app is
-mounted.
+mounted. It is painted from the chrome tokens, not from `--primary`: the bar's
+own ground diverges from the accent fill the buttons use.
 
 `width` picks how far it runs: `measure` caps it at `--measure` and centres it,
 which every app but hatch leaves at its default. The hatch app passes `full`,
@@ -428,6 +430,9 @@ The properties above stop holding if any of these is done:
   and nothing says so.
 - **The two dark blocks in `tokens.css` drifting apart.** They are the same
   palette written twice; an edit to one is an edit to both.
+  `apps/hatch/src/lib/tokens.test.ts` fails `make test-web` when they do, and
+  names the token that drifted - and fails the same way when a token in the
+  dark blocks has no definition on the light `:root`.
 - **A class name invented in `standalone/topbar.ts`.** The bar's two builds stay
   in step because the CSS has one source and the standalone file only *uses*
   what the components declare.
