@@ -21,8 +21,11 @@ exhaustive reference for every flag and behaviour.
   `HATCH_CLAUDE_BIN`. The runner refuses to take a ticket if it cannot find
   one, before claiming anything.
 - **A git checkout** of the repository the board is about, with a remote
-  called `origin`. Only `work` and `go-to-work` need one; every other command
-  is one request and a sentence about the answer.
+  called `origin` — the one you are standing in, or one named with `--repo`
+  or `HATCH_REPOS`, so a loop with none of its own still works the two or
+  three repositories already cloned on the machine. Only `work` and
+  `go-to-work` need one; every other command is one request and a sentence
+  about the answer.
 
 Nothing else. The binary is self-contained: no .NET, no Node, no `gh`, no
 `jq`.
@@ -67,6 +70,7 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_CLAUDE_BIN` | The `claude` CLI, if it is not on `PATH` |
 | `HATCH_BASE_BRANCH` | The trunk `go-to-work` resets to, if `origin/HEAD` does not say |
 | `HATCH_RUNNER` | What the board calls this runner. Default `host:/path/to/checkout` |
+| `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
 
 **The key lives outside the artifact**: never a tracked file, never a value in
 a commit, never pasted into a ticket. Hatch is built to be cloned by other
@@ -90,6 +94,7 @@ hatch work --dry-run              print the prompt and exit: claims nothing, spa
 hatch work -i AER-12              a session you sit in, rather than a headless one
 hatch work --quiet                say nothing until it is finished
 hatch work --model opus --effort xhigh AER-12
+hatch work --repo /path/to/a/checkout    also serve that checkout, repeatable
 ```
 
 What it does, in order: checks that the `claude` CLI can be found; sends one
@@ -136,6 +141,7 @@ hatch go-to-work --once           one pass, and out
 hatch go-to-work --under AER-1    only inside that epic's subtree
 hatch go-to-work --interval 300   seconds to wait when there was nothing to do (default 60)
 hatch go-to-work --quiet          no per-increment stream, only what each one ended as
+hatch go-to-work --repo /path/to/a/checkout    also serve that checkout, repeatable
 ```
 
 A ticket key is refused here. This command's question is "what is next", and
@@ -265,7 +271,14 @@ outspend `--max-spend`. The container runner is a third case: it carries the
 binary its image was built with, and a rebuild of the image is how it becomes
 a newer one.
 
-### One loop per checkout
+### One loop per served checkout
+
+A loop is not limited to the checkout it is standing in: `--repo` (repeatable)
+or `HATCH_REPOS` names others it serves too, so one loop on a laptop can work
+the two or three repositories already cloned there with no checkout of its
+own. Each named path is resolved and checked at startup — it must exist,
+carry a `.git`, and have an `origin` a project's binding can match — before
+anything is locked or claimed.
 
 A second `go-to-work` naming any checkout this loop already serves is refused,
 naming the pid of the one that has it. Two loops do not collide over the

@@ -478,6 +478,130 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.False(File.Exists(ConfigPath));
     }
 
+    // ---- --repo ----
+
+    private string Tree(string name)
+    {
+        var path = Path.Combine(_temp, name);
+        Directory.CreateDirectory(Path.Combine(path, ".git"));
+        return path;
+    }
+
+    [Fact]
+    public async Task Repo_writes_the_joined_list_and_touches_nothing_else()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept"]);
+
+        var a = Tree("a");
+        var b = Tree("b");
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--repo", a, "--repo", b], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains($"HATCH_REPOS={a}{Path.PathSeparator}{b}", written);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", written);
+    }
+
+    [Fact]
+    public async Task A_path_that_is_not_a_checkout_is_refused_naming_it_and_nothing_is_written()
+    {
+        var notACheckout = Path.Combine(_temp, "plain-directory");
+        Directory.CreateDirectory(notACheckout);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--repo", notACheckout], default));
+
+        Assert.Contains(notACheckout, Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_missing_path_is_refused_naming_it_and_nothing_is_written()
+    {
+        var missing = Path.Combine(_temp, "does-not-exist");
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--repo", missing], default));
+
+        Assert.Contains(missing, Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Repo_alone_clears_what_was_there()
+    {
+        var a = Tree("a");
+        await Command(new Replies()).RunAsync(["--repo", a], default);
+        Assert.Contains($"HATCH_REPOS={a}", File.ReadAllLines(ConfigPath));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--repo"], default));
+
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_REPOS=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Repo_shaped_wrong_is_refused_and_nothing_is_written()
+    {
+        var a = Tree("a");
+        var b = Tree("b");
+
+        // A trailing bare --repo.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--repo", a, "--repo"], default));
+        Assert.False(File.Exists(ConfigPath));
+
+        // Two paths with no --repo between them.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--repo", a, b], default));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_lists_the_repos_one_per_line_with_the_layer()
+    {
+        var a = Tree("a");
+        var b = Tree("b");
+        await Command(new Replies()).RunAsync(["--repo", a, "--repo", b], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_REPOS:       {a}  ({ConfigPath})", Said);
+        Assert.Contains($"HATCH_REPOS:       {b}  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_no_repos_says_unset()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+        Assert.Contains("HATCH_REPOS:       <unset>", Said);
+    }
+
+    /// <summary>
+    /// The regression the fourth <c>Write</c> parameter exists to prevent: a
+    /// `--repo` set earlier must survive an unrelated `--origin`/`--key` write.
+    /// </summary>
+    [Fact]
+    public async Task Origin_after_repo_leaves_the_repos_in_the_file()
+    {
+        var a = Tree("a");
+        await Command(new Replies()).RunAsync(["--repo", a], default);
+
+        await Command(new Replies()).RunAsync(["--origin", "https://new"], default);
+
+        Assert.Contains($"HATCH_REPOS={a}", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Key_after_repo_leaves_the_repos_in_the_file()
+    {
+        var a = Tree("a");
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
+        await Command(new Replies()).RunAsync(["--repo", a], default);
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+
+        Assert.Contains($"HATCH_REPOS={a}", File.ReadAllLines(ConfigPath));
+    }
+
     public void Dispose()
     {
         try

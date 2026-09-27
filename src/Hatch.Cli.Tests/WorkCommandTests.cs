@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 
 namespace Hatch.Cli.Tests;
@@ -254,6 +255,84 @@ public sealed class WorkCommandTests
         Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync([], default));
         Assert.Contains(h.Say.Said, l => l.Contains("nothing on the board is an agent's to move", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("what is left is in a terminal column", StringComparison.Ordinal));
+    }
+
+    // ---- --repo: checkouts a person names, rather than the one standing in ----
+
+    private static string Tree(Harness h, string name, string origin)
+    {
+        var path = Path.Combine(h.Temp, name);
+        Directory.CreateDirectory(path);
+        Git(path, "init", "--quiet");
+        Git(path, "remote", "add", "origin", origin);
+        return path;
+    }
+
+    private static void Git(string dir, params string[] args)
+    {
+        var start = new ProcessStartInfo { FileName = "git", WorkingDirectory = dir, UseShellExecute = false };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task Repo_given_on_the_command_line_ignores_whatever_HATCH_REPOS_produced()
+    {
+        using var h = new Harness();
+        var fromSettings = new CheckoutEntry(
+            Path.Combine(h.Temp, "from-settings"), "https://example.test/from-settings.git", Standing: false);
+        var runtime = h.Runtime with { Checkouts = [h.Runtime.Checkouts[0], fromSettings] };
+
+        var fromFlag = Tree(h, "from-flag", "https://example.test/from-flag.git");
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1", "--repo", fromFlag], default));
+
+        var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/from-flag.git")}", call.Query);
+        Assert.DoesNotContain("from-settings.git", call.Query);
+    }
+
+    [Fact]
+    public async Task A_missing_repo_path_refuses_before_any_claim()
+    {
+        using var h = new Harness();
+        var missing = Path.Combine(h.Temp, "does-not-exist");
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--repo", missing], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains(missing, StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task Started_outside_a_checkout_with_repo_is_named_after_the_first_checkout_and_sends_no_standing()
+    {
+        using var h = new Harness();
+        var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
+        var runtime = h.Runtime with { Checkouts = [] };
+        var runnerName = Checkout.Runner(null, Checkout.Host(), elsewhere);
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1", "--repo", elsewhere], default));
+
+        Assert.Contains(h.Wire.Calls, c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}");
+        Assert.Single(h.Sessions.Spawned);
+
+        var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];
+        Assert.DoesNotContain("standing=true", call.Query);
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/elsewhere.git")}", call.Query);
     }
 
     [Fact]

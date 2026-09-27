@@ -200,6 +200,7 @@ public sealed class Harness : IDisposable
         {
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
             Self = () => Self,
+            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire)),
         };
     }
 

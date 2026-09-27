@@ -26,7 +26,7 @@ public sealed record Settings
     /// <summary>Everything a settings file may carry. A line naming anything else is skipped, loudly.</summary>
     public static readonly string[] FileNames =
     [
-        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_BASE_BRANCH", "HATCH_RUNNER",
+        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
     ];
 
     /// <summary>Which of the three layers a value came from, for <c>config --show</c>.</summary>
@@ -62,6 +62,12 @@ public sealed record Settings
 
     /// <summary>What the board calls this runner, overriding <c>host:/path/to/checkout</c>.</summary>
     public string? Runner { get; init; }
+
+    /// <summary>
+    /// The checkouts a loop with no checkout of its own serves, beside the
+    /// standing one - empty where nothing is named.
+    /// </summary>
+    public IReadOnlyList<string> Repos { get; init; } = [];
 
     /// <summary>
     /// How long a spawned session may say nothing before the renderer says what
@@ -129,6 +135,7 @@ public sealed record Settings
         var baseBranch = Read("HATCH_BASE_BRANCH");
         var runner = Read("HATCH_RUNNER");
         var heartbeat = Read("HATCH_HEARTBEAT");
+        var reposRaw = Read("HATCH_REPOS");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -151,6 +158,10 @@ public sealed record Settings
         var pulse = 20;
         if (heartbeat is { } beat && int.TryParse(beat, out var parsed) && parsed >= 0) pulse = parsed;
 
+        var repos = reposRaw is { Length: > 0 }
+            ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [];
+
         settings = new Settings
         {
             Base = origin.TrimEnd('/'),
@@ -159,6 +170,7 @@ public sealed record Settings
             BaseBranch = baseBranch,
             Runner = runner,
             HeartbeatSeconds = pulse,
+            Repos = repos,
             Sources = sources,
         };
         return true;

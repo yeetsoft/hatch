@@ -64,10 +64,20 @@ public sealed record Runtime(
     public Func<ISelf> Self { get; init; } = () =>
         throw new InvalidOperationException("no source reader was configured");
 
+    /// <summary>
+    /// A fresh <see cref="Board"/> named for a runner this run was not started
+    /// as - what <c>--repo</c> rebuilds when it changes <see cref="RunnerName"/>
+    /// after this client already exists. Replaceable so a test can keep talking
+    /// to its own stub wire rather than a real one.
+    /// </summary>
+    public Func<string, Board> NewBoard { get; init; } = _ =>
+        throw new InvalidOperationException("no board factory was configured");
+
     /// <summary>The real ones, over whichever checkout each call names.</summary>
     public Runtime WithGit() => this with
     {
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Self = () => new LoopSource(Root),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName)),
     };
 }

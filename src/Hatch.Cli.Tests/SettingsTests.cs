@@ -115,6 +115,50 @@ public sealed class SettingsTests : IDisposable
         Assert.Null(settings.BaseBranch);
     }
 
+    // ---- HATCH_REPOS ----
+
+    [Fact]
+    public void HATCH_REPOS_splits_on_the_platforms_path_separator()
+    {
+        var user = Write("user.config",
+            "HATCH_BASE=https://mine", $"HATCH_REPOS=/repos/one{Path.PathSeparator}/repos/two");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal(["/repos/one", "/repos/two"], settings.Repos);
+    }
+
+    [Fact]
+    public void HATCH_REPOS_unset_is_empty_and_not_null()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Empty(settings.Repos);
+    }
+
+    [Fact]
+    public void An_exported_HATCH_REPOS_beats_the_checkout_file_which_beats_the_per_user_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://mine", "HATCH_REPOS=/from-the-checkout");
+        var user = Write("user.config", "HATCH_REPOS=/from-the-user-file");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_BASE", "https://mine"), ("HATCH_REPOS", "/exported")),
+            out var exported, out _, user));
+        Assert.Equal(["/exported"], exported.Repos);
+        Assert.Equal(Settings.Layer.Environment, exported.SourceOf("HATCH_REPOS"));
+
+        Assert.True(Settings.TryLoad(checkout, Env(("HATCH_BASE", "https://mine")), out var checkoutWins, out _, user));
+        Assert.Equal(["/from-the-checkout"], checkoutWins.Repos);
+        Assert.Equal(Settings.Layer.Checkout, checkoutWins.SourceOf("HATCH_REPOS"));
+
+        Assert.True(Settings.TryLoad(null, Env(("HATCH_BASE", "https://mine")), out var userWins, out _, user));
+        Assert.Equal(["/from-the-user-file"], userWins.Repos);
+        Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_REPOS"));
+    }
+
     // ---- the key is optional ----
 
     /// <summary>

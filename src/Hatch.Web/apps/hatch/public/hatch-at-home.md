@@ -372,10 +372,11 @@ alone, so `todo` at a terminal reaches the column the board calls `To Do` — an
 folds off cards whose ready date has not arrived, exactly as the board does.
 `hatch --help` lists the surface and every subcommand takes `-h` for its own.
 
-Only `work` and `go-to-work` need to be run inside a git checkout, because only
-those two are about a codebase. The other fourteen are one request and a
-sentence about the answer, and `hatch board` from a directory that has never
-been a repository is the ordinary case.
+Only `work` and `go-to-work` need a checkout, because only those two are about
+a codebase — the checkout you are standing in, or one named with `--repo` or
+`HATCH_REPOS`. The other fourteen are one request and a sentence about the
+answer, and `hatch board` from a directory that has never been a repository is
+the ordinary case.
 
 Its settings are read in three layers, highest first: an exported `HATCH_BASE`
 or `HATCH_KEY`, then `scripts/.env` in the checkout you happen to be
@@ -517,9 +518,9 @@ without leaving the machine.
 ## The `hatch` CLI, command by command
 
 Everything below runs against the board you pointed it at with `hatch config`.
-Only `work` and `go-to-work` need to be run inside a git checkout — the rest are
-one request and a sentence about the answer, so `hatch board` from anywhere is
-the ordinary case.
+Only `work` and `go-to-work` need a checkout — the one you are standing in, or
+one named with `--repo` or `HATCH_REPOS` — and the rest are one request and a
+sentence about the answer, so `hatch board` from anywhere is the ordinary case.
 
 ```
 hatch --help                 every command, from the program itself
@@ -559,6 +560,7 @@ hatch work --dry-run              print the prompt and exit - claims nothing, sp
 hatch work -i AER-12              a session you sit in, rather than a headless one
 hatch work --quiet                say nothing until it is finished
 hatch work --model opus --effort xhigh AER-12
+hatch work --repo /path/to/a/checkout    also serve that checkout, repeatable
 ```
 
 `--model` and `--effort` beat the playbook for this run only. They are one
@@ -597,6 +599,7 @@ hatch go-to-work --once           one pass, and out
 hatch go-to-work --under AER-1    only inside that epic's subtree
 hatch go-to-work --interval 300   seconds to wait when there was nothing to do (default 60)
 hatch go-to-work --quiet          no per-increment stream, only what each one ended as
+hatch go-to-work --repo /path/to/a/checkout    also serve that checkout, repeatable
 ```
 
 A ticket key is refused here: this command's question is "what is next", asked
@@ -700,13 +703,22 @@ Exit codes:
 130  interrupted
 ```
 
-#### One loop per checkout
+#### One loop per served checkout
+
+A loop is not limited to the checkout it is standing in: `--repo /path/to/a/checkout`
+(repeatable) or `HATCH_REPOS` (checkout paths joined on `Path.PathSeparator`)
+names others it serves too — which is what lets one loop on a laptop work the
+two or three repositories already cloned there, with no checkout of its own.
+Every named path is resolved and validated at startup — it must exist and
+carry a `.git`, and a project's binding can only ever match it once it has an
+`origin` — before anything is locked or claimed.
 
 A second `go-to-work` naming any checkout this loop already serves is refused,
 naming the pid of the one that has it. Two loops no longer collide over the
 board — the claim divides it — but they would still collide over a tree they
 share, one increment's reset landing in the middle of another's branch. Two
-checkouts, two loops, and both are welcome.
+checkouts, two loops, and both are welcome — whether each loop found its
+checkout by standing in it or by naming it.
 
 #### What it does to your checkout
 
@@ -787,8 +799,15 @@ HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH
 HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments
 HATCH_RUNNER       what the board calls this runner (default host:/path)
 HATCH_ROOT         the checkout to work in (default: upwards from here)
+HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on
+                   the platform's path separator (: on Unix, ; on Windows)
 HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on
 ```
+
+`--repo` on `go-to-work` or `work` (repeatable) beats `HATCH_REPOS` outright for
+that run rather than adding to it, the same way any other flag beats a setting.
+`hatch config --repo /path/to/a/checkout` (repeatable) writes `HATCH_REPOS` to
+the per-user file; `--repo` alone clears it.
 
 ### Where the prompt comes from
 

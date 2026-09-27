@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 
@@ -228,6 +229,149 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
+    }
+
+    // ---- --repo: checkouts a person names, rather than the one standing in ----
+
+    private static string Tree(Harness h, string name, string origin)
+    {
+        var path = Path.Combine(h.Temp, name);
+        Directory.CreateDirectory(path);
+        Git(path, "init", "--quiet");
+        Git(path, "remote", "add", "origin", origin);
+        return path;
+    }
+
+    private static void Git(string dir, params string[] args)
+    {
+        var start = new ProcessStartInfo { FileName = "git", WorkingDirectory = dir, UseShellExecute = false };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task Repo_twice_serves_three_checkouts_with_the_standing_one_first_and_declares_three_remotes()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        // The standing checkout's origin is re-read from git, same as every
+        // other checkout's - Harness's own bare .git directory has none set,
+        // so this test gives it the remote it already claims to have.
+        Git(h.Root, "init", "--quiet");
+        Git(h.Root, "remote", "add", "origin", h.Runtime.Checkouts[0].Remote!);
+
+        var b = Tree(h, "b", "https://example.test/b.git");
+        var c = Tree(h, "c", "https://example.test/c.git");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", b, "--repo", c], default));
+
+        var call = Assert.Single(h.Wire.To("GET", Queue));
+        Assert.Contains($"remote={Uri.EscapeDataString(h.Runtime.Checkouts[0].Remote!)}", call.Query);
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/b.git")}", call.Query);
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/c.git")}", call.Query);
+        Assert.Contains("standing=true", call.Query);
+    }
+
+    [Fact]
+    public async Task Repo_given_on_the_command_line_ignores_whatever_HATCH_REPOS_produced()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var fromSettings = new CheckoutEntry(
+            Path.Combine(h.Temp, "from-settings"), "https://example.test/from-settings.git", Standing: false);
+        var runtime = h.Runtime with { Checkouts = [h.Runtime.Checkouts[0], fromSettings] };
+
+        var fromFlag = Tree(h, "from-flag", "https://example.test/from-flag.git");
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", fromFlag], default));
+
+        var call = Assert.Single(h.Wire.To("GET", Queue));
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/from-flag.git")}", call.Query);
+        Assert.DoesNotContain("from-settings.git", call.Query);
+    }
+
+    [SkippableFact]
+    public async Task Two_spellings_of_one_repo_path_is_one_checkout_and_one_lock()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var tree = Tree(h, "Named", "https://example.test/named.git");
+        var lowered = Path.Combine(h.Temp, "named");
+        Skip.IfNot(Directory.Exists(lowered), "this filesystem is case-sensitive, so there is one spelling");
+
+        // If the two spellings were taken as two checkouts, the second
+        // LoopLock.Take would refuse itself - the pid file the first left
+        // behind is this same process's.
+        Assert.Equal(
+            0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", tree, "--repo", lowered], default));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("already running", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_lock_held_on_the_second_named_checkout_refuses_naming_it_and_releases_the_first()
+    {
+        using var h = new Harness();
+        var other = Tree(h, "other", "https://example.test/other.git");
+
+        using var held = LoopLock.Take(other, h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", other], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("already running in", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(other, StringComparison.Ordinal));
+
+        // The standing checkout's lock - taken first - was released rather
+        // than left behind: a second loop can take it.
+        using var retaken = LoopLock.Take(h.Root, h.Temp, out var refusal);
+        Assert.NotNull(retaken);
+        Assert.Equal("", refusal);
+
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_missing_repo_path_refuses_before_any_lock_and_before_any_claim()
+    {
+        using var h = new Harness();
+        var missing = Path.Combine(h.Temp, "does-not-exist");
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", missing], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains(missing, StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+
+        using var takeable = LoopLock.Take(h.Root, h.Temp, out var refusal);
+        Assert.NotNull(takeable);
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public async Task Started_outside_a_checkout_with_repo_is_named_after_the_first_and_sends_no_standing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
+        var runtime = h.Runtime with { Checkouts = [] };
+        var runnerName = Checkout.Runner(null, Checkout.Host(), elsewhere);
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", elsewhere], default));
+
+        Assert.Contains(h.Wire.Calls, c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}");
+
+        var call = Assert.Single(h.Wire.To("GET", Queue));
+        Assert.DoesNotContain("standing=true", call.Query);
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/elsewhere.git")}", call.Query);
     }
 
     [Fact]

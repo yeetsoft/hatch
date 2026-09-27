@@ -46,29 +46,16 @@ var environment = Environment.GetEnvironmentVariables()
 
 // Where the increment happens. hatch.sh names it, because it knows where it
 // lives; a runner started by hand finds it by walking up from wherever it was
-// started, which is what every other tool in a repository does.
-//
-// Only `work` and `go-to-work` require one. The other fourteen are one request
-// and a sentence about the answer, and `hatch board` from a directory that has
-// never been a repository has to work - which is most of what AERIE-934 is
-// about.
+// started, which is what every other tool in a repository does. Not every
+// runner has one: a loop with no checkout of its own is served entirely by
+// --repo or HATCH_REPOS, discovered below once Settings has loaded.
 var here = Directory.GetCurrentDirectory();
 var root = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), here);
 
-if (root is null && command is "work" or "go-to-work")
-{
-    say.Complain("hatch: this is not a git repository, and a ticket is about a codebase.");
-    say.Complain("hatch:   run it inside a checkout, or name one in HATCH_ROOT.");
-    return 1;
-}
-
-// This story's only source is the checkout the process is standing in. A
-// person's named checkouts and the clones a runner makes for itself are later
-// stories on the same epic - see Checkouts.Discover.
-var checkouts = root is null ? (IReadOnlyList<CheckoutEntry>)[] : Checkouts.Discover(root);
-
 // This checkout's own settings, at higher precedence than the per-user file, so
-// a repository that pins its own origin keeps it. Absent outside one.
+// a repository that pins its own origin keeps it. Absent outside one - a loop
+// with no standing checkout reads the exported layer and the per-user file
+// only.
 var checkoutEnv = root is null ? null : Path.Combine(root, "scripts", ".env");
 
 // `config` is the one command that has to run before there is anything to
@@ -78,7 +65,7 @@ if (command == "config")
 {
     var configured = Settings.Layers(checkoutEnv, environment)("HATCH_RUNNER").Value;
     return await new ConfigCommand(
-            say, new Input(), environment, checkoutEnv, Checkout.Runner(configured, Host(), root ?? here))
+            say, new Input(), environment, checkoutEnv, Checkout.Runner(configured, Checkout.Host(), root ?? here))
         .RunAsync(rest, CancellationToken.None);
 }
 
@@ -88,7 +75,21 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
     return 1;
 }
 
-var runnerName = Checkout.Runner(settings.Runner, Host(), root ?? here);
+// The standing checkout, if there is one, then every checkout HATCH_REPOS
+// names - refused here, before any lock is taken and before anything is
+// claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
+// exactly as broken for `hatch board` as for the loop. `work` and
+// `go-to-work` may override this list with their own --repo, below.
+if (!Checkouts.TryDiscover(root, settings.Repos, out var checkouts, out var badRepo))
+{
+    say.Complain(badRepo);
+    return 1;
+}
+
+// The standing checkout's path when there is one, otherwise the first named
+// checkout's - not "the checkout the process is standing in" any more.
+var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : here;
+var runnerName = Checkout.Runner(settings.Runner, Checkout.Host(), primaryRoot);
 
 using var client = new HatchClient(settings, runnerName);
 var board = new Board(client);
@@ -114,7 +115,7 @@ try
             Board: board,
             Sessions: new ClaudeSessionRunner(settings.ClaudeBin),
             Say: say,
-            Root: root!,
+            Root: primaryRoot,
             RunnerName: runnerName,
             TempDirectory: Path.GetTempPath(),
             Checkouts: checkouts)
@@ -186,15 +187,6 @@ PosixSignalRegistration? Handle(PosixSignal signal)
     }
 }
 
-static string Host()
-{
-    // The short name, because a runner is read by a person deciding which box to
-    // go and look at and the domain is the same on all of them.
-    var name = Environment.MachineName;
-    var dot = name.IndexOf('.');
-    return dot > 0 ? name[..dot] : name;
-}
-
 internal partial class Program
 {
     /// <summary>
@@ -264,7 +256,8 @@ internal partial class Program
         "",
         "  hatch runner-claude-token    the Claude token this Hatch holds, decoded",
         "",
-        "The two that spawn an agent, and the only two that need a git checkout:",
+        "The two that spawn an agent, and the only two that need a checkout - the one",
+        "you are standing in, or one named with --repo or HATCH_REPOS:",
         "",
         "  hatch work                   one increment on the next thing due",
         "  hatch work AER-12            ...or on this one",
@@ -273,6 +266,7 @@ internal partial class Program
         "  hatch work --quiet           ...saying nothing until it is finished",
         "  hatch work --model opus --effort xhigh AER-12",
         "  hatch work --dry-run         print the prompt, spawn nothing",
+        "  hatch work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
         "  hatch go-to-work             increments, back to back, until told to stop",
         "  hatch go-to-work --once      ...one pass, and out",
         "  hatch go-to-work --under AER-1 --interval 300",
@@ -281,6 +275,7 @@ internal partial class Program
         "  hatch go-to-work --restart-after 60   ...coming back as a newer build that often",
         "  hatch go-to-work --restart-after 0    ...only when its own source changed",
         "  hatch go-to-work --no-restart         ...never coming back as a newer one",
+        "  hatch go-to-work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
         "",
         "Every command takes -h for its own usage block.",
         "",
@@ -294,6 +289,8 @@ internal partial class Program
         "  HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments",
         "  HATCH_RUNNER       what the board calls this runner (default host:/path)",
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
+        "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
+        "                     the platform's path separator (: on Unix, ; on Windows)",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
         "",
