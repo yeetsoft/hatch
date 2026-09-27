@@ -41,6 +41,14 @@ public class ApiKeysController(IAuthService auth, ILogger<ApiKeysController> log
     }
 
     /// <summary>
+    /// The scopes a key may carry. A read of its own so the mint form offers the
+    /// server's list rather than spelling one in the bundle, and so the list
+    /// response stays the plain array its callers already expect.
+    /// </summary>
+    [HttpGet("scopes")]
+    public ActionResult<IReadOnlyList<string>> ListScopes() => ApiKeyScopes.All;
+
+    /// <summary>
     /// Mints a key. The response carries the secret in plaintext - the only
     /// moment it exists outside a hash - so it can be copied into a file once
     /// and never again after the tab is closed. A lost key is replaced by

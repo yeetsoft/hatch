@@ -3,7 +3,9 @@ import { Card, PageHeader } from '@hatch/ui';
 import { getRunner } from '../api/client';
 import { Command } from '../components/Command';
 import { detectPlatform } from '../lib/runnerPlatform';
+import { keyAdvice } from '../lib/runnerKey';
 import { useLoaded } from '../lib/useLoaded';
+import { useMe } from '../lib/useMe';
 import type { RunnerDownloads, RunnerDownload } from '../types';
 
 /**
@@ -131,6 +133,8 @@ function Reference() {
  */
 export function RunnerPage() {
   const { data: runner, error } = useLoaded<RunnerDownloads>(getRunner);
+  const { me } = useMe();
+  const advice = keyAdvice(me);
 
   // Read once at render from the browser itself. There is no reliable way to
   // tell an Apple Silicon Mac from an Intel one here, so a Mac is guessed as
@@ -239,13 +243,31 @@ export function RunnerPage() {
         </p>
         <div className="hatch-runner-commands">
           <Command command={`hatch config --origin ${origin}`} />
+          {advice !== 'none' && <Command command="hatch config --key <your key>" />}
           <Command command="hatch go-to-work" />
         </div>
         <p className="text-muted">
           Run <code>go-to-work</code> from inside a checkout of the repository the board is about.
-          If this Hatch has its wall up you will need a key too — <code>hatch config</code> asks for
-          one.
         </p>
+        {advice === 'none' && me !== null && (
+          <p className="text-muted">
+            This Hatch has no wall, so <code>hatch config</code> can leave the key blank.
+          </p>
+        )}
+        {advice !== 'none' && (
+          <p className="text-muted">
+            This Hatch has its wall up, so the runner needs a key.{' '}
+            {advice === 'needs-key-admin' ? (
+              <>
+                Mint one on the <Link to="/api-keys">API keys</Link> page and put it in the second command.
+              </>
+            ) : (
+              <>Ask an admin for one and put it in the second command.</>
+            )}{' '}
+            Or run <code>hatch config</code> and paste it at the prompt, which keeps it out of your shell
+            history.
+          </p>
+        )}
       </Card>
 
       <Card>
