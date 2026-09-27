@@ -15,7 +15,7 @@ import { useMe } from '../lib/useMe';
 export const UNNAMED_HINT = 'Hatch does not know your name.';
 
 /**
- * Who Hatch thinks is at this browser, in the nav strip - in both modes.
+ * Who Hatch thinks is at this browser, behind the gear - in both modes.
  *
  * The local person with the hint to name themselves when the wall is off; the
  * signed-in person with a Sign out when it is up. Draws nothing for a caller

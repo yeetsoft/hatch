@@ -203,7 +203,7 @@ the ticket and a comment saying what landed and what did not. The dispatcher
 refuses to move anything into a terminal column. Only you decide that something
 shipped, and only you decide that something is not worth doing now.
 
-**The attention control** in the nav strip counts what is waiting on you:
+**The attention control** on the bar counts what is waiting on you:
 pull requests nobody has reviewed, tickets in review with no pull request
 recorded, and questions nobody has answered. It always draws something, so an
 empty panel says "nothing is up for review" rather than nothing.
@@ -253,7 +253,7 @@ headline and dollars sit beside them. It ranks the most expensive runs first,
 because a leaderboard is how it gets read, and it is exactly right because it
 is also how you find the playbook that is spending too much.
 
-The **battery** in the nav strip is optional and separate: paste a token from
+The **battery** on the bar is optional and separate: paste a token from
 `claude setup-token` into Settings and Hatch shows how much headroom the
 account has left. Without one there is simply no battery.
 

@@ -687,7 +687,7 @@ export interface Attention {
 /** Who is at the browser. Mirrors MeDto.
 
     Answered in both modes; 204 (read as null) only for a key or runner, which
-    is nobody the strip should draw. */
+    is nobody the bar should draw. */
 export interface Me {
   /** `local` when the wall is off, `person` when a grant holds a person. */
   kind: 'local' | 'person';
@@ -696,8 +696,9 @@ export interface Me {
   /** Null for `local`, which has no role to gate on. */
   role: 'user' | 'admin' | null;
   /** Whether anybody actually said so, or whether this is the built-in
-      default. False is what makes the strip explain what to set - the one thing
-      a first run needs told and the one thing correct behaviour cannot say. */
+      default. False is what makes the gear's own panel explain what to set -
+      the one thing a first run needs told and the one thing correct
+      behaviour cannot say. */
   configured: boolean;
   /** Whether there is a grant to end. */
   canSignOut: boolean;

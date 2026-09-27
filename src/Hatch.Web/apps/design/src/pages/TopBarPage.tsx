@@ -12,6 +12,13 @@ import { GalleryPage, GallerySection } from '../components/Gallery';
    so none of them is a second banner landmark. Only the app's own bar, above
    the page, is one. */
 
+/* Board and Plan, drawn the way PrimaryNav.tsx draws them: a plain link
+   wearing the same accent trigger a Menu draws for itself, so the two read as
+   one row of controls. Restated here rather than imported, because this page
+   is the design system's own and must not depend on the hatch app's. */
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `hatch-menu__trigger hatch-menu__trigger--accent${isActive ? ' hatch-menu__trigger--active' : ''}`;
+
 export function TopBarPage() {
   return (
     <GalleryPage
@@ -20,13 +27,57 @@ export function TopBarPage() {
     >
       <GallerySection
         title="As it ships"
-        note="What admin renders. The logo, the app name and the gear - nothing else. The bar says where you are, and the page below says what is on it. It replaces a 131px gradient header carrying a 32px title and a subtitle: 63% of the chrome above every admin page, given back to the page."
+        note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; every other app leaves the default and gets a centred, --measure-capped bar instead."
       >
         <div className="stage">
-          <TopBar appName="Hatch Admin" />
+          <TopBar
+            appName="Hatch"
+            width="full"
+            leading={
+              <nav aria-label="Primary">
+                <Menu.Bar>
+                  <NavLink to="/color" end className={navLinkClass}>Board</NavLink>
+                  <NavLink to="/typography" className={navLinkClass}>Plan</NavLink>
+                  <Menu label="Agents" tone="accent">
+                    <Menu.Item href="/">Runners</Menu.Item>
+                    <Menu.Item href="/">Playbooks</Menu.Item>
+                  </Menu>
+                  <Menu label="Manage" tone="accent">
+                    <Menu.Item href="/">Projects</Menu.Item>
+                    <Menu.Item href="/">Statuses</Menu.Item>
+                  </Menu>
+                </Menu.Bar>
+              </nav>
+            }
+            trailing={<Badge tone="primary">3 waiting</Badge>}
+            menu={
+              <>
+                <Menu.Item href="/">Settings</Menu.Item>
+                <Menu.Item href="/">Docs</Menu.Item>
+              </>
+            }
+          />
           <div className="stage-page">
-            <h3>Zones</h3>
+            <h3>Board</h3>
             <p className="gallery-note">The page starts here.</p>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Width"
+        note="`measure` caps the bar at --measure and centres it, the default every app but hatch leaves alone. `full` drops the cap and runs it to the box it sits in - the window, in a real app. This stage narrows --measure on itself, gallery furniture rather than a real width, so the two are visibly different without resizing the window."
+      >
+        <div className="stage stage--narrow-measure">
+          <TopBar appName="Hatch" />
+          <div className="stage-page">
+            <p className="gallery-note">width=&quot;measure&quot;, the default: centred, capped.</p>
+          </div>
+        </div>
+        <div className="stage stage--narrow-measure">
+          <TopBar appName="Hatch" width="full" />
+          <div className="stage-page">
+            <p className="gallery-note">width=&quot;full&quot;: runs to the stage's own edges.</p>
           </div>
         </div>
       </GallerySection>

@@ -61,7 +61,11 @@
 }
 
 /* On the bar's fill: --on-accent ink, wash on hover, and a ring in --on-accent
-   because a --primary ring on a --primary ground is invisible. */
+   because a --primary ring on a --primary ground is invisible. Not only a
+   Menu's own trigger wears this: a plain top-level link standing among
+   triggers in the same bar (the hatch app's Board and Plan) takes it too, so
+   a link and a menu read as one row of controls rather than two kinds of
+   thing beside each other. */
 .hatch-menu__trigger--accent {
   color: var(--on-accent);
 }

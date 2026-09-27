@@ -4,14 +4,15 @@ import type { MenuTone } from '@hatch/ui';
 import { activeGroup, navFor } from '../lib/nav';
 import { useMe } from '../lib/useMe';
 
-const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `hatch-menu__trigger hatch-menu__trigger--accent${isActive ? ' hatch-menu__trigger--active' : ''}`;
 
 /**
  * The app's four-way nav: Board and Plan as links, Agents and Manage as
  * menus. `lib/nav.ts` is the one place to change what it shows or where a
  * page lives; this component only draws whatever that file returns.
  *
- * HA-25 moves this element into the gradient bar with `tone="accent"` - the
+ * Rides in the gradient bar's `leading` slot with `tone="accent"` - the
  * component itself does not change, only the tone it is passed and the box it
  * sits in.
  */

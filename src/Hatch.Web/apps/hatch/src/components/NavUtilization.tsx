@@ -15,11 +15,11 @@ const TICK_MS = 30 * 1000;
  * Its own component rather than four more lines in App.tsx, because there are
  * three pieces of state here - the reading, whether the modal is open, and a
  * clock - and only the first of them is App's business. App mounts one element
- * and the nav strip stays a list of links.
+ * and the bar stays a row of controls.
  *
  * The reading is held here and passed to both, which is what makes the modal
  * free to open (it renders what the nav already has) and what makes the refresh
- * inside it move the glyph in the strip: one piece of state, not two.
+ * inside it move the glyph on the bar: one piece of state, not two.
  */
 export function NavUtilization() {
   const { reading, refresh } = useUtilization();

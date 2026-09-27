@@ -1031,7 +1031,7 @@ up before anything is written, and the bulk path shares it.
 
 ## The battery
 
-The nav strip carries one element the board does not: how much Claude the
+The bar carries one element the board does not: how much Claude the
 account has left, and how long until it comes back. It is read from every page
 without opening another app, and it is drawn from `GET
 /api/hatch/utilization`.
@@ -1135,8 +1135,8 @@ pressing a button once, which is not what the floors exist to bound.
 
 ## What is waiting on you
 
-Beside the battery, at the right end of the same strip, is the other thing a
-nav strip is for: whether the loop has stopped and is waiting on a person. Two
+Beside the battery, at the right end of the same bar, is the other thing the
+bar is for: whether the loop has stopped and is waiting on a person. Two
 things stop a night — a pull request nobody has reviewed, and a question nobody
 has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
@@ -1175,7 +1175,7 @@ Neither half restates a rule that already lives somewhere:
   one rule written twice, in two languages, and the two would drift.
 - **Open means what it means everywhere else.** `questions` is the same call
   `/questions` answers with — `Questions.Open`, a question with nothing pointing
-  at it — so the count in the strip and the badge on a board card cannot
+  at it — so the count on the bar and the badge on a board card cannot
   disagree.
 
 ### The issue in review with no pull request
@@ -1194,7 +1194,7 @@ shouting.
 
 The control keeps itself current on a sixty-second poll and on
 `visibilitychange`, the way [the battery](#the-battery) does, and a read that
-fails leaves the last answer drawn and says nothing at all. A nav strip is not
+fails leaves the last answer drawn and says nothing at all. The bar is not
 where a fetch failure gets announced.
 
 

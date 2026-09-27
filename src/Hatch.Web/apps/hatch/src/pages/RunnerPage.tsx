@@ -292,7 +292,7 @@ export function RunnerPage() {
         </p>
         <p className="text-muted">
           {/* A static file shipped beside this bundle, so a plain anchor - see
-              the Docs link in the nav strip, which goes to the same page. */}
+              the Docs link behind the gear, which goes to the same page. */}
           The long version, including the block to paste into your repository's <code>CLAUDE.md</code>{' '}
           so your agents know how to reach this board:{' '}
           <a href="/apps/hatch/hatch-at-home.md">Hatch at home</a>.

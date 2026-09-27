@@ -1,7 +1,7 @@
 import type { Me } from '../types';
 
 /**
- * What the nav strip draws for the caller, decided apart from the drawing so
+ * What the bar draws for the caller, decided apart from the drawing so
  * it can be tested without a rendered tree.
  */
 export interface MeView {

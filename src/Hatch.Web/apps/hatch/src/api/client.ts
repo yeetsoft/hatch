@@ -344,7 +344,7 @@ export const getAttention = () => fetchJson<Attention>('/api/hatch/attention');
  * Who Hatch thinks is at this machine, or null.
  *
  * Null is the 204 and is not a failure: it means this install has a wall, so
- * the question does not arise and the strip draws nothing at all - the same
+ * the question does not arise and the bar draws nothing at all - the same
  * shape `getUtilization` takes and for the same reason.
  */
 export const getMe = () => fetchJson<Me | undefined>('/api/hatch/me').then((me) => me ?? null);

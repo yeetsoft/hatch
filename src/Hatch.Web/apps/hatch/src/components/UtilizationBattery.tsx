@@ -66,7 +66,7 @@ export function UtilizationBattery({
         </defs>
 
         {/* The track the arc is drawn on, so a nearly-spent window is still a
-            circle rather than a lone stub floating in the strip. */}
+            circle rather than a lone stub floating on the bar. */}
         <circle className="hatch-battery-track" cx={CENTRE} cy={CENTRE} r={RING_RADIUS} />
 
         {fraction === null ? (

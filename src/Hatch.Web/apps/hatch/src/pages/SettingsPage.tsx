@@ -38,7 +38,7 @@ export function SettingsPage() {
       setData(await putHatchSettings(request));
       setToken('');
       setError(null);
-      // The nav strip is mounted alongside this page and a route change here is
+      // The bar is mounted alongside this page and a route change here is
       // not a page load, so it is told rather than left to find out.
       if (what === 'name') announceLocalPersonChanged();
     } catch (err) {
@@ -80,7 +80,7 @@ export function SettingsPage() {
           </ol>
           <Field
             label="Token"
-            hint="An OAuth token for your own Claude subscription. It is what lets the nav strip say how much headroom the account has left, and it is entirely optional - without one Hatch simply has no battery. Stored obfuscated, and never read back."
+            hint="An OAuth token for your own Claude subscription. It is what lets the bar say how much headroom the account has left, and it is entirely optional - without one Hatch simply has no battery. Stored obfuscated, and never read back."
           >
             <input
               type="password"
