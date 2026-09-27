@@ -14,7 +14,7 @@ export function App() {
       {/* The gallery wears the bar it documents. That is not decoration: the
           one context a top bar is never shown in on a specimen page is a real
           app, and this app is the one that can show it in both at once. */}
-      <TopBar appName="Hatch Design" />
+      <TopBar appName="Hatch Design" homeHref="/apps/design/" />
 
       <div className="design-body">
         <nav className="design-rail" aria-label="Sections">

@@ -1,17 +1,19 @@
 import type { ReactNode } from 'react';
-import { AppSwitcher } from './AppSwitcher';
 import { ThemeSwitch } from './ThemeSwitch';
+/* The canonical file is hatch-logo.png at the repository root; this is a copy
+   the bundler can reach, and it is bundled rather than served from a public
+   path because this package must not know where an app is mounted. */
+import logo from '../assets/hatch-logo.png';
 import './TopBar.css';
 
 export interface TopBarProps {
   /** The app's own name, and the only text the bar states. Not a tagline: the
       bar says where you are, and the page below says what is on it. */
   appName: string;
-  /** Passed through to the <AppSwitcher>. */
+  /** Where the logo and name link to: the app's own home. The default is `/`,
+      the address that survives an app moving; an app mounted under a path
+      passes its own root. */
   homeHref?: string;
-  /** Set by the app picker itself, where the switcher slot is the home state
-      rather than a link to the page you are already on. */
-  atHome?: boolean;
   /** App-supplied content, after the app name. An environment badge, a
       breadcrumb, a search box - whatever the app needs the bar to carry. */
   leading?: ReactNode;
@@ -21,7 +23,7 @@ export interface TopBarProps {
 }
 
 /**
- * The bar every Hatch app wears. Admin, the gallery and the app picker render
+ * The bar every Hatch app wears. Admin and the gallery render
  * it today; auth, docs, modeler and family are why it is in @hatch/ui rather
  * than in any one of them.
  *
@@ -47,13 +49,17 @@ export interface TopBarProps {
  * a change to TopBar.css reaches both; a change to the *markup* here has to be
  * made there too. That file carries the rule, and the list of what differs.
  */
-export function TopBar({ appName, homeHref, atHome, leading, trailing, className }: TopBarProps) {
+export function TopBar({ appName, homeHref = '/', leading, trailing, className }: TopBarProps) {
   return (
     <header className={className ? `hatch-topbar ${className}` : 'hatch-topbar'}>
       <div className="hatch-topbar__inner">
         <div className="hatch-topbar__side">
-          <AppSwitcher href={homeHref} current={atHome} />
-          <span className="hatch-topbar__name">{appName}</span>
+          {/* An <a>, so middle-click and "copy link address" work. The logo is
+              decoration: the name beside it is the link's accessible name. */}
+          <a className="hatch-topbar__brand" href={homeHref}>
+            <img src={logo} alt="" width={28} height={28} />
+            <span className="hatch-topbar__name">{appName}</span>
+          </a>
           {leading}
         </div>
         <div className="hatch-topbar__side hatch-topbar__side--end">

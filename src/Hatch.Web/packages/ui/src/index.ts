@@ -21,8 +21,6 @@ export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
 export { TopBar } from './components/TopBar';
 export type { TopBarProps } from './components/TopBar';
-export { AppSwitcher } from './components/AppSwitcher';
-export type { AppSwitcherProps } from './components/AppSwitcher';
 
 /* The primitives. Ordered the way a page is built rather than alphabetically:
    the frame first, then what goes in it, then what it says. */
