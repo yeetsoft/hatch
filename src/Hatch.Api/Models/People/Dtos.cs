@@ -22,6 +22,13 @@ namespace Hatch.Api.Models.People;
 /// faces from, and who may do what is not a secret in a household. See
 /// EfPerson.Role.
 /// </param>
+/// <param name="Email">
+/// The address the person's most recently used identity reported, or null for
+/// someone with none - a person made by hand on this page has never signed in
+/// anywhere. A label that follows the account, never a key.
+/// </param>
+/// <param name="Provider">The provider of that same identity (<c>google</c>), or null.</param>
+/// <param name="LastSignInAt">When that identity last signed in, or null.</param>
 public record PersonDto(
     Guid Id,
     string Name,
@@ -29,7 +36,10 @@ public record PersonDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? PhotoUpdatedAt,
-    int SessionCount)
+    int SessionCount,
+    string? Email = null,
+    string? Provider = null,
+    DateTimeOffset? LastSignInAt = null)
 {
     public bool HasPhoto => PhotoUpdatedAt is not null;
 }

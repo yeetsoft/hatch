@@ -107,10 +107,17 @@ public class EfPerson
     /// who has never held a tablet, which is most of the reason a person is not
     /// an account.
     ///
-    /// The inverse of a nullable FK on the grant, so deleting a person empties
-    /// this list rather than deleting what is in it; see EfAuthGrant.PersonId.
+    /// The inverse of a nullable FK on the grant, and deleting a person deletes
+    /// what is in it - their sessions end with them; see EfAuthGrant.PersonId.
     /// </summary>
     public ICollection<EfAuthGrant> Grants { get; set; } = [];
+
+    /// <summary>
+    /// The outside accounts this person signs in with. Zero is ordinary - a
+    /// person made by hand has none - and more than one is possible, which is
+    /// why the People list reads the most recently used rather than "the" one.
+    /// </summary>
+    public ICollection<EfExternalIdentity> Identities { get; set; } = [];
 }
 
 /// <summary>

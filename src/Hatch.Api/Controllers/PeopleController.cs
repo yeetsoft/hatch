@@ -80,6 +80,9 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
         var person = await db.People.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (person is null) return NotFound();
 
+        if (person.Role == PersonRole.Admin && role != PersonRole.Admin && await IsLastAdmin(id, ct))
+            return Conflict(LastAdminSentence("demoted"));
+
         person.Name = name;
         person.Role = role;
         person.UpdatedAt = time.GetUtcNow();
@@ -89,10 +92,10 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
     }
 
     /// <summary>
-    /// Deletes the person. Their photo goes with them (cascade), and their
-    /// sessions do not: those are enrolled devices that still work and whose
-    /// owner is now simply unknown. Deleting a person must never be a way to
-    /// lock a tablet out of the house.
+    /// Deletes the person. Their photo, their identities and their sessions go
+    /// with them (cascade): an ownerless grant is refused by the role gate
+    /// anyway, so a session that outlived its person would be a credential
+    /// that reaches nothing. Refused with a 409 for the last Admin.
     /// </summary>
     [RequireAdmin]
     [HttpDelete("{id:guid}")]
@@ -101,10 +104,24 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
         var person = await db.People.FindAsync([id], ct);
         if (person is null) return NotFound();
 
+        if (person.Role == PersonRole.Admin && await IsLastAdmin(id, ct))
+            return Conflict(LastAdminSentence("deleted"));
+
         db.People.Remove(person);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Whether nobody but this person holds Admin - so a write that takes it
+    /// from them would leave the install with no one who can manage people.
+    /// A second Admin demoting themselves is fine; it is the last that is not.
+    /// </summary>
+    private Task<bool> IsLastAdmin(Guid id, CancellationToken ct)
+        => db.People.AllAsync(p => p.Id == id || p.Role != PersonRole.Admin, ct);
+
+    private static string LastAdminSentence(string verb)
+        => $"The last Admin cannot be {verb}. Make someone else an Admin first.";
 
     // ---- Sessions (read-only here; the write lives on AuthController) ----
 
@@ -231,5 +248,8 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
             p.CreatedAt,
             p.UpdatedAt,
             p.Photo == null ? null : p.Photo.UpdatedAt,
-            p.Grants.Count);
+            p.Grants.Count,
+            p.Identities.OrderByDescending(i => i.LastSignInAt).Select(i => i.Email).FirstOrDefault(),
+            p.Identities.OrderByDescending(i => i.LastSignInAt).Select(i => i.Provider).FirstOrDefault(),
+            p.Identities.OrderByDescending(i => i.LastSignInAt).Select(i => (DateTimeOffset?)i.LastSignInAt).FirstOrDefault());
 }

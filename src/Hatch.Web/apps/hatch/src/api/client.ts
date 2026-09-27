@@ -23,9 +23,13 @@ import type {
   IssueRollup,
   IssueSearch,
   Me,
+  AuthMe,
   ParsedEpic,
   PastedPlan,
   Plan,
+  Person,
+  PersonSession,
+  PersonWriteRequest,
   Playbook,
   PlaybookCreateRequest,
   PlaybookPatchRequest,
@@ -433,3 +437,20 @@ export interface WorkLogSessionQuery {
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;
 }
+
+// ---- People ----
+//
+// Admin-only on the server, every one of them; a User's `/users` is not in the
+// nav and these answer 403 if it is reached anyway.
+
+export const getPeople = () => fetchJson<Person[]>('/api/people');
+export const putPerson = (id: string, request: PersonWriteRequest) =>
+  fetchJson<Person>(`/api/people/${seg(id)}`, { method: 'PUT', ...asJson(request) });
+export const deletePerson = (id: string) => fetchJson<void>(`/api/people/${seg(id)}`, { method: 'DELETE' });
+export const getPersonSessions = (id: string) =>
+  fetchJson<PersonSession[]>(`/api/people/${seg(id)}/sessions`);
+export const revokeGrant = (id: string) => fetchJson<void>(`/api/auth/grants/${seg(id)}`, { method: 'DELETE' });
+
+/** The grant this browser holds - how the Users page knows which session row is
+    "this browser". Null when there is no grant (the wall is off). */
+export const getAuthMe = () => fetchJson<AuthMe | undefined>('/api/auth/me').then((me) => me ?? null);
