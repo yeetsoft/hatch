@@ -771,6 +771,11 @@ A Pending person is refused at every level, and reaches only the sign-in screen
 and the two routes that say who they are (`/api/auth/me`, `/api/auth/sign-out`),
 which ask the wall for a credential and nothing more.
 
+An Admin can skip the waiting by adding an email on the Users page first. The
+address becomes an *unclaimed* identity (no `Subject` yet) carrying the chosen
+role, and the first verified Google sign-in with that address binds it: from
+then on the `sub` is the identity, and the email is never used to find it again.
+
 | Reaching | As | Answer |
 |---|---|---|
 | `/apps/hatch/…` navigation | no credential | **302** to sign-in with `?r=` |

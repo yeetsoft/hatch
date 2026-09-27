@@ -164,6 +164,74 @@ public class GoogleSignInTests
         Assert.Equal(2, await db.AuthGrants.CountAsync());
     }
 
+    private static async Task<EfPerson> SeedUnclaimed(AppDbContext db, string email, PersonRole role = PersonRole.User)
+    {
+        var person = new EfPerson { Name = "Ada", Role = role, CreatedAt = Now, UpdatedAt = Now };
+        db.ExternalIdentities.Add(new EfExternalIdentity
+        {
+            Provider = EfExternalIdentity.GoogleProvider, Subject = null, Email = email, Person = person, CreatedAt = Now,
+        });
+        await db.SaveChangesAsync();
+        return person;
+    }
+
+    [Fact]
+    public async Task AFirstSignInWithAPreApprovedEmailClaimsItAndKeepsTheRole()
+    {
+        var (controller, db, google, _) = New();
+        var seeded = await SeedUnclaimed(db, "ada@example.com");
+        // Another Admin does not exist: the first-Admin rule must not apply to a claim.
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-9", email: "Ada@Example.com");
+
+        var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
+
+        Assert.Equal("/apps/hatch/", redirect.Url);
+        var person = await db.People.SingleAsync();
+        Assert.Equal(seeded.Id, person.Id);
+        Assert.Equal(PersonRole.User, person.Role);
+        var identity = await db.ExternalIdentities.SingleAsync();
+        Assert.Equal("sub-9", identity.Subject);
+        Assert.Equal(Now, identity.LastSignInAt);
+        Assert.Equal("Ada@Example.com", identity.Email);
+        Assert.Equal(person.Id, (await db.AuthGrants.SingleAsync()).PersonId);
+    }
+
+    [Fact]
+    public async Task AnUnverifiedEmailDoesNotClaimAPreApprovedRow()
+    {
+        var (controller, db, google, _) = New();
+        await SeedUnclaimed(db, "ada@example.com");
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-9", email: "ada@example.com", emailVerified: false);
+
+        var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
+
+        Assert.Equal("/apps/auth/?error=email_unverified", redirect.Url);
+        Assert.Null((await db.ExternalIdentities.SingleAsync()).Subject);
+        Assert.Empty(db.AuthGrants);
+    }
+
+    [Fact]
+    public async Task ABoundIdentityIsNeverRematchedByEmail()
+    {
+        var (controller, db, google, _) = New();
+        await SeedUnclaimed(db, "ada@example.com", PersonRole.Admin); // an Admin exists, so a stranger is Pending
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-9", email: "ada@example.com");
+        await controller.Callback("c", "s1", null, CancellationToken.None);
+
+        await SeedState(db, "s2");
+        google.IdToken = Token(sub: "sub-other", email: "ada@example.com");
+        await controller.Callback("c", "s2", null, CancellationToken.None);
+
+        Assert.Equal(2, await db.People.CountAsync());
+        var bound = await db.ExternalIdentities.SingleAsync(i => i.Subject == "sub-9");
+        var other = await db.ExternalIdentities.Include(i => i.Person).SingleAsync(i => i.Subject == "sub-other");
+        Assert.NotEqual(bound.PersonId, other.PersonId);
+        Assert.Equal(PersonRole.Pending, other.Person!.Role);
+    }
+
     [Fact]
     public async Task TheFirstSignInOnAnInstallWithNoAdminBecomesAnAdmin()
     {
