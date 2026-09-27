@@ -1699,10 +1699,19 @@ answer — changes nothing. The next tick tries again.
 
 ### The workspace, between increments
 
-Every increment starts on the trunk, at the tip the remote has it at right now.
+Every increment starts on the trunk, at the tip the remote has it at right now
+— on every checkout the increment will use, in order: the ticket's project may
+bind more than one repository, and each gets fetched, stashed and reset before
+the session that reads all of them is spawned. A ticket for a repository this
+loop does not have is folded past, with the reason, and never reaches this
+step at all.
+
 The loop fetches, stashes anything the tree was carrying, and puts the checkout
 back on the default branch before it spawns anything — so a session's first act
-is cutting a branch, and the thing it cuts from is not in question.
+is cutting a branch, and the thing it cuts from is not in question. A binding's
+own base branch beats `origin/HEAD` for that checkout; `HATCH_BASE_BRANCH`
+still only ever overrides the checkout the loop is standing in, as it always
+has.
 
 This is the loop's job rather than a [playbook](#playbooks)'s for the reason
 every load-bearing sentence in a prompt eventually demonstrates: a playbook is
@@ -1749,9 +1758,11 @@ one condition under which every remaining ticket would be built wrong and no
 further increment could tell the difference. Nothing is spawned and nothing is
 spent on either.
 
-The branch the trunk is is asked of the repository, not written down here:
-`origin/HEAD` first, the remote itself for a checkout that never got one, and
-`HATCH_BASE_BRANCH` for an installation that calls it something else.
+The branch the trunk is is asked of the repository, not written down here: a
+binding's own base branch first where the checkout has one, then `origin/HEAD`,
+then the remote itself for a checkout that never got either, and
+`HATCH_BASE_BRANCH` — for the checkout the loop is standing in only — for an
+installation that calls it something else.
 
 ### When an increment does nothing
 

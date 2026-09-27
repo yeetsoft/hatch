@@ -66,11 +66,14 @@ public sealed class IncrementReport
 /// does the last word, because one of them is talking to somebody sitting there
 /// and the other is writing a log nobody will read until morning.
 /// </remarks>
-public sealed class Increment(Board board, ISessionRunner sessions, Settings settings, Terminal say)
+public sealed class Increment(
+    Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts)
 {
     public async Task<IncrementReport> RunAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
-        Claim claim, CancellationToken ct)
+        Claim claim, CancellationToken ct,
+        IReadOnlyList<string>? addDirs = null,
+        IReadOnlyList<Checkouts.RepositoryLine>? repositories = null)
     {
         var report = new IncrementReport
         {
@@ -99,7 +102,7 @@ public sealed class Increment(Board board, ISessionRunner sessions, Settings set
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
         claim.OnLost = _ => stopping.Cancel();
 
-        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token);
+        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories);
         report.ExitCode = result.ExitCode;
         report.SessionId = facts.SessionId;
         report.Cost = facts.CostUsd;
@@ -126,7 +129,7 @@ public sealed class Increment(Board board, ISessionRunner sessions, Settings set
         // the read that can tell the difference.
         try
         {
-            var later = await board.WorkAsync(report.Key, claim.Lost is null ? claim.Token : null, ct);
+            var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
             report.Ended = later?.FromStatus.Name ?? report.From;
             if (report.Ended == report.From) report.Stalled = true;
             else report.Moved = true;
@@ -182,9 +185,10 @@ public sealed class Increment(Board board, ISessionRunner sessions, Settings set
 
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
-        RunFacts facts, Claim claim, CancellationToken ct)
+        RunFacts facts, Claim claim, CancellationToken ct,
+        IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories)
     {
-        var request = new SessionRequest(root, model, effort, Prompt.Compose(work), quiet);
+        var request = new SessionRequest(root, model, effort, Prompt.Compose(work, repositories), quiet, addDirs);
         var render = new StreamRender(root, facts);
 
         if (quiet)

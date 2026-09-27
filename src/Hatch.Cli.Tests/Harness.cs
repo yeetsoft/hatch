@@ -95,25 +95,41 @@ public sealed class FakeSessions : ISessionRunner
 }
 
 /// <summary>The tree between increments, without a remote to fetch from.</summary>
-public sealed class FakeWorkspace : IWorkspace
+/// <remarks>
+/// A factory rather than one <see cref="IWorkspace"/>, since <see
+/// cref="Runtime.Workspace"/> takes a path and a base branch and can be asked
+/// for more than one checkout in a pass. <see cref="Prepared"/> is the paths
+/// asked for, in order - both the count a single-checkout test wants and the
+/// sequence a multi-checkout one does.
+/// </remarks>
+public sealed class FakeWorkspace
 {
+    /// <summary>What any checkout not named in <see cref="AnswerFor"/> resets to.</summary>
     public Reset Answer { get; set; } = Reset.Ready;
 
-    /// <summary>How many times a pass asked for the tree to be made current.</summary>
-    public int Prepared { get; private set; }
+    /// <summary>What one particular checkout resets to, overriding <see cref="Answer"/>.</summary>
+    public Dictionary<string, Reset> AnswerFor { get; } = [];
+
+    /// <summary>Every path a pass asked to be made current, in the order it asked.</summary>
+    public List<string> Prepared { get; } = [];
 
     /// <summary>
-    /// Run at the moment the reset is asked for, so a test can look at what had
+    /// Run at the moment a reset is asked for, so a test can look at what had
     /// already happened by then. The order is the acceptance criterion: a ticket
     /// is claimed before the fetch, not after it.
     /// </summary>
     public Action? Watching { get; set; }
 
-    public Reset Prepare()
+    public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
+
+    private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
     {
-        Prepared++;
-        Watching?.Invoke();
-        return Answer;
+        public Reset Prepare()
+        {
+            owner.Prepared.Add(path);
+            owner.Watching?.Invoke();
+            return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
+        }
     }
 }
 
@@ -179,9 +195,10 @@ public sealed class Harness : IDisposable
             Root: Root,
             RunnerName: "test:/checkout",
             TempDirectory: Temp,
+            Checkouts: [new CheckoutEntry(Root, "https://example.test/repo.git", Standing: true)],
             Heartbeat: heartbeat ?? Beat)
         {
-            Workspace = () => Workspace,
+            Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
             Self = () => Self,
         };
     }

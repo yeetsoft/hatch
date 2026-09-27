@@ -26,6 +26,14 @@ public sealed record Cli(
     /// <summary>The clock, so a test can put a ready date on either side of today.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 
+    /// <summary>
+    /// The checkouts this process is standing in, if any - empty everywhere
+    /// there is no tree, which is most places these fourteen commands run.
+    /// Declared on the reads that fold on it, so a queue read from inside a
+    /// checkout sees the same fold a spawned loop would.
+    /// </summary>
+    public IReadOnlyList<CheckoutEntry> Checkouts { get; init; } = [];
+
     public DateTimeOffset Now => Clock.GetLocalNow();
 
     public int OffsetMinutes => Board.OffsetMinutes(Now);

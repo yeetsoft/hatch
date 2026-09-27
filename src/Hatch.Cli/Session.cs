@@ -9,8 +9,16 @@ namespace Hatch.Cli;
 /// one object at the end carrying the session id, the cost, and the last thing
 /// the session said.
 /// </param>
+/// <param name="AddDirs">
+/// Every other checkout the dispatch's project binds and this runner holds, so
+/// a session can reach a sibling repository without leaving <see cref="Root"/>.
+/// </param>
 public sealed record SessionRequest(
-    string Root, string Model, string Effort, string Prompt, bool Quiet);
+    string Root, string Model, string Effort, string Prompt, bool Quiet,
+    IReadOnlyList<string>? AddDirs = null)
+{
+    public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
+}
 
 /// <param name="Output">Everything the CLI wrote, on a quiet run. Empty on a streamed one, which was rendered as it arrived.</param>
 public sealed record SessionResult(int ExitCode, string Output);
@@ -182,6 +190,12 @@ public sealed class ClaudeSessionRunner(string? configured = null) : ISessionRun
         start.ArgumentList.Add(request.Effort);
         start.ArgumentList.Add("--add-dir");
         start.ArgumentList.Add(request.Root);
+        foreach (var dir in request.AddDirs)
+        {
+            start.ArgumentList.Add("--add-dir");
+            start.ArgumentList.Add(dir);
+        }
+
         return start;
     }
 

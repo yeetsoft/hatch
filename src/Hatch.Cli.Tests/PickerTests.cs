@@ -13,6 +13,15 @@ public sealed class PickerTests
     private static string Held(string runner) =>
         $"\"hatch is working this from {runner}, last heard from 8 seconds ago\"";
 
+    /// <summary>
+    /// A picker over the harness's own checkout by default, so the tests below
+    /// that do not care about checkouts at all do not have to spell one out -
+    /// and the ones that do can hand in their own.
+    /// </summary>
+    private static Picker MakePicker(
+        Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null) =>
+        new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null);
+
     [Fact]
     public async Task The_first_clear_row_is_claimed_and_read_back_with_the_token()
     {
@@ -24,7 +33,7 @@ public sealed class PickerTests
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
@@ -53,7 +62,7 @@ public sealed class PickerTests
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         // Two loops that started in the same second end up on two tickets, and
@@ -76,7 +85,7 @@ public sealed class PickerTests
             h.Wire.Reply("POST", $"/api/hatch/issues/{row.Issue.Key}/claim", HttpStatusCode.Conflict,
                 Held("other:/tree"));
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Busy, picked.Outcome);
@@ -101,7 +110,7 @@ public sealed class PickerTests
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", "a question is open") });
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Idle, picked.Outcome);
@@ -123,7 +132,7 @@ public sealed class PickerTests
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
@@ -141,7 +150,7 @@ public sealed class PickerTests
         using var h = new Harness();
         h.Wire.Reply("GET", Queue, HttpStatusCode.InternalServerError, "boom");
 
-        var picked = await new Picker(h.Board, "test:/checkout", h.Say)
+        var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Unreadable, picked.Outcome);
@@ -153,10 +162,83 @@ public sealed class PickerTests
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
 
-        await new Picker(h.Board, "test:/checkout", h.Say).PickAsync("AER-1", -420, default, Harness.Beat);
+        await MakePicker(h).PickAsync("AER-1", -420, default, Harness.Beat);
 
         var asked = h.Wire.To("GET", Queue)[0].Query;
         Assert.Contains("ancestorKey=AER-1", asked, StringComparison.Ordinal);
         Assert.Contains("offsetMinutes=-420", asked, StringComparison.Ordinal);
+    }
+
+    // ---- Which checkout a claimed dispatch resolves to ----
+
+    [Fact]
+    public async Task The_queue_read_carries_the_standing_checkouts_remote_and_standing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        var asked = h.Wire.To("GET", Queue)[0].Query;
+        Assert.Contains($"remote={Uri.EscapeDataString(h.Runtime.Checkouts[0].Remote!)}", asked, StringComparison.Ordinal);
+        Assert.Contains("standing=true", asked, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_dispatch_matching_a_non_standing_checkout_spawns_there_with_the_others_on_add_dir()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var other = Path.Combine(h.Temp, "other");
+        Directory.CreateDirectory(other);
+
+        var checkouts = new[]
+        {
+            h.Runtime.Checkouts[0],
+            new CheckoutEntry(other, "https://example.test/other.git", Standing: false),
+        };
+
+        var repos = new[]
+        {
+            Fixtures.Repository("https://example.test/other.git", primary: true, matchedRemote: "https://example.test/other.git"),
+            Fixtures.Repository(h.Runtime.Checkouts[0].Remote!, matchedRemote: h.Runtime.Checkouts[0].Remote),
+        };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", repositories: repos));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, checkouts).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.NotNull(picked.Chosen);
+        Assert.Equal(other, picked.Chosen!.Root);
+        Assert.Equal([h.Root], picked.Chosen.AddDirs);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_primary_that_matched_nothing_this_runner_has_releases_and_walks_on()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        var repos = new[] { Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null) };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-3") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-3/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-3", Fixtures.Work("AER-3", repositories: repos));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-3/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        // The one candidate on the board walked past, same as any other ticket
+        // that changed under us between the two reads - so a lone one reads as
+        // busy rather than idle, exactly as it would for any other refusal.
+        Assert.Equal(Pick.Busy, picked.Outcome);
+        Assert.Contains(picked.Busy, b => b.Contains("AER-3", StringComparison.Ordinal));
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-3/claim"));
     }
 }

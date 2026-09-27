@@ -438,68 +438,85 @@ public sealed class GoToWorkCommand(Runtime runtime)
             return 1;
         }
 
-        using var held = LoopLock.Take(runtime.Root, runtime.TempDirectory, out var refusal);
-        if (held is null)
+        // One lock per checkout this runner serves - a second loop naming any
+        // one of them is refused, by the first loop still holding it.
+        var locks = new List<LoopLock>();
+        foreach (var checkout in runtime.Checkouts)
         {
-            runtime.Say.Complain(refusal);
-            return 1;
+            var held = LoopLock.Take(checkout.Path, runtime.TempDirectory, out var refusal);
+            if (held is null)
+            {
+                foreach (var taken in locks) taken.Dispose();
+                runtime.Say.Complain(refusal);
+                return 1;
+            }
+
+            locks.Add(held);
         }
-
-        // What the incarnation before a restart handed over, if this is one.
-        var carried = NightState.Read(runtime.NightStatePath);
-
-        var tally = new Tally(runtime.Clock, carried)
-        {
-            MaxRuns = maxRuns,
-            MaxSpend = maxSpend,
-            Until = until,
-            // Carried rather than recomputed, and it is the one bound that would
-            // otherwise be wrong: `--until 23:59` typed at 23:58 and restarted at
-            // 00:01 re-reads as 23:59 tomorrow, and adds a day to the night.
-            UntilAt = carried?.UntilAt ?? untilAt,
-            StopFile = stopFile,
-        };
-
-        var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
-        var restarting = false;
 
         try
         {
-            restarting = await LoopAsync(under, quiet, once, interval, tally, restart, ct);
+            // What the incarnation before a restart handed over, if this is one.
+            var carried = NightState.Read(runtime.NightStatePath);
 
-            // A restart that could not hand the night's totals over would be a
-            // fresh night: the budget back to nothing, the streak cleared, the
-            // hour re-read. Better the version that is running carries on to its
-            // own end than a new one starts with no bounds on it.
-            if (restarting && !tally.ToState().Write(runtime.NightStatePath))
+            var tally = new Tally(runtime.Clock, carried)
             {
-                runtime.Say.Complain(
-                    $"hatch: could not write the night's totals to {runtime.NightStatePath} - not restarting, since the next one would start the budget over");
-                tally.StopWhy = "the night's totals could not be handed forward";
-                restarting = false;
+                MaxRuns = maxRuns,
+                MaxSpend = maxSpend,
+                Until = until,
+                // Carried rather than recomputed, and it is the one bound that
+                // would otherwise be wrong: `--until 23:59` typed at 23:58 and
+                // restarted at 00:01 re-reads as 23:59 tomorrow, and adds a day
+                // to the night.
+                UntilAt = carried?.UntilAt ?? untilAt,
+                StopFile = stopFile,
+            };
+
+            var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
+            var restarting = false;
+
+            try
+            {
+                restarting = await LoopAsync(under, quiet, once, interval, tally, restart, ct);
+
+                // A restart that could not hand the night's totals over would be
+                // a fresh night: the budget back to nothing, the streak cleared,
+                // the hour re-read. Better the version that is running carries
+                // on to its own end than a new one starts with no bounds on it.
+                if (restarting && !tally.ToState().Write(runtime.NightStatePath))
+                {
+                    runtime.Say.Complain(
+                        $"hatch: could not write the night's totals to {runtime.NightStatePath} - not restarting, since the next one would start the budget over");
+                    tally.StopWhy = "the night's totals could not be handed forward";
+                    restarting = false;
+                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // A signal caught while an increment was in flight. The claim has
-            // already gone back through the pass's own way out; what is left is
-            // to say why the night ended, which is the whole reason the tally is
-            // printed from here and not from the loop.
-            tally.StopWhy ??= "interrupted";
+            catch (OperationCanceledException)
+            {
+                // A signal caught while an increment was in flight. The claim has
+                // already gone back through the pass's own way out; what is left
+                // is to say why the night ended, which is the whole reason the
+                // tally is printed from here and not from the loop.
+                tally.StopWhy ??= "interrupted";
+            }
+            finally
+            {
+                // A restart is the middle of a night and not the end of one: the
+                // tally goes into the state file for whoever comes back, and is
+                // printed once, by whichever incarnation is the last.
+                if (!restarting)
+                {
+                    NightState.Forget(runtime.NightStatePath);
+                    tally.Print(runtime.Say);
+                }
+            }
+
+            return restarting ? RestartExitCode : 0;
         }
         finally
         {
-            // A restart is the middle of a night and not the end of one: the
-            // tally goes into the state file for whoever comes back, and is
-            // printed once, by whichever incarnation is the last.
-            if (!restarting)
-            {
-                NightState.Forget(runtime.NightStatePath);
-                tally.Print(runtime.Say);
-            }
+            foreach (var held in locks) held.Dispose();
         }
-
-        return restarting ? RestartExitCode : 0;
     }
 
     /// <summary>
@@ -797,23 +814,26 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // has nothing to say to a loop with nothing to run. The guarantee is
             // the same either way, because it is about the spawn and not about
             // the pass.
-            switch (runtime.Workspace().Prepare())
+            foreach (var (path, baseBranch) in picked.Chosen!.Resets)
             {
-                case Reset.Never:
-                    line.Line = "the workspace could not be reset";
-                    // The one condition that ends a night without an increment
-                    // having failed: a tree that cannot be made current is a
-                    // tree every ticket would be built wrong on, and the loop
-                    // has no way to make it right.
-                    tally.StopWhy = "the workspace could not be reset";
-                    return Pass.Fatal;
+                switch (runtime.Workspace(path, baseBranch).Prepare())
+                {
+                    case Reset.Never:
+                        line.Line = "the workspace could not be reset";
+                        // The one condition that ends a night without an
+                        // increment having failed: a tree that cannot be made
+                        // current is a tree every ticket would be built wrong
+                        // on, and the loop has no way to make it right.
+                        tally.StopWhy = $"the workspace could not be reset ({path})";
+                        return Pass.Fatal;
 
-                case Reset.Later:
-                    // Nothing was spawned, nothing was spent, and the tree is
-                    // where it was.
-                    line.Line = "the workspace is not ready";
-                    runtime.Say.Complain($"hatch: the workspace is not ready - trying again in {interval}s");
-                    return Pass.Waited;
+                    case Reset.Later:
+                        // Nothing was spawned, nothing was spent, and the tree
+                        // is where it was.
+                        line.Line = "the workspace is not ready";
+                        runtime.Say.Complain($"hatch: the workspace is not ready ({path}) - trying again in {interval}s");
+                        return Pass.Waited;
+                }
             }
 
             // The one place the change trigger can fire, because the new source
@@ -837,8 +857,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // which arrive folded into the playbook already.
             var work = picked.Work!;
             var report = await runtime.Increment().RunAsync(
-                work, runtime.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
-                quiet, claim, ct);
+                work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
+                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories);
 
             tally.Record(report);
 

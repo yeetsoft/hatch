@@ -612,8 +612,12 @@ on a named ticket is `hatch work AER-12`.
 3. **Pick.** The first issue the dispatcher clears, folding past everything it
    does not, and takes a claim on it. No claim, no spawn — that is what keeps
    two runners off one ticket.
-4. **Reset the checkout.** Fetch, and put the tree back on the default branch
-   at the tip the remote has right now.
+4. **Reset every checkout the increment will use.** Fetch each, and put its
+   tree back on its default branch at the tip the remote has right now — a
+   binding's own base branch beats `origin/HEAD` for that checkout, and
+   `HATCH_BASE_BRANCH` still only ever overrides the standing one. A ticket for
+   a repository this loop does not have is folded past, with the reason,
+   before this step is ever reached.
 5. **Check its own source.** If `go-to-work` was rebuilt on the trunk under it,
    it stops here and asks to come back as the new build, holding no ticket.
 6. **Spawn the increment**, and record what it cost and whether the ticket
@@ -698,18 +702,22 @@ Exit codes:
 
 #### One loop per checkout
 
-A second `go-to-work` in the same tree is refused, naming the pid of the one
-that has it. Two loops no longer collide over the board — the claim divides it —
-but they would still collide over the tree, one increment's reset landing in the
-middle of another's branch. Two checkouts, two loops, and both are welcome.
+A second `go-to-work` naming any checkout this loop already serves is refused,
+naming the pid of the one that has it. Two loops no longer collide over the
+board — the claim divides it — but they would still collide over a tree they
+share, one increment's reset landing in the middle of another's branch. Two
+checkouts, two loops, and both are welcome.
 
 #### What it does to your checkout
 
-Before every increment, so that a session's first act is cutting a branch and
-the thing it cuts from is not in question:
+Before every increment, on every checkout the ticket's project is bound to —
+so that a session's first act is cutting a branch and the thing it cuts from
+is not in question:
 
 - It fetches, and puts the checkout back on the default branch at the tip the
-  remote has it at right now.
+  remote has it at right now — a binding's own base branch beats
+  `origin/HEAD` for that checkout, and `HATCH_BASE_BRANCH` still only ever
+  overrides the checkout the loop is standing in.
 - **Uncommitted and untracked changes go into a stash**, named for the hour it
   was taken. Nothing is discarded — `git stash pop` is how you get it back —
   and ignored files are never touched, so a dependency directory or a local

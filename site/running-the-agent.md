@@ -150,8 +150,12 @@ one ticket cannot be the answer twice. One increment on a named ticket is
 2. **Stop conditions**, below.
 3. **Pick.** The first issue the dispatcher clears, folding past everything it
    does not, and a claim on it. No claim, no spawn.
-4. **Reset the checkout.** Fetch, and put the tree back on the default branch
-   at the tip the remote has right now.
+4. **Reset every checkout the increment will use.** Fetch each, and put its
+   tree back on its default branch at the tip the remote has right now — a
+   binding's own base branch beats `origin/HEAD` for that checkout, and
+   `HATCH_BASE_BRANCH` still only ever overrides the checkout the loop is
+   standing in. A ticket for a repository this loop does not have is folded
+   past, with the reason, before this step is ever reached.
 5. **Check its own source.** If the loop was rebuilt on the trunk under it, it
    stops here and asks to come back as the new build, holding no ticket.
 6. **Spawn the increment**, and record what it cost and whether the ticket
@@ -164,12 +168,14 @@ change, with a one-line "still nothing" every ten minutes.
 
 ### What it does to your checkout
 
-Before every increment, so a session's first act is cutting a branch and the
-thing it cuts from is not in question:
+Before every increment, on every checkout the ticket's project is bound to —
+so a session's first act is cutting a branch and the thing it cuts from is
+not in question:
 
 - It fetches with prune, and puts the checkout on the default branch at the
-  tip `origin` has it at. The trunk is whatever `origin/HEAD` names, or
-  `HATCH_BASE_BRANCH`.
+  tip `origin` has it at. The trunk is whatever the binding's own base branch
+  names, then `origin/HEAD`; `HATCH_BASE_BRANCH` overrides it, but only for
+  the checkout the loop is standing in.
 - **Uncommitted and untracked changes go into a stash**, named for the hour it
   was taken. Nothing is discarded, `git stash pop` is how you get it back, and
   ignored files are never touched, so a dependency directory or a local `.env`
@@ -261,10 +267,11 @@ a newer one.
 
 ### One loop per checkout
 
-A second `go-to-work` in the same tree is refused, naming the pid of the one
-that has it. Two loops do not collide over the board, the claim divides it,
-but they would collide over the tree. Two checkouts, two loops, and both are
-welcome. They appear on the Runners page under their own names.
+A second `go-to-work` naming any checkout this loop already serves is refused,
+naming the pid of the one that has it. Two loops do not collide over the
+board, the claim divides it, but they would collide over a tree they share.
+Two checkouts, two loops, and both are welcome. They appear on the Runners
+page under their own names.
 
 ## Reading the board, spending nothing
 
