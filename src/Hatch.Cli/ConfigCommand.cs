@@ -26,11 +26,13 @@ public sealed record ConfigCommand(
     Input In,
     IDictionary<string, string?> Environment,
     string? CheckoutEnvFile,
-    string RunnerName)
+    string RunnerName,
+    string? Root = null)
 {
     public static readonly string[] ConfigUsage =
     [
-        "usage: hatch config [--show | --origin <origin> | --key <key> | --repo <path>...]",
+        "usage: hatch config [--show | --origin <origin> | --key <key> | --repo <path>...",
+        "                     | --workspace <dir>]",
         "",
         "  hatch config                    asks for the origin and the key, and writes them",
         "  hatch config --show             says what is set, and which layer it came from",
@@ -39,6 +41,8 @@ public sealed record ConfigCommand(
         "  hatch config --repo <path>      also serve this checkout, repeatable",
         "  hatch config --repo             ...alone, clears the checkouts a loop with no",
         "                                     checkout of its own would otherwise serve",
+        "  hatch config --workspace <dir>  clone every repository the board binds that",
+        "                                     this runner has no checkout of, into <dir>",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
@@ -54,6 +58,12 @@ public sealed record ConfigCommand(
         "  write - it exists and carries a .git - and refused naming the path otherwise,",
         "  with nothing written. Leaves the origin, the key and everything else as they",
         "  were.",
+        "",
+        "  --workspace writes HATCH_WORKSPACE: a directory this runner owns entirely,",
+        "  where it clones what the board binds and it has no checkout of. Refused when",
+        "  it sits inside a named checkout or the checkout it contains one, in either",
+        "  direction - a clone under a tree being reset (or a tree under a directory of",
+        "  clones) is two owners of one path.",
         "",
         "  Written to the per-user file, mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
@@ -94,6 +104,8 @@ public sealed record ConfigCommand(
 
         if (args.Length > 0 && args[0] == "--repo") return Repo(args);
 
+        if (args.Length > 0 && args[0] == "--workspace") return Workspace(args);
+
         if (args.Length > 0)
             return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
 
@@ -111,6 +123,7 @@ public sealed record ConfigCommand(
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
+        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
         Say.Line($"Writing {ConfigPath}. Enter keeps what is shown in brackets.");
         Say.Line("");
@@ -141,7 +154,7 @@ public sealed record ConfigCommand(
         In.Prompt($"claude CLI path, for `work` [{(claudeBin.Length > 0 ? claudeBin : "on PATH")}]: ");
         if (In.Line() is { Length: > 0 } typedBin) claudeBin = typedBin;
 
-        Write(origin, key, claudeBin, repos);
+        Write(origin, key, claudeBin, repos, workspace);
 
         // Exported, not just set: this process is about to make the call below,
         // and a `work` spawned from here should not have to find the file again.
@@ -190,8 +203,9 @@ public sealed record ConfigCommand(
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
+        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
-        Write(origin, key, claudeBin, repos);
+        Write(origin, key, claudeBin, repos, workspace);
 
         Environment["HATCH_BASE"] = origin;
 
@@ -230,6 +244,7 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
+        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
         if (origin.Length == 0)
         {
@@ -240,7 +255,7 @@ public sealed record ConfigCommand(
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        Write(origin, key, claudeBin, repos);
+        Write(origin, key, claudeBin, repos, workspace);
 
         Environment["HATCH_KEY"] = key;
 
@@ -294,10 +309,67 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
-        Write(origin, key, claudeBin, string.Join(Path.PathSeparator, paths));
+        // The reverse of the check `--workspace` makes: a checkout named here
+        // that sits inside the workspace already configured is the same two
+        // owners of one path, the other way round.
+        if (workspace.Length > 0 && !Checkouts.OverlapsCheckout(workspace, paths, out var workspaceOverlap))
+        {
+            Say.Complain(workspaceOverlap);
+            return 1;
+        }
+
+        Write(origin, key, claudeBin, string.Join(Path.PathSeparator, paths), workspace);
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
+
+        Say.Line($"wrote {ConfigPath}");
+        return 0;
+    }
+
+    /// <summary>
+    /// The directory this runner clones what the board binds into, taken from
+    /// the command line and written without a question being asked - the
+    /// mirror of <see cref="Repo"/>: everything else is carried forward
+    /// unchanged.
+    /// </summary>
+    /// <remarks>
+    /// A single value rather than a list, so there is no bare-flag-clears shape
+    /// here the way there is for <c>--repo</c> - the ticket asks for a
+    /// directory set, not one that can also be taken off from the command
+    /// line.
+    /// </remarks>
+    private int Workspace(string[] args)
+    {
+        if (args is not ["--workspace", var dir])
+            return Usage.Refuse(Say, "config --workspace takes one directory", ConfigUsage);
+
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var origin = fold("HATCH_BASE").Value ?? "";
+        var key = fold("HATCH_KEY").Value ?? "";
+        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var reposRaw = fold("HATCH_REPOS").Value ?? "";
+        var repos = reposRaw is { Length: > 0 }
+            ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [];
+
+        var others = Root is null ? repos : (IReadOnlyList<string>)[Root, .. repos];
+        if (!Checkouts.OverlapsCheckout(dir, others, out var overlapRefusal))
+        {
+            Say.Complain(overlapRefusal);
+            return 1;
+        }
+
+        if (!Checkouts.EnsureWorkspace(dir, out var refusal))
+        {
+            Say.Complain(refusal);
+            return 1;
+        }
+
+        Write(origin, key, claudeBin, reposRaw, dir);
+
+        Environment["HATCH_WORKSPACE"] = dir;
 
         Say.Line($"wrote {ConfigPath}");
         return 0;
@@ -400,7 +472,7 @@ public sealed record ConfigCommand(
     /// no-op concept on Windows, where the file inherits the directory's ACL
     /// and <c>%APPDATA%</c> is already per-user.
     /// </remarks>
-    private void Write(string origin, string key, string claudeBin, string repos)
+    private void Write(string origin, string key, string claudeBin, string repos, string workspace = "")
     {
         var directory = Path.GetDirectoryName(ConfigPath);
         if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
@@ -425,6 +497,7 @@ public sealed record ConfigCommand(
 
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
         if (repos.Length > 0) lines.Add($"HATCH_REPOS={repos}");
+        if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
 
         File.WriteAllLines(temp, lines);
         if (!OperatingSystem.IsWindows())

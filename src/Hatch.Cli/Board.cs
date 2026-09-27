@@ -25,11 +25,12 @@ public sealed class Board(HatchClient client)
     /// reason it would be folded past - or nothing, where it is clear.
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
-        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct)
+        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
+        bool clones = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts)}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
@@ -40,11 +41,12 @@ public sealed class Board(HatchClient client)
     /// own dispatch. Absent everywhere a caller holds nothing.
     /// </param>
     public async Task<WorkDto?> WorkAsync(
-        IReadOnlyList<CheckoutEntry> checkouts, string key, Guid? heldToken, CancellationToken ct)
+        IReadOnlyList<CheckoutEntry> checkouts, string key, Guid? heldToken, CancellationToken ct,
+        bool clones = false)
     {
         var parts = new List<string>();
         if (heldToken is { } token) parts.Add($"heldToken={token}");
-        parts.AddRange(DeclareParts(checkouts));
+        parts.AddRange(DeclareParts(checkouts, clones));
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
@@ -61,11 +63,12 @@ public sealed class Board(HatchClient client)
     /// for why the second read there is the named one.
     /// </remarks>
     public async Task<WorkDto?> NextAsync(
-        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct)
+        IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
+        bool clones = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>(
-            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts)}", ct));
+            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts, clones)}", ct));
     }
 
     /// <summary>
@@ -74,15 +77,16 @@ public sealed class Board(HatchClient client)
     /// the process's own. Prefixed with <c>&amp;</c> for a query that already has
     /// something in it, which every caller's does.
     /// </summary>
-    private static string Declare(IReadOnlyList<CheckoutEntry> checkouts) =>
-        DeclareParts(checkouts) is { Count: > 0 } parts ? $"&{string.Join('&', parts)}" : "";
+    private static string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
+        DeclareParts(checkouts, clones) is { Count: > 0 } parts ? $"&{string.Join('&', parts)}" : "";
 
-    private static List<string> DeclareParts(IReadOnlyList<CheckoutEntry> checkouts)
+    private static List<string> DeclareParts(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false)
     {
         var parts = checkouts.Where(c => c.Remote is not null)
             .Select(c => $"remote={Uri.EscapeDataString(c.Remote!)}")
             .ToList();
         if (checkouts.Any(c => c.Standing)) parts.Add("standing=true");
+        if (clones) parts.Add("clones=true");
         return parts;
     }
 

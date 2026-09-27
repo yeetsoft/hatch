@@ -1623,10 +1623,33 @@ before anything below is locked or claimed. `--repo` given on the command line
 is the whole list for that run; `HATCH_REPOS` is not consulted, the same way
 any higher settings layer wins whole rather than merging with a lower one.
 
+**A directory of its own, cloned into as it goes.** `--workspace <dir>` (or
+`HATCH_WORKSPACE`) is a third way in, for a loop with nothing checked out at
+all: a directory the loop owns entirely, where a repository a project binds
+that it has no checkout of is cloned the first time a ticket needs it, into
+`<dir>/<host>/<owner>/<repo>` — a port in the host, if there is one, spelled
+with `_` in place of `:`, since Windows takes no `:` in a name. The clone
+happens with the ticket's claim already held, after the pick and before the
+reset, so a checkout made for a ticket nobody ends up spending is a checkout
+somebody else's increment would otherwise have to notice and clean up. A
+remote two projects both bind is cloned once, whichever ticket asks for it
+first, and served to both from then on; a directory already holding clones
+from an earlier night is walked and served exactly as found, nothing
+re-cloned. A clone that fails releases the claim, comments on the ticket with
+git's own last line, and counts as a failed increment the same way a failed
+spawn does — three in a row end the night. This is also what
+[`?clones=`](#the-dispatcher) tells the server the caller is capable of, so a
+project bound to a remote this runner does not yet have checked out is
+offered to it rather than folded past.
+
 What says "one loop" is a directory under `TMPDIR`, holding the pid of the run
-that took it, taken on every served checkout in order at startup — a refusal
-on any one releases every lock already taken and says which checkout and
-which loop holds it. A directory because creating one is atomic on every
+that took it, taken on every served checkout in order at startup — and, where
+a workspace is set, on the workspace directory itself first, so a clone that
+appears at three in the morning is already under a lock and a second loop
+naming the same workspace is refused, by name, before it can clone into
+anything the first is using. A refusal on any one releases every lock already
+taken and says which checkout and which loop holds it. A directory because
+creating one is atomic on every
 filesystem this could land on and a file written with a redirect is not;
 outside the repository because a lock in a tracked tree is a lock somebody
 commits, and one that outlives a reboot is one somebody has to come and clear
@@ -1717,8 +1740,9 @@ Every increment starts on the trunk, at the tip the remote has it at right now
 — on every checkout the increment will use, in order: the ticket's project may
 bind more than one repository, and each gets fetched, stashed and reset before
 the session that reads all of them is spawned. A ticket for a repository this
-loop does not have is folded past, with the reason, and never reaches this
-step at all.
+loop has no checkout of, and [no workspace](#one-loop-at-a-time) to clone one
+into, is folded past, with the reason, and never reaches this step at all; one
+it can clone is cloned before this step, with the claim already held.
 
 The loop fetches, stashes anything the tree was carrying, and puts the checkout
 back on the default branch before it spawns anything — so a session's first act
@@ -2371,10 +2395,13 @@ code already settles is a round trip through a person for nothing.
 
 - **The loop lifted onto the Hatch platform, headless.** Two checkouts on one
   box and several boxes in the house are what the [claim](#claim) makes
-  possible; a loop that is a service rather than a terminal somebody left open
-  is the run after that, and it is not this one. What is deferred is the
-  scheduling, the credentials and the place the output goes — not the mutex,
-  which is built.
+  possible; hatch-owned clones — a loop given a directory of its own that
+  clones whatever a board binds it has no checkout of, `--workspace` /
+  `HATCH_WORKSPACE` — are what let a headless box or a fresh container serve a
+  whole board with nothing mounted by hand, and that is built too. What is
+  still deferred is narrower: the loop as a *service* rather than a process
+  somebody starts — a scheduler, a place the output goes, credentials it did
+  not bring with it itself. Not the mutex, and not the clone.
 - **A second scope for agents**, which would stop a key answering its own
   question. Worth a column when somebody wants it; see
   [the one edge](#the-one-edge-that-is-deliberately-cut).

@@ -15,7 +15,7 @@ public sealed class WorkCommand(Runtime runtime)
     [
         "usage: hatch work [<issue key>] [--under <epic key>] [-i] [--quiet]",
         "                  [--model <model>] [--effort <effort>] [--dry-run]",
-        "                  [--repo <path>]...",
+        "                  [--repo <path>]... [--workspace <dir>]",
         "",
         "  One increment: claim a ticket, spawn one headless claude session with the",
         "  prompt, model and effort its column and type call for, and exit when that",
@@ -26,14 +26,18 @@ public sealed class WorkCommand(Runtime runtime)
         "  one outright; --under names the epic to look under. Not both - one says",
         "  which ticket, the other says where to look for one.",
         "",
-        "  -i             a session you sit in, rather than a headless one",
-        "  --quiet        say nothing until the increment is finished",
-        "  --model        beat the playbook, for this run only",
-        "  --effort       ...and likewise",
-        "  --dry-run      print the prompt and exit: claims nothing, spawns nothing",
-        "  --repo <path>  also serve this checkout, repeatable - the whole list for this",
-        "                 run, beside the standing checkout if there is one; HATCH_REPOS",
-        "                 is not consulted when this is given",
+        "  -i                 a session you sit in, rather than a headless one",
+        "  --quiet            say nothing until the increment is finished",
+        "  --model            beat the playbook, for this run only",
+        "  --effort           ...and likewise",
+        "  --dry-run          print the prompt and exit: claims nothing, spawns nothing,",
+        "                     and clones nothing even where a workspace is configured",
+        "  --repo <path>      also serve this checkout, repeatable - the whole list for this",
+        "                     run, beside the standing checkout if there is one; HATCH_REPOS",
+        "                     is not consulted when this is given",
+        "  --workspace <dir>  clone every repository the board binds that this runner has",
+        "                     no checkout of, into <dir> - HATCH_WORKSPACE is not consulted",
+        "                     when this is given",
         "",
         "  Exits 0 when an increment ran, whatever the session itself exited with;",
         "  1 on a refusal; 2 when there is nothing to do - the board is idle, the",
@@ -49,6 +53,7 @@ public sealed class WorkCommand(Runtime runtime)
         var attach = false;
         var quiet = false;
         var repoFlags = new List<string>();
+        string? workspaceFlag = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -63,26 +68,38 @@ public sealed class WorkCommand(Runtime runtime)
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":
                     return Usage.Refuse(runtime.Say, "work --repo takes a path", WorkUsage);
+                case "--workspace" when i + 1 < args.Length: workspaceFlag = args[++i]; break;
+                case "--workspace":
+                    return Usage.Refuse(runtime.Say, "work --workspace takes a directory", WorkUsage);
                 case var flag when flag.StartsWith('-'):
                     return Usage.Refuse(runtime.Say, $"work does not take {flag}", WorkUsage);
                 default: key = args[i]; break;
             }
         }
 
-        if (repoFlags.Count > 0)
+        if (repoFlags.Count > 0 || workspaceFlag is not null)
         {
             // The whole list for this run, in place of Settings.Repos - the
             // highest layer wins whole, as the settings already fold, rather
             // than a merge nobody can predict from the command line. The
-            // standing checkout, if there is one, is still named first.
+            // standing checkout, if there is one, is still named first. Likewise
+            // for the workspace: a flag given here is this run's whole answer,
+            // and HATCH_WORKSPACE is not folded in beside it.
             var standing = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path;
-            if (!Checkouts.TryDiscover(standing, repoFlags, out var repoCheckouts, out var badRepo))
+            var effectiveRepos = repoFlags.Count > 0 ? repoFlags : runtime.Settings.Repos;
+            var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
+
+            if (!Checkouts.TryDiscover(
+                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
             }
 
-            var root = repoCheckouts[0].Path;
+            foreach (var stray in strays)
+                runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
+
+            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
             var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
 
             runtime = runtime with
@@ -91,13 +108,15 @@ public sealed class WorkCommand(Runtime runtime)
                 Root = root,
                 RunnerName = runnerName,
                 Board = runtime.NewBoard(runnerName),
+                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
         }
 
-        if (runtime.Checkouts.Count == 0)
+        if (runtime.Checkouts.Count == 0 && runtime.Settings.Workspace is null)
         {
             runtime.Say.Complain("hatch: this is not a git repository, and a ticket is about a codebase.");
-            runtime.Say.Complain("hatch:   run it inside a checkout, name one with --repo, or set HATCH_REPOS.");
+            runtime.Say.Complain(
+                "hatch:   run it inside a checkout, name one with --repo, set HATCH_REPOS, or give a --workspace to clone into.");
             return 1;
         }
 
@@ -123,12 +142,14 @@ public sealed class WorkCommand(Runtime runtime)
     /// </summary>
     private async Task<int> DryRunAsync(string? key, string? under, string? model, string? effort, CancellationToken ct)
     {
+        var clones = runtime.Settings.Workspace is not null;
+
         WorkDto? work;
         try
         {
             work = key is { Length: > 0 }
-                ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct)
-                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct);
+                ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones)
+                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones);
         }
         catch (HatchException e)
         {
@@ -189,6 +210,8 @@ public sealed class WorkCommand(Runtime runtime)
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand"),
             ct);
 
+        var clones = runtime.Settings.Workspace is not null;
+
         WorkDto work;
         Claim claim;
         Checkouts.Choice chosen;
@@ -201,7 +224,7 @@ public sealed class WorkCommand(Runtime runtime)
             WorkDto? named;
             try
             {
-                named = await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct);
+                named = await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones);
             }
             catch (HatchException e)
             {
@@ -217,14 +240,18 @@ public sealed class WorkCommand(Runtime runtime)
 
             if (Refuse(named)) return 2;
 
-            var resolved = Checkouts.Choose(named.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
-            if (resolved is null)
+            // Without a clone, so that the ordinary case - already matched, or
+            // never going to match at all - refuses exactly as it always has,
+            // before anything is claimed. Only a primary this runner could
+            // still clone its way to needs the claim first.
+            var preclaim = Checkouts.Choose(named.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
+            if (preclaim is null && runtime.Settings.Workspace is null)
             {
                 runtime.Say.Complain(Changed(key));
                 return 2;
             }
 
-            // And the race between that read and this take, which the server
+            // The race between that read and this take, which the server
             // decides and this only reports.
             var (taken, refused) = await Claim.TakeAsync(
                 runtime.Board.Client, key, runtime.RunnerName, ct, runtime.Heartbeat);
@@ -234,7 +261,42 @@ public sealed class WorkCommand(Runtime runtime)
                 return 2;
             }
 
-            (work, claim, chosen) = (named, taken, resolved);
+            Checkouts.Choice resolvedChoice;
+            if (preclaim is not null)
+            {
+                resolvedChoice = preclaim;
+            }
+            else
+            {
+                // Only now, with the lease already held: a checkout cloned for
+                // a ticket nobody ends up spending is a checkout somebody
+                // else's increment would have to notice and clean up.
+                var resolved = Clones.Resolve(
+                    named, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch,
+                    runtime.Settings.Workspace, runtime.MakeClone);
+                runtime = runtime with { Checkouts = resolved.Checkouts };
+
+                if (resolved.Failed is { } failure)
+                {
+                    await taken.ReleaseAsync();
+                    await runtime.Board.CommentAsync(
+                        key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
+                    runtime.Say.Complain(
+                        $"hatch: {key} - could not clone {failure.Remote} into {failure.Path}: {failure.Error}");
+                    return 2;
+                }
+
+                if (resolved.Chosen is not { } fromClone)
+                {
+                    await taken.ReleaseAsync();
+                    runtime.Say.Complain(Changed(key));
+                    return 2;
+                }
+
+                resolvedChoice = fromClone;
+            }
+
+            (work, claim, chosen) = (named, taken, resolvedChoice);
         }
         else
         {
@@ -256,6 +318,7 @@ public sealed class WorkCommand(Runtime runtime)
                     return 1;
             }
 
+            if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
             (work, claim, chosen) = (picked.Work!, picked.Claim!, picked.Chosen!);
         }
 

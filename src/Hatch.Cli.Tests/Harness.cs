@@ -134,6 +134,37 @@ public sealed class FakeWorkspace
 }
 
 /// <summary>
+/// A clone, without a network to make one from: a test sets what each attempt
+/// answers, and reads back every remote and path asked for.
+/// </summary>
+public sealed class FakeClone
+{
+    /// <summary>Every clone asked for, in order.</summary>
+    public List<(string Remote, string Path)> Requested { get; } = [];
+
+    /// <summary>What every attempt answers with. Null - the default - is success.</summary>
+    public string? Error { get; set; }
+
+    /// <summary>One remote's own answer, overriding <see cref="Error"/> for it alone.</summary>
+    public Dictionary<string, string?> ErrorFor { get; } = [];
+
+    /// <summary>Run at the moment a clone is attempted, so a test can look at what had already happened by then.</summary>
+    public Action? Watching { get; set; }
+
+    public Func<string, string, IClone> Factory => (remote, path) => new Bound(this, remote, path);
+
+    private sealed class Bound(FakeClone owner, string remote, string path) : IClone
+    {
+        public string? Run()
+        {
+            owner.Requested.Add((remote, path));
+            owner.Watching?.Invoke();
+            return owner.ErrorFor.TryGetValue(remote, out var specific) ? specific : owner.Error;
+        }
+    }
+}
+
+/// <summary>
 /// The loop's own source, without a tree to change: a test sets what the next
 /// read answers, at the moment a reset would have pulled it.
 /// </summary>
@@ -201,6 +232,7 @@ public sealed class Harness : IDisposable
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
             Self = () => Self,
             NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire)),
+            MakeClone = Clone.Factory,
         };
     }
 
@@ -219,6 +251,9 @@ public sealed class Harness : IDisposable
 
     /// <summary>The tree, as the pass finds it. Ready unless a test says otherwise.</summary>
     public FakeWorkspace Workspace { get; } = new();
+
+    /// <summary>What a clone into a workspace does, when a test configures one at all.</summary>
+    public FakeClone Clone { get; } = new();
 
     public Runtime Runtime { get; }
 

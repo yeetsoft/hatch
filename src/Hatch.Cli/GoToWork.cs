@@ -285,7 +285,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
         "                        [--stop-file <path>]",
         "                        [--restart-after <minutes> | --no-restart]",
-        "                        [--repo <path>]...",
+        "                        [--repo <path>]... [--workspace <dir>]",
         "",
         "  `work` in a circle: the next actionable issue, one increment, ask again -",
         "  until nothing on the board is an agent's to move, and then wait and ask",
@@ -295,13 +295,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  It takes no ticket key. One increment on a named ticket is `hatch work",
         "  AER-12`; this command's question is what is next, asked again and again.",
         "",
-        "  --under        stay inside one epic's subtree",
-        "  --once         one pass, and out",
-        "  --quiet        no per-increment stream, only what each one ended as",
-        "  --interval     seconds to wait when there was nothing to do (default 60)",
-        "  --repo <path>  also serve this checkout, repeatable - the whole list for",
-        "                 this run, beside the standing checkout if there is one;",
-        "                 HATCH_REPOS is not consulted when this is given",
+        "  --under            stay inside one epic's subtree",
+        "  --once             one pass, and out",
+        "  --quiet            no per-increment stream, only what each one ended as",
+        "  --interval         seconds to wait when there was nothing to do (default 60)",
+        "  --repo <path>      also serve this checkout, repeatable - the whole list for",
+        "                     this run, beside the standing checkout if there is one;",
+        "                     HATCH_REPOS is not consulted when this is given",
+        "  --workspace <dir>  clone every repository the board binds that this runner",
+        "                     has no checkout of, into <dir> - HATCH_WORKSPACE is not",
+        "                     consulted when this is given",
         "",
         "  None of the bounds are set by default - an unattended run that stopped for",
         "  a reason nobody asked for is a run somebody has to go and check on. Each is",
@@ -343,6 +346,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         int? maxRuns = null;
         decimal? maxSpend = null;
         var repoFlags = new List<string>();
+        string? workspaceFlag = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -398,6 +402,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":
                     return Usage.Refuse(runtime.Say, "go-to-work --repo takes a path", GoToWorkUsage);
+                case "--workspace" when i + 1 < args.Length: workspaceFlag = args[++i]; break;
+                case "--workspace":
+                    return Usage.Refuse(runtime.Say, "go-to-work --workspace takes a directory", GoToWorkUsage);
                 case var flag when flag.StartsWith('-'):
                     return Usage.Refuse(runtime.Say, $"go-to-work does not take {flag}", GoToWorkUsage);
                 default: key = args[i]; break;
@@ -423,20 +430,29 @@ public sealed class GoToWorkCommand(Runtime runtime)
             return 1;
         }
 
-        if (repoFlags.Count > 0)
+        if (repoFlags.Count > 0 || workspaceFlag is not null)
         {
             // The whole list for this run, in place of Settings.Repos - the
             // highest layer wins whole, as the settings already fold, rather
             // than a merge nobody can predict from the command line. The
-            // standing checkout, if there is one, is still named first.
+            // standing checkout, if there is one, is still named first. Likewise
+            // for the workspace: a flag given here is this run's whole answer,
+            // and HATCH_WORKSPACE is not folded in beside it.
             var standing = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path;
-            if (!Checkouts.TryDiscover(standing, repoFlags, out var repoCheckouts, out var badRepo))
+            var effectiveRepos = repoFlags.Count > 0 ? repoFlags : runtime.Settings.Repos;
+            var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
+
+            if (!Checkouts.TryDiscover(
+                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
             }
 
-            var root = repoCheckouts[0].Path;
+            foreach (var stray in strays)
+                runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
+
+            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
             var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
 
             runtime = runtime with
@@ -445,13 +461,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Root = root,
                 RunnerName = runnerName,
                 Board = runtime.NewBoard(runnerName),
+                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
         }
 
-        if (runtime.Checkouts.Count == 0)
+        if (runtime.Checkouts.Count == 0 && runtime.Settings.Workspace is null)
         {
             runtime.Say.Complain("hatch: this is not a git repository, and a ticket is about a codebase.");
-            runtime.Say.Complain("hatch:   run it inside a checkout, name one with --repo, or set HATCH_REPOS.");
+            runtime.Say.Complain(
+                "hatch:   run it inside a checkout, name one with --repo, set HATCH_REPOS, or give a --workspace to clone into.");
             return 1;
         }
 
@@ -479,8 +497,25 @@ public sealed class GoToWorkCommand(Runtime runtime)
         }
 
         // One lock per checkout this runner serves - a second loop naming any
-        // one of them is refused, by the first loop still holding it.
+        // one of them is refused, by the first loop still holding it. And, where
+        // a workspace is set, one more on the workspace directory itself, taken
+        // here rather than left implicit in the per-checkout locks below: a
+        // clone that appears at three in the morning has no lock of its own yet,
+        // so what stops two loops from cloning into the same fresh path at once
+        // is the workspace's own lock, held for the whole night.
         var locks = new List<LoopLock>();
+        if (runtime.Settings.Workspace is { } lockedWorkspace)
+        {
+            var held = LoopLock.Take(lockedWorkspace, runtime.TempDirectory, out var refusal);
+            if (held is null)
+            {
+                runtime.Say.Complain(refusal);
+                return 1;
+            }
+
+            locks.Add(held);
+        }
+
         foreach (var checkout in runtime.Checkouts)
         {
             var held = LoopLock.Take(checkout.Path, runtime.TempDirectory, out var refusal);
@@ -745,7 +780,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxSpend: tally.MaxSpend,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
-                Clones: false),
+                Clones: runtime.Settings.Workspace is not null),
             ct);
 
         // `--once` says hello and reads nothing back. There is no second pass
@@ -800,6 +835,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
     {
         var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat);
         var now = runtime.Clock.GetUtcNow();
+
+        // A clone this walk could not make - recorded exactly as a failed spawn
+        // would be, so three of them in a row end the night the same way three
+        // broken increments do. Declared on the next read either way: the
+        // checkouts a clone attempt grew survive past a candidate it gave up on.
+        foreach (var failed in picked.CloneFailures ?? []) tally.Record(failed);
+        if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
 
         switch (picked.Outcome)
         {

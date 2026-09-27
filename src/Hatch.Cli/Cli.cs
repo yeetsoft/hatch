@@ -34,6 +34,13 @@ public sealed record Cli(
     /// </summary>
     public IReadOnlyList<CheckoutEntry> Checkouts { get; init; } = [];
 
+    /// <summary>
+    /// Whether this runner clones what the board binds - <see
+    /// cref="Settings.Workspace"/> set, so a person's own <c>queue</c> or
+    /// <c>next</c> sees the same unfolded board a loop serving it would.
+    /// </summary>
+    public bool Clones { get; init; }
+
     public DateTimeOffset Now => Clock.GetLocalNow();
 
     public int OffsetMinutes => Board.OffsetMinutes(Now);

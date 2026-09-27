@@ -21,13 +21,25 @@ public enum Pick
 /// Where the claimed dispatch spawns, and what it resets - set only when
 /// <see cref="Outcome"/> is <see cref="Pick.Claimed"/>.
 /// </param>
+/// <param name="Checkouts">
+/// The checkouts this runner serves, possibly grown by a clone made on the way
+/// to <see cref="Chosen"/> - set on every return path, so a clone earlier in
+/// the walk survives even when a later candidate is the one actually claimed.
+/// </param>
+/// <param name="CloneFailures">
+/// One failed increment per clone this walk could not make, accumulated across
+/// every candidate it walked past - the same shape a real failed spawn
+/// reports, so the tally's three-in-a-row rule sees it too.
+/// </param>
 public sealed record Picked(
     Pick Outcome,
     WorkDto? Work,
     Claim? Claim,
     IReadOnlyList<QueueEntryDto> Queue,
     IReadOnlyList<string> Busy,
-    Checkouts.Choice? Chosen = null);
+    Checkouts.Choice? Chosen = null,
+    IReadOnlyList<CheckoutEntry>? Checkouts = null,
+    IReadOnlyList<IncrementReport>? CloneFailures = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -49,7 +61,8 @@ public sealed record Picked(
 /// </remarks>
 public sealed class Picker(
     Board board, string runner, Terminal say,
-    IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch)
+    IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch,
+    string? workspace = null, Func<string, string, IClone>? clone = null)
 {
     /// <summary>
     /// How many clear rows to try before calling the board busy. A bounded walk,
@@ -59,13 +72,15 @@ public sealed class Picker(
     /// </summary>
     public const int Attempts = 5;
 
+    private readonly bool _clones = workspace is not null;
+
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null)
     {
         IReadOnlyList<QueueEntryDto> queue;
         try
         {
-            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct);
+            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, _clones);
         }
         catch (HatchException e)
         {
@@ -77,9 +92,10 @@ public sealed class Picker(
         // folded past everything under a live claim held by somebody else, so
         // this is a shortlist and not the whole column.
         var clear = queue.Where(q => q.Blocked is null).Select(q => q.Issue.Key).ToList();
-        if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, []);
+        if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
         var busy = new List<string>();
+        var cloneFailures = new List<IncrementReport>();
 
         foreach (var key in clear.Take(Attempts))
         {
@@ -101,41 +117,68 @@ public sealed class Picker(
                 // not answer, and reporting that as a busy board would be a
                 // sentence saying the opposite of what happened.
                 say.Complain($"hatch: {key} - {refused?.Sentence ?? "the claim was refused"}");
-                return new Picked(Pick.Unreadable, null, null, queue, busy);
+                return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
             }
 
             WorkDto? work;
             try
             {
-                work = await board.WorkAsync(checkouts, key, claim.Token, ct);
+                work = await board.WorkAsync(checkouts, key, claim.Token, ct, _clones);
             }
             catch (HatchException e)
             {
                 await claim.ReleaseAsync();
                 say.Complain(e.Message);
-                return new Picked(Pick.Unreadable, null, null, queue, busy);
+                return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
             }
 
             // The ticket changed under us between the two reads - somebody
-            // answered a question, something landed, a dependency closed - or
-            // its primary repository matched no checkout this runner holds,
-            // which the queue's own fold would have caught a moment later
-            // anyway. The lease goes back and the walk goes on.
-            var chosen = work is null || work.Blocked is { Length: > 0 }
-                ? null
-                : Checkouts.Choose(work.Repositories, checkouts, standingRoot, standingBaseBranch);
-
-            if (work is null || work.Blocked is { Length: > 0 } || chosen is null)
+            // answered a question, something landed, a dependency closed - and
+            // the lease goes back and the walk goes on.
+            if (work is null || work.Blocked is { Length: > 0 })
             {
                 await claim.ReleaseAsync();
                 busy.Add($"  {key}  {work?.Blocked ?? "it left the dispatcher's path between two reads"}");
                 continue;
             }
 
-            return new Picked(Pick.Claimed, work, claim, queue, busy, chosen);
+            var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
+            checkouts = resolved.Checkouts;
+
+            if (resolved.Failed is { } failure)
+            {
+                await claim.ReleaseAsync();
+                await board.CommentAsync(
+                    key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
+
+                cloneFailures.Add(new IncrementReport
+                {
+                    Key = key,
+                    From = work.FromStatus.Name,
+                    To = work.ToStatus?.Name ?? "?",
+                    Ended = work.FromStatus.Name,
+                    ExitCode = 1,
+                    Flag = $"could not clone {failure.Remote}: {failure.Error}",
+                });
+                continue;
+            }
+
+            // Its primary repository matched no checkout this runner holds or
+            // could clone - the same "changed under us" the queue's own fold
+            // would have caught a moment later anyway.
+            if (resolved.Chosen is null)
+            {
+                await claim.ReleaseAsync();
+                busy.Add($"  {key}  it left the dispatcher's path between two reads");
+                continue;
+            }
+
+            return new Picked(Pick.Claimed, work, claim, queue, busy, resolved.Chosen, checkouts,
+                cloneFailures.Count > 0 ? cloneFailures : null);
         }
 
-        return new Picked(Pick.Busy, null, null, queue, busy);
+        return new Picked(Pick.Busy, null, null, queue, busy, Checkouts: checkouts,
+            CloneFailures: cloneFailures.Count > 0 ? cloneFailures : null);
     }
 
     /// <summary>

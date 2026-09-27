@@ -27,6 +27,7 @@ public sealed record Settings
     public static readonly string[] FileNames =
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
+        "HATCH_WORKSPACE",
     ];
 
     /// <summary>Which of the three layers a value came from, for <c>config --show</c>.</summary>
@@ -68,6 +69,13 @@ public sealed record Settings
     /// standing one - empty where nothing is named.
     /// </summary>
     public IReadOnlyList<string> Repos { get; init; } = [];
+
+    /// <summary>
+    /// A directory this runner owns entirely, where it clones every repository
+    /// the board binds that it has no checkout of - null for a runner with
+    /// none, which is every runner before HA-19.
+    /// </summary>
+    public string? Workspace { get; init; }
 
     /// <summary>
     /// How long a spawned session may say nothing before the renderer says what
@@ -136,6 +144,7 @@ public sealed record Settings
         var runner = Read("HATCH_RUNNER");
         var heartbeat = Read("HATCH_HEARTBEAT");
         var reposRaw = Read("HATCH_REPOS");
+        var workspace = Read("HATCH_WORKSPACE");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -171,6 +180,7 @@ public sealed record Settings
             Runner = runner,
             HeartbeatSeconds = pulse,
             Repos = repos,
+            Workspace = workspace,
             Sources = sources,
         };
         return true;

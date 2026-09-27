@@ -25,7 +25,9 @@ exhaustive reference for every flag and behaviour.
   or `HATCH_REPOS`, so a loop with none of its own still works the two or
   three repositories already cloned on the machine. Only `work` and
   `go-to-work` need one; every other command is one request and a sentence
-  about the answer.
+  about the answer. `--workspace` or `HATCH_WORKSPACE` is a third way in: a
+  directory the loop owns entirely, where it clones what the board binds that
+  it has no checkout of — for a machine with nothing cloned on it at all.
 
 Nothing else. The binary is self-contained: no .NET, no Node, no `gh`, no
 `jq`.
@@ -71,6 +73,7 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_BASE_BRANCH` | The trunk `go-to-work` resets to, if `origin/HEAD` does not say |
 | `HATCH_RUNNER` | What the board calls this runner. Default `host:/path/to/checkout` |
 | `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
+| `HATCH_WORKSPACE` | A directory this runner owns entirely, where it clones every repository the board binds that it has no checkout of |
 
 **The key lives outside the artifact**: never a tracked file, never a value in
 a commit, never pasted into a ticket. Hatch is built to be cloned by other
@@ -95,6 +98,7 @@ hatch work -i AER-12              a session you sit in, rather than a headless o
 hatch work --quiet                say nothing until it is finished
 hatch work --model opus --effort xhigh AER-12
 hatch work --repo /path/to/a/checkout    also serve that checkout, repeatable
+hatch work --workspace /clones           clone what the board binds, into /clones
 ```
 
 What it does, in order: checks that the `claude` CLI can be found; sends one
@@ -142,6 +146,7 @@ hatch go-to-work --under AER-1    only inside that epic's subtree
 hatch go-to-work --interval 300   seconds to wait when there was nothing to do (default 60)
 hatch go-to-work --quiet          no per-increment stream, only what each one ended as
 hatch go-to-work --repo /path/to/a/checkout    also serve that checkout, repeatable
+hatch go-to-work --workspace /clones           clone what the board binds, into /clones
 ```
 
 A ticket key is refused here. This command's question is "what is next", and
@@ -155,13 +160,16 @@ one ticket cannot be the answer twice. One increment on a named ticket is
    cap. Read at the top of a pass, the one moment no claim is held.
 2. **Stop conditions**, below.
 3. **Pick.** The first issue the dispatcher clears, folding past everything it
-   does not, and a claim on it. No claim, no spawn.
+   does not, and a claim on it. No claim, no spawn. With a workspace
+   configured, a repository the ticket binds that this loop has no checkout of
+   is cloned here, with the lease already held.
 4. **Reset every checkout the increment will use.** Fetch each, and put its
    tree back on its default branch at the tip the remote has right now — a
    binding's own base branch beats `origin/HEAD` for that checkout, and
    `HATCH_BASE_BRANCH` still only ever overrides the checkout the loop is
-   standing in. A ticket for a repository this loop does not have is folded
-   past, with the reason, before this step is ever reached.
+   standing in. A ticket for a repository this loop has no checkout of and no
+   workspace to clone into is folded past, with the reason, before this step
+   is ever reached.
 5. **Check its own source.** If the loop was rebuilt on the trunk under it, it
    stops here and asks to come back as the new build, holding no ticket.
 6. **Spawn the increment**, and record what it cost and whether the ticket
@@ -285,6 +293,18 @@ naming the pid of the one that has it. Two loops do not collide over the
 board, the claim divides it, but they would collide over a tree they share.
 Two checkouts, two loops, and both are welcome. They appear on the Runners
 page under their own names.
+
+A loop with none of its own checkouts of what a board binds can still serve
+it: `--workspace <dir>` (or `HATCH_WORKSPACE`) names a directory it owns
+entirely, and it clones whatever a project binds that it has no checkout of
+into `<dir>/<host>/<owner>/<repo>` the first time a ticket needs it — a port in
+a host, if there is one, spelled with `_` in place of `:`, since Windows will
+not take a `:` in a directory name. A remote two projects both bind is cloned
+once and served to both. A clone that fails releases the ticket, comments on
+it with git's own line, and counts as a failed increment — three of them in a
+row end the night the same way three failed spawns do. A directory already
+holding clones from an earlier night is served as it is found, nothing
+re-cloned.
 
 ## Reading the board, spending nothing
 

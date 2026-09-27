@@ -353,4 +353,86 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.Contains("2  a question is open", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("2 question(s) are waiting on you", StringComparison.Ordinal));
     }
+
+    // ---- --workspace: cloning what the board binds (HA-19) ----
+
+    [Fact]
+    public async Task A_named_tickets_clone_happens_after_the_claim_and_before_it_is_spawned_at()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        // The claim already made, at the moment the clone is asked for - the
+        // one thing that tells the order apart from the reverse of it.
+        var claimedByThen = false;
+        h.Clone.Watching = () => claimedByThen = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim") == 1;
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        var expected = Checkouts.PathFor(workspace, "example.test/owner/repo");
+        var cloned = Assert.Single(h.Clone.Requested);
+        Assert.Equal("https://example.test/owner/repo.git", cloned.Remote);
+        Assert.Equal(expected, cloned.Path);
+
+        Assert.True(claimedByThen, "the clone happened after the claim, not before it");
+        var spawned = Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(expected, spawned.Root);
+    }
+
+    [Fact]
+    public async Task A_failed_clone_releases_the_lease_and_comments_the_ticket_rather_than_spawning()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+        h.Clone.Error = "fatal: repository not found";
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/gone.git", canonical: "example.test/owner/gone", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "noted", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        Assert.Equal(2, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var body = comment.Read<CommentCreateRequest>().Body;
+        Assert.Contains("could not clone", body, StringComparison.Ordinal);
+        Assert.Contains("fatal: repository not found", body, StringComparison.Ordinal);
+        Assert.Contains(h.Say.Complained, l => l.Contains("could not clone", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_dry_run_does_not_clone_even_with_a_workspace_and_an_unmatched_primary()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+
+        Assert.Equal(2, await new WorkCommand(runtime).RunAsync(["--dry-run", "AER-1"], default));
+
+        Assert.Empty(h.Clone.Requested);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.Contains("/claim", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
+    }
 }

@@ -65,7 +65,8 @@ if (command == "config")
 {
     var configured = Settings.Layers(checkoutEnv, environment)("HATCH_RUNNER").Value;
     return await new ConfigCommand(
-            say, new Input(), environment, checkoutEnv, Checkout.Runner(configured, Checkout.Host(), root ?? here))
+            say, new Input(), environment, checkoutEnv, Checkout.Runner(configured, Checkout.Host(), root ?? here),
+            Root: root)
         .RunAsync(rest, CancellationToken.None);
 }
 
@@ -80,11 +81,14 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
 // exactly as broken for `hatch board` as for the loop. `work` and
 // `go-to-work` may override this list with their own --repo, below.
-if (!Checkouts.TryDiscover(root, settings.Repos, out var checkouts, out var badRepo))
+if (!Checkouts.TryDiscover(root, settings.Repos, settings.Workspace, out var checkouts, out var strays, out var badRepo))
 {
     say.Complain(badRepo);
     return 1;
 }
+
+foreach (var stray in strays)
+    say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
@@ -132,7 +136,11 @@ try
             : await new GoToWorkCommand(runtime).RunAsync(rest, cancelling.Token);
     }
 
-    var cli = new Cli(board, say, new Input(), settings, runnerName) { Checkouts = checkouts };
+    var cli = new Cli(board, say, new Input(), settings, runnerName)
+    {
+        Checkouts = checkouts,
+        Clones = settings.Workspace is not null,
+    };
 
     return command switch
     {
@@ -256,8 +264,9 @@ internal partial class Program
         "",
         "  hatch runner-claude-token    the Claude token this Hatch holds, decoded",
         "",
-        "The two that spawn an agent, and the only two that need a checkout - the one",
-        "you are standing in, or one named with --repo or HATCH_REPOS:",
+        "The two that spawn an agent, and the only two that need a checkout or a",
+        "workspace to clone into - the one you are standing in, one named with --repo",
+        "or HATCH_REPOS, or --workspace or HATCH_WORKSPACE to clone what is missing:",
         "",
         "  hatch work                   one increment on the next thing due",
         "  hatch work AER-12            ...or on this one",
@@ -267,6 +276,7 @@ internal partial class Program
         "  hatch work --model opus --effort xhigh AER-12",
         "  hatch work --dry-run         print the prompt, spawn nothing",
         "  hatch work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
+        "  hatch work --workspace /clones           ...clone what the board binds, into /clones",
         "  hatch go-to-work             increments, back to back, until told to stop",
         "  hatch go-to-work --once      ...one pass, and out",
         "  hatch go-to-work --under AER-1 --interval 300",
@@ -276,6 +286,7 @@ internal partial class Program
         "  hatch go-to-work --restart-after 0    ...only when its own source changed",
         "  hatch go-to-work --no-restart         ...never coming back as a newer one",
         "  hatch go-to-work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
+        "  hatch go-to-work --workspace /clones           ...clone what the board binds, into /clones",
         "",
         "Every command takes -h for its own usage block.",
         "",
@@ -291,6 +302,8 @@ internal partial class Program
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",
+        "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
+        "                     repository the board binds that it has no checkout of",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
         "",
