@@ -92,4 +92,16 @@
   <Target Name="BuildDesign" BeforeTargets="Build" DependsOnTargets="NpmInstall" Condition="'$(SkipDesignBuild)' != 'true'" Inputs="@(DesignSource)" Outputs="wwwroot/apps/design/index.html">
     <Exec Command="npm run build -w apps/design" WorkingDirectory="../Hatch.Web" />
   </Target>
+  <!--
+    The sign-in shell every refusal redirects to. Mirrors BuildDesign. (There is
+    no BuildHatch target yet, so apps/hatch is not built by dotnet build; that is
+    separate from this.)
+  -->
+  <ItemGroup>
+    <AuthSource Include="../Hatch.Web/apps/auth/src/**/*.*;../Hatch.Web/apps/auth/public/**/*.*;../Hatch.Web/apps/auth/index.html;../Hatch.Web/apps/auth/package.json;../Hatch.Web/apps/auth/vite.config.ts;../Hatch.Web/packages/*/src/**/*.*;../Hatch.Web/packages/*/package.json" />
+  </ItemGroup>
+
+  <Target Name="BuildAuth" BeforeTargets="Build" DependsOnTargets="NpmInstall" Condition="'$(SkipAuthBuild)' != 'true'" Inputs="@(AuthSource)" Outputs="wwwroot/apps/auth/index.html">
+    <Exec Command="npm run build -w apps/auth" WorkingDirectory="../Hatch.Web" />
+  </Target>
 </Project>
