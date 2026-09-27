@@ -2208,6 +2208,13 @@ ten minutes; `queue` is where the counts turn back into tickets.
   what makes that search short. The pull request is a field rather than a
   sentence — `hatch pr AER-12 <url>` puts it there, and the issue page draws
   it as something to click.
+- **Name the ticket in the pull request, in two places.** The title is the key,
+  one space, then the subject in house style — `AER-12 Auth: the first Admin`,
+  with no brackets and no second colon. The first line of the description is
+  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
+  line, then the summary. `<origin>` is the address Hatch was reached at
+  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
+  AER-12 --dry-run` prints the exact line. Never write a relative link.
 - **Plan on the ticket, not in a chat log.** A planning session `PATCH`es
   acceptance criteria into the description and `POST`s the stories or tasks the
   work breaks into. An epic takes stories; a story takes tasks.

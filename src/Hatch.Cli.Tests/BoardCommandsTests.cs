@@ -144,6 +144,28 @@ public sealed class BoardCommandsTests
         Assert.Contains("AER-1", h.Said);
     }
 
+    [Fact]
+    public async Task A_dispatch_with_no_link_gets_one_from_the_origin_the_runner_reached()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", noLink: true));
+
+        var work = await h.Board.WorkAsync("AER-1", null, default);
+
+        Assert.Equal("https://hatch.example/apps/hatch/issues/AER-1", work!.IssueUrl);
+    }
+
+    [Fact]
+    public async Task A_link_the_server_wrote_is_passed_through_untouched()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", issueUrl: "https://home.example.com/apps/hatch/issues/AER-1"));
+
+        var work = await h.Board.WorkAsync("AER-1", null, default);
+
+        Assert.Equal("https://home.example.com/apps/hatch/issues/AER-1", work!.IssueUrl);
+    }
+
     /// <summary>
     /// "There is nothing" and "something went wrong and printed nothing" look
     /// identical as a blank line, which is the one thing a run nobody watched

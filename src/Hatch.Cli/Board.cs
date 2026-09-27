@@ -38,10 +38,10 @@ public sealed class Board(HatchClient client)
     /// The claim this runner is holding, so that its own lease does not fold its
     /// own dispatch. Absent everywhere a caller holds nothing.
     /// </param>
-    public Task<WorkDto?> WorkAsync(string key, Guid? heldToken, CancellationToken ct)
+    public async Task<WorkDto?> WorkAsync(string key, Guid? heldToken, CancellationToken ct)
     {
         var held = heldToken is { } token ? $"?heldToken={token}" : "";
-        return Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{held}", ct);
+        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{held}", ct));
     }
 
     /// <summary>
@@ -54,10 +54,27 @@ public sealed class Board(HatchClient client)
     /// follows, the queue picks and the claim decides; see <see cref="Picker"/>
     /// for why the second read there is the named one.
     /// </remarks>
-    public Task<WorkDto?> NextAsync(string? under, int offsetMinutes, CancellationToken ct)
+    public async Task<WorkDto?> NextAsync(string? under, int offsetMinutes, CancellationToken ct)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
-        return Client.GetAsync<WorkDto>($"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}", ct);
+        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}", ct));
+    }
+
+    /// <summary>
+    /// The dispatch, with a link to its issue whenever one can be made. Hatch
+    /// answers with one only where the install has a public origin configured;
+    /// otherwise the origin this runner reached Hatch at is the best address
+    /// there is. Left null where that is not an absolute http(s) URL, so a
+    /// session is never handed a relative link.
+    /// </summary>
+    private WorkDto? WithIssueUrl(WorkDto? work)
+    {
+        if (work is null || !string.IsNullOrEmpty(work.IssueUrl)) return work;
+
+        return Uri.TryCreate(Client.Origin, UriKind.Absolute, out var origin)
+            && origin.Scheme is "http" or "https"
+                ? work with { IssueUrl = $"{Client.Origin}/apps/hatch/issues/{work.Issue.Key}" }
+                : work;
     }
 
     public async Task<IReadOnlyList<QuestionDto>> QuestionsAsync(string? key, bool open, CancellationToken ct)

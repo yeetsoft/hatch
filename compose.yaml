@@ -84,6 +84,12 @@ services:
       # Windows, USER on macOS and Linux. Read from the invoking shell's own
       # environment - no .env file, nothing to export first.
       Auth__LocalPerson__Name: "${USERNAME:-${USER:-}}"
+      # The address a browser opens this Hatch at, e.g. https://<origin>. A
+      # session's pull requests link back to its ticket, and a containerised
+      # runner reaches Hatch as http://api:8080 - so without this the link it
+      # writes is one no reviewer can open. Leaving it unset is fine: links then
+      # use the address the runner itself reaches Hatch at (its HATCH_BASE).
+      Apps__PublicBaseUrl: "${HATCH_PUBLIC_URL:-}"
     ports:
       - "${HATCH_PORT:-8080}:8080"
     restart: unless-stopped
