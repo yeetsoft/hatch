@@ -28,6 +28,14 @@
   padding: 0 var(--sp-5);
 }
 
+/* The layout .hatch-nav-content gives its children, restated for the one box
+   Board, Plan, Agents and Manage now sit in together. */
+.hatch-primary-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
 .hatch-nav-link {
   padding: var(--sp-3) var(--sp-4);
   color: var(--muted);

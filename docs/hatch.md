@@ -1179,9 +1179,9 @@ did in its `work-log` block. **No Claude credential is anywhere in this path.**
 A leaderboard on an installation with no subscription token is the whole
 leaderboard rather than a reduced one.
 
-The page is at `/leaderboard` in the Hatch app, beside Plan in the primary nav —
-the two pages that read across the whole board rather than about one ticket. It
-holds three things over one window and one optional issue filter:
+The page is at `/leaderboard` in the Hatch app, under **Agents** in the primary
+nav, because it answers what the nights cost. It holds three things over one
+window and one optional issue filter:
 
 - a **ranking** of the top-billing sessions, captioned in the house's own voice.
   A leaderboard of most expensive agent runs is funnier than it is useful, and
