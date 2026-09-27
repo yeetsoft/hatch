@@ -470,6 +470,13 @@ The browser's `lib/place.ts` is therefore about *which neighbours to name* —
 which matters because the board filters, and a drop has to land next to the card
 the operator can see rather than next to a hidden row at the same index.
 
+Which column a drop lands in at all is a separate question, decided in
+`lib/aim.ts`: the column under the pointer, always, rather than whichever
+droppable happens to score best by the corner geometry dnd-kit reaches for by
+default — an average of four corners on a full-height column loses to a
+card one column over at the same height, which is usually the dragged card's
+own original slot.
+
 #### Closing a subtree
 
 Moving a parent into a terminal column used to move only the parent, and that

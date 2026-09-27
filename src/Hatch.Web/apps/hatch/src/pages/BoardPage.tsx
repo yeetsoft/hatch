@@ -5,7 +5,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -26,6 +25,7 @@ import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
 import { NO_FILTER, assigneeFacets, filterCards, isFiltering } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
+import { aimAt } from '../lib/aim';
 import { columnDroppableId, place, targetStatusId } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
@@ -127,6 +127,10 @@ export function BoardPage() {
      parent's Filed under list. */
   const columns = useMemo(() => boardColumns(board?.statuses ?? []), [board?.statuses]);
 
+  // Reads the pointer against the board's own ids rather than dnd-kit's
+  // default corner-distance scoring - see lib/aim.ts for why that matters.
+  const collisionDetection = useMemo(() => aimAt(board?.issues ?? []), [board?.issues]);
+
   /* Derived from the whole board rather than from what survives the filter,
      so choosing somebody does not empty the list you chose them from. */
   const assignees = useMemo(() => assigneeFacets(cards ?? []), [cards]);
@@ -212,7 +216,7 @@ export function BoardPage() {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={onDragStart}
           onDragOver={onDragOver}
           onDragCancel={cancel}
@@ -303,9 +307,11 @@ function Column({
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
-  // Its own droppable as well as a sortable context: a column with nothing in
-  // it has no card to drop onto, and "move this to done" is exactly the drag
-  // where done is empty.
+  // Its own droppable as well as a sortable context, and on the whole section
+  // rather than just the cards area: aim.ts finds the target column by asking
+  // which one the pointer is inside, and the heading and the empty space below
+  // the last card have to answer that the same way the cards do, or a drop
+  // over either reads as over no column at all.
   const { setNodeRef } = useDroppable({ id: columnDroppableId(status.id) });
 
   // Read once per render rather than per card, so a column cannot straddle
@@ -327,7 +333,7 @@ function Column({
   const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
 
   return (
-    <section className={`hatch-column${dropping ? ' dropping' : ''}`} style={statusVars(status.color)}>
+    <section className={`hatch-column${dropping ? ' dropping' : ''}`} style={statusVars(status.color)} ref={setNodeRef}>
       <header className="hatch-column-head">
         <StatusDot status={status} />
         <span className="hatch-column-name">{status.name}</span>
@@ -339,7 +345,7 @@ function Column({
         )}
       </header>
 
-      <div className="hatch-column-cards" ref={setNodeRef}>
+      <div className="hatch-column-cards">
         {/* Only the cards actually drawn: dnd-kit sorts the ids it is given, and
             an id with nothing on screen behind it is a gap a drag falls into. */}
         <SortableContext items={shown.map((c) => c.key)} strategy={verticalListSortingStrategy}>
