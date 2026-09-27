@@ -11,6 +11,7 @@ import {
   boundsProblem,
   boundsRequest,
   isControllable,
+  repositoriesLabel,
   runnerActivity,
   type RunnerActivity,
   type RunnerBounds,
@@ -173,6 +174,7 @@ function Row({
 function BoundsSummary({ runner }: { runner: Runner }) {
   const said = [
     runner.under && `under ${runner.under}`,
+    repositoriesLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,

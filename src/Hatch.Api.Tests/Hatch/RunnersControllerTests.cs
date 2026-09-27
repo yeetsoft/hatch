@@ -99,6 +99,68 @@ public class RunnersControllerTests
         Assert.Null((await h.OneAsync()).Line);
     }
 
+    // ---- What it serves ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingRemotes_StoresTheCanonicalForm()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: ["git@example.com:owner/repo.git"]));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(["example.com/owner/repo"], runner.Repositories);
+    }
+
+    [Fact]
+    public async Task ALaterHeartbeat_OverwritesTheRepositoriesAPriorOneReported()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: ["git@example.com:owner/repo.git"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: ["git@example.com:owner/other.git"]));
+
+        Assert.Equal(["example.com/owner/other"], (await h.OneAsync()).Repositories);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: []));
+        Assert.Empty((await h.OneAsync()).Repositories);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoRemotes_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: ["git@example.com:owner/repo.git"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal(["example.com/owner/repo"], (await h.OneAsync()).Repositories);
+    }
+
+    [Fact]
+    public async Task AnInvalidRemote_CanonicalisesToNullAndIsDroppedRatherThanRefusingTheHeartbeat()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Remotes: ["not a url"]));
+
+        Assert.Empty((await h.OneAsync()).Repositories);
+    }
+
+    [Fact]
+    public async Task Clones_IsSeededOverwrittenAndLeftAloneTheSameWayRemotesIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Clones: true));
+        Assert.True((await h.OneAsync()).Clones);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Clones: false));
+        Assert.False((await h.OneAsync()).Clones);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.False((await h.OneAsync()).Clones);
+    }
+
     // ---- What it is working ----
 
     [Fact]

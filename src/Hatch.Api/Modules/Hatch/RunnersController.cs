@@ -132,7 +132,7 @@ public class RunnersController(
             }
         }
 
-        Touch(row, kind, line, now);
+        Touch(row, kind, line, now, request);
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row);
@@ -279,14 +279,20 @@ public class RunnersController(
         MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null,
         MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null,
         UntilAt = request.UntilAt,
+
+        // Facts about the process, not bounds an operator set - written from
+        // whatever the first beat carried, the same as every later one.
+        Remotes = Canonicalised(request.Remotes),
+        Clones = request.Clones,
     };
 
     /// <summary>
-    /// A row that already exists: three columns and no more. The state and the
-    /// four bounds are the operator's, and a heartbeat that wrote one would be
-    /// the runner having the last word on what it may spend.
+    /// A row that already exists: kind, last seen, line, and the two facts
+    /// about what it serves. The state and the four bounds are the operator's,
+    /// and a heartbeat that wrote one would be the runner having the last word
+    /// on what it may spend.
     /// </summary>
-    private static void Touch(EfHatchRunner row, string kind, string? line, DateTimeOffset now)
+    private static void Touch(EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -303,6 +309,12 @@ public class RunnersController(
                 row.LineAt = now;
                 break;
         }
+
+        // Facts about the process, overwritten by whatever the latest beat
+        // said - absent leaves the row exactly as it was, the same tri-state
+        // every other fact-vs-absent field on this contract already uses.
+        if (request.Remotes is not null) row.Remotes = Canonicalised(request.Remotes);
+        if (request.Clones is not null) row.Clones = request.Clones;
     }
 
     /// <summary>
@@ -399,5 +411,21 @@ public class RunnersController(
         if (string.IsNullOrEmpty(trimmed)) return null;
 
         return trimmed.Length > max ? trimmed[..max] : trimmed;
+    }
+
+    /// <summary>
+    /// The remotes a beat named, canonicalised and newline-joined - or null
+    /// where none survived. An invalid remote canonicalises to null and is
+    /// dropped rather than refusing the whole heartbeat, the same as
+    /// <see cref="Fits"/>: a heartbeat is not a decision.
+    /// </summary>
+    private static string? Canonicalised(IReadOnlyList<string>? remotes)
+    {
+        if (remotes is null) return null;
+        var canonical = remotes
+            .Select(r => RemoteIdentity.Canonical(r).Canonical)
+            .Where(c => c is not null)
+            .ToList();
+        return canonical.Count > 0 ? string.Join('\n', canonical) : null;
     }
 }

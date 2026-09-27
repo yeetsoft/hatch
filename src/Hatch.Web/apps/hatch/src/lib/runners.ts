@@ -65,6 +65,14 @@ export function activityWords(runner: Runner, now: Date): string {
  */
 export const isControllable = (runner: Runner) => runner.kind === 'loop';
 
+/** The repositories a runner serves, as one phrase - or null when it has
+    named none. */
+export function repositoriesLabel(runner: Runner): string | null {
+  if (runner.repositories.length === 0) return null;
+  const repos = runner.repositories.join(', ');
+  return runner.clones ? `${repos}, clones what it lacks` : repos;
+}
+
 /** The bounds as the form holds them: strings, because that is what inputs are
     and what the wire takes. */
 export interface RunnerBounds {

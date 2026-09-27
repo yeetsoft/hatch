@@ -1160,6 +1160,12 @@ public static class RunnerStates
 /// carries its own TTL: the server honours it, so the server says what it is,
 /// and a client can draw "quiet" without deciding for itself what quiet means.
 /// </param>
+/// <param name="Repositories">
+/// The checkouts this runner is serving, canonical and in the order the last
+/// heartbeat named them - a fact about the running process, so it is written
+/// on every beat rather than seeded once.
+/// </param>
+/// <param name="Clones">Whether this runner makes a clone for itself when it lacks one.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -1173,7 +1179,9 @@ public record RunnerDto(
     int? MaxRuns,
     decimal? MaxSpend,
     DateTimeOffset? UntilAt,
-    int GoneAfterSeconds);
+    int GoneAfterSeconds,
+    string[] Repositories,
+    bool? Clones);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -1202,7 +1210,9 @@ public record RunnerHeartbeatRequest(
     string? Under = null,
     int? MaxRuns = null,
     decimal? MaxSpend = null,
-    DateTimeOffset? UntilAt = null);
+    DateTimeOffset? UntilAt = null,
+    IReadOnlyList<string>? Remotes = null,
+    bool? Clones = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat

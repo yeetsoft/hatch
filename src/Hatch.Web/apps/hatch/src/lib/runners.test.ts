@@ -6,6 +6,7 @@ import {
   boundsProblem,
   boundsRequest,
   isControllable,
+  repositoriesLabel,
   runnerActivity,
 } from './runners';
 import type { Runner } from '../types';
@@ -26,6 +27,8 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   lineAt: null,
   state: 'running',
   under: null,
+  repositories: [],
+  clones: null,
   maxRuns: null,
   maxSpend: null,
   untilAt: null,
@@ -76,6 +79,31 @@ describe('isControllable', () => {
   it('is a loop only, because nothing would ever read an instruction off a single increment', () => {
     expect(isControllable(runner())).toBe(true);
     expect(isControllable(runner({ kind: 'once' }))).toBe(false);
+  });
+});
+
+describe('repositoriesLabel', () => {
+  it('is null for a runner that has named none', () => {
+    expect(repositoriesLabel(runner())).toBeNull();
+  });
+
+  it('joins one or more repositories', () => {
+    expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'] }))).toBe('example.com/owner/repo');
+    expect(repositoriesLabel(runner({ repositories: ['example.com/owner/one', 'example.com/owner/two'] }))).toBe(
+      'example.com/owner/one, example.com/owner/two',
+    );
+  });
+
+  it('names clones what it lacks only when the runner says it does', () => {
+    expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: true }))).toBe(
+      'example.com/owner/repo, clones what it lacks',
+    );
+    expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: false }))).toBe(
+      'example.com/owner/repo',
+    );
+    expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: null }))).toBe(
+      'example.com/owner/repo',
+    );
   });
 });
 

@@ -703,7 +703,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Under: under,
                 MaxRuns: tally.MaxRuns,
                 MaxSpend: tally.MaxSpend,
-                UntilAt: tally.UntilAt),
+                UntilAt: tally.UntilAt,
+                Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
+                Clones: false),
             ct);
 
         // `--once` says hello and reads nothing back. There is no second pass
