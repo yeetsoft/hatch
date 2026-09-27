@@ -948,6 +948,10 @@ export interface Runner {
   state: RunnerState;
   /** The epic it has been asked to stay inside, or null for the whole board. */
   under: string | null;
+  /** The checkouts this runner is serving, canonical, from its own heartbeat. */
+  repositories: string[];
+  /** Whether this runner makes a clone for itself when it lacks one. */
+  clones: boolean | null;
   maxRuns: number | null;
   maxSpend: number | null;
   untilAt: string | null;

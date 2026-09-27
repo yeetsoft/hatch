@@ -2045,6 +2045,20 @@ top of the next pass, *after* whatever increment is in flight has finished.
 `HATCH_RUNNER`'s override, the same string every [claim](#claim) already
 carries. A runner has one identity and this is it; the table is keyed on it.
 
+**It also says which repositories it serves.** Every heartbeat from
+`go-to-work` carries the `origin` of each checkout the runner holds,
+canonicalised the same way a project's own bindings are (`RemoteIdentity`) —
+and the row is overwritten with whatever the latest beat sent, on every
+heartbeat rather than seeded once, because these are facts about the running
+process and not bounds an operator has set. The Runners page draws them beside
+`Under`, naming "clones what it lacks" where the runner makes clones for
+itself, so a person can tell which box a project's tickets will actually be
+built on before any of them have moved. `hatch work`'s own one-off heartbeat
+carries none of this — it does not know the answer any better than the row
+already does — so a `hatch work` run, or an older CLI build, leaves whatever a
+loop already reported in place rather than blanking it. `go-to-work --once`
+shares the loop's own heartbeat and reports the same way, once.
+
 **What it is working is not stored.** A row's ticket and the line beside it are
 read off whichever issue carries that runner's live claim at the moment of the
 request, the way an open question is computed rather than kept. A second copy

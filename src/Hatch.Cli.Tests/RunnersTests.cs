@@ -63,6 +63,34 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_carries_every_checkouts_remote_and_says_it_makes_no_clones()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var runtime = h.Runtime with
+        {
+            Checkouts =
+            [
+                new CheckoutEntry(h.Root, "git@example.com:owner/one.git", Standing: true),
+                new CheckoutEntry("/tmp/hatch-test-two", "git@example.com:owner/two.git", Standing: false),
+                new CheckoutEntry("/tmp/hatch-test-three", null, Standing: false),
+            ],
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+
+        // Raw, not canonical - folding two spellings into one is the server's
+        // job, and a runner that did it first would be a second place that rule
+        // could drift from RemoteIdentity.
+        Assert.Equal(["git@example.com:owner/one.git", "git@example.com:owner/two.git"], beat.Remotes);
+        Assert.False(beat.Clones);
+    }
+
+    [Fact]
     public async Task A_loop_says_it_is_a_loop_and_carries_the_bounds_it_started_with()
     {
         using var h = new Harness();

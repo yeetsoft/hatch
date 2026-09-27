@@ -1272,4 +1272,14 @@ public class EfHatchRunner
     /// the stored form is the unambiguous one.
     /// </summary>
     public DateTimeOffset? UntilAt { get; set; }
+
+    /// <summary>
+    /// The checkouts this runner is serving, canonical and newline-joined - a
+    /// fact about the running process, overwritten on every heartbeat that
+    /// names any, the way <see cref="Under"/> and the other bounds are not.
+    /// </summary>
+    public string? Remotes { get; set; }
+
+    /// <summary>Whether this runner makes a clone for itself when it lacks one.</summary>
+    public bool? Clones { get; set; }
 }
