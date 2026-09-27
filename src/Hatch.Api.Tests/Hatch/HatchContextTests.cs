@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsNineTables()
+    public void TheModuleOwnsTenTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["Comments", "IssueDependencies", "IssueEvents", "Issues", "Playbooks", "Projects", "Runners", "Statuses", "WorkLogEntries"],
+            ["Comments", "IssueDependencies", "IssueEvents", "Issues", "Playbooks", "ProjectRepositories", "Projects", "Runners", "Statuses", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -212,6 +212,21 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchIssueDependency), foreignKey).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// A project can only be deleted empty of issues, and its bindings are not
+    /// a reason to keep it around - they go with it rather than blocking the
+    /// delete the way an issue does.
+    /// </summary>
+    [Fact]
+    public void AProjectsRepositories_CascadeWithTheProject()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchProjectRepository), nameof(EfHatchProjectRepository.ProjectId)).DeleteBehavior);
     }
 
     [Fact]

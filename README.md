@@ -50,8 +50,8 @@ hatch go-to-work                               # the loop: next issue, one incre
 ```
 
 `hatch` is the CLI in [`src/Hatch.Cli`](src/Hatch.Cli), published as one
-binary for macOS, Windows and Linux. Once the board is up, download it from the
-**Runner** page in the nav rather than building it yourself. Inside this
+binary for macOS, Windows and Linux. Once the board is up, download it from
+**Agents → Get the runner** rather than building it yourself. Inside this
 checkout, [`scripts/hatch.sh`](scripts/hatch.sh) reaches the same commands and
 builds the CLI on demand if you have no binary yet:
 

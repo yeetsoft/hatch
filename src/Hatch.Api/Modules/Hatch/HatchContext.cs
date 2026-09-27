@@ -4,13 +4,14 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, nine tables.
+/// migration history, ten tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
     public const string Schema = "hatch";
 
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
+    public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
@@ -166,6 +167,17 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // jsonb for the reason the event payload is - see
             // EfHatchWorkLogEntry.ModelUsage.
             e.Property(w => w.ModelUsage).HasColumnType("jsonb");
+        });
+
+        // Cascade with the project: a project can only be deleted empty of
+        // issues, and its bindings are not a reason to keep it around, so they
+        // go with it rather than blocking the delete the way issues do.
+        modelBuilder.Entity<EfHatchProjectRepository>(e =>
+        {
+            e.HasOne(r => r.Project)
+                .WithMany(p => p.Repositories)
+                .HasForeignKey(r => r.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         base.OnModelCreating(modelBuilder);

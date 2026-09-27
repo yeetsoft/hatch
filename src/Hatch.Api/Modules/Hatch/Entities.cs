@@ -76,8 +76,58 @@ public class EfHatchProject
 
     public ICollection<EfHatchIssue> Issues { get; set; } = [];
 
+    /// <summary>The remotes bound to this project, in <see cref="EfHatchProjectRepository.SortOrder"/>.</summary>
+    public ICollection<EfHatchProjectRepository> Repositories { get; set; } = [];
+
     public static bool IsValidKey(string? key) =>
         key is not null && Regex.IsMatch(key, KeyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+}
+
+/// <summary>
+/// One git remote bound to a project, at its position in the ordered list -
+/// the first is the primary. Readable by every client; writable only by a
+/// person, because a runner that could bind one could point every runner on
+/// the board at a repository nobody chose.
+///
+/// Two projects may bind the same remote: a monorepo with two key namespaces
+/// is a real shape, and nothing here says a repository belongs to one project.
+/// </summary>
+[Table("ProjectRepositories")]
+[Index(nameof(ProjectId), nameof(Canonical), IsUnique = true)]
+public class EfHatchProjectRepository
+{
+    public const int MaxRemoteLength = 500;
+    public const int MaxBaseBranchLength = 120;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>The remote as typed. Never canonicalised on the way in by anything but this server - see <see cref="RemoteIdentity"/>.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    /// <summary>
+    /// <see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the
+    /// matching identity, and the unique index's other half.
+    /// </summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    /// <summary>The branch a checkout of this remote starts from, or null for whatever the remote calls its default.</summary>
+    [MaxLength(MaxBaseBranchLength)]
+    public string? BaseBranch { get; set; }
+
+    /// <summary>
+    /// Position in the list; the first is the primary. A plain 0-based index
+    /// is enough - the whole list is replaced together on every write, so
+    /// there is no gap ever to insert into.
+    /// </summary>
+    public int SortOrder { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary>

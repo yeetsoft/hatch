@@ -12,9 +12,9 @@ agents know how to reach the board. It is written for a person and for a
 Claude, in that order.
 
 **Quick links.** The `hatch` CLI — the runner that works your tickets — is
-handed out by your own Hatch, from the **Runner** page in the nav:
+handed out by your own Hatch, from **Agents → Get the runner**:
 
-- [**Runner → download `hatch`**](/apps/hatch/runner) · or
+- [**Get the runner → download `hatch`**](/apps/hatch/runner) · or
   `<your-hatch-origin>/apps/hatch/runner` in a browser
 - [What to do with it once it is on your `PATH`](#the-hatch-cli-command-by-command)
 - [`hatch work` — one increment](#one-increment-hatch-work) ·
@@ -79,11 +79,12 @@ Open that address. That is the board, and it is empty in a particular way: the
 columns are there — Draft through Done, the ones every Hatch ships with — and
 there is no project yet, so there is nothing for an issue key to be made of.
 
-**Projects → New project** is therefore the first thing to do. A project is a
-key namespace rather than a container: give it a short key and every issue
-filed under it is numbered from that key onwards (`HOME` gives you `HOME-1`,
-`HOME-2`). One board holds every project you make, because switching boards to
-find out what is next is the thing a folder of plan files already did badly.
+**Manage → Projects → New project** is therefore the first thing to do. A
+project is a key namespace rather than a container: give it a short key and
+every issue filed under it is numbered from that key onwards (`HOME` gives you
+`HOME-1`, `HOME-2`). One board holds every project you make, because switching
+boards to find out what is next is the thing a folder of plan files already
+did badly.
 
 Unless you put up the wall (*Putting a front door on it*, below) there is no sign-in. A Hatch started this way runs with its wall off, which
 means it does not ask who you are and does not have anywhere to look it up — so
@@ -161,11 +162,11 @@ Hatch and set `HATCH_GOOGLE_REDIRECT_URI` to the https address.
 The board is a board; the **runner** is what works the tickets. It is one
 binary, it runs on your machine, and it talks to this Hatch over HTTP.
 
-**Runner** in the nav is where it comes from. That page detects your platform
-and offers the matching download — with the other three underneath, for the
-machine you are not sitting at — and prints the revision it was built from,
-which is the same commit as the image serving the page. The two are never a
-version apart, because they came out of one build.
+**Agents → Get the runner** is where it comes from. That page detects your
+platform and offers the matching download — with the other three underneath,
+for the machine you are not sitting at — and prints the revision it was built
+from, which is the same commit as the image serving the page. The two are
+never a version apart, because they came out of one build.
 
 Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On macOS and
 Linux it needs marking executable first:

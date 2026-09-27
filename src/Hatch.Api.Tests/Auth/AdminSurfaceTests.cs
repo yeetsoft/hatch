@@ -142,6 +142,7 @@ public class AdminSurfaceTests
         "ProjectsController.CreateProject",
         "ProjectsController.PatchProject",
         "ProjectsController.DeleteProject",
+        "ProjectsController.GetRepositories",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -289,6 +290,14 @@ public class AdminSurfaceTests
         // IssueExpediteController.
         "IssueExpediteController.PutIssueExpedite",
 
+        // The ordered list of remotes a project is bound to, cut the same
+        // way: a runner that could bind one could point every runner on the
+        // board at a repository nobody chose. The read beside it
+        // (GetRepositories, above with the rest of ProjectsController) is
+        // Hatch-scoped - it is exactly what a dispatch needs to know where to
+        // check out. See ProjectsController.
+        "ProjectsController.PutRepositories",
+
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
         "SettingsController.GetAll",
@@ -389,6 +398,7 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssueExpedite",
+        "ProjectsController.PutRepositories",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

@@ -135,6 +135,38 @@ What survives is the part that matters — parentage is a foreign key and the
 number is the issue's own column, so a rekeyed project keeps every story under
 its epic.
 
+### Repository
+
+`EfHatchProjectRepository` — `ProjectId` (FK, cascade), `Remote` (as typed),
+`Canonical`, `BaseBranch` (nullable), `SortOrder`, `CreatedAt`. Unique on
+`(ProjectId, Canonical)`.
+
+A project carries an ordered list of git remotes rather than one: the first is
+the primary, and a monorepo bound into two key namespaces is a real shape, so
+two projects may bind the same remote. The list is replaced whole on every
+write — there is no "add one remote" verb — which is what makes "re-sending
+what is already there writes nothing" a fact the handler checks rather than one
+the database enforces for it.
+
+**The canonical form is the one rule for when two spellings are the same
+repository**, and it lives in exactly one place, `RemoteIdentity.Canonical` —
+never in the CLI, never in the browser. `https://host/owner/repo.git`,
+`ssh://git@host/owner/repo`, `git@host:owner/repo.git` and `host/owner/repo/`
+all fold to `host/owner/repo`: scheme and user info dropped, a port kept, a
+trailing `.git` and a trailing slash dropped, the whole lowercased. A local
+path folds to its full path with its case intact — a Unix path is
+case-sensitive, and folding it would silently merge two different repositories
+on disk. A remote that yields no host-and-path is refused with a sentence.
+Every client sends what it has and lets the server decide what matches, so two
+callers can never come to disagree about it.
+
+**Reading is open to a key; writing is a person's alone**, `[RequireRole(User)]`
+with no scope, the same cut as a playbook, an assignee and a runner's bounds
+(see ["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut)).
+A runner that could bind a remote could point every runner the board ever
+dispatches at a repository nobody chose — the exact failure the closed edge
+exists to prevent.
+
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
@@ -948,7 +980,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | Route | Verbs | Notes |
 |---|---|---|
 | `/projects` | GET, POST | POST validates key format and uniqueness |
-| `/projects/{id}` | PATCH, DELETE | PATCH name and key; DELETE 409s unless the project is empty |
+| `/projects/{id}` | PATCH, DELETE | PATCH name and key; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
+| `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
+| `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them |
@@ -1179,9 +1213,9 @@ did in its `work-log` block. **No Claude credential is anywhere in this path.**
 A leaderboard on an installation with no subscription token is the whole
 leaderboard rather than a reduced one.
 
-The page is at `/leaderboard` in the Hatch app, beside Plan in the primary nav —
-the two pages that read across the whole board rather than about one ticket. It
-holds three things over one window and one optional issue filter:
+The page is at `/leaderboard` in the Hatch app, under **Agents** in the primary
+nav, because it answers what the nights cost. It holds three things over one
+window and one optional issue filter:
 
 - a **ranking** of the top-billing sessions, captioned in the house's own voice.
   A leaderboard of most expensive agent runs is funnier than it is useful, and
