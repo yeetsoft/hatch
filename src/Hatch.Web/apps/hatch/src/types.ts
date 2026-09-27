@@ -953,3 +953,44 @@ export interface RunnerPatchRequest {
       would be a midnight in a timezone nobody named. */
   untilAt?: string;
 }
+
+// ---- People ----
+
+export type PersonRole = 'pending' | 'user' | 'admin';
+
+/** One person, as the Users page sees them. Mirrors PersonDto. */
+export interface Person {
+  id: string;
+  name: string;
+  role: PersonRole;
+  createdAt: string;
+  updatedAt: string;
+  photoUpdatedAt: string | null;
+  sessionCount: number;
+  /** From the most recently used identity; null for a person with none. */
+  email: string | null;
+  provider: string | null;
+  lastSignInAt: string | null;
+}
+
+/** What a rename or a role change puts. Both fields are required: an omitted
+    role would be a demotion by omission. */
+export interface PersonWriteRequest {
+  name: string;
+  role: PersonRole;
+}
+
+/** One enrolled device on a person's row. Mirrors PersonSessionDto. */
+export interface PersonSession {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+/** The device answering, and who holds it. Mirrors AuthMeDto; the Users page
+    reads only which grant is this browser's. */
+export interface AuthMe {
+  grantId: string;
+  personId: string | null;
+}

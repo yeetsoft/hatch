@@ -16,6 +16,7 @@ import { RunnersPage } from './pages/RunnersPage';
 import { BulkPage } from './pages/BulkPage';
 import { ImportPage } from './pages/ImportPage';
 import { RunnerPage } from './pages/RunnerPage';
+import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MeProvider, useMe } from './lib/useMe';
 
@@ -120,7 +121,7 @@ function AppShell() {
             <Route path="/import" element={<ImportPage />} />
             <Route path="/runner" element={<RunnerPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/users" element={<ComingSoon />} />
+            <Route path="/users" element={<UsersPage />} />
             <Route path="/api-keys" element={<ComingSoon />} />
             {/* An unknown deep link lands on the board rather than on nothing -
                 the board is the app, and there is no page worth writing that

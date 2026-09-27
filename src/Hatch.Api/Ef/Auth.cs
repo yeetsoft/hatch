@@ -47,10 +47,12 @@ public class EfAuthGrant
     /// every grant that existed before people did, and the wall tablet in the
     /// hallway that belongs to the house rather than to anyone.
     ///
-    /// Nullable and <c>SetNull</c> on delete, both deliberately: deleting a
-    /// person must never revoke a credential. A tablet whose owner was removed
-    /// is a tablet with an unknown owner, not a tablet that has been locked
-    /// out of the house.
+    /// Nullable because a grant can be enrolled before anyone claims it, and
+    /// <c>Cascade</c> on delete, deliberately: deleting a person revokes their
+    /// sessions. An ownerless grant is refused by the role gate anyway - it is
+    /// never more than a Pending device - so keeping one after its owner is
+    /// deleted would leave a credential that reaches nothing and that nobody
+    /// would think to revoke.
     ///
     /// This puts a human in the Sessions list and in a log line
     /// (UiLogsController), and it is what an authorization decision reads when
@@ -111,9 +113,9 @@ public class EfAuthGrant
 /// cannot, so <see cref="Email"/> is a label that follows the account and never
 /// a key.
 ///
-/// Cascade from the person, unlike a grant's SetNull: an identity is only a
-/// way of proving who someone is, and one whose person is gone would let a
-/// sign-in mint a grant for nobody.
+/// Cascade from the person, as a grant's is: an identity is only a way of
+/// proving who someone is, and one whose person is gone would let a sign-in
+/// mint a grant for nobody.
 /// </summary>
 [Table("ExternalIdentities")]
 [Index(nameof(Provider), nameof(Subject), IsUnique = true)]

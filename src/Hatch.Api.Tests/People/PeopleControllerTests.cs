@@ -111,13 +111,17 @@ public class PeopleControllerTests
     {
         var (controller, _, _) = NewController();
         var id = await Create(controller, "Ada");
+        // A second Admin, so the demotion below is not the last-Admin refusal.
+        await Create(controller, "Grace", "admin");
+
+        async Task<string> RoleOfAda() => (await controller.GetAll(CancellationToken.None)).Single(p => p.Id == id).Role;
 
         await controller.Update(id, new PersonWriteRequest("Ada", "admin"), CancellationToken.None);
-        Assert.Equal("admin", (await controller.GetAll(CancellationToken.None)).Single().Role);
+        Assert.Equal("admin", await RoleOfAda());
 
         // The half that a "set it if promoting" implementation would silently drop.
         await controller.Update(id, new PersonWriteRequest("Ada", "pending"), CancellationToken.None);
-        Assert.Equal("pending", (await controller.GetAll(CancellationToken.None)).Single().Role);
+        Assert.Equal("pending", await RoleOfAda());
     }
 
     [Fact]
@@ -229,21 +233,86 @@ public class PeopleControllerTests
     }
 
     [Fact]
-    public async Task DeletingAPersonDoesNotRevokeTheirDevices()
+    public async Task DeletingAPersonEndsTheirSessionsAndIdentities()
     {
-        // The single most important assertion in this file. Cascading here
-        // would turn an administrative tidy-up into a lockout, and the symptom
-        // would be a wall tablet that stopped working for no visible reason.
+        // Their sessions end with them: an ownerless grant is refused by the
+        // role gate anyway, so keeping one would leave a credential that
+        // reaches nothing.
         var (controller, db, _) = NewController();
         var id = await Create(controller, "Ada");
+        var other = await Create(controller, "Grace");
         db.AuthGrants.Add(NewGrant("Ada's iPhone", id));
+        db.AuthGrants.Add(NewGrant("Grace's iPad", other));
+        db.ExternalIdentities.Add(NewIdentity(id, "ada@example.test", Now));
         await db.SaveChangesAsync();
 
         Assert.IsType<NoContentResult>(await controller.Delete(id, CancellationToken.None));
 
-        var grant = await db.AuthGrants.SingleAsync();
-        Assert.Null(grant.PersonId);
-        Assert.Equal("Ada's iPhone", grant.Label);
+        Assert.Equal("Grace's iPad", (await db.AuthGrants.SingleAsync()).Label);
+        Assert.Empty(db.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task ProjectsTheMostRecentIdentityOntoThePerson()
+    {
+        var (controller, db, _) = NewController();
+        var id = await Create(controller, "Ada");
+        await Create(controller, "Bare");
+        db.ExternalIdentities.Add(NewIdentity(id, "old@example.test", Now.AddDays(-2)));
+        db.ExternalIdentities.Add(NewIdentity(id, "new@example.test", Now.AddDays(-1)));
+        await db.SaveChangesAsync();
+
+        var people = await controller.GetAll(CancellationToken.None);
+
+        var ada = people.Single(p => p.Name == "Ada");
+        Assert.Equal("new@example.test", ada.Email);
+        Assert.Equal("google", ada.Provider);
+        Assert.Equal(Now.AddDays(-1), ada.LastSignInAt);
+        var bare = people.Single(p => p.Name == "Bare");
+        Assert.Null(bare.Email);
+        Assert.Null(bare.Provider);
+        Assert.Null(bare.LastSignInAt);
+    }
+
+    [Fact]
+    public async Task RefusesToDemoteTheLastAdmin()
+    {
+        var (controller, db, _) = NewController();
+        var id = await Create(controller, "Ada", "admin");
+        await Create(controller, "Grace", "user");
+
+        var result = await controller.Update(id, new PersonWriteRequest("Ada", "user"), CancellationToken.None);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("last Admin", (string)conflict.Value!);
+        Assert.Equal(PersonRole.Admin, (await db.People.SingleAsync(p => p.Id == id)).Role);
+    }
+
+    [Fact]
+    public async Task RefusesToDeleteTheLastAdmin()
+    {
+        var (controller, db, _) = NewController();
+        var id = await Create(controller, "Ada", "admin");
+
+        var result = await controller.Delete(id, CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Single(db.People);
+    }
+
+    [Fact]
+    public async Task LetsTheLastAdminBeRenamedAndASecondAdminDemoteThemselves()
+    {
+        var (controller, db, _) = NewController();
+        var ada = await Create(controller, "Ada", "admin");
+        var grace = await Create(controller, "Grace", "admin");
+
+        Assert.IsType<PersonDto>((await controller.Update(ada, new PersonWriteRequest("Ada L", "admin"), CancellationToken.None)).Value);
+        Assert.IsType<PersonDto>((await controller.Update(grace, new PersonWriteRequest("Grace", "user"), CancellationToken.None)).Value);
+
+        // Ada is now the last Admin, and may still be renamed.
+        Assert.IsType<PersonDto>((await controller.Update(ada, new PersonWriteRequest("Ada", "admin"), CancellationToken.None)).Value);
+        Assert.Equal(PersonRole.User, (await db.People.SingleAsync(p => p.Id == grace)).Role);
     }
 
     [Fact]
@@ -390,6 +459,16 @@ public class PeopleControllerTests
         controller.ControllerContext.HttpContext.Request.ContentType = declaredContentType;
         return controller.PutPhoto(id, CancellationToken.None);
     }
+
+    private static EfExternalIdentity NewIdentity(Guid personId, string email, DateTimeOffset lastSignInAt) => new()
+    {
+        Provider = EfExternalIdentity.GoogleProvider,
+        Subject = Guid.NewGuid().ToString(),
+        Email = email,
+        PersonId = personId,
+        CreatedAt = lastSignInAt,
+        LastSignInAt = lastSignInAt,
+    };
 
     private static EfAuthGrant NewGrant(string label, Guid? personId, DateTimeOffset? createdAt = null) => new()
     {

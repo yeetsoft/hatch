@@ -147,15 +147,17 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         // that made it, which is why both EfAuthInvite.RedeemedGrantId and its
         // PersonId are bare Guids rather than foreign keys.
         //
-        // A grant now has exactly one: its optional owner. SetNull rather than
-        // Cascade, and it is the single most important word in this file -
-        // Cascade here would mean deleting a person revokes their devices,
-        // turning an administrative tidy-up into a lockout.
+        // A grant now has exactly one: its optional owner. Cascade, and it is
+        // the single most important word in this file - deleting a person
+        // revokes their devices. That is the point of deleting them: an
+        // ownerless grant is refused by the role gate anyway, so the alternative
+        // (SetNull) would leave credentials that reach nothing and that nobody
+        // is looking at.
         modelBuilder.Entity<EfAuthGrant>()
             .HasOne(g => g.Person)
             .WithMany(p => p.Grants)
             .HasForeignKey(g => g.PersonId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<EfAuthInvite>();
 
@@ -180,10 +182,10 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         modelBuilder.Entity<EfPerson>();
 
         // Cascade: an identity proves who somebody is and means nothing without
-        // them. The opposite call from a grant's, which must outlive its owner.
+        // them - and the same call as a grant's, which ends with its owner.
         modelBuilder.Entity<EfExternalIdentity>()
             .HasOne(i => i.Person)
-            .WithMany()
+            .WithMany(p => p.Identities)
             .HasForeignKey(i => i.PersonId)
             .OnDelete(DeleteBehavior.Cascade);
 
