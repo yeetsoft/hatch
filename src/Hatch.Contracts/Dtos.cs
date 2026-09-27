@@ -732,9 +732,24 @@ public record WorkDto(
     StatusDto? ToStatus,
     PlaybookDto? Playbook,
     IReadOnlyList<IssueCardDto> Children,
+    IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
     string? IssueUrl);
+
+/// <summary>
+/// One of the project's bound remotes, as a dispatch names it - see
+/// <see cref="ProjectRepositoryDto"/> for the write side. The server has
+/// already done every comparison; a client maps <paramref name="MatchedRemote"/>
+/// back to a path on disk and never canonicalises anything itself.
+/// </summary>
+/// <param name="Primary">The first entry in the project's own order - where a session starts.</param>
+/// <param name="MatchedRemote">
+/// The declared remote, spelled exactly as the runner sent it, whose canonical
+/// form is this entry's - or null when none of the runner's declared remotes
+/// matched it (including when the caller declared nothing at all).
+/// </param>
+public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBranch, bool Primary, string? MatchedRemote);
 
 /// <summary>
 /// One row of a pass: an issue the dispatcher looked at, and what it decided

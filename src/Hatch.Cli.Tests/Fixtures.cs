@@ -59,6 +59,7 @@ public static class Fixtures
         string? blocked = null,
         IReadOnlyList<QuestionDto>? questions = null,
         IReadOnlyList<IssueCardDto>? children = null,
+        IReadOnlyList<WorkRepositoryDto>? repositories = null,
         IssueDto? issue = null,
         string? issueUrl = null,
         bool noLink = false) =>
@@ -68,9 +69,15 @@ public static class Fixtures
             ToStatus: to is null ? null : Status(4, to),
             Playbook: Playbook(),
             Children: children ?? [],
+            Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
             IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}");
+
+    public static WorkRepositoryDto Repository(
+        string remote, string? canonical = null, string? baseBranch = null, bool primary = false,
+        string? matchedRemote = null) =>
+        new(remote, canonical ?? remote, baseBranch, primary, matchedRemote);
 
     public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false) =>
         new(Issue(key, expedited: expedited), Status(3, "In Progress"), Status(4, "In Review"), blocked);

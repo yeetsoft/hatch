@@ -361,5 +361,6 @@ a dead process is cleared automatically.
 
 **It picked up nothing.** `hatch queue` says why, per card. The common
 reasons: no playbook leads out of that column for that type, an open
-question, a person's name on it, a ready date not yet arrived, or another
-runner's claim.
+question, a person's name on it, a ready date not yet arrived, another
+runner's claim, or — once the runner declares what it has — a project bound
+to repositories it has no checkout of.

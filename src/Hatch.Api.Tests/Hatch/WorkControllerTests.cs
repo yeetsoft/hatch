@@ -449,6 +449,139 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(last), null, default)).Blocked);
     }
 
+    // ---- Which checkout a runner declares ----
+    //
+    // Opt-in, not a default: a request carrying none of remote, standing or
+    // clones is undeclared and folds nothing at all, which is what keeps an
+    // older CLI and the issue page working unchanged after this landed. Once a
+    // caller does declare, the fold sits beside the dependency gate and shares
+    // its restriction to the column an agent writes code in - a wrong checkout
+    // is a fact about the work, so it refuses a named dispatch exactly as a
+    // pass would, whoever is asking and whatever they already hold.
+
+    [Theory]
+    [InlineData("https://example.com/o/r.git")]
+    [InlineData("git@example.com:o/r.git")]
+    [InlineData("example.com/o/r/")]
+    public async Task Work_MatchesAnySpellingOfADeclaredRemote(string spelling)
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "on the bound remote", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), remote: [spelling], ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_FoldsARunnerWithNoneOfTheProjectsRemotes()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "bound elsewhere", h.Todo);
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Value(await h.Work.GetWork(
+                Key(issue), remote: ["https://example.com/other.git"], standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_NamesEveryBoundRemoteWhenNoneMatch()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/one");
+        await h.BindRepositoryAsync("https://example.com/o/two");
+        var issue = await h.FileAsync("story", "bound to two, has neither", h.Todo);
+
+        Assert.Equal(
+            "bound to https://example.com/o/one and https://example.com/o/two, and this runner has no checkout of it",
+            Value(await h.Work.GetWork(Key(issue), standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_ARunnerThatWillCloneIsNotFoldedByAMissingCheckout()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "bound elsewhere", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), clones: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_UndeclaredFoldsNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "bound elsewhere", h.Todo);
+
+        // Every pre-existing test in this file already proves this by
+        // construction - this one names it.
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_AnUnboundProjectIsWorkableFromAStandingCheckout()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nothing bound yet", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_AnUnboundProjectIsFoldedWithoutAStandingCheckout()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nothing bound yet", h.Todo);
+
+        Assert.Equal(
+            $"{Key(issue)} is bound to no repository - bind one on the Projects page, or run the loop inside a checkout",
+            Value(await h.Work.GetWork(Key(issue), standing: false, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_NamesEachRepositorysMatchedRemoteAndThePrimary()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/one");
+        await h.BindRepositoryAsync("https://example.com/o/two");
+        await h.BindRepositoryAsync("https://example.com/o/three");
+        var issue = await h.FileAsync("story", "three remotes", h.Todo);
+
+        var work = Value(await h.Work.GetWork(Key(issue), remote: ["https://example.com/o/two.git"], ct: default));
+
+        // One match is enough - the dispatch is not folded - and every entry
+        // names which of the caller's own spellings matched it, in the
+        // project's own order.
+        Assert.Null(work.Blocked);
+        Assert.Equal(3, work.Repositories.Count);
+        Assert.True(work.Repositories[0].Primary);
+        Assert.False(work.Repositories[1].Primary);
+        Assert.False(work.Repositories[2].Primary);
+        Assert.Null(work.Repositories[0].MatchedRemote);
+        Assert.Equal("https://example.com/o/two.git", work.Repositories[1].MatchedRemote);
+        Assert.Null(work.Repositories[2].MatchedRemote);
+    }
+
+    [Fact]
+    public async Task Work_ARunnersOwnClaimDoesNotWaiveAMismatchedRepository()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "claimed by the caller itself", h.Todo);
+        var token = await h.ClaimAsync(issue);
+
+        // Unlike a claim, which the holder's own token waives, a wrong
+        // checkout is a fact about the work - it refuses whoever asks,
+        // including the one runner already holding this issue.
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Value(await h.Work.GetWork(
+                Key(issue), heldToken: token, remote: ["https://example.com/other.git"], standing: true,
+                ct: default)).Blocked);
+    }
+
     // ---- Refusals ----
 
     [Fact]
@@ -949,6 +1082,18 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_NamesARepositoryTheRunnerLacks()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "bound elsewhere", h.Todo);
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Only(await h.Work.GetQueue(0, null, standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
     public async Task Queue_NamesTheAncestorHoldingTheEdge()
     {
         var h = await NewAsync();
@@ -1283,6 +1428,7 @@ public class WorkControllerTests
         public required int Shelved { get; init; }
 
         private int next = 1;
+        private int nextRepoOrder;
 
         /// <summary>
         /// An issue placed directly, rather than through the create endpoint -
@@ -1431,6 +1577,31 @@ public class WorkControllerTests
             });
 
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A remote bound to the project, written straight to the table in
+        /// the order it is called - every issue <see cref="FileAsync"/> files
+        /// lands in the one shared <c>AER</c> project, so every test binds
+        /// against the same list. What the route that writes these accepts
+        /// and refuses is <see cref="ProjectsControllerTests"/>'s business.
+        /// </summary>
+        public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote, string? baseBranch = null)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            var repo = new EfHatchProjectRepository
+            {
+                ProjectId = ProjectId,
+                Remote = remote,
+                Canonical = canonical!,
+                BaseBranch = baseBranch,
+                SortOrder = nextRepoOrder++,
+                CreatedAt = Now,
+            };
+
+            Db.ProjectRepositories.Add(repo);
+            await Db.SaveChangesAsync();
+            return repo;
         }
     }
 

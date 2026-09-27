@@ -62,14 +62,37 @@ public class WorkController(
     /// one already holds is not a conflict. Absent is a caller holding nothing,
     /// which is every caller before the claim existed.
     /// </param>
+    /// <param name="remote">
+    /// One of the runner's own checkouts, spelled exactly as it has it - raw,
+    /// never canonicalised by the caller. Repeatable: a runner may hold more
+    /// than one remote. Declaring at least one of <paramref name="remote"/>,
+    /// <paramref name="standing"/> or <paramref name="clones"/> opts a caller
+    /// into the repository fold; a caller that declares none of the three is
+    /// undeclared, and nothing is folded on that account - see
+    /// <see cref="RepositoryDeclaration"/>.
+    /// </param>
+    /// <param name="standing">
+    /// The runner has a checkout it was started in, independent of anything
+    /// named in <paramref name="remote"/> - what an unbound project is worked
+    /// from.
+    /// </param>
+    /// <param name="clones">
+    /// The runner will clone whatever it lacks, so a project bound to
+    /// repositories none of which match <paramref name="remote"/> is not
+    /// folded on that account either.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
         [FromQuery] string? ancestorKey = null,
         [FromQuery] Guid? heldToken = null,
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        [FromQuery] bool? clones = null,
         CancellationToken ct = default)
     {
-        var scan = await ScanAsync(offsetMinutes, ancestorKey, heldToken, ct);
+        var repos = RepositoryDeclaration.From(remote, standing, clones);
+        var scan = await ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, ct);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -80,7 +103,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Claims, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Claims, scan.Repos, ct);
     }
 
     /// <summary>
@@ -118,11 +141,15 @@ public class WorkController(
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
         [FromQuery] string? ancestorKey = null,
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        [FromQuery] bool? clones = null,
         CancellationToken ct = default)
     {
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
-        var scan = await ScanAsync(offsetMinutes, ancestorKey, null, ct);
+        var repos = RepositoryDeclaration.From(remote, standing, clones);
+        var scan = await ScanAsync(offsetMinutes, ancestorKey, null, repos, ct);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -153,7 +180,8 @@ public class WorkController(
     /// cost a query a row would be a scan nobody leaves running.
     /// </remarks>
     private async Task<Scan> ScanAsync(
-        int offsetMinutes, string? ancestorKey, Guid? heldToken, CancellationToken ct)
+        int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos,
+        CancellationToken ct)
     {
         var statuses = await OrderedStatusesAsync(ct);
 
@@ -203,7 +231,7 @@ public class WorkController(
 
         var candidates = await query
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Include(i => i.Project)
+            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .ToListAsync(ct);
 
         var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
@@ -252,12 +280,12 @@ public class WorkController(
                         issue, status, to,
                         Blocked(
                             issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
-                            assignees[issue.Id])));
+                            assignees[issue.Id], repos)));
                 }
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, claimed, null);
+        return new Scan(statuses, rows, loop, gate, claimed, repos, null);
     }
 
     /// <summary>One issue the pass looked at, and what it decided.</summary>
@@ -269,9 +297,10 @@ public class WorkController(
     /// </summary>
     private sealed record Scan(
         List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
-        ClaimGate Claims, string? Failure)
+        ClaimGate Claims, RepositoryDeclaration Repos, string? Failure)
     {
-        public static Scan Refused(string why) => new([], [], null, DependencyGate.None, ClaimGate.None, why);
+        public static Scan Refused(string why) =>
+            new([], [], null, DependencyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, why);
     }
 
     /// <summary>
@@ -312,6 +341,42 @@ public class WorkController(
     /// <see cref="Blocked"/>.
     /// </summary>
     private sealed record LoopScope(long Today, int OffsetMinutes);
+
+    // ---- Which checkout the runner has ----
+
+    /// <summary>
+    /// What a caller told the dispatcher about its own checkouts, or nothing
+    /// at all. <see cref="Undeclared"/> is the sentinel that keeps "declared
+    /// nothing" distinct from "declared, and happens to have none of the
+    /// three set" - a request carrying none of <c>remote</c>, <c>standing</c>
+    /// or <c>clones</c> opts out of the fold entirely, which is what keeps an
+    /// older CLI and the issue page working unchanged.
+    /// </summary>
+    private sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? ByCanonical, bool Standing, bool Clones)
+    {
+        public static readonly RepositoryDeclaration Undeclared = new(null, false, false);
+
+        public bool IsDeclared => ByCanonical is not null;
+
+        public static RepositoryDeclaration From(IReadOnlyList<string>? remotes, bool? standing, bool? clones)
+        {
+            if ((remotes is null || remotes.Count == 0) && standing is null && clones is null)
+                return Undeclared;
+
+            var byCanonical = new Dictionary<string, string>();
+            foreach (var raw in remotes ?? [])
+            {
+                var (canonical, _) = RemoteIdentity.Canonical(raw);
+                if (canonical is not null) byCanonical.TryAdd(canonical, raw);
+            }
+
+            return new RepositoryDeclaration(byCanonical, standing ?? false, clones ?? false);
+        }
+
+        /// <summary>The declared remote, spelled as the caller sent it, that canonicalises to this - or null.</summary>
+        public string? Match(string canonical) =>
+            ByCanonical is not null && ByCanonical.TryGetValue(canonical, out var raw) ? raw : null;
+    }
 
     // ---- The loop's own policy ----
     //
@@ -441,6 +506,37 @@ public class WorkController(
     }
 
     /// <summary>
+    /// Why an unattended run - or anybody - should not start writing this yet:
+    /// the project it is under is bound to a checkout this runner does not
+    /// have. Null when the caller declared nothing at all (see
+    /// <see cref="RepositoryDeclaration"/>), when the project binds nothing
+    /// and the caller has a standing checkout, when one of the project's
+    /// repositories matches a remote the caller declared, or when the caller
+    /// says it will clone what it lacks.
+    /// </summary>
+    private static string? RepositoryFold(EfHatchIssue issue, RepositoryDeclaration repos)
+    {
+        if (!repos.IsDeclared) return null;
+
+        var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
+
+        if (bound.Count == 0)
+            return repos.Standing
+                ? null
+                : $"{IssueKey.Format(issue.Project.Key, issue.Number)} is bound to no repository - bind one on the Projects page, or run the loop inside a checkout";
+
+        if (bound.Any(r => repos.Match(r.Canonical) is not null)) return null;
+        if (repos.Clones) return null;
+
+        var remotes = bound.Select(r => r.Remote).ToList();
+        var list = remotes.Count == 1
+            ? remotes[0]
+            : $"{string.Join(", ", remotes.Take(remotes.Count - 1))} and {remotes[^1]}";
+
+        return $"bound to {list}, and this runner has no checkout of it";
+    }
+
+    /// <summary>
     /// The same answer for an issue somebody named. Blocked or not, it is
     /// returned rather than refused: a person who asked for <c>AER-12</c> is
     /// owed the sentence saying why it cannot move, not a 404.
@@ -453,11 +549,15 @@ public class WorkController(
     /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
-        string key, [FromQuery] Guid? heldToken = null, CancellationToken ct = default)
+        string key, [FromQuery] Guid? heldToken = null,
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        [FromQuery] bool? clones = null,
+        CancellationToken ct = default)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
-        var issue = await db.Issues.Include(i => i.Project)
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
@@ -472,6 +572,7 @@ public class WorkController(
             null,
             await DependencyGate.ForAsync(db, statuses, ct),
             new ClaimGate(claims, time.GetUtcNow(), heldToken),
+            RepositoryDeclaration.From(remote, standing, clones),
             ct);
     }
 
@@ -498,7 +599,7 @@ public class WorkController(
     /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate,
-        ClaimGate claimed, CancellationToken ct)
+        ClaimGate claimed, RepositoryDeclaration repos, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Advance(statuses, from);
@@ -543,6 +644,11 @@ public class WorkController(
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
 
+        var repositories = issue.Project!.Repositories
+            .OrderBy(r => r.SortOrder)
+            .Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical)))
+            .ToList();
+
         return new WorkDto(
             issueDto,
             ToStatusDto(from),
@@ -562,10 +668,12 @@ public class WorkController(
                 Effort = issue.EffortOverride ?? playbook.Effort,
             },
             childCards,
+            repositories,
             questions,
             Blocked(
                 issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
-                await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct)),
+                await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
+                repos),
             IssueUrl(issueDto.Key));
     }
 
@@ -589,12 +697,14 @@ public class WorkController(
     /// <remarks>
     /// <para>The order is what it costs to change the answer, most fundamental
     /// first: a terminal column, no column after this one, a terminal next
-    /// column, a live claim, a ready date, an assignee, an unanswered question, an unmet
-    /// dependency, and last a missing playbook. A column with nowhere an agent may go is a fact
+    /// column, a live claim, a ready date, an assignee, an unanswered question,
+    /// a repository the caller has no checkout of, an unmet dependency, and
+    /// last a missing playbook. A column with nowhere an agent may go is a fact
     /// about the board and no argument alters it; a ready date needs time; a
-    /// question needs a person; a dependency needs other work to land; and a
-    /// missing playbook needs the operator, which is last because it is only
-    /// worth saying about an issue that is otherwise a candidate.</para>
+    /// question needs a person; a repository needs a clone; a dependency needs
+    /// other work to land; and a missing playbook needs the operator, which is
+    /// last because it is only worth saying about an issue that is otherwise a
+    /// candidate.</para>
     ///
     /// <para>The claim sits above all of those and below the column checks, for
     /// a different reason than the rest of the order. It is the only fold that
@@ -639,11 +749,15 @@ public class WorkController(
     /// prevent, whoever asked for it.
     /// </param>
     /// <param name="implementation">
-    /// The column a dependency gates the move into, and the only one it gates.
-    /// Everything left of it moves: an issue waiting on another still goes
-    /// through breakdown, still lands in the backlog, and is still analysed.
-    /// An issue already in it is never gated either - the move into review is
-    /// not a dependency's to refuse, so work that started finishes.
+    /// The column a dependency gates the move into, and the only one it gates -
+    /// shared with the repository fold below, for the same reason: a wrong
+    /// checkout matters only once code is about to be written, and everything
+    /// left of that column needs no checkout at all.
+    /// </param>
+    /// <param name="repos">
+    /// What the caller told the dispatcher about its own checkouts. A fact
+    /// about the work rather than the pass's policy, so a named dispatch is
+    /// refused by it too - see <see cref="RepositoryFold"/>.
     /// </param>
     private static string? Blocked(
         EfHatchIssue issue,
@@ -655,7 +769,8 @@ public class WorkController(
         DependencyGate gate,
         ClaimGate claimed,
         EfHatchStatus? implementation,
-        AssigneeDto? assignee)
+        AssigneeDto? assignee,
+        RepositoryDeclaration repos)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -694,8 +809,11 @@ public class WorkController(
         if (waiting > 0)
             return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
 
-        if (to.Id == implementation?.Id && gate.Unmet(issue.Id) is { Count: > 0 } waitingOn)
-            return WaitingOn(waitingOn);
+        if (to.Id == implementation?.Id)
+        {
+            if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
+            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
+        }
 
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
