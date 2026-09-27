@@ -8,7 +8,10 @@ namespace Hatch.Contracts;
 /// What the delete guard will look at, so the Projects page can grey the button
 /// rather than offer a 409.
 /// </param>
-public record ProjectDto(int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt);
+/// <param name="Repositories">The remotes this project is bound to, in order - the first is the primary.</param>
+public record ProjectDto(
+    int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt,
+    IReadOnlyList<ProjectRepositoryDto> Repositories);
 
 /// <summary>
 /// A new project. <paramref name="Key"/> is checked against
@@ -25,6 +28,21 @@ public record ProjectCreateRequest(string Key, string Name);
 /// and what it does not.
 /// </summary>
 public record ProjectPatchRequest(string? Name, string? Key = null);
+
+/// <summary>
+/// One git remote bound to a project, as every client reads it back.
+/// </summary>
+/// <param name="Canonical">
+/// The matching identity <c>RemoteIdentity.Canonical</c> folded <paramref name="Remote"/> to -
+/// what a second entry is checked against, never recomputed by a client.
+/// </param>
+public record ProjectRepositoryDto(string Remote, string Canonical, string? BaseBranch);
+
+/// <summary>
+/// One entry in the ordered list a <c>PUT</c> replaces the whole set with -
+/// the first in the array is the primary.
+/// </summary>
+public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 
 // ---- Statuses ----
 
