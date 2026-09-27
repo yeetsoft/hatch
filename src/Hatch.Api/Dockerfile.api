@@ -54,6 +54,8 @@ RUN dotnet restore src/Hatch.Api/Hatch.Api.csproj
 
 # Build and publish a release. The SPAs (from Hatch.Web) were already built above, so skip
 # the MSBuild targets that would otherwise shell out to npm (unavailable here).
+# Every Build<App> target in Hatch.Api.csproj has a Skip<App>Build switch, and each
+# one must be passed below, or the publish reaches for npm and fails.
 #
 # SourceRevisionId is .NET's own mechanism rather than an env var on the runtime
 # image: it appends "+<sha>" to AssemblyInformationalVersion, which puts the
@@ -62,7 +64,7 @@ RUN dotnet restore src/Hatch.Api/Hatch.Api.csproj
 # is a use that has to trust it (see Services/HatchRevision.cs).
 ARG HATCH_REVISION
 ARG HATCH_SEQUENCE
-RUN dotnet publish src/Hatch.Api/Hatch.Api.csproj -c Release -o out -p:SkipDesignBuild=true -p:SourceRevisionId=$HATCH_REVISION -p:HatchSequence=$HATCH_SEQUENCE
+RUN dotnet publish src/Hatch.Api/Hatch.Api.csproj -c Release -o out -p:SkipDesignBuild=true -p:SkipAuthBuild=true -p:SourceRevisionId=$HATCH_REVISION -p:HatchSequence=$HATCH_SEQUENCE
 
 # The runner, one self-contained binary per platform this house supports, so a
 # friend downloads a program rather than an SDK. Built from this same commit,
