@@ -6,6 +6,7 @@ import { RadiusPage } from './pages/RadiusPage';
 import { ElevationPage } from './pages/ElevationPage';
 import { SeriesPage } from './pages/SeriesPage';
 import { TopBarPage } from './pages/TopBarPage';
+import { MenuPage } from './pages/MenuPage';
 import { PageHeaderPage } from './pages/PageHeaderPage';
 import { CardPage } from './pages/CardPage';
 import { GridPage } from './pages/GridPage';
@@ -52,6 +53,7 @@ export const SECTIONS: Section[] = [
   { group: 'Foundations', slug: 'elevation', title: 'Elevation & motion', Page: ElevationPage },
   { group: 'Foundations', slug: 'series', title: 'Series', Page: SeriesPage },
   { group: 'Components', slug: 'top-bar', title: 'Top bar', Page: TopBarPage },
+  { group: 'Components', slug: 'menu', title: 'Menu', Page: MenuPage },
   { group: 'Components', slug: 'page-header', title: 'Page header', Page: PageHeaderPage },
   { group: 'Components', slug: 'card', title: 'Card', Page: CardPage },
   { group: 'Components', slug: 'grid', title: 'Grid', Page: GridPage },

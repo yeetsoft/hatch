@@ -12,6 +12,7 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
     "./base.css": "./src/base.css",
+    "./menuState": "./src/components/menuState.ts",
     "./standalone/topbar": "./src/standalone/topbar.ts"
   },
   "dependencies": {
