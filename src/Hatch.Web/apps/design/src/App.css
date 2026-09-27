@@ -685,3 +685,20 @@
     padding: var(--sp-5) var(--sp-4);
   }
 }
+
+/* Menu specimens: room under the trigger for a panel to open into, because the
+   panel is absolutely positioned and would otherwise overlap the next section. */
+.menu-stage {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-height: 160px;
+}
+
+.menu-stage--spread {
+  justify-content: space-between;
+}
+
+.menu-stage__row {
+  padding: var(--sp-2) var(--sp-3);
+}
