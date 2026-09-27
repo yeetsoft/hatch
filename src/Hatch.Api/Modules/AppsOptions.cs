@@ -12,15 +12,18 @@ public class AppsOptions
     /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
-    /// deploy (compose.prod.yml passes <c>Apps__PublicBaseUrl</c> from the
-    /// DOMAIN operator variable); deliberately never a literal in the repo,
-    /// per docs/ethos.md.
+    /// deploy (compose.yaml passes <c>Apps__PublicBaseUrl</c> from the
+    /// <c>HATCH_PUBLIC_URL</c> operator variable); deliberately never a literal
+    /// in the repo, per docs/ethos.md.
     ///
     /// It exists because a QR label is not a link in a page: it's taped to a
     /// box for a decade, and it has to carry the canonical host rather than
     /// whichever hostname or IP the laptop that printed the sheet happened to
-    /// be using. Everything else in the shell is same-origin and needs no
-    /// base URL at all.
+    /// be using. The same goes for a link that leaves Hatch - the issue link a
+    /// dispatched session writes into a pull request - which a runner reaching
+    /// Hatch as <c>http://api:8080</c> could not otherwise get right. Left empty,
+    /// the runner links with the address it reaches Hatch at. Everything
+    /// else in the shell is same-origin and needs no base URL at all.
     /// </summary>
     public string PublicBaseUrl { get; set; } = "";
 

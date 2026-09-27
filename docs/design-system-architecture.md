@@ -233,7 +233,7 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 
 | | |
 |---|---|
-| Chrome | `<TopBar>`, `<AppSwitcher>`, `<ThemeSwitch>` |
+| Chrome | `<TopBar>`, `<ThemeSwitch>` |
 | Frame | `<PageHeader>`, `<Card>`, `<Grid>`, `<Table>`, `<Modal>` |
 | Controls | `<Field>`, `<Button>` |
 | Text | `<Badge>`, `<Text>` |
@@ -266,7 +266,11 @@ control in it — replacing about 131px of gradient header, and it is **not a pa
 heading**: the app name is a wordmark in a `<span>`, so the `<h1>` stays with the
 page's own heading, which is what `<PageHeader>` owns. An app that needs more in
 the bar passes `leading`/`trailing`. Nothing app-specific compiles into it, and
-extending it by forking it is the failure this package exists to prevent.
+extending it by forking it is the failure this package exists to prevent. Its
+left corner is the Hatch logo and the app name, one link to the app's own home
+(`homeHref`). The logo is bundled from `packages/ui/src/assets` rather than
+served from a public path, because the package must not know where an app is
+mounted.
 
 `<Modal>` has one slot worth naming. Its panel caps at the viewport and scrolls,
 which is right until the dialog holds a row that has to stay reachable — its
@@ -298,11 +302,11 @@ page that needs it:
 `light`/`dark` (the page has one appearance — pin the root to it and render no
 control).
 
-What is shared is the stylesheets — the *same* `TopBar.css`, `AppSwitcher.css`
-and `ThemeSwitch.css` files the React components import — and the theme store.
+What is shared is the stylesheets — the *same* `TopBar.css` and
+`ThemeSwitch.css` files the React components import — and the theme store.
 What is restated is about twenty elements of markup. **The rule that keeps the
 two in step: the standalone file may not invent a class name.** Every class in
-it appears in one of the three React components. A change to the CSS reaches
+it appears in one of the two React components. A change to the CSS reaches
 both; a change to the *markup* has to be made twice, and that is the price of
 not shipping React to a static page.
 

@@ -3,6 +3,10 @@
 # http://localhost:8080/apps/hatch/. See src/Hatch.Web/apps/hatch/public/hatch-at-home.md
 # for the full walkthrough (also served in the app itself, under Docs in the nav).
 #
+# Every ${HATCH_*} below is read from the shell, or from a `.env` beside this
+# file (which .gitignore keeps out of the repository). Turning the wall on is
+# the walkthrough's "Putting a front door on it".
+#
 # Named explicitly so the stack is the same stack however this file is reached,
 # and so it matches the volume names docs/hatch.md and hatch-at-home.md quote.
 name: hatch-local
@@ -48,6 +52,9 @@ services:
       Auth__Enabled: "${HATCH_AUTH:-false}"
       Auth__Google__ClientId: "${HATCH_GOOGLE_CLIENT_ID:-}"
       Auth__Google__ClientSecret: "${HATCH_GOOGLE_CLIENT_SECRET:-}"
+      # Empty means derived from the request. Set it behind a TLS proxy, where
+      # the scheme and host the api sees are not the ones Google has registered.
+      Auth__Google__RedirectUri: "${HATCH_GOOGLE_REDIRECT_URI:-}"
       HATCH_MIGRATE: "1"
 
   api:
@@ -70,10 +77,19 @@ services:
       Auth__Enabled: "${HATCH_AUTH:-false}"
       Auth__Google__ClientId: "${HATCH_GOOGLE_CLIENT_ID:-}"
       Auth__Google__ClientSecret: "${HATCH_GOOGLE_CLIENT_SECRET:-}"
+      # Empty means derived from the request. Set it behind a TLS proxy, where
+      # the scheme and host the api sees are not the ones Google has registered.
+      Auth__Google__RedirectUri: "${HATCH_GOOGLE_REDIRECT_URI:-}"
       # Whoever ran the command, by whichever name their OS uses: USERNAME on
       # Windows, USER on macOS and Linux. Read from the invoking shell's own
       # environment - no .env file, nothing to export first.
       Auth__LocalPerson__Name: "${USERNAME:-${USER:-}}"
+      # The address a browser opens this Hatch at, e.g. https://<origin>. A
+      # session's pull requests link back to its ticket, and a containerised
+      # runner reaches Hatch as http://api:8080 - so without this the link it
+      # writes is one no reviewer can open. Leaving it unset is fine: links then
+      # use the address the runner itself reaches Hatch at (its HATCH_BASE).
+      Apps__PublicBaseUrl: "${HATCH_PUBLIC_URL:-}"
     ports:
       - "${HATCH_PORT:-8080}:8080"
     restart: unless-stopped
@@ -106,6 +122,9 @@ services:
       # The service name, over Compose's own network. Nothing about this
       # crosses the machine.
       HATCH_BASE: http://api:8080
+      # The key minted on the Runner page. Needed only with the wall up; empty
+      # against a Hatch with its wall off.
+      HATCH_KEY: "${HATCH_KEY:-}"
       HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
       HATCH_ROOT: /checkout
       GIT_AUTHOR_NAME: "${HATCH_GIT_NAME:-}"

@@ -21,8 +21,6 @@ export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
 export { TopBar } from './components/TopBar';
 export type { TopBarProps } from './components/TopBar';
-export { AppSwitcher } from './components/AppSwitcher';
-export type { AppSwitcherProps } from './components/AppSwitcher';
 export { Menu } from './components/Menu';
 export type { MenuProps, MenuItemProps, MenuBarProps, MenuTriggerProps, MenuTone, MenuAlign } from './components/Menu';
 

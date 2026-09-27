@@ -19,6 +19,7 @@ import { RunnerPage } from './pages/RunnerPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
@@ -40,12 +41,7 @@ function AppShell() {
        has to outlive the navigation between them. */
     <CreatedIssuesProvider>
       <div className="hatch-app">
-        {/* Named rather than left to default to "/", because on
-            hatch.${DOMAIN} "/" is this app's own board and the switcher would
-            be a button that goes nowhere. /apps/home/ is the picker on either
-            host - it is what "/" redirects to on the house, and it is reachable
-            on this one through the `hatch-direct` Ingress. */}
-        <TopBar appName="Hatch" homeHref="/apps/home/" />
+        <TopBar appName="Hatch" homeHref={appHref('/')} />
 
         <nav className="hatch-nav">
           <div className="hatch-nav-content">

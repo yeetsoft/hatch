@@ -161,6 +161,16 @@ public static class PersonName
     }
 
     /// <summary>
+    /// A name for someone identified only by an address: the part before the
+    /// <c>@</c>, normalized, or <paramref name="fallback"/> if that is not a name.
+    /// </summary>
+    public static string FromEmail(string? email, string fallback = "Google user")
+    {
+        var local = email?.Split('@')[0];
+        return TryNormalize(local, out var name, out _) ? name : fallback;
+    }
+
+    /// <summary>
     /// Counts what a person would call characters. Public because the same
     /// count is the only honest way to describe the limit anywhere else - a
     /// second implementation of "how long is this name" is a second answer.
