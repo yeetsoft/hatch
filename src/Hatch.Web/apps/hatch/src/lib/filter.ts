@@ -30,13 +30,21 @@ export interface CardFilter {
       holds a string and the three states have to be told apart - and "nobody"
       is a choice somebody makes, not the absence of one. */
   assignee: string;
+  /** Which project's cards to draw, by key - `''` is every project's. Lives in
+      the URL rather than local state (see BoardFilters), so the half of the
+      filter that answers "whose board is this" survives a reload. */
+  project: string;
 }
 
-export const NO_FILTER: CardFilter = { types: [], query: '', waiting: false, assignee: '' };
+export const NO_FILTER: CardFilter = { types: [], query: '', waiting: false, assignee: '', project: '' };
 
 /** Whether this filter is hiding anything, which is what decides if the board says so out loud. */
 export const isFiltering = (filter: CardFilter): boolean =>
-  filter.types.length > 0 || filter.query.trim() !== '' || filter.waiting || filter.assignee !== '';
+  filter.types.length > 0 ||
+  filter.query.trim() !== '' ||
+  filter.waiting ||
+  filter.assignee !== '' ||
+  filter.project !== '';
 
 /**
  * Everything about a card that a search box can see: its key, its title, its
@@ -77,6 +85,7 @@ export const matchesFilter = (card: IssueCard, filter: CardFilter): boolean =>
   (filter.types.length === 0 || filter.types.includes(card.type)) &&
   (!filter.waiting || card.openQuestions > 0) &&
   matchesAssignee(card, filter.assignee) &&
+  (filter.project === '' || card.projectKey === filter.project) &&
   matchesQuery(card, filter.query);
 
 export const filterCards = (cards: IssueCard[], filter: CardFilter): IssueCard[] =>

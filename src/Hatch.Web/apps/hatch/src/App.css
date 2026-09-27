@@ -587,6 +587,13 @@
   max-width: 12rem;
 }
 
+/* Which project's cards to draw - drawn only when the board has more than
+   one, same as the picker on the Plan page. */
+.hatch-project-filter {
+  flex: 0 0 auto;
+  max-width: 12rem;
+}
+
 /* A toggle rather than a checkbox: four of these sit in a row and read as one
    control, which is what they are. The pressed state is `aria-pressed` as well
    as a class - the colour is the only thing a sighted reader gets, and it must

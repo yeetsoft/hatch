@@ -115,6 +115,28 @@ describe('isFiltering', () => {
     expect(isFiltering(filter({ waiting: true }))).toBe(true);
     expect(isFiltering(filter({ assignee: UNASSIGNED }))).toBe(true);
     expect(isFiltering(filter({ assignee: assigneeToken(person('Ada')) }))).toBe(true);
+    expect(isFiltering(filter({ project: 'AER' }))).toBe(true);
+  });
+});
+
+describe('the project facet', () => {
+  const board = [
+    card({ key: 'AER-1', projectKey: 'AER', type: 'task' }),
+    card({ key: 'OPS-1', projectKey: 'OPS', type: 'bug' }),
+    card({ key: 'OPS-2', projectKey: 'OPS', type: 'task' }),
+  ];
+
+  it('folds cards from other projects', () => {
+    expect(filterCards(board, filter({ project: 'OPS' })).map((c) => c.key)).toEqual(['OPS-1', 'OPS-2']);
+  });
+
+  it('folds nothing when no project is chosen', () => {
+    expect(filterCards(board, filter({ project: '' }))).toHaveLength(3);
+  });
+
+  it('ANDs with the type filter rather than instead of it', () => {
+    const narrowed = filter({ project: 'OPS', types: ['task'] });
+    expect(filterCards(board, narrowed).map((c) => c.key)).toEqual(['OPS-2']);
   });
 });
 

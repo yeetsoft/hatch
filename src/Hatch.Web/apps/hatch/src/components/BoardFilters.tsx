@@ -1,5 +1,5 @@
 import { ISSUE_TYPES } from '../types';
-import type { Assignee } from '../types';
+import type { Assignee, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
 import { isFiltering, toggleType, toggleWaiting } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
@@ -21,6 +21,7 @@ export function BoardFilters({
   filter,
   onChange,
   assignees,
+  projects,
   showing,
   total,
 }: {
@@ -28,6 +29,8 @@ export function BoardFilters({
   onChange: (next: CardFilter) => void;
   /** The assignees this board actually has cards for - see assigneeFacets. */
   assignees: Assignee[];
+  /** The projects on the board - see BoardPage's getProjects read. */
+  projects: Project[];
   /** How many cards survive the filter, and how many there are - the count is the only feedback a search box gives. */
   showing: number;
   total: number;
@@ -44,6 +47,26 @@ export function BoardFilters({
         aria-label="Search the board"
         onChange={(e) => onChange({ ...filter, query: e.target.value })}
       />
+
+      {/* Drawn only when there is a choice to make - the same rule, and the
+          same option text, as the picker on the Plan page. One project makes
+          this a control with a single option, and Hatch ships to operators
+          who will have several. */}
+      {projects.length > 1 && (
+        <select
+          className="hatch-project-filter"
+          aria-label="Project"
+          value={filter.project}
+          onChange={(e) => onChange({ ...filter, project: e.target.value })}
+        >
+          <option value="">All projects</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.key}>
+              {project.key} — {project.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       <div className="hatch-type-toggles" role="group" aria-label="Issue types">
         {ISSUE_TYPES.map((type) => {

@@ -16,11 +16,15 @@ import type { IssueType, Project } from '../types';
 export function NewIssueDialog({
   open,
   projects,
+  defaultProjectKey,
   onClose,
   onCreated,
 }: {
   open: boolean;
   projects: Project[];
+  /** The board's filtered project, if one is set - see BoardFilters. Wins over
+      the first-project fallback below, until somebody picks another. */
+  defaultProjectKey: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -35,9 +39,12 @@ export function NewIssueDialog({
   const brief = useAutoGrow(description);
   const { confirm } = useIssueConfirmations();
 
-  // The first project, until somebody picks another. One project is the
-  // ordinary case and choosing it for them is one fewer thing to do.
-  const chosen = projectId ?? projects[0]?.id ?? null;
+  // The filtered project, then the first project, until somebody picks
+  // another. One project is the ordinary case and choosing it for them is one
+  // fewer thing to do - and filing from a filtered board almost always means
+  // filing into it.
+  const filtered = projects.find((p) => p.key === defaultProjectKey);
+  const chosen = projectId ?? filtered?.id ?? projects[0]?.id ?? null;
 
   async function submit() {
     if (chosen === null) {
