@@ -40,6 +40,8 @@ import type {
   Project,
   ProjectCreateRequest,
   ProjectPatchRequest,
+  ProjectRepository,
+  ProjectRepositoryWriteRequest,
   Runner,
   RunnerDownloads,
   RunnerPatchRequest,
@@ -124,6 +126,8 @@ export const patchProject = (id: number, request: ProjectPatchRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}`, { method: 'PATCH', ...asJson(request) });
 export const deleteProject = (id: number) =>
   fetchJson<void>(`/api/hatch/projects/${id}`, { method: 'DELETE' });
+export const putProjectRepositories = (id: number, request: ProjectRepositoryWriteRequest[]) =>
+  fetchJson<ProjectRepository[]>(`/api/hatch/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
 
 // ---- Statuses ----
 

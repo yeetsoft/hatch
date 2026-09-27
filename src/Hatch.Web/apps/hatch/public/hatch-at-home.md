@@ -100,6 +100,12 @@ that cannot answer "who did this." The field appears only on an install with
 its wall off, which is every install that started from the line above unless
 you put the wall up (*Putting a front door on it*, next).
 
+**Manage → Projects** is also where a project is bound to the repositories its
+tickets are about: add a remote, reorder them, and give any of them a base
+branch, all from the project's row. The runner reads this rather than a
+setting of its own, which is where it is headed - today it still starts from
+`HATCH_ROOT` (*Settings*, below).
+
 ## Putting a front door on it
 
 Optional, and off until you turn it on. With the wall up Hatch asks who you

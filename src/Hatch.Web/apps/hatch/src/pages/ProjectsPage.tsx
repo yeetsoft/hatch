@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { Button, Card, EmptyState, Field, Modal, PageHeader, Table } from '@hatch/ui';
-import { createProject, deleteProject, getProjects, patchProject } from '../api/client';
+import { createProject, deleteProject, getProjects, patchProject, putProjectRepositories } from '../api/client';
 import { message } from '../lib/errors';
 import { normalizeProjectKey, rekeyObjection } from '../lib/projectKey';
+import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import { useLoaded } from '../lib/useLoaded';
-import type { Project } from '../types';
+import type { Project, ProjectRepository, ProjectRepositoryWriteRequest } from '../types';
+
+const toWriteRequest = (repo: ProjectRepository): ProjectRepositoryWriteRequest => ({
+  remote: repo.remote,
+  baseBranch: repo.baseBranch,
+});
 
 export function ProjectsPage() {
   const { data: projects, error, setError, reload } = useLoaded<Project[]>(getProjects);
@@ -69,6 +75,7 @@ export function ProjectsPage() {
                 <th>Key</th>
                 <th>Name</th>
                 <th>Issues</th>
+                <th>Repositories</th>
                 <th />
               </tr>
             </thead>
@@ -82,6 +89,9 @@ export function ProjectsPage() {
                     <NameCell project={project} onRename={(next) => void act(() => patchProject(project.id, { name: next }))} />
                   </td>
                   <td>{project.issueCount}</td>
+                  <td>
+                    <RepositoriesCell project={project} act={act} />
+                  </td>
                   <td>
                     <div className="hatch-row-actions">
                       <Button onClick={() => setRekeying(project)}>Change key</Button>
@@ -125,6 +135,96 @@ function NameCell({ project, onRename }: { project: Project; onRename: (name: st
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
         if (draft.trim() && draft !== project.name) onRename(draft.trim());
+      }}
+    />
+  );
+}
+
+/**
+ * The remotes a project is bound to. Every press writes the whole list
+ * immediately - there is no cell-local draft of it - so a refusal surfaces
+ * exactly the way a bad key's does, through the page's own `error`/`setError`.
+ */
+function RepositoriesCell({
+  project,
+  act,
+}: {
+  project: Project;
+  act: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [remote, setRemote] = useState('');
+  const [baseBranch, setBaseBranch] = useState('');
+
+  const list = project.repositories.map(toWriteRequest);
+
+  function write(next: ProjectRepositoryWriteRequest[]) {
+    return act(() => putProjectRepositories(project.id, next));
+  }
+
+  async function add() {
+    await write(withRemote(list, { remote: remote.trim(), baseBranch: baseBranch.trim() || null }));
+    setRemote('');
+    setBaseBranch('');
+  }
+
+  return (
+    <div className="hatch-form">
+      {project.repositories.length === 0 && <p className="text-muted">No repositories.</p>}
+      {project.repositories.map((repo, index) => (
+        <div className="hatch-inline-form" key={repo.remote}>
+          <code>{repo.remote}</code>
+          {index === 0 && <span className="text-muted">primary</span>}
+          <BaseBranchInput
+            repo={repo}
+            onChange={(next) =>
+              void write(list.map((entry, i) => (i === index ? { ...entry, baseBranch: next } : entry)))
+            }
+          />
+          <div className="hatch-reorder">
+            <Button
+              disabled={index === 0}
+              aria-label={`Move ${repo.remote} up`}
+              onClick={() => void write(moved(list, index, index - 1))}
+            >
+              ↑
+            </Button>
+            <Button
+              disabled={index === project.repositories.length - 1}
+              aria-label={`Move ${repo.remote} down`}
+              onClick={() => void write(moved(list, index, index + 1))}
+            >
+              ↓
+            </Button>
+          </div>
+          <Button variant="danger" onClick={() => void write(withoutRemote(list, index))}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      <div className="hatch-inline-form">
+        <input placeholder="Remote" value={remote} onChange={(e) => setRemote(e.target.value)} />
+        <input placeholder="Base branch" value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} />
+        <Button disabled={repositoryObjection(remote) !== null} onClick={() => void add()}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A base branch, written on blur when changed - same pattern as `NameCell`'s
+    name input, except a blank blur clears it rather than being a no-op. */
+function BaseBranchInput({ repo, onChange }: { repo: ProjectRepository; onChange: (next: string | null) => void }) {
+  const [draft, setDraft] = useState(repo.baseBranch ?? '');
+
+  return (
+    <input
+      placeholder="Base branch"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const trimmed = draft.trim();
+        if (trimmed !== (repo.baseBranch ?? '')) onChange(trimmed === '' ? null : trimmed);
       }}
     />
   );
