@@ -147,6 +147,35 @@
   color: var(--primary);
 }
 
+/* A label and a control sharing one row - the Theme row, and any other row a
+   consumer builds the same way. Padding matches .hatch-menu__item's, so a row
+   lines up with the items above and below it. */
+.hatch-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+/* The visible text ThemeSwitch's own <legend> cannot supply - that legend is
+   screen-reader-only, so a "Theme" row needs a label drawn outside it. Same
+   weight and size register .hatch-nav-link and .hatch-local-person-name
+   already use for this kind of label. */
+.hatch-menu__row-label {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 600;
+}
+
+/* --line-strong, not --line: this divider sits on --card
+   (.hatch-menu__surface), and --line is already spent on the panel's own
+   outer border. An <hr> resets to this rather than the browser default. */
+.hatch-menu__divider {
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+  margin: var(--sp-1) 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hatch-menu__trigger,
   .hatch-menu__panel,

@@ -1,5 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
-import { TopBar } from '@hatch/ui';
+import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
 import { CreatedIssuesProvider } from './components/CreatedIssues';
 import { NavAttention } from './components/NavAttention';
@@ -21,7 +21,7 @@ import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
-import { MeProvider } from './lib/useMe';
+import { MeProvider, useMe } from './lib/useMe';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
 
@@ -34,13 +34,36 @@ export function App() {
 }
 
 function AppShell() {
+  const { me } = useMe();
+
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
        on the board and then read on the issue page it links to, so the stack
        has to outlive the navigation between them. */
     <CreatedIssuesProvider>
       <div className="hatch-app">
-        <TopBar appName="Hatch" homeHref={appHref('/')} />
+        <TopBar
+          appName="Hatch"
+          homeHref={appHref('/')}
+          menu={
+            <>
+              <Menu.Item as={NavLink} to="/settings">Settings</Menu.Item>
+              {/* A static file shipped beside this bundle rather than a route,
+                  so a plain anchor and a real page navigation - a NavLink
+                  would hand the path to this app's router, which owns none
+                  of it. */}
+              <Menu.Item as="a" href="/apps/hatch/hatch-at-home.md">Docs</Menu.Item>
+              {me ? (
+                <>
+                  <hr className="hatch-menu__divider" />
+                  <div className="hatch-menu__row">
+                    <NavLocalPerson />
+                  </div>
+                </>
+              ) : null}
+            </>
+          }
+        />
 
         <div className="hatch-nav">
           <div className="hatch-nav-content">
@@ -49,23 +72,15 @@ function AppShell() {
                 is this installation's own configuration, and it is the only place
                 a Hatch with no admin app beside it can be configured at all. */}
             <NavLink to="/settings" className={navLinkClass}>Settings</NavLink>
-            {/* A static file shipped beside this bundle rather than a route, so
-                a plain anchor and a real page navigation - a NavLink would hand
-                the path to this app's router, which owns none of it. It is
-                never "active" the way a client route is, so it wears the
-                resting class outright rather than the callback the others
-                need. */}
-            <a href="/apps/hatch/hatch-at-home.md" className="hatch-nav-link">Docs</a>
 
             {/* The right-hand group: what the strip says about this session
                 rather than about the board. One box because elements each
                 pushed right by their own auto margin would share the free space
-                between them and land apart. The first two draw nothing on an
-                installation that has no answer for them - a cluster install has
-                neither - so the strip is a row of links and no gap where
+                between them and land apart. The first draws nothing on an
+                installation that has no answer for it - a cluster install has
+                none - so the strip is a row of links and no gap where
                 something used to be. */}
             <div className="hatch-nav-aside">
-              <NavLocalPerson />
               <NavUtilization />
               {/* Last, at the right end of the strip: whether the loop is
                   waiting on a person. Unlike the two above it this always draws

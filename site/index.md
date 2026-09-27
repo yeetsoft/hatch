@@ -95,7 +95,7 @@ stack is running. They are in the order to do them in.
 
 5. **Tell your repository how to reach the board.** The agent session that
    works a ticket learns about Hatch from your repository's `CLAUDE.md`. Your
-   board ships the block to paste: open **Docs** in the nav, find "The
+   board ships the block to paste: open **Docs** under the gear, find "The
    `CLAUDE.md` block", and paste it into the `CLAUDE.md` of the repository the
    board is about. Nothing in it needs editing.
 
@@ -200,7 +200,7 @@ Steps:
      the PATH as `hatch` (chmod +x on macOS/Linux).
    - Run `hatch config --origin http://localhost:<port>` and leave the key
      blank.
-   - Open Docs in the nav, copy "The CLAUDE.md block" into the CLAUDE.md of
+   - Open Docs under the gear, copy "The CLAUDE.md block" into the CLAUDE.md of
      the repository I want the agent to work on.
    - Write a first ticket in Draft and drag it to Breakdown.
    - From inside that repository's checkout run `hatch queue`, then

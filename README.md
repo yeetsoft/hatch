@@ -40,7 +40,7 @@ docker compose down
 The full walkthrough — naming yourself, backup and restore, upgrading,
 troubleshooting — is
 [hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md), also
-linked from the **Docs** nav item inside the running app.
+linked from **Docs** under the gear inside the running app.
 
 ## Get an agent working tickets
 

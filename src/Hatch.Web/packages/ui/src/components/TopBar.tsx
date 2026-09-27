@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { ThemeSwitch } from './ThemeSwitch';
+import { Menu } from './Menu';
+import { GearIcon } from './GearIcon';
 /* The canonical file is hatch-logo.png at the repository root; this is a copy
    the bundler can reach, and it is bundled rather than served from a public
    path because this package must not know where an app is mounted. */
@@ -17,8 +19,15 @@ export interface TopBarProps {
   /** App-supplied content, after the app name. An environment badge, a
       breadcrumb, a search box - whatever the app needs the bar to carry. */
   leading?: ReactNode;
-  /** App-supplied content, before the theme switch. Account menus, actions. */
+  /** App-supplied content, before the gear. Account menus, actions. */
   trailing?: ReactNode;
+  /** App-supplied rows inside the gear's panel, after the Theme row and a
+      divider - Settings, Docs, whatever the app's own install-level menu
+      needs. Omitted, the panel is the Theme row alone and no divider. */
+  menu?: ReactNode;
+  /** Opens the gear's panel on first render, uncontrolled. For the gallery's
+      "open" specimens - see `Menu`'s own `defaultOpen`, which this forwards to. */
+  menuDefaultOpen?: boolean;
   className?: string;
 }
 
@@ -38,10 +47,12 @@ export interface TopBarProps {
  * - **Not extensible by forking.** An app that needs more in the bar passes
  *   `leading`/`trailing`. Nothing app-specific compiles into this file.
  *
- * The theme control is always present and always last, so it is in the same
- * place in every app. That makes a <ThemeProvider> above this component a
- * requirement, not a nicety - useTheme throws without one, which is the loud
- * failure a silently-light toggle is not.
+ * The gear is always present and always last, so it is in the same place in
+ * every app: pressing it opens Theme (Auto/Light/Dark) and, when the app
+ * passes `menu`, whatever else the install-level menu carries below a
+ * divider. That makes a <ThemeProvider> above this component a requirement,
+ * not a nicety - useTheme throws without one, which is the loud failure a
+ * silently-light toggle is not.
  *
  * **It has a sibling**: `@hatch/ui/standalone/topbar` renders the same bar with
  * DOM calls for the two pages that are not React apps - Swagger UI and the
@@ -49,10 +60,18 @@ export interface TopBarProps {
  * a change to TopBar.css reaches both; a change to the *markup* here has to be
  * made there too. That file carries the rule, and the list of what differs.
  */
-export function TopBar({ appName, homeHref = '/', leading, trailing, className }: TopBarProps) {
+export function TopBar({
+  appName,
+  homeHref = '/',
+  leading,
+  trailing,
+  menu,
+  menuDefaultOpen,
+  className,
+}: TopBarProps) {
   return (
     <header className={className ? `hatch-topbar ${className}` : 'hatch-topbar'}>
-      <div className="hatch-topbar__inner">
+      <Menu.Bar as="div" className="hatch-topbar__inner">
         <div className="hatch-topbar__side">
           {/* An <a>, so middle-click and "copy link address" work. The logo is
               decoration: the name beside it is the link's accessible name. */}
@@ -64,9 +83,30 @@ export function TopBar({ appName, homeHref = '/', leading, trailing, className }
         </div>
         <div className="hatch-topbar__side hatch-topbar__side--end">
           {trailing}
-          <ThemeSwitch tone="accent" />
+          <Menu
+            label="Settings and theme"
+            tone="accent"
+            align="end"
+            defaultOpen={menuDefaultOpen}
+            trigger={(props) => (
+              <button {...props}>
+                <GearIcon />
+              </button>
+            )}
+          >
+            <div className="hatch-menu__row">
+              <span className="hatch-menu__row-label">Theme</span>
+              <ThemeSwitch tone="surface" />
+            </div>
+            {menu ? (
+              <>
+                <hr className="hatch-menu__divider" />
+                {menu}
+              </>
+            ) : null}
+          </Menu>
         </div>
-      </div>
+      </Menu.Bar>
     </header>
   );
 }

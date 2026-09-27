@@ -3,10 +3,11 @@ import { useTheme } from '../theme/useTheme';
 import type { ThemeChoice } from '../theme/themeContext';
 import './ThemeSwitch.css';
 
-/** The ground the switch is sitting on. `surface` is a page or a card;
-    `accent` is a filled bar, where the ink has to come from --on-accent or it
-    is a grey pill on a blue field. */
-export type ThemeSwitchTone = 'surface' | 'accent';
+/** The ground the switch is sitting on. `surface` is a page or a card - the
+    only ground left since the bar itself now carries the gear rather than the
+    switch directly; the prop stays because call sites still pass it
+    explicitly. */
+export type ThemeSwitchTone = 'surface';
 
 const CHOICES: { value: ThemeChoice; label: string }[] = [
   { value: 'auto', label: 'Auto' },

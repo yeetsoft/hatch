@@ -28,15 +28,6 @@
   background: var(--bg);
 }
 
-/* On a filled bar. The ink is --on-accent - the token that exists for exactly
-   this, and that flips with the theme rather than being white forever - and
-   the ground is the bar's own gradient showing through, so the control reads
-   as cut out of the bar rather than dropped on it. */
-.hatch-theme-switch--accent {
-  border-color: var(--on-accent-wash);
-  background: transparent;
-}
-
 /* Visually hidden, not display:none - the group still needs a name announced.
    Clip rather than a zero-size box so it is never read as an empty label. */
 .hatch-theme-switch__legend {
@@ -92,27 +83,7 @@
   color: var(--ink);
 }
 
-/* Every label at full --on-accent, checked or not: dimming the inactive two
-   was the obvious way to separate them and it puts 12px type at about 3.5:1 on
-   the primary fill, under the 4.5:1 floor. The filled pill carries the state
-   instead, which is legible without spending contrast. Hovering an inactive
-   option previews that fill. */
-.hatch-theme-switch--accent .hatch-theme-switch__option span {
-  color: var(--on-accent);
-}
-
-.hatch-theme-switch--accent .hatch-theme-switch__option input:checked + span,
-.hatch-theme-switch--accent .hatch-theme-switch__option input:not(:checked) + span:hover {
-  background: var(--on-accent-wash);
-}
-
 .hatch-theme-switch--surface .hatch-theme-switch__option input:focus-visible + span {
   outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* A --primary ring on the --primary fill would be invisible. */
-.hatch-theme-switch--accent .hatch-theme-switch__option input:focus-visible + span {
-  outline: 2px solid var(--on-accent);
   outline-offset: 2px;
 }
