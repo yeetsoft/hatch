@@ -2248,7 +2248,7 @@ public class IssuesControllerTests
             Thread = new IssueThreadController(db, caller, time),
             Questions = new QuestionsController(db),
             Board = new BoardController(db, actors, TestClaims.With(), time),
-            Projects = new ProjectsController(db, time),
+            Projects = new ProjectsController(db, time, caller),
             Statuses = new StatusesController(db),
             ProjectId = hatch.Id,
             OtherProjectId = ops.Id,
