@@ -72,8 +72,9 @@ reading the terminal, and that the next increment starts the moment yours ends.
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
   `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
-  line, then the summary. The prompt `hatch work` composes gives that line with
-  the origin filled in (`hatch work AER-12 --dry-run` prints it).
+  line, then the summary. `<origin>` is the address Hatch was reached at
+  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
+  AER-12 --dry-run` prints the exact line. Never write a relative link.
 - **Say what has to land in order.** The loop takes siblings in whatever order
   the board puts them in, so work that must land in order says so:
 
@@ -174,7 +175,9 @@ here, because getting them wrong is not recoverable by reading further:
 - `./scripts/hatch.sh pr AER-12 <url>` if you opened a pull request. `pr AER-12`
   with no URL reads back the one that is set, and `--clear` takes it off. That
   pull request's title begins `AER-12 ` and its description opens with the line
-  `[AER-12](<origin>/apps/hatch/issues/AER-12)`, then a blank line.
+  `[AER-12](<origin>/apps/hatch/issues/AER-12)`, then a blank line; `<origin>`
+  is `HATCH_BASE` unless the install sets a public address, and the link is
+  never relative.
 - **Never move a ticket to a terminal or a deferred status.** Only the operator
   decides that something shipped, and only the operator decides that something
   is not worth doing now. Implementation ends in *in progress*, with a comment

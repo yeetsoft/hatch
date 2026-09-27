@@ -24,6 +24,25 @@ public sealed class PromptTests
         Assert.Contains("**Title:** `AER-12 ` and then", prompt, StringComparison.Ordinal);
         Assert.Contains("\n[AER-12](https://hatch.example.test/apps/hatch/issues/AER-12)\n", prompt, StringComparison.Ordinal);
         Assert.Contains("`hatch pr AER-12 <url>`", prompt, StringComparison.Ordinal);
+        Assert.Contains("Never write a relative link.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_link_the_first_line_is_the_bare_key_and_the_session_is_told_so()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", noLink: true));
+
+        Assert.Contains("\n```\nAER-12\n```\n", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("](", prompt, StringComparison.Ordinal);
+        Assert.Contains("No link to the ticket is available", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_relative_link_is_never_handed_on()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "/apps/hatch/issues/AER-12"));
+
+        Assert.DoesNotContain("](", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

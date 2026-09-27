@@ -21,7 +21,8 @@ public class AppsOptions
     /// whichever hostname or IP the laptop that printed the sheet happened to
     /// be using. The same goes for a link that leaves Hatch - the issue link a
     /// dispatched session writes into a pull request - which a runner reaching
-    /// Hatch as <c>http://api:8080</c> could not otherwise get right. Everything
+    /// Hatch as <c>http://api:8080</c> could not otherwise get right. Left empty,
+    /// the runner links with the address it reaches Hatch at. Everything
     /// else in the shell is same-origin and needs no base URL at all.
     /// </summary>
     public string PublicBaseUrl { get; set; } = "";

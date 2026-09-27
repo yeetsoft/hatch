@@ -414,7 +414,9 @@ ten minutes; `queue` is where the counts turn back into tickets.
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
   `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
-  line, then the summary.
+  line, then the summary. `<origin>` is the address Hatch was reached at
+  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
+  AER-12 --dry-run` prints the exact line. Never write a relative link.
 - **Plan on the ticket, not in a chat log.** A planning session `PATCH`es
   acceptance criteria into the description and `POST`s the stories or tasks the
   work breaks into. An epic takes stories; a story takes tasks.

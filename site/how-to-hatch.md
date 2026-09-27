@@ -228,7 +228,9 @@ The contract in the other direction. Every agent session is told to:
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
   `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
-  line, then the summary.
+  line, then the summary. `<origin>` is the address Hatch was reached at
+  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
+  AER-12 --dry-run` prints the exact line. Never write a relative link.
 - **Plan on the ticket, not in a chat log.** A planning session writes
   acceptance criteria into the description and files the stories or tasks the
   work breaks into.

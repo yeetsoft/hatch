@@ -26,9 +26,9 @@ public class WorkControllerTests
 
     [Theory]
     [InlineData("https://home.example.com/", "https://home.example.com/apps/hatch/issues/AER-1")]
-    [InlineData("", "http://api:8080/apps/hatch/issues/AER-1")]
-    [InlineData("home.example.com", "http://api:8080/apps/hatch/issues/AER-1")]
-    public async Task Work_IssueUrl_PrefersTheConfiguredOriginAndFallsBackToTheRequest(string configured, string expected)
+    [InlineData("", null)]
+    [InlineData("home.example.com", null)]
+    public async Task Work_IssueUrl_IsTheConfiguredOriginAndNullWithoutOne(string configured, string? expected)
     {
         var h = await NewAsync(configured);
         var issue = await h.FileAsync("story", "a story", h.InProgress);
@@ -1477,16 +1477,7 @@ public class WorkControllerTests
             Db = db,
             Time = time,
             Actors = actors,
-            Work = new WorkController(db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }))
-            {
-                ControllerContext = new ControllerContext
-                {
-                    HttpContext = new DefaultHttpContext
-                    {
-                        Request = { Scheme = "http", Host = new HostString("api:8080") },
-                    },
-                },
-            },
+            Work = new WorkController(db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl })),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Inbox = inbox.Id,

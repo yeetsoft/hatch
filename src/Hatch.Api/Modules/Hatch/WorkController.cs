@@ -570,17 +570,16 @@ public class WorkController(
     }
 
     /// <summary>
-    /// The issue's page as a browser would open it. The configured public origin
-    /// wins, because behind a proxy only the forwarded scheme is honoured and a
-    /// containerised runner sees the service name; the request's own origin is
-    /// the fallback for an install that never set one.
+    /// The issue's page as a browser would open it, or null when the install
+    /// has no usable public origin. The request's own origin is deliberately
+    /// not a fallback: behind a proxy only the forwarded scheme is honoured, so
+    /// the runner's own address for Hatch is the better default and the CLI
+    /// fills it in.
     /// </summary>
-    private string IssueUrl(string key)
-    {
-        var origin = AppsOptions.NormalizeBaseUrl(apps.Value.PublicBaseUrl)
-            ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
-        return $"{origin}/apps/hatch/issues/{key}";
-    }
+    private string? IssueUrl(string key) =>
+        AppsOptions.NormalizeBaseUrl(apps.Value.PublicBaseUrl) is { } origin
+            ? $"{origin}/apps/hatch/issues/{key}"
+            : null;
 
     /// <summary>
     /// Why an agent should not be spawned for this issue, or null when it
