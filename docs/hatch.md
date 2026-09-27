@@ -1841,6 +1841,12 @@ it is safe to paste on a machine that is already configured. The page fills in
 this Hatch's own origin, because the address bar is the one thing about an
 install nobody can get wrong.
 
+`config --key <key>` is its mirror for the credential: it writes the key alone,
+needs an origin already set, and refuses an empty one. With the wall up the Runner
+page shows it beside the origin command, and the API keys page is where the key
+comes from. A key typed on a command line stays in shell history, which the
+no-echo prompt of plain `hatch config` does not, so the page offers both.
+
 So `make publish-hatch` is how *this repository* builds the artifact, and the
 Runner page is how *a person* gets it. A friend with the stack running needs the
 image and nothing else — no SDK, no clone, no copy of this Makefile.

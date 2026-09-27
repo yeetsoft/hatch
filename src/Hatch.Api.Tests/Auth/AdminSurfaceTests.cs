@@ -75,6 +75,7 @@ public class AdminSurfaceTests
         // make the scope system decorative, since any key could issue itself a
         // second one carrying whatever it liked.
         "ApiKeysController.ListKeys",
+        "ApiKeysController.ListScopes",
         "ApiKeysController.CreateKey",
         "ApiKeysController.RevokeKey",
 
