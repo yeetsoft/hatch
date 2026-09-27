@@ -129,6 +129,22 @@ public class GoogleSignInController(
         var identity = await db.ExternalIdentities.Include(i => i.Person)
             .FirstOrDefaultAsync(i => i.Provider == EfExternalIdentity.GoogleProvider && i.Subject == token.Sub, ct);
 
+        // Only when the sub is unknown: an Admin may have pre-approved this
+        // address. The verified email is consulted here and nowhere else - once
+        // bound, the sub is the identity, so a bound row is never found by this
+        // query (it requires Subject == null).
+        if (identity is null)
+        {
+            var address = token.Email.ToLowerInvariant();
+            identity = await db.ExternalIdentities.Include(i => i.Person)
+                .FirstOrDefaultAsync(i => i.Provider == EfExternalIdentity.GoogleProvider && i.Subject == null && i.Email == address, ct);
+            if (identity is not null)
+            {
+                identity.Subject = token.Sub;
+                logger.LogInformation("Google sign-in claimed a pre-approved identity for person {PersonId}", identity.PersonId);
+            }
+        }
+
         if (identity is null)
         {
             // The first person to sign in on an install with no Admin becomes
@@ -197,8 +213,7 @@ public class GoogleSignInController(
     {
         if (PersonName.TryNormalize(token.Name, out var name, out _)) return name;
 
-        var local = token.Email?.Split('@')[0];
-        return PersonName.TryNormalize(local, out var fromEmail, out _) ? fromEmail : "Google user";
+        return PersonName.FromEmail(token.Email);
     }
 
     /// <summary>

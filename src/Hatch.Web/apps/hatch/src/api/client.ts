@@ -32,6 +32,7 @@ import type {
   Plan,
   Person,
   PersonSession,
+  PersonCreateRequest,
   PersonWriteRequest,
   Playbook,
   PlaybookCreateRequest,
@@ -464,6 +465,8 @@ export interface WorkLogSessionQuery {
 // nav and these answer 403 if it is reached anyway.
 
 export const getPeople = () => fetchJson<Person[]>('/api/people');
+export const createPerson = (request: PersonCreateRequest) =>
+  fetchJson<Person>('/api/people', { method: 'POST', ...asJson(request) });
 export const putPerson = (id: string, request: PersonWriteRequest) =>
   fetchJson<Person>(`/api/people/${seg(id)}`, { method: 'PUT', ...asJson(request) });
 export const deletePerson = (id: string) => fetchJson<void>(`/api/people/${seg(id)}`, { method: 'DELETE' });

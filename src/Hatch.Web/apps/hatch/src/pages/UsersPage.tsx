@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Card, EmptyState, Modal, PageHeader, Table, Text } from '@hatch/ui';
-import { deletePerson, getAuthMe, getPeople, getPersonSessions, putPerson, revokeGrant } from '../api/client';
+import { Fragment, type FormEvent, useCallback, useEffect, useState } from 'react';
+import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Table, Text } from '@hatch/ui';
+import { createPerson, deletePerson, getAuthMe, getPeople, getPersonSessions, putPerson, revokeGrant } from '../api/client';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
+  canAddUser,
   canChangeRole,
   canDelete,
   deleteSentence,
@@ -36,6 +37,9 @@ export function UsersPage() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [newEmail, setNewEmail] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newRole, setNewRole] = useState<PersonRole>('user');
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +81,23 @@ export function UsersPage() {
     else void write(person, to);
   }
 
+  async function addUser(e: FormEvent) {
+    e.preventDefault();
+    if (!canAddUser(newEmail)) return;
+    setBusy(true);
+    try {
+      await createPerson({ email: newEmail.trim(), role: newRole, name: newName.trim() || undefined });
+      setFailure(null);
+      setNewEmail('');
+      setNewName('');
+    } catch (err) {
+      setFailure(message(err));
+    } finally {
+      setBusy(false);
+      await load();
+    }
+  }
+
   const now = new Date();
 
   return (
@@ -85,6 +106,31 @@ export function UsersPage() {
         title="Users"
         description="Who this install knows, what each may reach, and the browsers signed in as them. The last Admin cannot be demoted or deleted."
       />
+
+      <Card>
+        <form onSubmit={(e) => void addUser(e)}>
+          <Field label="Email" hint="Their first Google sign-in with this address lands with the role below instead of waiting for approval.">
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required />
+          </Field>
+          <Field label="Role">
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value as PersonRole)}>
+              {ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Name (optional)">
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} />
+          </Field>
+          <div className="hatch-form-actions">
+            <Button type="submit" loading={busy} disabled={busy || !canAddUser(newEmail)}>
+              Add user
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {failure && <p className="text-danger">{failure}</p>}
 
@@ -128,7 +174,7 @@ export function UsersPage() {
                         ))}
                       </select>
                     </td>
-                    <td>{person.lastSignInAt ? agoPhrase(person.lastSignInAt, now) : <Text tone="muted">never</Text>}</td>
+                    <td>{person.lastSignInAt ? agoPhrase(person.lastSignInAt, now) : <Text tone="muted">has not signed in yet</Text>}</td>
                     <td>
                       <Button onClick={() => setOpen(open === person.id ? null : person.id)}>
                         {person.sessionCount} {open === person.id ? '▾' : '▸'}

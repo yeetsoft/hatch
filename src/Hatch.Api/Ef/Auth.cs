@@ -118,7 +118,6 @@ public class EfAuthGrant
 /// mint a grant for nobody.
 /// </summary>
 [Table("ExternalIdentities")]
-[Index(nameof(Provider), nameof(Subject), IsUnique = true)]
 public class EfExternalIdentity
 {
     public const string GoogleProvider = "google";
@@ -129,11 +128,19 @@ public class EfExternalIdentity
     [MaxLength(32)]
     public required string Provider { get; set; }
 
-    /// <summary>The provider's stable id for the account - Google's <c>sub</c>.</summary>
+    /// <summary>
+    /// The provider's stable id for the account - Google's <c>sub</c>. Null on
+    /// an *unclaimed* identity: an address an Admin pre-approved that has not
+    /// signed in yet. The first verified sign-in with that address binds it.
+    /// </summary>
     [MaxLength(255)]
-    public required string Subject { get; set; }
+    public string? Subject { get; set; }
 
-    /// <summary>The address the provider last reported. Refreshed on every sign-in; display only.</summary>
+    /// <summary>
+    /// The address the provider last reported. Refreshed on every sign-in;
+    /// display only - except on an unclaimed identity, where it is stored
+    /// lower-cased and is the one thing a first sign-in is matched on.
+    /// </summary>
     [MaxLength(320)]
     public required string Email { get; set; }
 
@@ -143,7 +150,8 @@ public class EfExternalIdentity
 
     public required DateTimeOffset CreatedAt { get; set; }
 
-    public required DateTimeOffset LastSignInAt { get; set; }
+    /// <summary>Null until the identity is claimed by a first sign-in.</summary>
+    public DateTimeOffset? LastSignInAt { get; set; }
 }
 
 /// <summary>

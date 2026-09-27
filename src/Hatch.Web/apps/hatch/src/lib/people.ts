@@ -53,3 +53,9 @@ export function deleteSentence(person: Pick<Person, 'name' | 'sessionCount'>): s
     n === 0 ? 'They have no sessions.' : `Their ${n === 1 ? 'session ends' : `${n} sessions end`} with them.`;
   return `${person.name} will be removed. ${sessions}`;
 }
+
+/** Whether the Add user form may be submitted: an address is all it needs. The
+    server judges the address; this only keeps an empty form from posting. */
+export function canAddUser(email: string): boolean {
+  return email.trim().length > 0;
+}

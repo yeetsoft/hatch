@@ -189,6 +189,20 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             .HasForeignKey(i => i.PersonId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Partial, because an unclaimed identity has no Subject and NULLs are
+        // not a key. The second index is what stops one address being
+        // pre-approved twice; the address is stored lower-cased while unclaimed,
+        // so a plain index is a case-insensitive one.
+        modelBuilder.Entity<EfExternalIdentity>()
+            .HasIndex(i => new { i.Provider, i.Subject })
+            .IsUnique()
+            .HasFilter("\"Subject\" IS NOT NULL");
+        modelBuilder.Entity<EfExternalIdentity>()
+            .HasIndex(i => new { i.Provider, i.Email })
+            .IsUnique()
+            .HasFilter("\"Subject\" IS NULL")
+            .HasDatabaseName("IX_ExternalIdentities_Provider_Email_Unclaimed");
+
         modelBuilder.Entity<EfPersonPhoto>()
             .HasOne(p => p.Person)
             .WithOne(p => p.Photo)

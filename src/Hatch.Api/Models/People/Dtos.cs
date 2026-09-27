@@ -60,6 +60,15 @@ public record PersonDto(
 /// </summary>
 public record PersonWriteRequest(string? Name, string? Role);
 
+/// <summary>
+/// What the Add user form posts. <paramref name="Email"/> pre-approves an
+/// address: the person lands with <paramref name="Role"/> on their first Google
+/// sign-in instead of Pending. Optional here so a person can still be made by
+/// hand with no identity; <paramref name="Name"/> is then required, and with an
+/// email it falls back to the part before the <c>@</c>.
+/// </summary>
+public record PersonCreateRequest(string? Name, string? Email, string? Role);
+
 /// <summary>The wire spelling of <see cref="Hatch.Api.Ef.PersonRole"/>: lowercase, and never a number.</summary>
 public static class PersonRoles
 {

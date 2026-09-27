@@ -32,7 +32,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("   Ada    Lovelace  ", "user"), CancellationToken.None);
+        var created = await controller.Create(new PersonCreateRequest("   Ada    Lovelace  ", null, "user"), CancellationToken.None);
 
         var dto = Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value);
         Assert.Equal("Ada Lovelace", dto.Name);
@@ -41,6 +41,93 @@ public class PeopleControllerTests
         // The stored row is the normalized one, not the typed one - the client
         // is not the thing that decides what a name is.
         Assert.Equal("Ada Lovelace", (await db.People.SingleAsync()).Name);
+    }
+
+    [Fact]
+    public async Task CreatesAPreApprovedPersonWithAnUnclaimedLowerCasedIdentity()
+    {
+        var (controller, db, _) = NewController();
+
+        var created = await controller.Create(new PersonCreateRequest(null, "  Ada.Lovelace@Example.com ", "user"), CancellationToken.None);
+
+        var dto = Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value);
+        Assert.Equal("ada.lovelace@example.com", dto.Email);
+        Assert.Equal("google", dto.Provider);
+        Assert.Null(dto.LastSignInAt);
+        Assert.Equal("Ada.Lovelace", dto.Name);
+        Assert.Equal("user", dto.Role);
+        var identity = await db.ExternalIdentities.SingleAsync();
+        Assert.Null(identity.Subject);
+        Assert.Null(identity.LastSignInAt);
+        Assert.Equal("ada.lovelace@example.com", identity.Email);
+        Assert.Equal(dto.Id, identity.PersonId);
+    }
+
+    [Fact]
+    public async Task AGivenNameWinsOverTheLocalPart()
+    {
+        var (controller, _, _) = NewController();
+
+        var created = await controller.Create(new PersonCreateRequest("Ada", "al@example.com", "admin"), CancellationToken.None);
+
+        Assert.Equal("Ada", Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value).Name);
+    }
+
+    [Fact]
+    public async Task RefusesAnAddressAlreadyPreApprovedInAnyCase()
+    {
+        var (controller, db, _) = NewController();
+        await controller.Create(new PersonCreateRequest("Ada", "ada@example.com", "user"), CancellationToken.None);
+
+        var second = await controller.Create(new PersonCreateRequest("Ada Again", "ADA@example.com", "admin"), CancellationToken.None);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(second.Result);
+        Assert.Equal("ada@example.com is already on this list.", conflict.Value);
+        Assert.Single(db.People);
+        Assert.Single(db.ExternalIdentities);
+    }
+
+    [Fact]
+    public async Task RefusesAnAddressAlreadyOnASignedInPerson()
+    {
+        var (controller, db, _) = NewController();
+        var person = new EfPerson { Name = "Ada", Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now };
+        db.ExternalIdentities.Add(new EfExternalIdentity
+        {
+            Provider = "google", Subject = "sub-1", Email = "Ada@Example.com", Person = person, CreatedAt = Now, LastSignInAt = Now,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await controller.Create(new PersonCreateRequest(null, "ada@example.com", "user"), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Single(db.People);
+    }
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData("a@b@c.com")]
+    [InlineData("@example.com")]
+    [InlineData("ada@")]
+    [InlineData("a da@example.com")]
+    public async Task RefusesAMalformedAddress(string email)
+    {
+        var (controller, db, _) = NewController();
+
+        var result = await controller.Create(new PersonCreateRequest("Ada", email, "user"), CancellationToken.None);
+
+        Assert.Equal("Enter a valid email address.", Assert.IsType<BadRequestObjectResult>(result.Result).Value);
+        Assert.Empty(db.People);
+    }
+
+    [Fact]
+    public async Task ANamelessPersonWithNoEmailIsStillRefused()
+    {
+        var (controller, _, _) = NewController();
+
+        var result = await controller.Create(new PersonCreateRequest(null, null, "user"), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     /// <summary>
@@ -60,7 +147,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("Ada", wire), CancellationToken.None);
+        var created = await controller.Create(new PersonCreateRequest("Ada", null, wire), CancellationToken.None);
 
         Assert.Equal(PersonRoles.ToWire(stored), Assert.IsType<PersonDto>(Assert.IsType<CreatedAtActionResult>(created.Result).Value).Role);
         Assert.Equal(stored, (await db.People.SingleAsync()).Role);
@@ -83,7 +170,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("Ada", role), CancellationToken.None);
+        var created = await controller.Create(new PersonCreateRequest("Ada", null, role), CancellationToken.None);
 
         Assert.Equal(PersonRoles.Sentence, Assert.IsType<BadRequestObjectResult>(created.Result).Value);
         Assert.Empty(await db.People.ToListAsync());
@@ -129,7 +216,7 @@ public class PeopleControllerTests
     {
         var (controller, db, _) = NewController();
 
-        var created = await controller.Create(new PersonWriteRequest("   ", "user"), CancellationToken.None);
+        var created = await controller.Create(new PersonCreateRequest("   ", null, "user"), CancellationToken.None);
 
         Assert.Equal(PersonName.EmptyError, Assert.IsType<BadRequestObjectResult>(created.Result).Value);
         Assert.Empty(db.People);
@@ -142,8 +229,8 @@ public class PeopleControllerTests
         // index behind this, and the id is what anything actually keys on.
         var (controller, _, _) = NewController();
 
-        await controller.Create(new PersonWriteRequest("Sam", "user"), CancellationToken.None);
-        var second = await controller.Create(new PersonWriteRequest("Sam", "user"), CancellationToken.None);
+        await controller.Create(new PersonCreateRequest("Sam", null, "user"), CancellationToken.None);
+        var second = await controller.Create(new PersonCreateRequest("Sam", null, "user"), CancellationToken.None);
 
         Assert.IsType<CreatedAtActionResult>(second.Result);
         Assert.Equal(2, (await controller.GetAll(CancellationToken.None)).Count);
@@ -156,7 +243,7 @@ public class PeopleControllerTests
 
         foreach (var name in new[] { "Zoe", "Adam", "Mia" })
         {
-            await controller.Create(new PersonWriteRequest(name, "user"), CancellationToken.None);
+            await controller.Create(new PersonCreateRequest(name, null, "user"), CancellationToken.None);
         }
 
         Assert.Equal(["Adam", "Mia", "Zoe"], (await controller.GetAll(CancellationToken.None)).Select(p => p.Name));
@@ -445,7 +532,7 @@ public class PeopleControllerTests
 
     private static async Task<Guid> Create(PeopleController controller, string name, string role = "user")
     {
-        var created = await controller.Create(new PersonWriteRequest(name, role), CancellationToken.None);
+        var created = await controller.Create(new PersonCreateRequest(name, null, role), CancellationToken.None);
         return ((PersonDto)((CreatedAtActionResult)created.Result!).Value!).Id;
     }
 
