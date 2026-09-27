@@ -157,12 +157,87 @@ public sealed class CheckoutTests : IDisposable
         var tree = Tree("no-origin");
         Git(tree, "init", "--quiet");
 
-        var checkouts = Checkouts.Discover(tree);
+        Assert.True(Checkouts.TryDiscover(tree, [], out var checkouts, out _));
 
         var entry = Assert.Single(checkouts);
         Assert.Equal(tree, entry.Path);
         Assert.True(entry.Standing);
         Assert.Null(entry.Remote);
+    }
+
+    [Fact]
+    public void A_named_checkout_with_an_origin_reads_it()
+    {
+        var tree = Tree("with-origin");
+        Git(tree, "init", "--quiet");
+        Git(tree, "remote", "add", "origin", "https://example.test/named.git");
+
+        Assert.True(Checkouts.TryDiscover(null, [tree], out var checkouts, out _));
+
+        var entry = Assert.Single(checkouts);
+        Assert.Equal(tree, entry.Path);
+        Assert.False(entry.Standing);
+        Assert.Equal("https://example.test/named.git", entry.Remote);
+    }
+
+    [Fact]
+    public void A_named_checkout_with_no_origin_is_refused_naming_it()
+    {
+        var tree = Tree("no-origin-named");
+        Git(tree, "init", "--quiet");
+
+        Assert.False(Checkouts.TryDiscover(null, [tree], out var checkouts, out var refusal));
+
+        Assert.Empty(checkouts);
+        Assert.Contains(tree, refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_named_path_that_does_not_exist_is_refused_before_anything_else()
+    {
+        var missing = Path.Combine(_temp, "does-not-exist");
+
+        Assert.False(Checkouts.TryDiscover(null, [missing], out var checkouts, out var refusal));
+
+        Assert.Empty(checkouts);
+        Assert.Contains(missing, refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_named_path_with_no_git_is_refused_naming_it()
+    {
+        var notAcheckout = Tree("plain-directory");
+
+        Assert.False(Checkouts.TryDiscover(null, [notAcheckout], out var checkouts, out var refusal));
+
+        Assert.Empty(checkouts);
+        Assert.Contains(notAcheckout, refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_standing_checkout_named_again_is_one_entry()
+    {
+        var tree = Tree("standing-again");
+        Git(tree, "init", "--quiet");
+        Git(tree, "remote", "add", "origin", "https://example.test/standing.git");
+
+        Assert.True(Checkouts.TryDiscover(tree, [tree], out var checkouts, out _));
+
+        Assert.Single(checkouts);
+    }
+
+    [Fact]
+    public void A_named_path_spelled_twice_is_one_entry()
+    {
+        var tree = Tree("one");
+        Git(tree, "init", "--quiet");
+        Git(tree, "remote", "add", "origin", "https://example.test/one.git");
+        var roundabout = Path.Combine(_temp, "two", "..", "one");
+        Directory.CreateDirectory(Path.Combine(_temp, "two"));
+
+        Assert.True(Checkouts.TryDiscover(null, [tree, roundabout], out var checkouts, out _));
+
+        Assert.Single(checkouts);
     }
 
     private static void Git(string dir, params string[] args)

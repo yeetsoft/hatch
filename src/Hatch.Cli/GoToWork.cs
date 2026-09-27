@@ -285,11 +285,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
         "                        [--stop-file <path>]",
         "                        [--restart-after <minutes> | --no-restart]",
+        "                        [--repo <path>]...",
         "",
         "  `work` in a circle: the next actionable issue, one increment, ask again -",
         "  until nothing on the board is an agent's to move, and then wait and ask",
-        "  again every interval. Run inside the checkout the board is about; one loop",
-        "  per checkout.",
+        "  again every interval. Run inside the checkout the board is about, or name",
+        "  one or more with --repo or HATCH_REPOS; one loop per served checkout.",
         "",
         "  It takes no ticket key. One increment on a named ticket is `hatch work",
         "  AER-12`; this command's question is what is next, asked again and again.",
@@ -298,6 +299,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  --once         one pass, and out",
         "  --quiet        no per-increment stream, only what each one ended as",
         "  --interval     seconds to wait when there was nothing to do (default 60)",
+        "  --repo <path>  also serve this checkout, repeatable - the whole list for",
+        "                 this run, beside the standing checkout if there is one;",
+        "                 HATCH_REPOS is not consulted when this is given",
         "",
         "  None of the bounds are set by default - an unattended run that stopped for",
         "  a reason nobody asked for is a run somebody has to go and check on. Each is",
@@ -338,6 +342,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var noRestart = false;
         int? maxRuns = null;
         decimal? maxSpend = null;
+        var repoFlags = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -390,6 +395,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     break;
                 case "--no-restart": noRestart = true; break;
+                case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
+                case "--repo":
+                    return Usage.Refuse(runtime.Say, "go-to-work --repo takes a path", GoToWorkUsage);
                 case var flag when flag.StartsWith('-'):
                     return Usage.Refuse(runtime.Say, $"go-to-work does not take {flag}", GoToWorkUsage);
                 default: key = args[i]; break;
@@ -412,6 +420,38 @@ public sealed class GoToWorkCommand(Runtime runtime)
             runtime.Say.Complain(
                 "hatch: go-to-work does not take a ticket - it asks the board what is next, until there is nothing.");
             runtime.Say.Complain($"hatch: one increment on {key} is  hatch work {key}");
+            return 1;
+        }
+
+        if (repoFlags.Count > 0)
+        {
+            // The whole list for this run, in place of Settings.Repos - the
+            // highest layer wins whole, as the settings already fold, rather
+            // than a merge nobody can predict from the command line. The
+            // standing checkout, if there is one, is still named first.
+            var standing = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path;
+            if (!Checkouts.TryDiscover(standing, repoFlags, out var repoCheckouts, out var badRepo))
+            {
+                runtime.Say.Complain(badRepo);
+                return 1;
+            }
+
+            var root = repoCheckouts[0].Path;
+            var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
+
+            runtime = runtime with
+            {
+                Checkouts = repoCheckouts,
+                Root = root,
+                RunnerName = runnerName,
+                Board = runtime.NewBoard(runnerName),
+            };
+        }
+
+        if (runtime.Checkouts.Count == 0)
+        {
+            runtime.Say.Complain("hatch: this is not a git repository, and a ticket is about a codebase.");
+            runtime.Say.Complain("hatch:   run it inside a checkout, name one with --repo, or set HATCH_REPOS.");
             return 1;
         }
 

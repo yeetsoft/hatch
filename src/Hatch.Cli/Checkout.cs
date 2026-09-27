@@ -156,4 +156,15 @@ public static class Checkout
         runner.Length <= ClaimRequest.MaxRunnerLength
             ? runner
             : "..." + runner[^(ClaimRequest.MaxRunnerLength - 3)..];
+
+    /// <summary>
+    /// The short hostname, because a runner is read by a person deciding which
+    /// box to go and look at and the domain is the same on all of them.
+    /// </summary>
+    public static string Host()
+    {
+        var name = Environment.MachineName;
+        var dot = name.IndexOf('.');
+        return dot > 0 ? name[..dot] : name;
+    }
 }

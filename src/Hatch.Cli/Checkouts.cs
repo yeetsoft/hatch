@@ -17,16 +17,93 @@ public sealed record CheckoutEntry(string Path, string? Remote, bool Standing);
 /// <summary>
 /// Which checkouts a runner serves, and which tree a dispatch resolves to.
 /// </summary>
-/// <remarks>
-/// This story's only source of checkouts is the one the process is standing
-/// in. A person naming others, and the clones a runner makes for itself, are
-/// later stories on the same epic - <see cref="Discover"/> is where each would
-/// add its own entries.
-/// </remarks>
 public static class Checkouts
 {
-    public static IReadOnlyList<CheckoutEntry> Discover(string standingRoot) =>
-        [new CheckoutEntry(standingRoot, Origin(standingRoot), Standing: true)];
+    /// <summary>
+    /// The standing checkout, if there is one, followed by every named path -
+    /// resolved, deduplicated, and validated before any of it is claimed or
+    /// locked.
+    /// </summary>
+    /// <param name="standingRoot">
+    /// The checkout the process is standing in, or null where there is none -
+    /// a loop with no checkout of its own, served entirely by <paramref
+    /// name="named"/>.
+    /// </param>
+    /// <param name="named">
+    /// Every other checkout this runner serves, in the order named - from
+    /// <c>--repo</c> or <c>HATCH_REPOS</c>.
+    /// </param>
+    /// <returns>
+    /// False, with <paramref name="checkouts"/> empty and <paramref
+    /// name="refusal"/> naming the path, the moment a named path does not
+    /// exist, is not a checkout, or has no <c>origin</c> - before anything is
+    /// locked or claimed.
+    /// </returns>
+    public static bool TryDiscover(
+        string? standingRoot,
+        IReadOnlyList<string> named,
+        out IReadOnlyList<CheckoutEntry> checkouts,
+        out string refusal)
+    {
+        var found = new List<CheckoutEntry>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        refusal = "";
+        checkouts = [];
+
+        if (standingRoot is not null)
+        {
+            found.Add(new CheckoutEntry(standingRoot, Origin(standingRoot), Standing: true));
+            seen.Add(Checkout.Canonical(standingRoot));
+        }
+
+        foreach (var path in named)
+        {
+            var canonical = Checkout.Canonical(path);
+            if (!seen.Add(canonical)) continue;
+
+            if (!IsCheckout(path, out refusal))
+            {
+                checkouts = [];
+                return false;
+            }
+
+            var origin = Origin(path);
+            if (origin is null)
+            {
+                refusal = $"hatch: {path} - has no origin remote, so a project's binding could never match it";
+                return false;
+            }
+
+            found.Add(new CheckoutEntry(path, origin, Standing: false));
+        }
+
+        checkouts = found;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a path exists and carries a <c>.git</c> - the one check
+    /// <c>hatch config --repo</c> makes before it writes a path down, and the
+    /// first two <see cref="TryDiscover"/> makes before it ever asks for an
+    /// origin.
+    /// </summary>
+    public static bool IsCheckout(string path, out string refusal)
+    {
+        if (!Directory.Exists(path))
+        {
+            refusal = $"hatch: {path} - no such directory";
+            return false;
+        }
+
+        if (!Directory.Exists(Path.Combine(path, ".git")) && !File.Exists(Path.Combine(path, ".git")))
+        {
+            refusal = $"hatch: {path} - not a checkout, there is no .git here";
+            return false;
+        }
+
+        refusal = "";
+        return true;
+    }
 
     /// <summary>
     /// <c>git remote get-url origin</c>, swallowing every way that can fail: no
@@ -102,7 +179,13 @@ public static class Checkouts
         var primary = repositories.Single(r => r.Primary);
         if (primary.MatchedRemote is not { } primaryRemote) return null;
 
-        var byRemote = checkouts.Where(c => c.Remote is not null).ToDictionary(c => c.Remote!, c => c);
+        // GroupBy rather than ToDictionary: two checkouts can now share one
+        // remote - two clones of the same repository named on one runner -
+        // which was impossible when the only source was the standing checkout.
+        // The first survivor wins, in discovery's own order (standing, then
+        // named in the order given), which is the sensible one.
+        var byRemote = checkouts.Where(c => c.Remote is not null)
+            .GroupBy(c => c.Remote!).ToDictionary(g => g.Key, g => g.First());
         if (!byRemote.TryGetValue(primaryRemote, out _)) return null;
 
         // HATCH_BASE_BRANCH beats a binding's own BaseBranch, but only for the

@@ -1611,16 +1611,30 @@ request somebody can read.
 
 ### One loop at a time
 
-**One loop per checkout**, and what says so is a directory under `TMPDIR`,
-holding the pid of the run that took it. A directory because creating one is
-atomic on every filesystem this could land on and a file written with a redirect
-is not; outside the repository because a lock in a tracked tree is a lock
-somebody commits, and one that outlives a reboot is one somebody has to come and
-clear by hand. A lock whose owner is gone — killed outright, or a machine that
+**One loop per served checkout.** A loop is not limited to the one it is
+standing in — `--repo <path>` (repeatable, on `work` and `go-to-work`) or
+`HATCH_REPOS` (checkout paths joined on the platform's path separator) names
+others it serves too, which is what lets one loop on a laptop work the two or
+three repositories already cloned there and need no checkout of its own. Each
+named path is resolved and validated at startup, in order, after the standing
+checkout if there is one: it must exist, carry a `.git`, and have an `origin`
+— a project's binding can only ever match a checkout that declares one —
+before anything below is locked or claimed. `--repo` given on the command line
+is the whole list for that run; `HATCH_REPOS` is not consulted, the same way
+any higher settings layer wins whole rather than merging with a lower one.
+
+What says "one loop" is a directory under `TMPDIR`, holding the pid of the run
+that took it, taken on every served checkout in order at startup — a refusal
+on any one releases every lock already taken and says which checkout and
+which loop holds it. A directory because creating one is atomic on every
+filesystem this could land on and a file written with a redirect is not;
+outside the repository because a lock in a tracked tree is a lock somebody
+commits, and one that outlives a reboot is one somebody has to come and clear
+by hand. A lock whose owner is gone — killed outright, or a machine that
 rebooted out from under it — is cleared rather than honoured, which is the
-difference between a loop that survives a crash and one somebody has to let back
-in. The refusal names the pid *and* the checkout, because "already running here"
-is ambiguous the moment there are two heres.
+difference between a loop that survives a crash and one somebody has to let
+back in. The refusal names the pid *and* the checkout, because "already
+running here" is ambiguous the moment there are two heres.
 
 Per checkout rather than per machine, and that is the whole of what makes a
 second loop possible. It was per machine while the [claim](#claim) did not
