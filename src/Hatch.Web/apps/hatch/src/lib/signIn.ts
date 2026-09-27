@@ -17,7 +17,7 @@
  */
 
 /** Where the shell lives. Exempt from the gate by construction, or this is a loop. */
-const SIGN_IN_PATH = '/apps/auth/';
+export const SIGN_IN_PATH = '/apps/auth/';
 
 /** One navigation per document. A burst of parallel 401s must not stack them. */
 let leaving = false;
@@ -47,7 +47,21 @@ export function redirectToSignIn(): boolean {
 /**
  * The one-liner every fetch caller needs: hands back true when the response was
  * a refusal and the browser is now on its way to sign in.
+ *
+ * Two refusals mean the same thing. A 401 is no grant at all. A 403 whose body
+ * says `pending_approval` is a grant whose person's role was dropped
+ * mid-session, so the board is no longer theirs to see. Any other 403 is a
+ * refusal of one route and is the caller's to report. The body is read from a
+ * clone so the caller can still read the original.
  */
-export function handledUnauthorized(response: Response): boolean {
-  return response.status === 401 && redirectToSignIn();
+export async function handledRefusal(response: Response): Promise<boolean> {
+  if (response.status === 401) return redirectToSignIn();
+  if (response.status !== 403) return false;
+
+  try {
+    const body = (await response.clone().json()) as { error?: unknown };
+    return body?.error === 'pending_approval' && redirectToSignIn();
+  } catch {
+    return false;
+  }
 }

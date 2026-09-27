@@ -83,7 +83,7 @@ test-web:
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
 	set -e; \
 	cd ./src/Hatch.Web && nvm use && npm ci; \
-	for app in design hatch; do \
+	for app in auth design hatch; do \
 		echo "==> $$app"; \
 		npm run lint -w apps/$$app && npm run test --if-present -w apps/$$app && npm run build -w apps/$$app; \
 	done'

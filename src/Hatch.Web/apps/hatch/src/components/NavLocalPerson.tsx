@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getLocalPerson } from '../api/client';
-import { LOCAL_PERSON_CHANGED } from '../lib/localPerson';
-import type { LocalPerson } from '../types';
+import { signOut } from '../api/client';
+import { describeMe } from '../lib/me';
+import { SIGN_IN_PATH } from '../lib/signIn';
+import { useMe } from '../lib/useMe';
 
 /**
  * What to say when Hatch does not know who is sitting here.
@@ -15,63 +15,46 @@ import type { LocalPerson } from '../types';
 export const UNNAMED_HINT = 'Hatch does not know your name.';
 
 /**
- * Who Hatch thinks is at this machine, in the nav strip.
+ * Who Hatch thinks is at this browser, in the nav strip - in both modes.
  *
- * Draws nothing at all wherever there is a wall, which is every cluster
- * install: the route answers 204 there, and a strip with an empty box in it
- * would be worse than a strip with nothing. The same call `NavUtilization`
- * makes about a Claude token, for the same reason.
- *
- * Read on mount, and again whenever the Settings page says the name changed.
- * There is exactly one thing in the app that can move it, and it announces
- * itself (lib/localPerson.ts) - so this needs no poll, which would be a request
- * a minute answering a question nobody asked.
- *
- * Nothing here reports an error. A failure to reach Hatch's own endpoint leaves
- * the strip as it was; a nav strip is not where a fetch failure gets announced.
+ * The local person with the hint to name themselves when the wall is off; the
+ * signed-in person with a Sign out when it is up. Draws nothing for a caller
+ * that is nobody. What it says comes from `useMe`, read once by the provider
+ * above the routes.
  */
 export function NavLocalPerson() {
-  const [person, setPerson] = useState<LocalPerson | null>(null);
+  const view = describeMe(useMe().me);
 
-  useEffect(() => {
-    let cancelled = false;
+  if (view === null) return null;
 
-    const read = async () => {
-      try {
-        const answer = await getLocalPerson();
-        if (!cancelled) setPerson(answer);
-      } catch {
-        // Deliberately silent - see the note above.
-      }
-    };
-
-    void read();
-
-    const onChanged = () => void read();
-    window.addEventListener(LOCAL_PERSON_CHANGED, onChanged);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener(LOCAL_PERSON_CHANGED, onChanged);
-    };
-  }, []);
-
-  if (person === null) return null;
+  const signOutAndLeave = async () => {
+    try {
+      await signOut();
+    } catch {
+      // The grant may already be gone; sign in is the right place either way.
+    }
+    location.replace(SIGN_IN_PATH);
+  };
 
   return (
     <span
-      className={`hatch-local-person${person.configured ? '' : ' hatch-local-person-unnamed'}`}
-      title={person.configured ? undefined : UNNAMED_HINT}
+      className={`hatch-local-person${view.showHint ? ' hatch-local-person-unnamed' : ''}`}
+      title={view.showHint ? UNNAMED_HINT : undefined}
     >
-      <span className="hatch-local-person-name">{person.name}</span>
+      <span className="hatch-local-person-name">{view.name}</span>
       {/* The hint is drawn as well as being the tooltip: an operator who has
           just started Hatch for the first time is exactly the person who will
           not think to hover over their own name. */}
-      {person.configured ? null : (
+      {view.showHint ? (
         <span className="hatch-local-person-hint">
           {UNNAMED_HINT} <Link to="/settings">Set it</Link>
         </span>
-      )}
+      ) : null}
+      {view.showSignOut ? (
+        <button type="button" className="hatch-sign-out" onClick={() => void signOutAndLeave()}>
+          Sign out
+        </button>
+      ) : null}
     </span>
   );
 }

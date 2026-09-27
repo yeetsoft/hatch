@@ -87,6 +87,20 @@
   color: var(--muted);
 }
 
+.hatch-sign-out {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.hatch-sign-out:hover {
+  color: inherit;
+}
+
 @media (max-width: 900px) {
   .hatch-local-person-hint {
     display: none;

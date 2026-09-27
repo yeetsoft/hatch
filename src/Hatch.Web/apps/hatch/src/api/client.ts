@@ -1,4 +1,4 @@
-import { handledUnauthorized } from '../lib/signIn';
+import { handledRefusal } from '../lib/signIn';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -22,7 +22,7 @@ import type {
   IssuePlaybookRequest,
   IssueRollup,
   IssueSearch,
-  LocalPerson,
+  Me,
   ParsedEpic,
   PastedPlan,
   Plan,
@@ -57,7 +57,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     },
     ...init,
   });
-  if (handledUnauthorized(res)) {
+  if (await handledRefusal(res)) {
     // Navigating away; this promise is abandoned with the document.
     return await new Promise<T>(() => {});
   }
@@ -335,8 +335,10 @@ export const getAttention = () => fetchJson<Attention>('/api/hatch/attention');
  * the question does not arise and the strip draws nothing at all - the same
  * shape `getUtilization` takes and for the same reason.
  */
-export const getLocalPerson = () =>
-  fetchJson<LocalPerson | undefined>('/api/hatch/local-person').then((person) => person ?? null);
+export const getMe = () => fetchJson<Me | undefined>('/api/hatch/me').then((me) => me ?? null);
+
+/** Ends the grant and clears the cookie; the caller navigates to sign in. */
+export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'POST' });
 
 // ---- Settings ----
 //
