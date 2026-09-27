@@ -153,6 +153,30 @@ public sealed class HatchClientTests
         Assert.Contains("UnregisteredDto is not registered in HatchJson", thrown.Message);
     }
 
+    /// <summary>
+    /// <c>WorkRepositoryDto</c> has no <c>[JsonSerializable]</c> of its own -
+    /// it rides inside the already-registered <c>WorkDto</c>, and the
+    /// generator produces metadata for everything reachable from a registered
+    /// root. Proved by demonstration rather than by adding a registration
+    /// nothing would ever call.
+    /// </summary>
+    [Fact]
+    public async Task A_dispatches_repositories_ride_through_the_trimmed_client_with_no_registration_of_their_own()
+    {
+        using var wire = new Wire();
+        wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work(
+            "AER-1",
+            repositories: [Fixtures.Repository("https://example.com/o/r", primary: true, matchedRemote: "https://example.com/o/r")]));
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var work = await client.GetAsync<WorkDto>("/api/hatch/work/AER-1", default);
+
+        var repo = Assert.Single(work!.Repositories);
+        Assert.Equal("https://example.com/o/r", repo.Remote);
+        Assert.True(repo.Primary);
+        Assert.Equal("https://example.com/o/r", repo.MatchedRemote);
+    }
+
     private sealed record UnregisteredDto(string Nothing);
 
     /// <summary>A wire that keeps the headers it was called with, and answers nothing much.</summary>

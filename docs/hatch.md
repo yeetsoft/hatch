@@ -1002,8 +1002,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
@@ -1345,7 +1345,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Seven refusals**, and two of them are rules of the whole loop rather than
+**Eight refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -1361,7 +1361,14 @@ missing configuration:
    last heard from.
 6. The issue holds an unanswered question — *it is waiting on a person, not on
    an agent*.
-7. Something it [depends on](#dependency) is unfinished, and the move is into
+7. The project's [repositories](#repository) match none of the remotes the
+   caller declared, and the move is into the column where the code gets
+   written. A caller that declares nothing — an older CLI, or the issue page —
+   is not folded by this at all: declaring is opt-in, which is what keeps them
+   working unchanged. A project bound to nothing is worked from the caller's
+   standing checkout exactly as before; one bound to remotes none of which
+   match is refused unless the caller says it will clone what it lacks.
+8. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written.
 
 …and then, if none of those, the ordinary one: no playbook covers this
@@ -1552,7 +1559,7 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Seven conditions. An issue is the loop's to pick up when it meets every one, and
+Eight conditions. An issue is the loop's to pick up when it meets every one, and
 the sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is a column to its right, and that column is not terminal.** The end
@@ -1571,11 +1578,18 @@ the sentence saying which one it failed is what `work/queue` reports:
    to an API key, or to nobody, is picked up exactly as it always was.
 5. **It holds no unanswered question.** It is waiting on a person, and another
    agent sent at it would ask the same thing again or guess at the answer.
-6. **Nothing it depends on is unfinished** — and only when the move is into the
+6. **The project's [repositories](#repository) match a remote the caller
+   declared** — or the caller declared nothing at all, which this condition
+   does not fold on, exactly as an issue page or an older CLI does not. A
+   caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
+   the first two are checked here and only when the move is into the column
+   where the code gets written, the same restriction the dependency below
+   carries. See [the dispatcher](#the-dispatcher) for the exact sentence.
+7. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-7. **A playbook covers that transition for that type.** Without one there is
+8. **A playbook covers that transition for that type.** Without one there is
    nothing to say to the session — and a column no playbook leads out of is
    exactly [how a column becomes the operator's](#status), which is why the
    absence is a fold rather than an error. **This is also where the issue's
@@ -1583,7 +1597,7 @@ the sentence saying which one it failed is what `work/queue` reports:
    pick up is a type no row names for that move, said in the words that name
    the fix.
 
-Five of them — 1, 2, 5, 6 and 7 — are facts about the issue, and `work/{key}`
+Six of them — 1, 2, 5, 6, 7 and 8 — are facts about the issue, and `work/{key}`
 asks them too. The other two are the loop's policy and are asked only when the
 pass is asking; see [one more, on `next` alone](#one-more-on-next-alone).
 
