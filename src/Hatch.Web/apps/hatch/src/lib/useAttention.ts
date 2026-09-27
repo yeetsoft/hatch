@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getAttention } from '../api/client';
 import type { Attention } from '../types';
 
-/** How often the strip re-asks.
+/** How often the bar re-asks.
  *
  *  A minute, rather than the battery's two. This read is three cheap queries
  *  against a table of one household's issues, and it is the only thing in the
@@ -24,12 +24,12 @@ export const POLL_MS = 60 * 1000;
  *
  * Nothing here reports an error. A read that fails leaves the last answer
  * drawn - so the panel behind an already-lit control still lists what it listed
- * a minute ago - and says nothing at all. A nav strip is not where a fetch
+ * a minute ago - and says nothing at all. The bar is not where a fetch
  * failure gets announced, and a control that turned into an error message would
  * be worse than one that is briefly a minute stale.
  *
  * One piece of state, held by the control and passed to the panel: the panel
- * renders what the strip already has, so opening and closing it issues no
+ * renders what the control already has, so opening and closing it issues no
  * request, and there is no second reading that could disagree with the badge.
  */
 export function useAttention(): Attention | null {

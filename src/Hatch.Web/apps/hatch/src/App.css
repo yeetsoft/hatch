@@ -2,9 +2,9 @@
    a literal here is a bug.
 
    The page idioms - header, table, field, badge, button - are components in
-   @hatch/ui. What is stated here is Hatch's own shell: the nav strip under the
-   bar and the content area, which unlike admin's is not a centred column,
-   because the board wants every pixel of width it can have. */
+   @hatch/ui. What is stated here is Hatch's own shell: the content area, which
+   unlike admin's is not a centred column, because the board wants every pixel
+   of width it can have. The bar above it is <TopBar>, from @hatch/ui. */
 
 .hatch-app {
   width: 100%;
@@ -13,59 +13,13 @@
   flex-direction: column;
 }
 
-.hatch-nav {
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
-}
-
-.hatch-nav-content {
-  display: flex;
-  /* Centred rather than stretched, because the strip now holds a glyph beside
-     the links and a 24px circle stretched to the height of a nav link is an
-     oval. */
-  align-items: center;
-  gap: var(--sp-1);
-  padding: 0 var(--sp-5);
-}
-
-/* The layout .hatch-nav-content gives its children, restated for the one box
-   Board, Plan, Agents and Manage now sit in together. */
+/* The layout Board, Plan, Agents and Manage sit in together, wherever
+   PrimaryNav renders - the gradient bar's leading slot in this app, the
+   gallery's own stage elsewhere. */
 .hatch-primary-nav {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-}
-
-.hatch-nav-link {
-  padding: var(--sp-3) var(--sp-4);
-  color: var(--muted);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: var(--t-body);
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition), border-color var(--transition);
-}
-
-.hatch-nav-link:hover {
-  color: var(--ink);
-}
-
-.hatch-nav-link.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-}
-
-/* The right-hand end of the strip: who is sitting here, what is left to spend
-   tonight, and whether the loop is waiting on a person. Pushed right as one box
-   rather than one auto margin each, because those share the free space between
-   them instead of stacking. The first two draw nothing on an installation that
-   has neither; the third always draws, because "nothing is waiting" is an
-   answer. */
-.hatch-nav-aside {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
 }
 
 /* Who Hatch will name in the trail for anything done from this browser. Drawn
@@ -88,9 +42,7 @@
   color: var(--warn);
 }
 
-/* The sentence beside the name on a first run. Hidden on a narrow strip rather
-   than wrapped: the name and the tooltip still carry it, and a nav strip that
-   grows a second line is a nav strip that has moved the board down. */
+/* The sentence beside the name on a first run. */
 .hatch-local-person-hint {
   color: var(--muted);
 }
@@ -107,12 +59,6 @@
 
 .hatch-sign-out:hover {
   color: inherit;
-}
-
-@media (max-width: 900px) {
-  .hatch-local-person-hint {
-    display: none;
-  }
 }
 
 /* min-height: 0 so a board that overflows scrolls inside this box rather than
@@ -2415,7 +2361,7 @@ button.hatch-option.chosen {
   font-size: var(--t-label);
 }
 
-/* The battery: the account's Claude headroom, in the strip, on every route.
+/* The battery: the account's Claude headroom, on the bar, on every route.
 
    Two numbers in one glyph - a disc filled from the bottom to the percentage
    spent, inside a ring running down what is left of the five-hour window - and
@@ -2428,8 +2374,6 @@ button.hatch-option.chosen {
    colour in this block would be a bug - see the note at the top of this file. */
 
 .hatch-battery {
-  /* Placed by .hatch-nav-aside, which is what pushes it right - it is not one
-     of the links and must not read as one. */
   display: flex;
   align-items: center;
   gap: var(--sp-1-5);
@@ -2437,17 +2381,23 @@ button.hatch-option.chosen {
   border: 1px solid transparent;
   border-radius: var(--r-ctl);
   background: none;
-  color: var(--muted);
+  color: var(--on-accent);
   font-size: var(--t-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  transition: color var(--transition), background-color var(--transition);
 }
 
 .hatch-battery:hover {
-  color: var(--ink);
-  border-color: var(--line);
+  background-color: var(--on-accent-wash);
+}
+
+/* --on-accent rather than --primary, the same reason the brand link's ring
+   is (TopBar.css): a --primary ring on this gradient is next to invisible. */
+.hatch-battery:focus-visible {
+  outline: 2px solid var(--on-accent);
+  outline-offset: 2px;
 }
 
 .hatch-battery-glyph {
@@ -2456,12 +2406,12 @@ button.hatch-option.chosen {
   flex: none;
 }
 
-/* The ring's own colour is the tone; the track under it is the line the page
+/* The ring's own colour is the tone; the track under it is the wash the bar
    already draws everything else with, so a nearly-spent window is still a
-   circle rather than a stub floating in the strip. */
+   circle rather than a stub floating on the gradient. */
 .hatch-battery-track {
   fill: none;
-  stroke: var(--line);
+  stroke: var(--on-accent-wash);
   stroke-width: 2;
 }
 
@@ -2491,25 +2441,33 @@ button.hatch-option.chosen {
 }
 
 /* The three tones, and the only place any of them names a colour. Normal is
-   the strip's own muted ink, so a calm battery is furniture rather than a
-   third thing competing with the links. */
+   the bar's own --on-accent ink, so a calm battery is furniture rather than a
+   third thing competing with the nav. --warn and --danger cannot be ink on
+   this gradient (HA-25's "Tones on the bar" rule - they measure 1.0-1.8:1 on
+   it), so warn and danger are a fill under --on-accent ink instead of a
+   colour swap. HA-26 moves this onto the chrome tokens. */
 .hatch-battery-normal {
-  color: var(--muted);
+  color: var(--on-accent);
 }
 
 .hatch-battery-warn {
-  color: var(--warn);
+  background: var(--warn);
+  color: var(--on-accent);
 }
 
 .hatch-battery-danger {
-  color: var(--danger);
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
-.hatch-battery-warn:hover,
-.hatch-battery-danger:hover {
+.hatch-battery-warn:hover {
   /* A tone that is saying something keeps saying it on hover, rather than
-     turning back into ordinary ink under the pointer. */
-  color: inherit;
+     fading into the bar's own wash. */
+  background: var(--warn);
+}
+
+.hatch-battery-danger:hover {
+  background: var(--danger);
 }
 
 .hatch-battery-percent {
@@ -2517,21 +2475,21 @@ button.hatch-option.chosen {
 }
 
 /* The attention control: whether the loop is waiting on a person, at the right
-   end of the strip on every route.
+   end of the bar on every route.
 
    Two states and one width. `min-width` is what holds that: a control that grew
-   when something arrived would shove the battery leftwards and move the strip
+   when something arrived would shove the battery leftwards and move the bar
    out from under whatever the pointer was aimed at. Resting is monochrome -
-   muted ink, no fill, no border, a glyph and one word - and asking is a lit
-   glyph and a count pill per non-empty section over a tinted ground.
+   --on-accent ink, no fill, no border, a glyph and one word - and asking is a
+   lit glyph and a count pill per non-empty section over a tinted ground.
 
    Every colour here is a token, both themes, and the tokens flip themselves.
    A literal in this block would be a bug - see the note at the top of this
    file. */
 
 .hatch-attention {
-  /* What the panel is anchored to. Placed by .hatch-nav-aside like the battery
-     beside it, and not one of the links. */
+  /* What the panel is anchored to: the control beside the battery, in the
+     bar's trailing slot. */
   position: relative;
   display: flex;
   align-items: center;
@@ -2552,35 +2510,39 @@ button.hatch-option.chosen {
   border: 1px solid transparent;
   border-radius: var(--r-ctl);
   background: none;
-  color: var(--muted);
+  color: var(--on-accent);
   font-size: var(--t-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  transition: color var(--transition), background-color var(--transition);
 }
 
 .hatch-attention-control:hover {
-  color: var(--ink);
-  border-color: var(--line);
+  background-color: var(--on-accent-wash);
 }
 
-/* Nothing is waiting. Furniture: the same muted ink the links wear, so a quiet
-   control is not a third thing competing with them. */
+.hatch-attention-control:focus-visible {
+  outline: 2px solid var(--on-accent);
+  outline-offset: 2px;
+}
+
+/* Nothing is waiting. Furniture: the same --on-accent ink the nav wears, so a
+   quiet control is not a third thing competing with it. */
 .hatch-attention-rest {
-  color: var(--muted);
+  color: var(--on-accent);
 }
 
 /* Something is waiting. A tinted ground rather than a fill, so it reads as lit
    without becoming the loudest thing on a page that also draws overdue cards. */
 .hatch-attention-asking {
-  color: var(--ink);
-  border-color: var(--line);
-  background: var(--primary-bg);
+  color: var(--on-accent);
+  border-color: var(--on-accent-wash);
+  background: var(--on-accent-wash);
 }
 
 .hatch-attention-asking:hover {
-  border-color: var(--primary);
+  border-color: var(--on-accent);
 }
 
 .hatch-attention-glyph {
@@ -2602,8 +2564,10 @@ button.hatch-option.chosen {
 }
 
 /* The lamp and the eyes: hollow at rest, filled when something is waiting. The
-   whole point of the glyph having two states is that the strip reads as lit
-   from the corner of an eye, before the pills are legible. */
+   whole point of the glyph having two states is that the bar reads as lit
+   from the corner of an eye, before the pills are legible. currentColor
+   rather than --primary: --primary cannot be ink on this gradient (HA-25's
+   "Tones on the bar" rule), and currentColor is already --on-accent here. */
 .hatch-attention-lamp,
 .hatch-attention-eye {
   fill: none;
@@ -2612,13 +2576,11 @@ button.hatch-option.chosen {
 }
 
 .hatch-attention-eye.lit {
-  fill: var(--primary);
-  stroke: var(--primary);
+  fill: currentColor;
 }
 
 .hatch-attention-lamp.lit {
-  fill: var(--primary);
-  stroke: var(--primary);
+  fill: currentColor;
   /* The one thing on the page that moves without a person having moved it -
      against the house's calm-motion rule (tokens.css) on purpose, because this
      control exists to be noticed. Scoped to this one element and nothing else,
@@ -2669,9 +2631,13 @@ button.hatch-option.chosen {
 }
 
 /* One colour each, so which half is loud is legible before the panel opens.
-   Which half is which is arbitrary and only has to be stable. */
+   Which half is which is arbitrary and only has to be stable. Review is
+   inverted - --on-accent ground, --primary digit - because --primary is the
+   bar's own first stop, and a --primary pill on it would vanish; question
+   keeps its usual --warn ground and --on-accent digit, which already reads. */
 .hatch-attention-pill-review {
-  background: var(--primary);
+  background: var(--on-accent);
+  color: var(--primary);
 }
 
 .hatch-attention-pill-question {
@@ -2684,7 +2650,7 @@ button.hatch-option.chosen {
 .hatch-attention-panel {
   position: absolute;
   top: calc(100% + var(--sp-1));
-  /* Anchored to the right, because the control is at the right end of the strip
+  /* Anchored to the right, because the control is at the right end of the bar
      and a panel hung from its left edge would run off the window. */
   right: 0;
   width: 380px;

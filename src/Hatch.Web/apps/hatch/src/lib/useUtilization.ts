@@ -36,7 +36,7 @@ export interface UtilizationState {
  *
  * Nothing here reports an error. A failure to reach Hatch's own endpoint leaves
  * the last reading in place - and the endpoint's own degraded answers (`stale`,
- * `unknown`) are readings, not errors. A nav strip is not where a fetch failure
+ * `unknown`) are readings, not errors. The bar is not where a fetch failure
  * gets announced.
  */
 export function useUtilization(): UtilizationState {

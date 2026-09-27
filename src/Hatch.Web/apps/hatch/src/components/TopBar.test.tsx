@@ -24,4 +24,20 @@ describe('TopBar', () => {
     expect(themeIndex).toBeGreaterThan(-1);
     expect(menuIndex).toBeGreaterThan(themeIndex);
   });
+
+  it('carries the full-width modifier only when asked for it', () => {
+    const full = renderToStaticMarkup(
+      <ThemeProvider>
+        <TopBar appName="Test" width="full" />
+      </ThemeProvider>,
+    );
+    const measure = renderToStaticMarkup(
+      <ThemeProvider>
+        <TopBar appName="Test" />
+      </ThemeProvider>,
+    );
+
+    expect(full).toContain('hatch-topbar__inner--full');
+    expect(measure).not.toContain('hatch-topbar__inner--full');
+  });
 });

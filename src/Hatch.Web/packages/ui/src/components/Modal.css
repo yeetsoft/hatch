@@ -27,6 +27,11 @@
   max-width: 720px;
   max-height: calc(100dvh - var(--sp-8));
   overflow-y: auto;
+  /* .hatch-card sets a --card ground but no ink, and a modal is not portalled -
+     it renders wherever it is mounted, which can be inside the bar's
+     --on-accent text. A component restates its own appearance rather than
+     leaning on where it happens to sit. */
+  color: var(--ink);
 }
 
 .hatch-modal__head {

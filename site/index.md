@@ -128,7 +128,7 @@ stack is running. They are in the order to do them in.
 
 9. **Come back to the board.** The **Runners** page shows the loop and can
    pause it, stop it after the increment in flight, or cap it. The attention
-   control in the nav strip counts what is waiting on you: questions to
+   control on the bar counts what is waiting on you: questions to
    answer, pull requests to review. Answer, review, merge, and move merged
    work to **Done**. Only you move a ticket there.
 

@@ -12,13 +12,13 @@ const TICK_MS = 30 * 1000;
 const SIZE = 24;
 
 /**
- * Whether the loop is waiting on a person, at the right end of the nav strip.
+ * Whether the loop is waiting on a person, at the right end of the bar.
  *
  * Quiet while it is not: muted ink, no fill, no border, a glyph and one word.
  * Loud the moment it is: the glyph lights, and one count pill per non-empty
  * section appears. It measures the same in both states, because a widget that
  * grew when something arrived would shove the battery leftwards and move the
- * strip out from under the cursor.
+ * bar out from under the cursor.
  *
  * Never returns null. Unlike the battery - which draws nothing on an install
  * with no Claude token, because there is no such thing as its answer there -

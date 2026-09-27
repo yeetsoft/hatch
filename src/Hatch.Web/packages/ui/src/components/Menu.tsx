@@ -80,14 +80,16 @@ export interface MenuBarProps {
 }
 
 /** Puts the menus inside it on one controller, so only one is open at a time
-    and moving across triggers switches without a frame of neither or both. */
+    and moving across triggers switches without a frame of neither or both.
+    Nested inside another `Menu.Bar`, it joins that one instead of opening its
+    own - two bars on one controller is what lets a bar's own nav coordinate
+    with a trigger the bar renders itself (the gear), rather than the two
+    shadowing each other. */
 function MenuBar({ as: Tag = 'div', className, children }: MenuBarProps) {
-  const [controller] = useState(newController);
-  return (
-    <BarContext.Provider value={controller}>
-      <Tag className={['hatch-menu-bar', className].filter(Boolean).join(' ')}>{children}</Tag>
-    </BarContext.Provider>
-  );
+  const existing = useContext(BarContext);
+  const [own] = useState(newController);
+  const tag = <Tag className={['hatch-menu-bar', className].filter(Boolean).join(' ')}>{children}</Tag>;
+  return existing ? tag : <BarContext.Provider value={own}>{tag}</BarContext.Provider>;
 }
 
 /**

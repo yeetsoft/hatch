@@ -272,6 +272,12 @@ left corner is the Hatch logo and the app name, one link to the app's own home
 served from a public path, because the package must not know where an app is
 mounted.
 
+`width` picks how far it runs: `measure` caps it at `--measure` and centres it,
+which every app but hatch leaves at its default. The hatch app passes `full`,
+because the board under it runs edge to edge too — a bar narrower than the
+board it introduces would misalign every column against it — and carries its
+primary nav in `leading` and the battery-and-attention cluster in `trailing`.
+
 `<Modal>` has one slot worth naming. Its panel caps at the viewport and scrolls,
 which is right until the dialog holds a row that has to stay reachable — its
 actions. Passing `footer` moves that row out of the scroll: the panel becomes a

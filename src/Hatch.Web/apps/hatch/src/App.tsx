@@ -23,8 +23,6 @@ import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
 
-const navLinkClass = ({ isActive }: { isActive: boolean }) => `hatch-nav-link${isActive ? ' active' : ''}`;
-
 export function App() {
   return (
     <MeProvider>
@@ -45,6 +43,21 @@ function AppShell() {
         <TopBar
           appName="Hatch"
           homeHref={appHref('/')}
+          width="full"
+          leading={<PrimaryNav tone="accent" />}
+          trailing={
+            <>
+              {/* What the bar says about this session rather than about the
+                  board. Draws nothing on an installation that has no answer
+                  for it - a cluster install has none. */}
+              <NavUtilization />
+              {/* Last, at the right end of the bar: whether the loop is
+                  waiting on a person. Unlike the one above it this always draws
+                  something - "nothing is waiting" is an answer, and it is the
+                  one it gives most of the time. */}
+              <NavAttention />
+            </>
+          }
           menu={
             <>
               <Menu.Item as={NavLink} to="/settings">Settings</Menu.Item>
@@ -64,32 +77,6 @@ function AppShell() {
             </>
           }
         />
-
-        <div className="hatch-nav">
-          <div className="hatch-nav-content">
-            <PrimaryNav tone="surface" />
-            {/* A page like any other rather than a strip element: what it holds
-                is this installation's own configuration, and it is the only place
-                a Hatch with no admin app beside it can be configured at all. */}
-            <NavLink to="/settings" className={navLinkClass}>Settings</NavLink>
-
-            {/* The right-hand group: what the strip says about this session
-                rather than about the board. One box because elements each
-                pushed right by their own auto margin would share the free space
-                between them and land apart. The first draws nothing on an
-                installation that has no answer for it - a cluster install has
-                none - so the strip is a row of links and no gap where
-                something used to be. */}
-            <div className="hatch-nav-aside">
-              <NavUtilization />
-              {/* Last, at the right end of the strip: whether the loop is
-                  waiting on a person. Unlike the two above it this always draws
-                  something - "nothing is waiting" is an answer, and it is the
-                  one it gives most of the time. */}
-              <NavAttention />
-            </div>
-          </div>
-        </div>
 
         <main className="hatch-content">
           <Routes>

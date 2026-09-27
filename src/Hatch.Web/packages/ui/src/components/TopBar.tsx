@@ -16,6 +16,11 @@ export interface TopBarProps {
       the address that survives an app moving; an app mounted under a path
       passes its own root. */
   homeHref?: string;
+  /** `measure` caps the bar at `--measure` and centres it, which is every
+      app's default. `full` runs it to the window's edges - the hatch app
+      passes this because the board under it does too, and carries its
+      primary nav in `leading` and the session cluster in `trailing`. */
+  width?: 'measure' | 'full';
   /** App-supplied content, after the app name. An environment badge, a
       breadcrumb, a search box - whatever the app needs the bar to carry. */
   leading?: ReactNode;
@@ -63,6 +68,7 @@ export interface TopBarProps {
 export function TopBar({
   appName,
   homeHref = '/',
+  width = 'measure',
   leading,
   trailing,
   menu,
@@ -71,7 +77,10 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className={className ? `hatch-topbar ${className}` : 'hatch-topbar'}>
-      <Menu.Bar as="div" className="hatch-topbar__inner">
+      <Menu.Bar
+        as="div"
+        className={`hatch-topbar__inner${width === 'full' ? ' hatch-topbar__inner--full' : ''}`}
+      >
         <div className="hatch-topbar__side">
           {/* An <a>, so middle-click and "copy link address" work. The logo is
               decoration: the name beside it is the link's accessible name. */}

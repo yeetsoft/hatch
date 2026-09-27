@@ -90,7 +90,7 @@ Unless you put up the wall (*Putting a front door on it*, below) there is no sig
 means it does not ask who you are and does not have anywhere to look it up — so
 it signs what you do with whatever your shell already called you (`USER` on
 macOS and Linux, `USERNAME` on Windows), and calls you `friend` when neither is
-set. The nav strip says which it used.
+set. The bar says which it used.
 
 **Settings → Your name** changes it, and is worth doing before you file
 anything. Every

@@ -1,4 +1,4 @@
-/* What the nav strip's attention control says, and when it says it loudly.
+/* What the bar's attention control says, and when it says it loudly.
 
    Everything decidable lives here rather than in the components, because this
    app has no component tests: the count, the tone, which of the two review

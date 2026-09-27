@@ -36,6 +36,12 @@
   gap: var(--sp-4);
 }
 
+/* `width="full"`: the bar runs to the window's edges instead of centring at
+   --measure, the way the board under it does. */
+.hatch-topbar__inner--full {
+  max-width: none;
+}
+
 .hatch-topbar__side {
   display: flex;
   align-items: center;

@@ -253,6 +253,14 @@
   max-width: 420px;
 }
 
+/* Narrows --measure on itself rather than the stage's own width, so a
+   `measure`-width bar visibly caps and centres inside a stage that otherwise
+   spans the same --measure the page column does - a literal for the same
+   reason .stage--narrow's 420px is one. */
+.stage--narrow-measure {
+  --measure: 600px;
+}
+
 .stage-page {
   display: flex;
   flex-direction: column;

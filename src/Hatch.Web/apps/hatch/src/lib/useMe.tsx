@@ -15,7 +15,7 @@ const MeContext = createContext<MeValue>({ me: null, isAdmin: false });
 /**
  * Asks who is here once per load, and again when the Settings page says the
  * local name changed, so the nav and any page can read the role without each
- * making the call. Silent on failure: a strip is not where a fetch failure is
+ * making the call. Silent on failure: the bar is not where a fetch failure is
  * announced, and no answer reads as no role.
  */
 export function MeProvider({ children }: { children: ReactNode }) {

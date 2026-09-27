@@ -78,8 +78,8 @@ container.
 
 The container picks it up on its next look. If none is saved when it starts,
 it says so once and then waits, looking again every minute, so the order you
-do these two things in does not matter. The same token is what lets the nav
-strip show how much headroom the account has left.
+do these two things in does not matter. The same token is what lets the bar
+show how much headroom the account has left.
 
 ## Letting it push
 
