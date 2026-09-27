@@ -53,3 +53,39 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* The logo and the name, one link home. The box is a 36px hit target, a fixed
+   ornament rather than a rung on the spacing ladder: it is sized to be
+   pressable, and retuning --sp-* must not resize it. */
+.hatch-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 36px;
+  padding-inline: var(--sp-2);
+  /* So the name still ellipses instead of pushing the theme switch away. */
+  min-width: 0;
+  border-radius: var(--r-ctl);
+  color: inherit;
+  text-decoration: none;
+  /* Resting at 0.8, full on hover. */
+  opacity: 0.8;
+  transition: background-color var(--transition), opacity var(--transition);
+}
+
+.hatch-topbar__brand img {
+  flex: none;
+}
+
+.hatch-topbar__brand:hover {
+  background-color: var(--on-accent-wash);
+  opacity: 1;
+}
+
+/* --on-accent rather than --primary: the link sits on the primary fill, and a
+   primary ring on a primary ground is an invisible one. */
+.hatch-topbar__brand:focus-visible {
+  outline: 2px solid var(--on-accent);
+  outline-offset: 2px;
+  opacity: 1;
+}

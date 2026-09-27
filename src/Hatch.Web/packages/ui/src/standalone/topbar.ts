@@ -7,12 +7,11 @@
    - **apps/logo**, a static Claude Design export whose runtime loads its own
      React from a CDN at runtime.
 
-   Both were one-way trips: you could reach them from the app picker and had no
-   way back but the browser's own Back button. This is what puts the bar on
-   them.
+   Both were one-way trips: once on them you had no way back but the browser's
+   own Back button. This is what puts the bar on them.
 
    **What is shared and what is restated.** The stylesheets are the real ones -
-   TopBar.css, AppSwitcher.css and ThemeSwitch.css, imported below, the same
+   TopBar.css and ThemeSwitch.css, imported below, the same
    files the React components import. So is the theme mechanism (themeStore).
    What is restated is the markup: about twenty elements, built here with DOM
    calls instead of JSX. That is the whole duplication, and it is the cheap
@@ -21,7 +20,7 @@
    on both pages, and on the logo page it would be React's *second* copy.
 
    The rule that keeps the two in step: this file may not invent a class name.
-   Every one below appears in TopBar.tsx, AppSwitcher.tsx or ThemeSwitch.tsx.
+   Every one below appears in TopBar.tsx or ThemeSwitch.tsx.
 
    base.css is deliberately NOT imported. It paints the body - face, ground,
    heading scale - and these are host pages with their own designs. The bar
@@ -36,10 +35,12 @@ import {
   type ThemeChoice,
 } from '../theme/themeStore';
 
+/* The canonical file is hatch-logo.png at the repository root; see TopBar.tsx. */
+import logo from '../assets/hatch-logo.png';
+
 import '../tokens.css';
 import './topbar.css';
 import '../components/TopBar.css';
-import '../components/AppSwitcher.css';
 import '../components/ThemeSwitch.css';
 
 /**
@@ -64,11 +65,9 @@ export type StandaloneThemeMode = 'switch' | 'light' | 'dark';
 export interface StandaloneTopBarConfig {
   /** The app's own name, and the only text the bar states. */
   appName: string;
-  /** Where the app picker lives. Same default, and same reason, as
-      <AppSwitcher>: `/` is the address that survives the picker moving. */
+  /** Where the logo and name link to: the host's own home. Same default as
+      <TopBar>. */
   homeHref?: string;
-  /** The accessible name of the picker link, and its tooltip. */
-  homeLabel?: string;
   theme?: StandaloneThemeMode;
 }
 
@@ -78,8 +77,6 @@ declare global {
     hatchTopBar?: StandaloneTopBarConfig;
   }
 }
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
   { value: 'auto', label: 'Auto' },
@@ -91,37 +88,26 @@ const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
    other's checked state - the same hazard useId answers in <ThemeSwitch>. */
 let groupSeq = 0;
 
-/** AppsMark.tsx, drawn with DOM calls. Same four rounded panes, same box. */
-function appsMark(): SVGSVGElement {
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('width', '20');
-  svg.setAttribute('height', '20');
-  svg.setAttribute('fill', 'currentColor');
-  /* Decoration: the control around it carries the accessible name. */
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-
-  for (const [x, y] of [[3, 3], [13, 3], [3, 13], [13, 13]]) {
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', String(x));
-    rect.setAttribute('y', String(y));
-    rect.setAttribute('width', '8');
-    rect.setAttribute('height', '8');
-    rect.setAttribute('rx', '2');
-    svg.appendChild(rect);
-  }
-  return svg;
-}
-
-/** AppSwitcher.tsx. An <a>, so middle-click and "copy link address" work. */
-function appSwitcher(href: string, label: string): HTMLAnchorElement {
+/** The brand link in TopBar.tsx. An <a>, so middle-click and "copy link address" work. */
+function brand(href: string, name: string): HTMLAnchorElement {
   const link = document.createElement('a');
-  link.className = 'hatch-app-switcher';
+  link.className = 'hatch-topbar__brand';
   link.href = href;
-  link.setAttribute('aria-label', label);
-  link.title = label;
-  link.appendChild(appsMark());
+
+  /* Decoration: the name beside it is the link's accessible name. */
+  const img = document.createElement('img');
+  img.src = logo;
+  img.alt = '';
+  img.width = 28;
+  img.height = 28;
+
+  /* A <span>, not an <h1>: the bar is a wordmark saying where you are, and the
+     page's own heading keeps the rank. */
+  const text = document.createElement('span');
+  text.className = 'hatch-topbar__name';
+  text.textContent = name;
+
+  link.append(img, text);
   return link;
 }
 
@@ -171,7 +157,7 @@ function themeSwitch(): HTMLFieldSetElement {
 
 /** Builds the bar. TopBar.tsx's structure, element for element. */
 export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
-  const { appName, homeHref = '/', homeLabel = 'All apps', theme = 'switch' } = config;
+  const { appName, homeHref = '/', theme = 'switch' } = config;
 
   const header = document.createElement('header');
   header.className = 'hatch-topbar';
@@ -181,14 +167,7 @@ export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
 
   const start = document.createElement('div');
   start.className = 'hatch-topbar__side';
-  start.appendChild(appSwitcher(homeHref, homeLabel));
-
-  /* A <span>, not an <h1>: the bar is a wordmark saying where you are, and the
-     page's own heading keeps the rank. */
-  const name = document.createElement('span');
-  name.className = 'hatch-topbar__name';
-  name.textContent = appName;
-  start.appendChild(name);
+  start.appendChild(brand(homeHref, appName));
 
   const end = document.createElement('div');
   end.className = 'hatch-topbar__side hatch-topbar__side--end';
