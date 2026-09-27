@@ -91,6 +91,59 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_says_Clones_true_when_a_workspace_is_configured()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var runtime = h.Runtime with
+        {
+            Settings = h.Runtime.Settings with { Workspace = Path.Combine(h.Temp, "clones") },
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.True(beat.Clones);
+    }
+
+    [Fact]
+    public async Task A_beat_after_a_successful_clone_carries_its_own_remote()
+    {
+        using var h = new Harness();
+
+        // maxRuns echoed back, same as the process started with - otherwise the
+        // second beat's answer folds the bound away and the loop never stops.
+        Instructs(h, "running", maxRuns: 1);
+
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default);
+
+        // Two beats: one before the pass that claims and clones, and one at the
+        // top of the next iteration - which is where --max-runs 1 stops the
+        // loop, and so is the one that carries what the pass before it grew
+        // the checkouts to.
+        var beats = Beats(h);
+        Assert.Equal(2, beats.Count);
+        var last = beats[^1].Read<RunnerHeartbeatRequest>();
+        Assert.Contains("https://example.test/owner/repo.git", last.Remotes ?? []);
+    }
+
+    [Fact]
     public async Task A_loop_says_it_is_a_loop_and_carries_the_bounds_it_started_with()
     {
         using var h = new Harness();

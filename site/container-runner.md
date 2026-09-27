@@ -32,8 +32,9 @@ make up a good part of a board's work, and for repositories whose tooling is
 
 ## Starting it
 
-Two things it has to be told: which checkout to work in, and whose name goes
-on the commits it makes.
+Two things it has to be told: which checkout to work in - or a workspace to
+clone into, if you have none of your own already checked out - and whose name
+goes on the commits it makes.
 
 macOS and Linux:
 
@@ -109,6 +110,11 @@ On Windows, `${HOME}` is `${USERPROFILE}`. This shape only carries what a
 Keychain or Windows' Credential Manager, has nothing in `.git-credentials` to
 mount, and there a token in the environment is the answer.
 
+These same three shapes are what answers a clone's own prompt for a
+credential, not only a push's - a repository the board binds that the
+container has to clone into its workspace asks git for one exactly the way a
+push does.
+
 **An SSH key.** If your remote is `git@…` rather than `https://…`, the
 container needs a key. On macOS, Docker Desktop bridges your own running
 `ssh-agent` into a container at a fixed path, so no key ever leaves the host.
@@ -141,10 +147,12 @@ it, with `${HOME}` in place of `${USERPROFILE}`.
 Its entrypoint checks what has to be true before an increment can run, in the
 order a person would fix them:
 
-1. **A checkout at `/checkout`.** A hard exit if there is none. The container
-   cannot produce a checkout it was not given, and `restart: on-failure` brings
-   it back the moment the mount is fixed. The directory is added to git's
-   `safe.directory`, because the bind mount arrives owned by the host's user.
+1. **A checkout at `/checkout`, or a workspace at `/workspace` to clone into.**
+   A hard exit if there is neither. Where a checkout is mounted, its directory
+   is added to git's `safe.directory`, because the bind mount arrives owned by
+   the host's user - a clone the container makes itself needs no such thing,
+   since it already owns what it wrote. `restart: on-failure` brings the
+   container back the moment either is fixed.
 2. **A name on the commits.** A refusal, not a default, if `HATCH_GIT_NAME` or
    `HATCH_GIT_EMAIL` is missing. The default would be `root@` and a container
    hostname on a commit in your repository, forever.
@@ -164,25 +172,33 @@ hand the loop bounds such as `--max-runs` or `--under`, add a `command:` to the
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `HATCH_CHECKOUT` | The repository to mount at `/checkout` | The directory the compose file was reached from, which is right only inside the Hatch checkout itself |
+| `HATCH_CHECKOUT` | The repository to mount at `/checkout` | The directory the compose file was reached from, which is right only inside the Hatch checkout itself. Optional once the container has a workspace to clone into instead |
 | `HATCH_GIT_NAME` | `GIT_AUTHOR_NAME` inside the container | Required |
 | `HATCH_GIT_EMAIL` | `GIT_AUTHOR_EMAIL` inside the container | Required |
 | `HATCH_GIT_TOKEN` | An HTTPS push token, handed to git through askpass | Empty |
 | `HATCH_RUNNER_NAME` | What the Runners page calls it | `hatch-runner` |
 | `HATCH_PUBLIC_URL` | The address a browser opens Hatch at, set on the `api` service. The pull requests the runner opens link back to their ticket, and without this the link is `http://api:8080/…`, which only the container can open | Empty, which uses the runner's own `HATCH_BASE` |
 
-Inside the container `HATCH_BASE` is the API over Compose's own network, and
-`HATCH_ROOT` is `/checkout`. The image sets `IS_SANDBOX=1`, because the
+Inside the container `HATCH_BASE` is the API over Compose's own network,
+`HATCH_ROOT` is `/checkout`, and `HATCH_WORKSPACE` is `/workspace` - a named
+volume, so what it clones survives the container being recreated rather than
+being cloned fresh on every start. The image sets `IS_SANDBOX=1`, because the
 `claude` CLI refuses to bypass permission prompts as root unless it is told it
 is in a sandbox, and an unattended increment has nobody to answer a prompt. A
-container with one bind-mounted checkout in it is the isolation that guard
-asks after.
+container with one bind-mounted checkout in it, or one workspace of its own
+clones, is the isolation that guard asks after.
 
-## One container, one checkout
+## One container, one workspace
 
-For a second repository, copy the `runner:` block in the compose file under a
-second service name with its own `HATCH_RUNNER_NAME` and its own checkout
-mounted, and both appear on the Runners page as themselves.
+A workspace clones what the board binds, so one container can serve a whole
+board rather than one repository: whatever a project binds that this runner
+has no checkout of, it clones into `/workspace` the first time a ticket needs
+it, and reuses that clone for every ticket after.
+
+If you already have a checkout of one of those repositories and would rather
+this container work in it than clone its own, mount it at `/checkout` with
+`HATCH_CHECKOUT` as above - that one is used in place of a clone, and
+everything else the board binds is still cloned into the workspace as needed.
 
 ## Upgrading it
 

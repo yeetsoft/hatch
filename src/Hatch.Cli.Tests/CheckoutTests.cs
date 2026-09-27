@@ -157,7 +157,7 @@ public sealed class CheckoutTests : IDisposable
         var tree = Tree("no-origin");
         Git(tree, "init", "--quiet");
 
-        Assert.True(Checkouts.TryDiscover(tree, [], out var checkouts, out _));
+        Assert.True(Checkouts.TryDiscover(tree, [], null, out var checkouts, out _, out _));
 
         var entry = Assert.Single(checkouts);
         Assert.Equal(tree, entry.Path);
@@ -172,7 +172,7 @@ public sealed class CheckoutTests : IDisposable
         Git(tree, "init", "--quiet");
         Git(tree, "remote", "add", "origin", "https://example.test/named.git");
 
-        Assert.True(Checkouts.TryDiscover(null, [tree], out var checkouts, out _));
+        Assert.True(Checkouts.TryDiscover(null, [tree], null, out var checkouts, out _, out _));
 
         var entry = Assert.Single(checkouts);
         Assert.Equal(tree, entry.Path);
@@ -186,7 +186,7 @@ public sealed class CheckoutTests : IDisposable
         var tree = Tree("no-origin-named");
         Git(tree, "init", "--quiet");
 
-        Assert.False(Checkouts.TryDiscover(null, [tree], out var checkouts, out var refusal));
+        Assert.False(Checkouts.TryDiscover(null, [tree], null, out var checkouts, out _, out var refusal));
 
         Assert.Empty(checkouts);
         Assert.Contains(tree, refusal, StringComparison.Ordinal);
@@ -197,7 +197,7 @@ public sealed class CheckoutTests : IDisposable
     {
         var missing = Path.Combine(_temp, "does-not-exist");
 
-        Assert.False(Checkouts.TryDiscover(null, [missing], out var checkouts, out var refusal));
+        Assert.False(Checkouts.TryDiscover(null, [missing], null, out var checkouts, out _, out var refusal));
 
         Assert.Empty(checkouts);
         Assert.Contains(missing, refusal, StringComparison.Ordinal);
@@ -208,7 +208,7 @@ public sealed class CheckoutTests : IDisposable
     {
         var notAcheckout = Tree("plain-directory");
 
-        Assert.False(Checkouts.TryDiscover(null, [notAcheckout], out var checkouts, out var refusal));
+        Assert.False(Checkouts.TryDiscover(null, [notAcheckout], null, out var checkouts, out _, out var refusal));
 
         Assert.Empty(checkouts);
         Assert.Contains(notAcheckout, refusal, StringComparison.Ordinal);
@@ -221,7 +221,7 @@ public sealed class CheckoutTests : IDisposable
         Git(tree, "init", "--quiet");
         Git(tree, "remote", "add", "origin", "https://example.test/standing.git");
 
-        Assert.True(Checkouts.TryDiscover(tree, [tree], out var checkouts, out _));
+        Assert.True(Checkouts.TryDiscover(tree, [tree], null, out var checkouts, out _, out _));
 
         Assert.Single(checkouts);
     }
@@ -235,9 +235,88 @@ public sealed class CheckoutTests : IDisposable
         var roundabout = Path.Combine(_temp, "two", "..", "one");
         Directory.CreateDirectory(Path.Combine(_temp, "two"));
 
-        Assert.True(Checkouts.TryDiscover(null, [tree, roundabout], out var checkouts, out _));
+        Assert.True(Checkouts.TryDiscover(null, [tree, roundabout], null, out var checkouts, out _, out _));
 
         Assert.Single(checkouts);
+    }
+
+    // ---- HA-19: a workspace of clones ----
+
+    [Fact]
+    public void PathFor_and_CanonicalFor_round_trip_a_plain_canonical()
+    {
+        var path = Checkouts.PathFor("/clones", "example.com/owner/repo");
+
+        Assert.Equal(Path.Combine("/clones", "example.com", "owner", "repo"), path);
+        Assert.Equal("example.com/owner/repo", Checkouts.CanonicalFor("/clones", path));
+    }
+
+    [Fact]
+    public void PathFor_and_CanonicalFor_round_trip_a_port()
+    {
+        var path = Checkouts.PathFor("/clones", "example.test:8443/owner/repo");
+
+        Assert.Equal(Path.Combine("/clones", "example.test_8443", "owner", "repo"), path);
+        Assert.Equal("example.test:8443/owner/repo", Checkouts.CanonicalFor("/clones", path));
+    }
+
+    [Fact]
+    public void A_workspace_finds_checkouts_at_different_depths_and_leaves_a_plain_directory_a_stray()
+    {
+        var workspace = Tree("workspace");
+
+        // Shallow: directly under the workspace.
+        var shallow = Path.Combine(workspace, "example.test", "owner", "shallow");
+        Directory.CreateDirectory(shallow);
+        Git(shallow, "init", "--quiet");
+        Git(shallow, "remote", "add", "origin", "https://example.test/owner/shallow.git");
+
+        // Deep: nested further under a top-level entry that is not itself a checkout.
+        var deep = Path.Combine(workspace, "example.test", "owner", "nested", "deep");
+        Directory.CreateDirectory(deep);
+        Git(deep, "init", "--quiet");
+        Git(deep, "remote", "add", "origin", "https://example.test/owner/deep.git");
+
+        // A stray: a top-level entry holding no checkout anywhere beneath it.
+        var stray = Path.Combine(workspace, "not-a-checkout");
+        Directory.CreateDirectory(Path.Combine(stray, "just-a-file"));
+
+        Assert.True(Checkouts.TryDiscover(null, [], workspace, out var checkouts, out var strays, out var refusal));
+        Assert.Equal("", refusal);
+
+        Assert.Contains(checkouts, c => c.Path == shallow && c.Remote == "https://example.test/owner/shallow.git");
+        Assert.Contains(checkouts, c => c.Path == deep && c.Remote == "https://example.test/owner/deep.git");
+        Assert.Equal(2, checkouts.Count);
+
+        var strayFound = Assert.Single(strays);
+        Assert.Equal(Path.Combine(workspace, "not-a-checkout"), strayFound);
+    }
+
+    [Fact]
+    public void A_workspace_that_overlaps_a_named_checkout_is_refused_naming_both()
+    {
+        var workspace = Tree("workspace");
+        var nested = Path.Combine(workspace, "a-checkout");
+        Directory.CreateDirectory(nested);
+        Git(nested, "init", "--quiet");
+        Git(nested, "remote", "add", "origin", "https://example.test/a.git");
+
+        Assert.False(Checkouts.TryDiscover(null, [nested], workspace, out var checkouts, out var strays, out var refusal));
+
+        Assert.Empty(checkouts);
+        Assert.Empty(strays);
+        Assert.Contains(workspace, refusal, StringComparison.Ordinal);
+        Assert.Contains(nested, refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnsureWorkspace_makes_the_directory_and_proves_it_writable()
+    {
+        var path = Path.Combine(_temp, "brand-new", "workspace");
+
+        Assert.True(Checkouts.EnsureWorkspace(path, out var refusal));
+        Assert.Equal("", refusal);
+        Assert.True(Directory.Exists(path));
     }
 
     private static void Git(string dir, params string[] args)

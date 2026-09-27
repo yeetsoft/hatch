@@ -602,6 +602,95 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_REPOS={a}", File.ReadAllLines(ConfigPath));
     }
 
+    // ---- --workspace ----
+
+    [Fact]
+    public async Task Workspace_writes_HATCH_WORKSPACE_and_touches_nothing_else()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept"]);
+
+        var dir = Path.Combine(_temp, "clones");
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--workspace", dir], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains($"HATCH_WORKSPACE={dir}", written);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", written);
+        Assert.True(Directory.Exists(dir));
+    }
+
+    [Fact]
+    public async Task A_workspace_inside_a_named_checkout_is_refused_naming_both()
+    {
+        var checkout = Tree("checkout");
+        var dir = Path.Combine(checkout, "clones");
+
+        await Command(new Replies()).RunAsync(["--repo", checkout], default);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--workspace", dir], default));
+        Assert.Contains(checkout, Complained, StringComparison.Ordinal);
+        Assert.Contains(dir, Complained, StringComparison.Ordinal);
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_WORKSPACE=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_workspace_inside_the_standing_checkout_is_refused_naming_both()
+    {
+        var standing = Tree("standing");
+        var dir = Path.Combine(standing, "clones");
+
+        var cmd = Command(new Replies()) with { Root = standing };
+
+        Assert.Equal(1, await cmd.RunAsync(["--workspace", dir], default));
+        Assert.Contains(standing, Complained, StringComparison.Ordinal);
+        Assert.Contains(dir, Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_named_checkout_inside_the_workspace_is_refused_the_same_way()
+    {
+        var workspace = Path.Combine(_temp, "clones");
+        Directory.CreateDirectory(workspace);
+        var checkout = Tree(Path.Combine("clones", "a-checkout"));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--workspace", workspace], default));
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--repo", checkout], default));
+        Assert.Contains(workspace, Complained, StringComparison.Ordinal);
+        Assert.Contains(checkout, Complained, StringComparison.Ordinal);
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_REPOS=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Workspace_shaped_wrong_is_refused()
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--workspace"], default));
+        Assert.False(File.Exists(ConfigPath));
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--workspace", "a", "b"], default));
+    }
+
+    [Fact]
+    public async Task Show_lists_the_workspace_with_its_layer()
+    {
+        var dir = Path.Combine(_temp, "clones");
+        await Command(new Replies()).RunAsync(["--workspace", dir], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_WORKSPACE:   {dir}  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_no_workspace_says_unset()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+        Assert.Contains("HATCH_WORKSPACE:   <unset>", Said);
+    }
+
     public void Dispose()
     {
         try

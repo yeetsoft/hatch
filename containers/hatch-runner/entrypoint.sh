@@ -9,23 +9,42 @@ say() {
     echo "hatch-runner: $1" >&2
 }
 
-# ---- A checkout to work in ----
+# SSH's first-contact prompt has nobody to answer it in here - print mode has
+# no terminal, and a container that hung on "are you sure you want to
+# continue connecting?" would look identical to one still starting up. Set
+# only where nothing has already decided this: a person who mounted their own
+# known_hosts, or exported GIT_SSH_COMMAND themselves, keeps what they set.
+if [ -z "${GIT_SSH_COMMAND:-}" ] && [ ! -e "${HOME:-/root}/.ssh/known_hosts" ]; then
+    export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
+fi
+
+# ---- A checkout to work in, or a workspace to clone into ----
 #
-# A hard exit, not a wait. Nothing about this container can produce a checkout
-# it was not given, so retrying would be a container that looks alive and does
-# nothing - and `restart: on-failure` will bring it back the moment the person
-# fixes the mount.
-if [ -z "${HATCH_ROOT:-}" ] || [ ! -e "$HATCH_ROOT/.git" ]; then
-    say "there is no checkout at ${HATCH_ROOT:-<unset>} - mount one there, or set HATCH_ROOT."
+# A hard exit, not a wait, when neither is there: nothing about this container
+# can produce a checkout it was not given, and none of it can clone without a
+# workspace to clone into - so retrying either would be a container that looks
+# alive and does nothing, and `restart: on-failure` will bring it back the
+# moment the person fixes the mount.
+if [ -n "${HATCH_ROOT:-}" ] && [ -e "$HATCH_ROOT/.git" ]; then
+    # The mount arrives owned by whoever owns it on the host, which is not
+    # this container's uid, and git refuses a repository it thinks belongs to
+    # somebody else. Named rather than the '*' wildcard: this is the one
+    # directory this container has any business in.
+    git config --global --add safe.directory "$HATCH_ROOT"
+elif [ -n "${HATCH_WORKSPACE:-}" ]; then
+    # Nothing mounted at HATCH_ROOT, but somewhere of this container's own to
+    # clone into - a clone this container makes is already owned by its own
+    # uid, so there is no second safe.directory to add. HATCH_ROOT is unset
+    # rather than left pointing at a directory with no checkout in it, which
+    # `hatch` would otherwise refuse to stand in.
+    say "no checkout at ${HATCH_ROOT:-<unset>} - the loop will clone what the board binds into $HATCH_WORKSPACE."
+    unset HATCH_ROOT
+else
+    say "there is no checkout at ${HATCH_ROOT:-<unset>}, and no HATCH_WORKSPACE to clone into."
+    say "  mount a checkout there, set HATCH_ROOT, or set HATCH_WORKSPACE to a directory this container may clone into."
     say "  docker compose --profile runner up -d, with HATCH_CHECKOUT naming the repository."
     exit 1
 fi
-
-# The mount arrives owned by whoever owns it on the host, which is not this
-# container's uid, and git refuses a repository it thinks belongs to somebody
-# else. Named rather than the '*' wildcard: this is the one directory this
-# container has any business in.
-git config --global --add safe.directory "$HATCH_ROOT"
 
 # ---- A name on the commits (criterion 5) ----
 #

@@ -695,4 +695,207 @@ public sealed class GoToWorkTests
             if (!supervised) Assert.Equal(0, h.Self.Taken);
         }
     }
+
+    // ---- --workspace: cloning what the board binds (HA-19) ----
+
+    private static Runtime WithWorkspace(Harness h, string workspace) =>
+        h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+
+    [Fact]
+    public async Task A_workspace_holding_two_prior_clones_is_served_and_their_remotes_declared_with_clones_true()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var workspace = Path.Combine(h.Temp, "clones");
+        var a = Path.Combine(workspace, "example.test", "owner", "a");
+        var b = Path.Combine(workspace, "example.test", "owner", "b");
+        Directory.CreateDirectory(a);
+        Git(a, "init", "--quiet");
+        Git(a, "remote", "add", "origin", "https://example.test/owner/a.git");
+        Directory.CreateDirectory(b);
+        Git(b, "init", "--quiet");
+        Git(b, "remote", "add", "origin", "https://example.test/owner/b.git");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--workspace", workspace], default));
+
+        var call = Assert.Single(h.Wire.To("GET", Queue));
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/owner/a.git")}", call.Query);
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/owner/b.git")}", call.Query);
+        Assert.Contains("clones=true", call.Query);
+
+        // Nothing was cloned: both were already there.
+        Assert.Empty(h.Clone.Requested);
+    }
+
+    [Fact]
+    public async Task Clones_is_absent_from_the_queue_read_without_a_workspace()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var call = Assert.Single(h.Wire.To("GET", Queue));
+        Assert.DoesNotContain("clones=true", call.Query);
+    }
+
+    [Fact]
+    public async Task A_primary_with_no_local_checkout_is_cloned_after_the_claim_and_before_the_reset_then_spawned_there()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = WithWorkspace(h, workspace);
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var claimedByThen = false;
+        h.Workspace.Watching = () => claimedByThen = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim") == 1;
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        var expected = Checkouts.PathFor(workspace, "example.test/owner/repo");
+        var cloned = Assert.Single(h.Clone.Requested);
+        Assert.Equal("https://example.test/owner/repo.git", cloned.Remote);
+        Assert.Equal(expected, cloned.Path);
+
+        Assert.True(claimedByThen, "the clone happened before the workspace was reset, but after the claim");
+        Assert.Contains(expected, h.Workspace.Prepared);
+
+        var spawned = Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(expected, spawned.Root);
+    }
+
+    [Fact]
+    public async Task A_remote_bound_by_two_projects_across_a_whole_night_is_cloned_once()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = WithWorkspace(h, workspace);
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/shared.git", canonical: "example.test/owner/shared", primary: true, matchedRemote: null);
+
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+
+        foreach (var key in new[] { "AER-1", "AER-2" })
+        {
+            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+            h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, repositories: [repo]));
+            h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+            h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
+            h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        }
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Clone.Requested);
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+    }
+
+    [Fact]
+    public async Task A_failed_clone_releases_the_lease_comments_the_ticket_walks_on_and_three_end_the_night()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = WithWorkspace(h, workspace);
+
+        h.Clone.Error = "fatal: could not read from remote repository.";
+
+        // All three clear at once, so the walk inside a single PickAsync call
+        // (Attempts = 5) tries all of them - no interval wait needed between
+        // passes to reach three failures.
+        var keys = new[] { "AER-1", "AER-2", "AER-3" };
+        h.Wire.Json("GET", Queue, keys.Select(k => Fixtures.Row(k)).ToArray());
+
+        foreach (var key in keys)
+        {
+            var repo = Fixtures.Repository(
+                $"https://example.test/owner/{key}.git", canonical: $"example.test/owner/{key}",
+                primary: true, matchedRemote: null);
+
+            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+            h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, repositories: [repo]));
+            h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+            h.Wire.Json($"POST", $"/api/hatch/issues/{key}/comments",
+                new CommentDto(1, "hatch", "noted", "comment", null, null, DateTimeOffset.UnixEpoch));
+        }
+
+        // A short interval: the walk records all three failures inside its one
+        // pass, so only the wait before the loop notices `ShouldStop` is real.
+        await new GoToWorkCommand(runtime).RunAsync(["--interval", "1"], default);
+
+        Assert.Empty(h.Sessions.Spawned);
+        foreach (var key in keys)
+        {
+            Assert.Single(h.Wire.To("POST", $"/api/hatch/issues/{key}/claim"));
+            Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{key}/claim"));
+
+            var comment = Assert.Single(h.Wire.To("POST", $"/api/hatch/issues/{key}/comments"));
+            var body = comment.Read<CommentCreateRequest>().Body;
+            Assert.Contains("could not clone", body, StringComparison.Ordinal);
+            Assert.Contains("fatal: could not read from remote repository.", body, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(3, h.Clone.Requested.Count);
+        Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_lock_held_on_the_workspace_itself_refuses_a_second_loop_naming_it()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        Directory.CreateDirectory(workspace);
+        var runtime = WithWorkspace(h, workspace);
+
+        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("already running in", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(workspace, StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+
+        // The standing checkout's own lock was released on the way out, same as
+        // any other refusal before a claim: this loop never got past the door.
+        using var retaken = LoopLock.Take(h.Root, h.Temp, out var refusal);
+        Assert.NotNull(retaken);
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public async Task Without_a_workspace_a_primary_matching_nothing_ends_changed_under_us_with_no_clone_attempted()
+    {
+        using var h = new Harness();
+        var repo = Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Clone.Requested);
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
 }

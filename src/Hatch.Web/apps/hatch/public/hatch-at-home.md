@@ -227,8 +227,9 @@ repositories whose tooling is `git` and a text editor.
 
 ### Starting it
 
-Two things it has to be told: which checkout to work in, and whose name goes on
-the commits it makes.
+Two things it has to be told: which checkout to work in — or a workspace to
+clone into, if you have none of your own already checked out — and whose name
+goes on the commits it makes.
 
 macOS / Linux:
 
@@ -262,10 +263,15 @@ token** and the container picks it up on its next look. If none is saved when
 it starts, it says so once and then waits, looking again every minute — so the
 order you do these two things in does not matter.
 
-**One container works one checkout.** For a second repository, copy the
-`runner:` block in the compose file under a second service name with its own
-`HATCH_RUNNER_NAME` and its own checkout mounted, and both appear on the
-Runners page as themselves.
+**One container works one workspace.** A workspace clones what the board
+binds, so one container can serve a whole board rather than one repository:
+whatever a project binds that this runner has no checkout of, it clones into
+`/workspace` the first time a ticket needs it, and reuses that clone for every
+ticket after. If you already have a checkout of one of those repositories and
+would rather this container work in it than clone its own, mount it at
+`/checkout` with `HATCH_CHECKOUT` as above — that one is used in place of a
+clone, and everything else the board binds is still cloned into the workspace
+as needed.
 
 ### Letting it push
 
@@ -312,6 +318,11 @@ This shape only carries what a *file* holds. A helper that keeps the
 credential somewhere else — macOS's Keychain (`credential.helper = osxkeychain`),
 Windows' Credential Manager (`manager`) — has nothing in `.git-credentials` to
 mount, and there a token in the environment is the answer.
+
+These same three shapes are what answers a clone's own prompt for a
+credential, not only a push's — a repository the board binds that the
+container has to clone into its workspace asks git for one exactly the way a
+push does.
 
 **An SSH key.** If your remote is `git@…` rather than `https://…`, the
 container needs a key. On macOS, Docker Desktop bridges your own running
@@ -518,9 +529,11 @@ without leaving the machine.
 ## The `hatch` CLI, command by command
 
 Everything below runs against the board you pointed it at with `hatch config`.
-Only `work` and `go-to-work` need a checkout — the one you are standing in, or
-one named with `--repo` or `HATCH_REPOS` — and the rest are one request and a
-sentence about the answer, so `hatch board` from anywhere is the ordinary case.
+Only `work` and `go-to-work` need a checkout or a workspace to clone into — the
+one you are standing in, one named with `--repo` or `HATCH_REPOS`, or
+`--workspace`/`HATCH_WORKSPACE` to clone what is missing — and the rest are one
+request and a sentence about the answer, so `hatch board` from anywhere is the
+ordinary case.
 
 ```
 hatch --help                 every command, from the program itself
@@ -561,6 +574,7 @@ hatch work -i AER-12              a session you sit in, rather than a headless o
 hatch work --quiet                say nothing until it is finished
 hatch work --model opus --effort xhigh AER-12
 hatch work --repo /path/to/a/checkout    also serve that checkout, repeatable
+hatch work --workspace /clones           clone what the board binds, into /clones
 ```
 
 `--model` and `--effort` beat the playbook for this run only. They are one
@@ -600,6 +614,7 @@ hatch go-to-work --under AER-1    only inside that epic's subtree
 hatch go-to-work --interval 300   seconds to wait when there was nothing to do (default 60)
 hatch go-to-work --quiet          no per-increment stream, only what each one ended as
 hatch go-to-work --repo /path/to/a/checkout    also serve that checkout, repeatable
+hatch go-to-work --workspace /clones           clone what the board binds, into /clones
 ```
 
 A ticket key is refused here: this command's question is "what is next", asked
@@ -614,13 +629,15 @@ on a named ticket is `hatch work AER-12`.
 2. **Stop conditions**, below.
 3. **Pick.** The first issue the dispatcher clears, folding past everything it
    does not, and takes a claim on it. No claim, no spawn — that is what keeps
-   two runners off one ticket.
+   two runners off one ticket. With a workspace configured, a repository the
+   ticket binds that this loop has no checkout of is cloned here, with the
+   lease already held.
 4. **Reset every checkout the increment will use.** Fetch each, and put its
    tree back on its default branch at the tip the remote has right now — a
    binding's own base branch beats `origin/HEAD` for that checkout, and
    `HATCH_BASE_BRANCH` still only ever overrides the standing one. A ticket for
-   a repository this loop does not have is folded past, with the reason,
-   before this step is ever reached.
+   a repository this loop has no checkout of and no workspace to clone into is
+   folded past, with the reason, before this step is ever reached.
 5. **Check its own source.** If `go-to-work` was rebuilt on the trunk under it,
    it stops here and asks to come back as the new build, holding no ticket.
 6. **Spawn the increment**, and record what it cost and whether the ticket
@@ -720,6 +737,18 @@ share, one increment's reset landing in the middle of another's branch. Two
 checkouts, two loops, and both are welcome — whether each loop found its
 checkout by standing in it or by naming it.
 
+A loop with none of its own checkouts of what a board binds can still serve
+it: `--workspace <dir>` (or `HATCH_WORKSPACE`) names a directory it owns
+entirely, and it clones whatever a project binds that it has no checkout of
+into `<dir>/<host>/<owner>/<repo>` the first time a ticket needs it — a port in
+a host, if there is one, spelled with `_` in place of `:`, since Windows will
+not take a `:` in a directory name. A remote two projects both bind is cloned
+once and served to both. A clone that fails releases the ticket, comments on
+it with git's own line, and counts as a failed increment — three of them in a
+row end the night the same way three failed spawns do. A directory already
+holding clones from an earlier night is served as it is found, nothing
+re-cloned.
+
 #### What it does to your checkout
 
 Before every increment, on every checkout the ticket's project is bound to —
@@ -801,13 +830,20 @@ HATCH_RUNNER       what the board calls this runner (default host:/path)
 HATCH_ROOT         the checkout to work in (default: upwards from here)
 HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on
                    the platform's path separator (: on Unix, ; on Windows)
+HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every
+                   repository the board binds that it has no checkout of
 HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on
 ```
 
 `--repo` on `go-to-work` or `work` (repeatable) beats `HATCH_REPOS` outright for
 that run rather than adding to it, the same way any other flag beats a setting.
 `hatch config --repo /path/to/a/checkout` (repeatable) writes `HATCH_REPOS` to
-the per-user file; `--repo` alone clears it.
+the per-user file; `--repo` alone clears it. `--workspace <dir>` works the same
+way for `HATCH_WORKSPACE` — beats it for that run — and `hatch config
+--workspace <dir>` writes it to the per-user file. A workspace refuses to sit
+inside a named checkout, or a named checkout inside it, in either direction: a
+clone under a tree being reset, or a tree under a directory of clones, is two
+owners of one path.
 
 ### Where the prompt comes from
 
@@ -846,6 +882,11 @@ Everything Hatch knows — every issue, comment, event and playbook — is in on
 Postgres database called `hatch`, inside a named volume called
 `hatch-local_pgdata`. Nothing lives in the images and nothing lives in a file
 on your desktop, which is the whole reason `down` is safe and `down -v` is not.
+
+The container runner's `workspace` volume is not data and is not part of this:
+it is clones of public history, reproducible from the remotes the board
+already names, and losing it costs a re-clone rather than anything a backup
+needs to answer for.
 
 **Do not back it up by copying the volume.** A file-level copy of a database
 directory that is being written to has no consistency guarantee, so what you

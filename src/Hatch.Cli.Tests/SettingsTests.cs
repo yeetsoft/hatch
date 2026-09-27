@@ -159,6 +159,39 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_REPOS"));
     }
 
+    // ---- HATCH_WORKSPACE ----
+
+    [Fact]
+    public void HATCH_WORKSPACE_unset_is_null()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Null(settings.Workspace);
+    }
+
+    [Fact]
+    public void An_exported_HATCH_WORKSPACE_beats_the_checkout_file_which_beats_the_per_user_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://mine", "HATCH_WORKSPACE=/from-the-checkout");
+        var user = Write("user.config", "HATCH_WORKSPACE=/from-the-user-file");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_BASE", "https://mine"), ("HATCH_WORKSPACE", "/exported")),
+            out var exported, out _, user));
+        Assert.Equal("/exported", exported.Workspace);
+        Assert.Equal(Settings.Layer.Environment, exported.SourceOf("HATCH_WORKSPACE"));
+
+        Assert.True(Settings.TryLoad(checkout, Env(("HATCH_BASE", "https://mine")), out var checkoutWins, out _, user));
+        Assert.Equal("/from-the-checkout", checkoutWins.Workspace);
+        Assert.Equal(Settings.Layer.Checkout, checkoutWins.SourceOf("HATCH_WORKSPACE"));
+
+        Assert.True(Settings.TryLoad(null, Env(("HATCH_BASE", "https://mine")), out var userWins, out _, user));
+        Assert.Equal("/from-the-user-file", userWins.Workspace);
+        Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_WORKSPACE"));
+    }
+
     // ---- the key is optional ----
 
     /// <summary>

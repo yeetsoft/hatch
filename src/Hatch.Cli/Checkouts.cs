@@ -39,16 +39,32 @@ public static class Checkouts
     /// exist, is not a checkout, or has no <c>origin</c> - before anything is
     /// locked or claimed.
     /// </returns>
+    /// <param name="workspace">
+    /// A directory this runner owns entirely - where <see cref="Clones"/>
+    /// clones what the board binds, and where a clone from an earlier
+    /// incarnation is found again rather than cloned twice. Null for a runner
+    /// with none, which is every one before HA-19.
+    /// </param>
+    /// <param name="strays">
+    /// Every top-level entry under <paramref name="workspace"/> that is not
+    /// itself a checkout and holds no checkout anywhere beneath it - printed
+    /// rather than refused on, since a workspace a person also drops other
+    /// things into is not this runner's mistake to make fatal.
+    /// </param>
     public static bool TryDiscover(
         string? standingRoot,
         IReadOnlyList<string> named,
+        string? workspace,
         out IReadOnlyList<CheckoutEntry> checkouts,
+        out IReadOnlyList<string> strays,
         out string refusal)
     {
         var found = new List<CheckoutEntry>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var strayList = new List<string>();
         refusal = "";
         checkouts = [];
+        strays = [];
 
         if (standingRoot is not null)
         {
@@ -77,8 +93,112 @@ public static class Checkouts
             found.Add(new CheckoutEntry(path, origin, Standing: false));
         }
 
+        if (workspace is not null)
+        {
+            var others = standingRoot is null ? named : (IReadOnlyList<string>)[standingRoot, .. named];
+            if (!OverlapsCheckout(workspace, others, out refusal)) return false;
+            if (!EnsureWorkspace(workspace, out refusal)) return false;
+
+            foreach (var top in Directory.EnumerateDirectories(workspace))
+            {
+                var here = WalkForCheckouts(top).ToList();
+                if (here.Count == 0)
+                {
+                    strayList.Add(top);
+                    continue;
+                }
+
+                foreach (var dir in here)
+                {
+                    var canonical = Checkout.Canonical(dir);
+                    if (!seen.Add(canonical)) continue;
+
+                    // No refusal on a missing origin here, unlike a named path: a
+                    // stray `git init` under the workspace is still served, just
+                    // unmatchable - the same as a standing checkout with none.
+                    found.Add(new CheckoutEntry(dir, Origin(dir), Standing: false));
+                }
+            }
+        }
+
         checkouts = found;
+        strays = strayList;
         return true;
+    }
+
+    /// <summary>Every checkout under <paramref name="dir"/>, not descending into one found.</summary>
+    private static IEnumerable<string> WalkForCheckouts(string dir)
+    {
+        foreach (var sub in Directory.EnumerateDirectories(dir))
+        {
+            if (Directory.Exists(Path.Combine(sub, ".git")) || File.Exists(Path.Combine(sub, ".git")))
+            {
+                yield return sub;
+                continue;
+            }
+
+            foreach (var nested in WalkForCheckouts(sub)) yield return nested;
+        }
+    }
+
+    /// <summary>Where a clone of <paramref name="canonical"/> lives under <paramref name="workspace"/>.</summary>
+    public static string PathFor(string workspace, string canonical)
+    {
+        var segments = canonical.Split('/');
+        segments[0] = segments[0].Replace(':', '_'); // a port's ':' - Windows will not take one in a name
+        return Path.Combine([workspace, .. segments]);
+    }
+
+    /// <summary>The reverse of <see cref="PathFor"/> - test-only today, kept for symmetry.</summary>
+    public static string CanonicalFor(string workspace, string path)
+    {
+        var relative = Path.GetRelativePath(workspace, path).Replace(Path.DirectorySeparatorChar, '/');
+        var slash = relative.IndexOf('/');
+        var host = slash < 0 ? relative : relative[..slash];
+        return host.Replace('_', ':') + (slash < 0 ? "" : relative[slash..]);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> can be made into a directory a clone may
+    /// be written under - created if it does not exist, and proved writable.
+    /// </summary>
+    public static bool EnsureWorkspace(string path, out string refusal)
+    {
+        refusal = "";
+        try
+        {
+            Directory.CreateDirectory(path);
+            var probe = Path.Combine(path, $".hatch-write-check-{Environment.ProcessId}");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            refusal = $"hatch: {path} - could not be created, or is not writable";
+            return false;
+        }
+    }
+
+    /// <summary>Two owners of one path: a clone under a tree being reset, or a tree under a directory of clones.</summary>
+    public static bool OverlapsCheckout(string workspace, IReadOnlyList<string> others, out string refusal)
+    {
+        var ws = Checkout.Canonical(workspace);
+        foreach (var raw in others)
+        {
+            var other = Checkout.Canonical(raw);
+            if (other == ws || IsAncestor(ws, other) || IsAncestor(other, ws))
+            {
+                refusal = $"hatch: {workspace} and {raw} - one contains the other, and a clone under a tree being " +
+                           "reset (or a tree under a directory of clones) is two owners of one path";
+                return false;
+            }
+        }
+
+        refusal = "";
+        return true;
+
+        static bool IsAncestor(string a, string b) => b.StartsWith(a + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -176,9 +296,6 @@ public static class Checkouts
         if (repositories.Count == 0)
             return new Choice(standingRoot, [], [(standingRoot, standingBaseBranch)], []);
 
-        var primary = repositories.Single(r => r.Primary);
-        if (primary.MatchedRemote is not { } primaryRemote) return null;
-
         // GroupBy rather than ToDictionary: two checkouts can now share one
         // remote - two clones of the same repository named on one runner -
         // which was impossible when the only source was the standing checkout.
@@ -186,7 +303,21 @@ public static class Checkouts
         // named in the order given), which is the sensible one.
         var byRemote = checkouts.Where(c => c.Remote is not null)
             .GroupBy(c => c.Remote!).ToDictionary(g => g.Key, g => g.First());
-        if (!byRemote.TryGetValue(primaryRemote, out _)) return null;
+
+        // A binding's matched checkout: the server's own MatchedRemote first,
+        // matched against what it declared - or, for a checkout this pass
+        // itself just cloned, which the server never saw, one whose raw Remote
+        // happens to equal this binding's own. Safe because a pre-existing
+        // checkout whose raw .Remote equalled a binding's Remote exactly would
+        // already have MatchedRemote set by the server; the raw fallback can
+        // only ever resolve a checkout this pass just cloned.
+        CheckoutEntry? Match(WorkRepositoryDto r) =>
+            r.MatchedRemote is { } m && byRemote.TryGetValue(m, out var byDeclared)
+                ? byDeclared
+                : byRemote.TryGetValue(r.Remote, out var byRaw) ? byRaw : null;
+
+        var primary = repositories.Single(r => r.Primary);
+        if (Match(primary) is null) return null;
 
         // HATCH_BASE_BRANCH beats a binding's own BaseBranch, but only for the
         // checkout it has always applied to - the standing one - wherever that
@@ -195,7 +326,7 @@ public static class Checkouts
         // back to origin/HEAD there when it too is null.
         var lines = repositories.Select(r =>
         {
-            var matched = r.MatchedRemote is { } m && byRemote.TryGetValue(m, out var entry) ? entry : null;
+            var matched = Match(r);
             var baseBranch = matched is { Standing: true } ? standingBaseBranch ?? r.BaseBranch : r.BaseBranch;
             return new RepositoryLine(matched?.Path, r.Remote, r.Primary, baseBranch);
         }).ToList();

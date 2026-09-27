@@ -127,6 +127,7 @@ services:
       HATCH_KEY: "${HATCH_KEY:-}"
       HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
       HATCH_ROOT: /checkout
+      HATCH_WORKSPACE: /workspace
       GIT_AUTHOR_NAME: "${HATCH_GIT_NAME:-}"
       GIT_AUTHOR_EMAIL: "${HATCH_GIT_EMAIL:-}"
       HATCH_GIT_TOKEN: "${HATCH_GIT_TOKEN:-}"
@@ -135,6 +136,10 @@ services:
       # was reached from, which is right for a checkout you brought the stack
       # up inside of and wrong everywhere else - so set HATCH_CHECKOUT.
       - "${HATCH_CHECKOUT:-.}:/checkout"
+      # Where the loop clones what the board binds that it has no checkout of -
+      # a named volume, so what it clones survives the container being
+      # recreated rather than being cloned fresh on every start.
+      - workspace:/workspace
       # Uncomment whichever push credential you use; see
       # src/Hatch.Web/apps/hatch/public/hatch-at-home.md for what goes in each.
       #
@@ -175,3 +180,4 @@ networks:
 
 volumes:
   pgdata:
+  workspace:

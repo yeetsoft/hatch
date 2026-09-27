@@ -96,4 +96,9 @@ RUN chmod +x /usr/local/bin/hatch /usr/local/bin/git-askpass.sh /entrypoint.sh
 # compose file so `docker run -v "$PWD:/checkout"` needs no second flag.
 ENV HATCH_ROOT=/checkout
 
+# Where the loop clones what the board binds that it has no checkout of - a
+# second way in beside the mount above, for a container with nothing bind
+# mounted at all. Named here for the same reason HATCH_ROOT is.
+ENV HATCH_WORKSPACE=/workspace
+
 ENTRYPOINT ["/entrypoint.sh"]

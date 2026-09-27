@@ -33,9 +33,9 @@ public sealed record Runtime(
 
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch);
+    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone);
 
-    public Idle Idle() => new(Board, Say, Checkouts);
+    public Idle Idle() => new(Board, Say, Checkouts, Settings.Workspace is not null);
 
     public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts);
 
@@ -55,6 +55,15 @@ public sealed record Runtime(
     /// </summary>
     public Func<string, string?, IWorkspace> Workspace { get; init; } = (_, _) =>
         throw new InvalidOperationException("no workspace was configured");
+
+    /// <summary>
+    /// How a repository this runner has no checkout of is cloned into <see
+    /// cref="Hatch.Cli.Settings.Workspace"/> - remote, then path. Replaceable
+    /// so a test can assert what a clone was asked for without a network to
+    /// clone from.
+    /// </summary>
+    public Func<string, string, IClone> MakeClone { get; init; } = (_, _) =>
+        throw new InvalidOperationException("no clone seam was configured");
 
     /// <summary>
     /// How the loop reads its own source. Replaceable for the same reason
@@ -79,5 +88,6 @@ public sealed record Runtime(
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Self = () => new LoopSource(Root),
         NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName)),
+        MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }
