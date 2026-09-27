@@ -21,6 +21,8 @@ export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
 export { TopBar } from './components/TopBar';
 export type { TopBarProps } from './components/TopBar';
+export { Menu } from './components/Menu';
+export type { MenuProps, MenuItemProps, MenuBarProps, MenuTriggerProps, MenuTone, MenuAlign } from './components/Menu';
 
 /* The primitives. Ordered the way a page is built rather than alphabetically:
    the frame first, then what goes in it, then what it says. */
