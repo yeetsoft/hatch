@@ -373,13 +373,88 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("checkout:         <not in one>", Said);
     }
 
+    // ---- --key ----
+
+    [Fact]
+    public async Task Key_writes_the_key_and_keeps_the_origin_without_asking_anything()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_CLAUDE_BIN=/opt/claude"]);
+        var input = new Replies();
+
+        Assert.Equal(0, await Command(input).RunAsync(["--key", "hatch_ak_thesecret"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_KEY=hatch_ak_thesecret", written);
+        Assert.Contains("HATCH_CLAUDE_BIN=/opt/claude", written);
+        Assert.Empty(input.Asked);
+        Assert.DoesNotContain("hatch_ak_thesecret", Said + Complained);
+    }
+
+    [Fact]
+    public async Task Key_with_no_origin_yet_is_refused_and_nothing_is_written()
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--key", "hatch_ak_thesecret"], default));
+
+        Assert.Contains("no origin is set yet", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task An_empty_key_is_refused_by_key_and_the_old_one_stays()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_old"]);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--key", "  "], default));
+
+        Assert.Contains("a key is required", Complained);
+        Assert.Contains("HATCH_KEY=hatch_ak_old", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Key_with_the_wrong_prefix_is_a_warning_and_not_a_refusal()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--key", "hunter2"], default));
+
+        Assert.Contains("does not start with hatch_ak_", Complained);
+    }
+
+    [Fact]
+    public async Task Key_that_cannot_be_reached_still_leaves_the_file_behind()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
+
+        var code = await Command(new Replies(), probe: (_, _, _) => throw new HatchException("hatch: 401"))
+            .RunAsync(["--key", "hatch_ak_refused"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("HATCH_KEY=hatch_ak_refused", File.ReadAllLines(ConfigPath));
+    }
+
+    /// <summary>A key is one argument, and a bare `--key` is a mistake rather than a prompt.</summary>
+    [Fact]
+    public async Task Key_with_nothing_after_it_is_the_usage_block_and_not_a_question()
+    {
+        var input = new Replies();
+
+        Assert.Equal(1, await Command(input).RunAsync(["--key"], default));
+        Assert.Contains("usage: hatch config", Complained);
+        Assert.Empty(input.Asked);
+    }
+
     // ---- usage ----
 
     [Fact]
     public async Task Anything_other_than_the_three_modes_is_the_mistake_and_then_the_usage_block()
     {
         Assert.Equal(1, await Command(new Replies()).RunAsync(["--everything"], default));
-        Assert.Contains("config takes nothing, --show, or --origin <origin>", Complained);
+        Assert.Contains("config takes nothing, --show, --origin <origin>, or --key <key>", Complained);
         Assert.Contains("usage: hatch config", Complained);
     }
 
@@ -390,7 +465,7 @@ public sealed class ConfigCommandTests : IDisposable
         var input = new Replies();
 
         Assert.Equal(1, await Command(input).RunAsync(["--origin"], default));
-        Assert.Contains("config takes nothing, --show, or --origin <origin>", Complained);
+        Assert.Contains("config takes nothing, --show, --origin <origin>, or --key <key>", Complained);
         Assert.Empty(input.Asked);
         Assert.False(File.Exists(ConfigPath));
     }

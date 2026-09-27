@@ -1,5 +1,8 @@
 import { handledRefusal } from '../lib/signIn';
 import type {
+  ApiKey,
+  ApiKeyCreateRequest,
+  ApiKeyMinted,
   AssigneeDirectory,
   AssigneeRequest,
   Attention,
@@ -344,6 +347,23 @@ export const getMe = () => fetchJson<Me | undefined>('/api/hatch/me').then((me) 
 
 /** Ends the grant and clears the cookie; the caller navigates to sign in. */
 export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'POST' });
+
+// ---- API keys ----
+//
+// Admin only, every one: a person who is not an Admin gets a 403 `not_admin`,
+// and a key gets one too - a key cannot mint a key.
+
+export const getApiKeys = () => fetchJson<ApiKey[]>('/api/auth/keys');
+
+/** The scopes a key may carry, from the server, so the form never spells them. */
+export const getApiKeyScopes = () => fetchJson<string[]>('/api/auth/keys/scopes');
+
+/** The response carries the secret, once. Nothing else ever will. */
+export const mintApiKey = (request: ApiKeyCreateRequest) =>
+  fetchJson<ApiKeyMinted>('/api/auth/keys', { method: 'POST', ...asJson(request) });
+
+export const revokeApiKey = (id: string) =>
+  fetchJson<void>(`/api/auth/keys/${seg(id)}/revoke`, { method: 'POST' });
 
 // ---- Settings ----
 //

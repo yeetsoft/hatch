@@ -30,15 +30,21 @@ public sealed record ConfigCommand(
 {
     public static readonly string[] ConfigUsage =
     [
-        "usage: hatch config [--show | --origin <origin>]",
+        "usage: hatch config [--show | --origin <origin> | --key <key>]",
         "",
         "  hatch config                    asks for the origin and the key, and writes them",
         "  hatch config --show             says what is set, and which layer it came from",
         "  hatch config --origin <origin>  writes the origin alone, asking nothing",
+        "  hatch config --key <key>        writes the key alone, asking nothing",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
         "  an origin is changed without retyping a credential.",
+        "",
+        "  --key is what the API keys page's mint panel is for: paste the key you",
+        "  just minted. It leaves the origin as it was, and needs one already set.",
+        "  A key on a command line stays in shell history - the prompt above does",
+        "  not, so prefer it on a machine other people can read.",
         "",
         "  Written to the per-user file, mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
@@ -75,8 +81,10 @@ public sealed record ConfigCommand(
         // that gets it wrong.
         if (args is ["--origin", var given]) return await OriginAsync(given, ct);
 
+        if (args is ["--key", var givenKey]) return await KeyAsync(givenKey, ct);
+
         if (args.Length > 0)
-            return Usage.Refuse(Say, "config takes nothing, --show, or --origin <origin>", ConfigUsage);
+            return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
 
         if (!In.Interactive)
         {
@@ -180,6 +188,49 @@ public sealed record ConfigCommand(
             Say.Complain(
                 $"hatch: no key - calls will name themselves \"{RunnerName}\", " +
                 "which only a Hatch with its wall off reads.");
+
+        return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+    }
+
+    /// <summary>
+    /// The key alone, taken from the command line and written without a
+    /// question being asked. The mirror of <see cref="OriginAsync"/>: the
+    /// origin and everything else are carried forward unchanged.
+    /// </summary>
+    /// <remarks>
+    /// Needs an origin already, because a file with a key and no origin proves
+    /// nothing and every later call would fail on the missing half. An empty
+    /// key is refused rather than written - blanking a credential is what the
+    /// interactive prompt is for, where it is deliberate.
+    /// </remarks>
+    private async Task<int> KeyAsync(string key, CancellationToken ct)
+    {
+        key = key.Trim();
+
+        if (key.Length == 0)
+        {
+            Say.Complain("hatch: a key is required");
+            return 1;
+        }
+
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var origin = fold("HATCH_BASE").Value ?? "";
+        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+
+        if (origin.Length == 0)
+        {
+            Say.Complain("hatch: no origin is set yet - run `hatch config --origin <origin>` first");
+            return 1;
+        }
+
+        if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
+            Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
+
+        Write(origin, key, claudeBin);
+
+        Environment["HATCH_KEY"] = key;
+
+        Say.Line($"wrote {ConfigPath}");
 
         return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
     }

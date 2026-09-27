@@ -82,7 +82,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to));
+        lines.AddRange(Tail(key, to, work.IssueUrl));
         return string.Join('\n', lines);
     }
 
@@ -91,7 +91,7 @@ public static class Prompt
     /// do with a decision that is not the implementer's, and where the
     /// increment ends.
     /// </summary>
-    private static IEnumerable<string> Tail(string key, string to) =>
+    private static IEnumerable<string> Tail(string key, string to, string? issueUrl) =>
     [
         "## Reaching Hatch",
         "",
@@ -111,6 +111,7 @@ public static class Prompt
         "increment files or reshapes work; an increment that only writes code does",
         "not need it.",
         "",
+        ..PullRequest(key, issueUrl),
         "## When you cannot decide",
         "",
         "Some things are not yours to choose: a product call, a name that will be",
@@ -196,5 +197,41 @@ public static class Prompt
         }
 
         return which.Length == 0 ? null : $"{which} from {work.Issue.Key}, not the playbook";
+    }
+
+    /// <summary>
+    /// What to write into a pull request, if this increment opens one. The link
+    /// is only ever an absolute http(s) one; without it the first line is the
+    /// bare key, and the session is told not to make a link up.
+    /// </summary>
+    private static string[] PullRequest(string key, string? issueUrl)
+    {
+        var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
+            && url.Scheme is "http" or "https";
+
+        return
+        [
+            "## If you open a pull request",
+            "",
+            "Only if this increment opens one. Name the ticket in two places, so the",
+            "reviewer can tell where it came from and reach the brief in one click.",
+            "",
+            $"- **Title:** `{key} ` and then the subject in the usual house style, `Area: what",
+            $"  changed, as a sentence`. No brackets and no second colon: `{key} Auth: the first",
+            "  Admin`, not `[" + key + "] Auth: …` or `" + key + ": Auth: …`.",
+            "- **First line of the description:** exactly this, and nothing else on the line,",
+            "  followed by a blank line and then the summary.",
+            "",
+            "```",
+            linked ? $"[{key}]({issueUrl})" : key,
+            "```",
+            "",
+            linked
+                ? "Use that line as given. Never write a relative link."
+                : "No link to the ticket is available, so the line is the bare key. Do not make a link up, and never write a relative one.",
+            "",
+            $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
+            "",
+        ];
     }
 }

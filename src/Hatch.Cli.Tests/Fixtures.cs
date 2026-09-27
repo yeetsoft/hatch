@@ -59,7 +59,9 @@ public static class Fixtures
         string? blocked = null,
         IReadOnlyList<QuestionDto>? questions = null,
         IReadOnlyList<IssueCardDto>? children = null,
-        IssueDto? issue = null) =>
+        IssueDto? issue = null,
+        string? issueUrl = null,
+        bool noLink = false) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -67,7 +69,8 @@ public static class Fixtures
             Playbook: Playbook(),
             Children: children ?? [],
             Questions: questions ?? [],
-            Blocked: blocked);
+            Blocked: blocked,
+            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}");
 
     public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false) =>
         new(Issue(key, expedited: expedited), Status(3, "In Progress"), Status(4, "In Review"), blocked);

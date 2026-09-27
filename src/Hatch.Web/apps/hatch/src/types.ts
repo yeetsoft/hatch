@@ -1002,3 +1002,30 @@ export interface AuthMe {
   grantId: string;
   personId: string | null;
 }
+
+// ---- API keys ----
+
+/** One API key as the Admin page lists it. Mirrors ApiKeyDto. The secret is
+    not here and never is: it exists once, in the response to the mint. */
+export interface ApiKey {
+  id: string;
+  name: string;
+  /** The leading characters of the secret - enough to match a row to a config file. */
+  prefix: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+/** A freshly minted key. Mirrors ApiKeyMintedDto. */
+export interface ApiKeyMinted {
+  key: ApiKey;
+  secret: string;
+}
+
+/** Mirrors CreateApiKeyRequest. */
+export interface ApiKeyCreateRequest {
+  name: string;
+  scopes: string[];
+}

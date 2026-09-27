@@ -3,6 +3,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -21,7 +22,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/work")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class WorkController(
-    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
+    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
+    IOptions<AppsOptions> apps) : ControllerBase
 {
     /// <summary>
     /// The issue an unattended run should pick up: the top of the rightmost
@@ -539,8 +541,10 @@ public class WorkController(
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
         var waiting = questions.Count(q => q.Answers.Count == 0);
 
+        var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
+
         return new WorkDto(
-            await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct),
+            issueDto,
             ToStatusDto(from),
             to is null ? null : ToStatusDto(to),
             // The values the increment will actually run on, in place rather
@@ -561,8 +565,21 @@ public class WorkController(
             questions,
             Blocked(
                 issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
-                await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct)));
+                await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct)),
+            IssueUrl(issueDto.Key));
     }
+
+    /// <summary>
+    /// The issue's page as a browser would open it, or null when the install
+    /// has no usable public origin. The request's own origin is deliberately
+    /// not a fallback: behind a proxy only the forwarded scheme is honoured, so
+    /// the runner's own address for Hatch is the better default and the CLI
+    /// fills it in.
+    /// </summary>
+    private string? IssueUrl(string key) =>
+        AppsOptions.NormalizeBaseUrl(apps.Value.PublicBaseUrl) is { } origin
+            ? $"{origin}/apps/hatch/issues/{key}"
+            : null;
 
     /// <summary>
     /// Why an agent should not be spawned for this issue, or null when it
