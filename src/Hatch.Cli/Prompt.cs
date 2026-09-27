@@ -82,7 +82,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to));
+        lines.AddRange(Tail(key, to, work.IssueUrl));
         return string.Join('\n', lines);
     }
 
@@ -91,7 +91,7 @@ public static class Prompt
     /// do with a decision that is not the implementer's, and where the
     /// increment ends.
     /// </summary>
-    private static IEnumerable<string> Tail(string key, string to) =>
+    private static IEnumerable<string> Tail(string key, string to, string issueUrl) =>
     [
         "## Reaching Hatch",
         "",
@@ -110,6 +110,23 @@ public static class Prompt
         "`api`, and docs/hatch-planning.md documents the shapes. Read it if this",
         "increment files or reshapes work; an increment that only writes code does",
         "not need it.",
+        "",
+        "## If you open a pull request",
+        "",
+        "Only if this increment opens one. Name the ticket in two places, so the",
+        "reviewer can tell where it came from and reach the brief in one click.",
+        "",
+        $"- **Title:** `{key} ` and then the subject in the usual house style, `Area: what",
+        $"  changed, as a sentence`. No brackets and no second colon: `{key} Auth: the first",
+        "  Admin`, not `[" + key + "] Auth: …` or `" + key + ": Auth: …`.",
+        "- **First line of the description:** exactly this, and nothing else on the line,",
+        "  followed by a blank line and then the summary.",
+        "",
+        "```",
+        $"[{key}]({issueUrl})",
+        "```",
+        "",
+        $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
         "",
         "## When you cannot decide",
         "",

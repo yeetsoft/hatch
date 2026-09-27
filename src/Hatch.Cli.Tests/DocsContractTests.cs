@@ -90,7 +90,10 @@ public sealed class DocsContractTests
         var block = ContractBlock();
 
         Assert.DoesNotContain("scripts/hatch.sh", block, StringComparison.Ordinal);
-        Assert.DoesNotContain("](", block, StringComparison.Ordinal);
+
+        // A link is fine when it names an origin - the pull request rule shows
+        // one - and a relative one is what a clone of this repository cannot follow.
+        Assert.DoesNotMatch(@"\]\((?!<origin>|https?://)", block);
     }
 
     private static string ContractBlock()

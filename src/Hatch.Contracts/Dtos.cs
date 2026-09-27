@@ -699,6 +699,13 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// session must not re-open, and an open one is why there is no next session
 /// yet - see <paramref name="Blocked"/>.
 /// </param>
+/// <param name="IssueUrl">
+/// The absolute link to this issue's page on this Hatch, for writing into
+/// places that are not Hatch - a pull request description, chiefly. Computed
+/// here because a runner that reaches Hatch as <c>http://api:8080</c> cannot
+/// know the address a reviewer's browser uses, and a key cannot read the
+/// shell's config to find out.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -706,7 +713,8 @@ public record WorkDto(
     PlaybookDto? Playbook,
     IReadOnlyList<IssueCardDto> Children,
     IReadOnlyList<QuestionDto> Questions,
-    string? Blocked);
+    string? Blocked,
+    string IssueUrl);
 
 /// <summary>
 /// One row of a pass: an issue the dispatcher looked at, and what it decided

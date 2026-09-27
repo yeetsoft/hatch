@@ -16,6 +16,17 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_pull_request_is_told_to_name_the_ticket_in_its_title_and_first_line()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "https://hatch.example.test/apps/hatch/issues/AER-12"));
+
+        Assert.Contains("## If you open a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("**Title:** `AER-12 ` and then", prompt, StringComparison.Ordinal);
+        Assert.Contains("\n[AER-12](https://hatch.example.test/apps/hatch/issues/AER-12)\n", prompt, StringComparison.Ordinal);
+        Assert.Contains("`hatch pr AER-12 <url>`", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_ticket_with_no_description_says_that_is_worth_noting()
     {
         var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", description: ""));

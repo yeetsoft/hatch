@@ -69,6 +69,14 @@ columns.
 
    Commit subject in house style: `Area: what changed, as a sentence`.
 
+   If you open a pull request, its title is `<KEY> ` and then that same
+   subject (`AER-12 Auth: the first Admin` — no brackets, no second colon), and
+   the first line of its description is `[<KEY>](<HATCH_BASE>/apps/hatch/issues/<KEY>)`
+   and nothing else, then a blank line and the summary. Where Hatch is reached
+   at a different address from the one a browser uses, take the line
+   `./scripts/hatch.sh work <KEY> --dry-run` prints instead. Record the pull
+   request afterwards with `./scripts/hatch.sh pr <KEY> <url>`.
+
 7. **Report back on the ticket, not in the chat.** The ticket is where somebody
    looks in six months:
 

@@ -169,6 +169,7 @@ hand the loop bounds such as `--max-runs` or `--under`, add a `command:` to the
 | `HATCH_GIT_EMAIL` | `GIT_AUTHOR_EMAIL` inside the container | Required |
 | `HATCH_GIT_TOKEN` | An HTTPS push token, handed to git through askpass | Empty |
 | `HATCH_RUNNER_NAME` | What the Runners page calls it | `hatch-runner` |
+| `HATCH_PUBLIC_URL` | The address a browser opens Hatch at, set on the `api` service. The pull requests the runner opens link back to their ticket, and without this the link is `http://api:8080/…`, which only the container can open | Empty, which uses the address the request arrived on |
 
 Inside the container `HATCH_BASE` is the API over Compose's own network, and
 `HATCH_ROOT` is `/checkout`. The image sets `IS_SANDBOX=1`, because the

@@ -224,6 +224,11 @@ The contract in the other direction. Every agent session is told to:
   worked on right now.
 - **Comment the commit sha and the branch, and record the pull request** as a
   field on the issue, so the ticket is where somebody looks in six months.
+- **Name the ticket in the pull request, in two places.** The title is the key,
+  one space, then the subject in house style — `AER-12 Auth: the first Admin`,
+  with no brackets and no second colon. The first line of the description is
+  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
+  line, then the summary.
 - **Plan on the ticket, not in a chat log.** A planning session writes
   acceptance criteria into the description and files the stories or tasks the
   work breaks into.

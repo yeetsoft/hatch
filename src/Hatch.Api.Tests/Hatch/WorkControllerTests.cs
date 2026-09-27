@@ -1,8 +1,11 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -19,6 +22,20 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 public class WorkControllerTests
 {
+    // ---- The link a session writes into a pull request ----
+
+    [Theory]
+    [InlineData("https://home.example.com/", "https://home.example.com/apps/hatch/issues/AER-1")]
+    [InlineData("", "http://api:8080/apps/hatch/issues/AER-1")]
+    [InlineData("home.example.com", "http://api:8080/apps/hatch/issues/AER-1")]
+    public async Task Work_IssueUrl_PrefersTheConfiguredOriginAndFallsBackToTheRequest(string configured, string expected)
+    {
+        var h = await NewAsync(configured);
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        Assert.Equal(expected, Value(await h.Work.GetWork(Key(issue), null, default)).IssueUrl);
+    }
+
     // ---- Picking ----
 
     [Fact]
@@ -1422,7 +1439,7 @@ public class WorkControllerTests
     /// three playbook rows these tests reason about - a type-specific one, a
     /// catch-all beside it, and one for the column further right.
     /// </summary>
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(string publicBaseUrl = "")
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -1460,7 +1477,16 @@ public class WorkControllerTests
             Db = db,
             Time = time,
             Actors = actors,
-            Work = new WorkController(db, actors, TestClaims.With(), time),
+            Work = new WorkController(db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }))
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext
+                    {
+                        Request = { Scheme = "http", Host = new HostString("api:8080") },
+                    },
+                },
+            },
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Inbox = inbox.Id,
