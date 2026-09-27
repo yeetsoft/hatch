@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Hatch.Api.Models.People;
 using Hatch.Api.Controllers;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -91,9 +92,10 @@ public class GoogleSignInTests
     }
 
     [Fact]
-    public async Task AFirstSignInCreatesAPendingPersonAnIdentityAndACookie()
+    public async Task ASignInAfterAnAdminExistsCreatesAPendingPersonAnIdentityAndACookie()
     {
         var (controller, db, google, context) = New();
+        await SeedPerson(db, PersonRole.Admin);
         await SeedState(db, "s1", returnTo: "/apps/family/");
         google.IdToken = Token(sub: "sub-1", email: "ada@example.com", name: "Ada Lovelace");
 
@@ -160,6 +162,76 @@ public class GoogleSignInTests
         Assert.Equal(Now.AddHours(2), second.LastSignInAt);
         Assert.Single(db.People);
         Assert.Equal(2, await db.AuthGrants.CountAsync());
+    }
+
+    [Fact]
+    public async Task TheFirstSignInOnAnInstallWithNoAdminBecomesAnAdmin()
+    {
+        var (controller, db, google, _) = New();
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-1", email: "ada@example.com");
+
+        await controller.Callback("c", "s1", null, CancellationToken.None);
+
+        var person = await db.People.SingleAsync();
+        Assert.Equal(PersonRole.Admin, person.Role);
+        Assert.Equal("admin", PersonRoles.ToWire(person.Role));
+    }
+
+    [Fact]
+    public async Task TheSecondNewSignInIsPending()
+    {
+        var (controller, db, google, _) = New();
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-1", email: "ada@example.com");
+        await controller.Callback("c", "s1", null, CancellationToken.None);
+
+        await SeedState(db, "s2");
+        google.IdToken = Token(sub: "sub-2", email: "grace@example.com");
+        await controller.Callback("c", "s2", null, CancellationToken.None);
+
+        var roles = (await db.ExternalIdentities.Include(i => i.Person).ToListAsync())
+            .ToDictionary(i => i.Subject, i => i.Person!.Role);
+        Assert.Equal(PersonRole.Admin, roles["sub-1"]);
+        Assert.Equal(PersonRole.Pending, roles["sub-2"]);
+    }
+
+    [Fact]
+    public async Task TheRuleIsNoAdminNotNoPeople()
+    {
+        var (controller, db, google, _) = New();
+        await SeedPerson(db, PersonRole.Pending);
+        await SeedPerson(db, PersonRole.User);
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-1");
+
+        await controller.Callback("c", "s1", null, CancellationToken.None);
+
+        var identity = await db.ExternalIdentities.Include(i => i.Person).SingleAsync();
+        Assert.Equal(PersonRole.Admin, identity.Person!.Role);
+    }
+
+    [Fact]
+    public async Task ASignInNeverChangesAKnownPersonsRole()
+    {
+        var (controller, db, google, _) = New();
+        await SeedState(db, "s1");
+        google.IdToken = Token(sub: "sub-1");
+        await controller.Callback("c", "s1", null, CancellationToken.None);
+        var person = await db.People.SingleAsync();
+
+        // Demoted with nobody left to promote: signing in again does not restore it.
+        person.Role = PersonRole.Pending;
+        await db.SaveChangesAsync();
+        await SeedState(db, "s2");
+        await controller.Callback("c", "s2", null, CancellationToken.None);
+        Assert.Equal(PersonRole.Pending, (await db.People.SingleAsync()).Role);
+
+        person.Role = PersonRole.Admin;
+        await db.SaveChangesAsync();
+        await SeedState(db, "s3");
+        await controller.Callback("c", "s3", null, CancellationToken.None);
+        Assert.Equal(PersonRole.Admin, (await db.People.SingleAsync()).Role);
     }
 
     [Fact]
@@ -388,6 +460,12 @@ public class GoogleSignInTests
         Assert.Empty(db.ExternalIdentities);
         Assert.Empty(db.AuthGrants);
         Assert.Equal(0, context.Response.Headers.SetCookie.Count);
+    }
+
+    private static async Task SeedPerson(AppDbContext db, PersonRole role)
+    {
+        db.People.Add(new EfPerson { Name = $"seeded {role}", Role = role, CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync();
     }
 
     private static Task SeedState(

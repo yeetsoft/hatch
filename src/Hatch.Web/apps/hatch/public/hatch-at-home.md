@@ -85,7 +85,7 @@ filed under it is numbered from that key onwards (`HOME` gives you `HOME-1`,
 `HOME-2`). One board holds every project you make, because switching boards to
 find out what is next is the thing a folder of plan files already did badly.
 
-There is no sign-in. A Hatch started this way runs with its wall off, which
+By default there is no sign-in. A Hatch started this way runs with its wall off, which
 means it does not ask who you are and does not have anywhere to look it up — so
 it signs what you do with whatever your shell already called you (`USER` on
 macOS and Linux, `USERNAME` on Windows), and calls you `friend` when neither is
@@ -96,7 +96,39 @@ anything. Every
 comment, every move and every event on this board is signed with that name
 forever afterwards, and a board where half the trail says `friend` is a board
 that cannot answer "who did this." The field appears only on an install with
-its wall off, which is every install that started from the line above.
+its wall off, which is every install that started from the line above unless
+you put the wall up (next section).
+
+## Putting the wall up: signing in with Google
+
+Optional. With the wall up Hatch asks who you are, and people sign in with
+Google. You need a Google OAuth client (a "Web application" client in the Google
+Cloud console) whose authorised redirect URI is:
+
+```
+<your-hatch-origin>/api/auth/google/callback
+```
+
+Then set three variables in the shell that runs `docker compose`:
+
+```
+HATCH_AUTH=true
+HATCH_GOOGLE_CLIENT_ID=<your client id>
+HATCH_GOOGLE_CLIENT_SECRET=<your client secret>
+docker compose up -d
+```
+
+Before anyone has signed in, the migrate step says how the first Administrator
+comes to exist. Confirm it with `docker compose logs migrate`; the line reads
+"No Administrator exists yet. The next person to sign in with Google becomes the
+Administrator." If it adds that Google sign-in is not configured, a variable
+above did not arrive.
+
+**The first person to sign in becomes the Administrator**, so the Google account
+you use first matters: sign in yourself, straight away, before you share the
+address. Everyone who signs in after that arrives Pending and can do nothing
+until an Administrator promotes them on the Users page. Signing in again never
+changes anybody's role.
 
 ## Getting the runner and pointing it at the board
 

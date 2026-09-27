@@ -278,12 +278,8 @@ public class AuthController(
     /// another, not by looking this one up.
     ///
     /// Guarded, which puts the only way to enrol a device behind being an
-    /// administrator - so an install where nobody is an Admin can no
-    /// longer let anybody in. That is not an oversight
-    /// and it is not unrecoverable: the migrate Job still mints a bootstrap
-    /// invite into an install with no live access (Program.cs), and the migration that
-    /// introduced roles made nobody Pending, so an upgrade keeps its operator. See docs/auth-architecture.md,
-    /// "Bootstrap and lockout recovery".
+    /// administrator. An install with no Admin is not locked out: the first
+    /// person to sign in with Google becomes one (GoogleSignInController).
     /// </summary>
     [RequireAdmin]
     [HttpPost("invites")]
