@@ -39,7 +39,8 @@ export interface TopBarProps {
 /**
  * The bar every Hatch app wears. Admin and the gallery render
  * it today; auth, docs, modeler and family are why it is in @hatch/ui rather
- * than in any one of them.
+ * than in any one of them. It is painted from its own chrome tokens, not from
+ * --primary: the bar's ground diverges from the accent fill the buttons use.
  *
  * Three things it deliberately is not:
  *

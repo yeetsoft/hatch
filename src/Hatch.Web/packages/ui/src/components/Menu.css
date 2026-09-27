@@ -60,24 +60,40 @@
   outline-offset: 2px;
 }
 
-/* On the bar's fill: --on-accent ink, wash on hover, and a ring in --on-accent
-   because a --primary ring on a --primary ground is invisible. Not only a
+/* On the bar's own fill: chrome ink, chrome wash on hover, and a ring in the
+   glow because an --on-chrome ring on --on-chrome ink is invisible. Not only a
    Menu's own trigger wears this: a plain top-level link standing among
    triggers in the same bar (the hatch app's Board and Plan) takes it too, so
    a link and a menu read as one row of controls rather than two kinds of
-   thing beside each other. */
+   thing beside each other.
+
+   Hover's ink is the glow rather than staying --on-chrome: in dark mode that
+   reads as a colour shift, and in light mode the glow is necessarily a tint
+   (white is already the ceiling), so the ground carries most of the hover
+   there. Active is a fill *and* a rule along the bottom, so it stays legible
+   without relying on colour. */
 .hatch-menu__trigger--accent {
-  color: var(--on-accent);
+  color: var(--on-chrome);
+  font-weight: 600;
 }
 
 .hatch-menu__trigger--accent:hover,
-.hatch-menu__trigger--accent[aria-expanded='true'],
+.hatch-menu__trigger--accent[aria-expanded='true'] {
+  color: var(--chrome-glow);
+  background-color: var(--on-chrome-wash);
+}
+
+/* Longhands, so :hover's background-color above does not drop this rule. */
 .hatch-menu__trigger--accent.hatch-menu__trigger--active {
-  background-color: var(--on-accent-wash);
+  background-color: var(--on-chrome-wash);
+  background-image: linear-gradient(90deg, var(--on-chrome), var(--chrome-glow));
+  background-size: 100% 2px;
+  background-position: bottom;
+  background-repeat: no-repeat;
 }
 
 .hatch-menu__trigger--accent:focus-visible {
-  outline: 2px solid var(--on-accent);
+  outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
 }
 

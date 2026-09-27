@@ -321,6 +321,23 @@
   font-weight: 500;
 }
 
+/* The bar's own ground, painted at its own angle - copied from TopBar.css so
+   the two cannot drift on colour, only (deliberately) on where else the angle
+   gets reused. Not a second literal copy of the stops: the tokens are the
+   single source, this rule only repeats the 135deg. */
+.chrome-ground {
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-ctl);
+  background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
+  color: var(--on-chrome);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+.chrome-ground .swatch-use {
+  color: var(--on-chrome);
+}
+
 /* ---------------------------------------------------------------------------
    Type specimens */
 
