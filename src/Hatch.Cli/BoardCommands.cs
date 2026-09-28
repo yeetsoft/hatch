@@ -174,7 +174,19 @@ public sealed class BoardCommands(Cli cli)
                 + q.Issue.Key.PadRight(keyWidth) + "  "
                 + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "
-                + (q.Blocked is { Length: > 0 } why ? why : $"-> {q.ToStatus?.Name ?? "?"}"))
+                + (q.Blocked is { Length: > 0 } why ? why : Move(q)))
             .ToList();
     }
+
+    /// <summary>
+    /// What a clear row is going to do. An advance is an arrow to the next
+    /// column; the review column's conflict move ends where it began, and an
+    /// arrow to the column a row already sits in would read as a mistake, so it
+    /// says the work instead - naming the trunk the first conflicted verdict
+    /// was taken against.
+    /// </summary>
+    private static string Move(QueueEntryDto q) =>
+        q.Kind == WorkKinds.Conflicts
+            ? $"resolving conflicts with {q.Issue.MergeChecks?.FirstOrDefault(m => m.Verdict == MergeVerdicts.Conflicted)?.Trunk ?? "the trunk"}"
+            : $"-> {q.ToStatus?.Name ?? "?"}";
 }

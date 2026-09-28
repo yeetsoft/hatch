@@ -56,6 +56,28 @@ public static class Columns
     }
 
     /// <summary>
+    /// The column an increment on an issue in <paramref name="from"/> ends in:
+    /// <see cref="Advance"/> for every column but one, and for the review
+    /// column - when a terminal column stands after it - the review column
+    /// itself.
+    ///
+    /// <para>Only the operator moves work into a terminal column, so an issue
+    /// in review has no move to the right that an agent may make. It has one
+    /// job left, which is the branch conflicting with the trunk, and that job
+    /// ends where it began. A move is a conflict move exactly when its two ends
+    /// are the same column; nothing compares names.</para>
+    ///
+    /// <para>On a board with no terminal column the review column is the
+    /// rightmost one and <see cref="Advance"/> is null, so this is null too:
+    /// work ends there, and there is nowhere for it to go.</para>
+    /// </summary>
+    public static EfHatchStatus? Target(List<EfHatchStatus> statuses, EfHatchStatus from)
+    {
+        var next = Advance(statuses, from);
+        return next is { IsTerminal: true } && AwaitingReview(statuses)?.Id == from.Id ? from : next;
+    }
+
+    /// <summary>
     /// The last stop before shipped: the column immediately left of the first
     /// terminal one, or the rightmost column on a board with no terminal column
     /// at all.

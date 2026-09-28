@@ -133,7 +133,8 @@ public class WorkController(
     /// </summary>
     /// <remarks>
     /// The columns with nowhere to go - a terminal one, and a rightmost one
-    /// that is not terminal - are absent rather than listed as blocked. An
+    /// that is not terminal - are absent. The review column is listed: its
+    /// move ends in itself, and it is folded unless its branch conflicts rather than listed as blocked. An
     /// issue the dispatcher never reaches is not something the pass skipped,
     /// and shipped work is not a backlog.
     /// </remarks>
@@ -162,7 +163,8 @@ public class WorkController(
             issues[r.Issue.Id],
             ToStatusDto(r.From),
             r.To is null ? null : ToStatusDto(r.To),
-            r.Blocked)).ToList();
+            r.Blocked,
+            KindOf(r.From, r.To))).ToList();
     }
 
     // ---- The walk ----
@@ -215,16 +217,23 @@ public class WorkController(
 
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var open = await Questions.OpenCountsAsync(db, ct);
+
+        // Every stored verdict, once, grouped by issue - the way `open` is read.
+        // The table holds a row per issue per repository that has been checked,
+        // and only the review column's issues ask for theirs, so the read is
+        // the whole table rather than a filter that a scan would have to widen
+        // whenever the column moved.
+        var verdicts = await MergeVerdictsAsync(null, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
             .ToListAsync(ct);
 
-        // The columns a pass looks in at all: the ones with a column to their
-        // right. No type filter - which types a move applies to is the
+        // The columns a pass looks in at all: the ones an increment has somewhere
+        // to end - a column to their right, or for the review column, itself. No type filter - which types a move applies to is the
         // playbook's to say, and a row no playbook covers is folded with the
         // sentence naming that rather than dropped before it is judged.
-        var walkable = statuses.Where(s => Columns.Advance(statuses, s) is not null).Select(s => s.Id).ToList();
+        var walkable = statuses.Where(s => Columns.Target(statuses, s) is not null).Select(s => s.Id).ToList();
 
         var query = db.Issues.Where(i => walkable.Contains(i.StatusId));
         if (scope is not null) query = query.Where(i => scope.Contains(i.Id));
@@ -267,7 +276,7 @@ public class WorkController(
         {
             foreach (var status in Enumerable.Reverse(statuses))
             {
-                if (Columns.Advance(statuses, status) is not { } to) continue;
+                if (Columns.Target(statuses, status) is not { } to) continue;
                 if (!byColumn.TryGetValue(status.Id, out var column)) continue;
 
                 foreach (var issue in column)
@@ -280,7 +289,8 @@ public class WorkController(
                         issue, status, to,
                         Blocked(
                             issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
-                            assignees[issue.Id], repos)));
+                            assignees[issue.Id], repos,
+                            verdicts.GetValueOrDefault(issue.Id) ?? [])));
                 }
             }
         }
@@ -488,6 +498,63 @@ public class WorkController(
     private sealed record UnmetEdge(string BlockerKey, string? HolderKey);
 
     /// <summary>
+    /// Whether an increment is the review column's conflict work: the one move
+    /// that ends where it began.
+    /// </summary>
+    private static string KindOf(EfHatchStatus from, EfHatchStatus? to) =>
+        to is not null && to.Id == from.Id ? WorkKinds.Conflicts : WorkKinds.Advance;
+
+    /// <summary>
+    /// The stored verdicts, grouped by issue - the whole table, or the one
+    /// issue's rows. Ordered by canonical remote so a fold that names "the"
+    /// trunk names the same one on every read.
+    /// </summary>
+    private async Task<Dictionary<long, List<EfHatchMergeCheck>>> MergeVerdictsAsync(long? issueId, CancellationToken ct) =>
+        (await db.MergeChecks.AsNoTracking()
+            .Where(m => issueId == null || m.IssueId == issueId)
+            .OrderBy(m => m.Canonical)
+            .ToListAsync(ct))
+        .GroupBy(m => m.IssueId)
+        .ToDictionary(g => g.Key, g => g.ToList());
+
+    /// <summary>
+    /// Why an issue in the review column is not conflict work: what the runners
+    /// have found about its branch, said as the sentence a person reading the
+    /// queue needs. Null when a branch conflicts, which is the only thing that
+    /// makes an issue in review actionable - code decides that, from a verdict
+    /// a runner took with git, and no prompt is asked whether a branch merges.
+    ///
+    /// <para>Where the project binds repositories, only the verdicts for ones it
+    /// still binds count. Unbinding a repository leaves its verdicts behind,
+    /// and a conflict in a repository the project no longer has is not a
+    /// reason to wake an agent.</para>
+    /// </summary>
+    private static string? MergeFold(EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> stored)
+    {
+        var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
+
+        var verdicts = bound.Count == 0
+            ? stored.ToList()
+            : stored.Where(v => bound.Any(r => r.Canonical == v.Canonical))
+                .OrderBy(v => bound.FindIndex(r => r.Canonical == v.Canonical))
+                .ToList();
+
+        if (verdicts.Any(v => v.Verdict == MergeVerdicts.Conflicted)) return null;
+
+        if (verdicts.Count == 0)
+            return $"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet";
+
+        if (verdicts.Any(v => v.Verdict == MergeVerdicts.Ambiguous))
+            return "more than one branch on origin is named for it - delete the ones that are not its branch";
+
+        if (verdicts.All(v => v.Verdict == MergeVerdicts.None))
+            return "no branch on origin is named for it";
+
+        var clean = verdicts.First(v => v.Verdict == MergeVerdicts.Clean);
+        return $"its branch merges cleanly with {clean.Trunk} - nothing for an agent to do";
+    }
+
+    /// <summary>
     /// Why an unattended run - or anybody - should not start writing this yet:
     /// the issues it waits on that are not done.
     /// </summary>
@@ -602,7 +669,7 @@ public class WorkController(
         ClaimGate claimed, RepositoryDeclaration repos, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
-        var to = Columns.Advance(statuses, from);
+        var to = Columns.Target(statuses, from);
 
         var children = await db.Issues.Where(i => i.ParentId == issue.Id)
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -673,8 +740,10 @@ public class WorkController(
             Blocked(
                 issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
                 await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-                repos),
-            IssueUrl(issueDto.Key));
+                repos,
+                (await MergeVerdictsAsync(issue.Id, ct)).GetValueOrDefault(issue.Id) ?? []),
+            IssueUrl(issueDto.Key),
+            KindOf(from, to));
     }
 
     /// <summary>
@@ -698,13 +767,24 @@ public class WorkController(
     /// <para>The order is what it costs to change the answer, most fundamental
     /// first: a terminal column, no column after this one, a terminal next
     /// column, a live claim, a ready date, an assignee, an unanswered question,
-    /// a repository the caller has no checkout of, an unmet dependency, and
-    /// last a missing playbook. A column with nowhere an agent may go is a fact
-    /// about the board and no argument alters it; a ready date needs time; a
-    /// question needs a person; a repository needs a clone; a dependency needs
-    /// other work to land; and a missing playbook needs the operator, which is
-    /// last because it is only worth saying about an issue that is otherwise a
-    /// candidate.</para>
+    /// a repository the caller has no checkout of, an unmet dependency, what
+    /// the runners found about the branch, and last a missing playbook. A
+    /// column with nowhere an agent may go is a fact about the board and no
+    /// argument alters it; a ready date needs time; a question needs a person;
+    /// a repository needs a clone; a dependency needs other work to land; a
+    /// clean branch needs nothing at all; and a missing playbook needs the
+    /// operator, which is last because it is only worth saying about an issue
+    /// that is otherwise a candidate.</para>
+    ///
+    /// <para>The review column is the one place the move ends where it began
+    /// (<see cref="Columns.Target"/>), so the terminal-next-column sentence is
+    /// unreachable from it: an issue in review is dispatched to review, and
+    /// only when its branch conflicts. That move takes the repository fold as
+    /// the implementation move does - the session will be in a checkout - but
+    /// no dependency gate, which is about code not yet written. Its own fold,
+    /// <see cref="MergeFold"/>, sits after both: a question needs a person, a
+    /// repository needs a clone, and only then is the branch worth asking
+    /// about.</para>
     ///
     /// <para>The claim sits above all of those and below the column checks, for
     /// a different reason than the rest of the order. It is the only fold that
@@ -749,10 +829,14 @@ public class WorkController(
     /// prevent, whoever asked for it.
     /// </param>
     /// <param name="implementation">
-    /// The column a dependency gates the move into, and the only one it gates -
-    /// shared with the repository fold below, for the same reason: a wrong
-    /// checkout matters only once code is about to be written, and everything
-    /// left of that column needs no checkout at all.
+    /// The column a dependency gates the move into, and the only one it gates.
+    /// The repository fold applies to that move and to the conflict move: a
+    /// wrong checkout matters only once code is about to be written, and every
+    /// other move needs no checkout at all.
+    /// </param>
+    /// <param name="verdicts">
+    /// What the runners found when they merged the issue's branch against the
+    /// trunk, one per repository. Read only for the conflict move.
     /// </param>
     /// <param name="repos">
     /// What the caller told the dispatcher about its own checkouts. A fact
@@ -770,7 +854,8 @@ public class WorkController(
         ClaimGate claimed,
         EfHatchStatus? implementation,
         AssigneeDto? assignee,
-        RepositoryDeclaration repos)
+        RepositoryDeclaration repos,
+        IReadOnlyList<EfHatchMergeCheck> verdicts)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -809,11 +894,15 @@ public class WorkController(
         if (waiting > 0)
             return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
 
-        if (to.Id == implementation?.Id)
+        var conflicts = to.Id == from.Id;
+
+        if (to.Id == implementation?.Id || conflicts)
         {
             if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
-            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
+            if (!conflicts && gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
         }
+
+        if (conflicts && MergeFold(issue, verdicts) is { } mergeBlock) return mergeBlock;
 
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"

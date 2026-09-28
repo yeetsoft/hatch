@@ -220,6 +220,42 @@ public sealed class BoardCommandsTests
     }
 
     /// <summary>
+    /// The review column's move ends in the review column, so an arrow to it
+    /// would say nothing. The row says what the increment does instead, and
+    /// names the trunk from the verdict that conflicted.
+    /// </summary>
+    [Fact]
+    public async Task A_conflict_row_says_it_is_resolving_conflicts_rather_than_drawing_an_arrow()
+    {
+        using var h = new CliHarness();
+        var conflicted = new MergeCheckDto(
+            "git@example.com:o/r.git", "example.com/o/r", "develop", new string('a', 40), MergeVerdicts.Conflicted,
+            "aer-7", new string('b', 40), ["src/A.cs"], DateTimeOffset.UnixEpoch, "host:/checkout", "somebody");
+        var review = Fixtures.Status(4, "In Review");
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-7") with { MergeChecks = [conflicted with { Verdict = MergeVerdicts.Clean }, conflicted] },
+                review, review, null, WorkKinds.Conflicts),
+            new QueueEntryDto(
+                Fixtures.Issue("AER-8"), Fixtures.Status(3, "In Progress"), review, null),
+            new QueueEntryDto(
+                Fixtures.Issue("AER-9"), review, review, "its branch merges cleanly with develop - nothing for an agent to do",
+                WorkKinds.Conflicts),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            AER-7  [task]  In Review    resolving conflicts with develop
+            AER-8  [task]  In Progress  -> In Review
+            AER-9  [task]  In Review    its branch merges cleanly with develop - nothing for an agent to do
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    /// <summary>
     /// A deferred column is not a lane, so it is printed after every column
     /// that is - including one the operator has sorted into the middle of the
     /// board. The board page cannot draw it at all; a printed count can, and a

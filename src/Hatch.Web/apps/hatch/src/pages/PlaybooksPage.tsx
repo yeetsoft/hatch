@@ -51,7 +51,7 @@ export function PlaybooksPage() {
     <div className="hatch-page">
       <PageHeader
         title="Playbooks"
-        description="What an agent is told, and how much thought to spend, when it moves an issue one column along."
+        description="What an agent is told, and how much thought to spend, when it moves an issue one column along - or, from the review column to itself, when its branch conflicts with the trunk."
       />
 
       {error && <p className="text-danger">{error}</p>}
@@ -108,12 +108,25 @@ function Row({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // A row from a column to itself is the review column's: what a session is
+  // told when the branch of an issue in review no longer merges. The server
+  // refuses that shape for any other column, so this is never a mislabelled
+  // ordinary row.
+  const conflict = playbook.fromStatusId === playbook.toStatusId;
 
   return (
     <>
       <tr>
         <td>
-          <strong>{playbook.fromStatusName}</strong> → <strong>{playbook.toStatusName}</strong>
+          {conflict ? (
+            <>
+              <strong>{playbook.fromStatusName}</strong> · conflict playbook
+            </>
+          ) : (
+            <>
+              <strong>{playbook.fromStatusName}</strong> → <strong>{playbook.toStatusName}</strong>
+            </>
+          )}
         </td>
         <td>
           <TypesCell types={playbook.types} onChange={(types) => onPatch({ types })} />
@@ -248,7 +261,10 @@ function NewPlaybook({
             ))}
           </select>
         </Field>
-        <Field label="To" hint="Where it should be when the agent stops.">
+        <Field
+          label="To"
+          hint="Where it should be when the agent stops. The review column may name itself: that row is the conflict playbook."
+        >
           <select value={to} onChange={(e) => setTo(Number(e.target.value))}>
             {statuses.map((s) => (
               <option key={s.id} value={s.id}>
@@ -273,7 +289,7 @@ function NewPlaybook({
       <div className="hatch-form-actions">
         <Button
           variant="primary"
-          disabled={!prompt.trim() || from === to}
+          disabled={!prompt.trim()}
           onClick={() => {
             onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort });
             setPrompt('');

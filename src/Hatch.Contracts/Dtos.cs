@@ -752,6 +752,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// a reviewer's browser uses, and a key cannot read the shell's config to find
 /// out.
 /// </param>
+/// <param name="Kind">
+/// One of <see cref="WorkKinds"/>: which of the two things a dispatch can be.
+/// Derived from the move rather than stored - a move that ends in the column it
+/// started in is the conflict move, and nothing else is.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -761,7 +766,8 @@ public record WorkDto(
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
-    string? IssueUrl);
+    string? IssueUrl,
+    string Kind = WorkKinds.Advance);
 
 /// <summary>
 /// One of the project's bound remotes, as a dispatch names it - see
@@ -793,11 +799,13 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// entry with a null <c>Blocked</c> is the issue <c>work/next</c> returns for
 /// the same arguments, because it is the same walk.
 /// </param>
+/// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
-    string? Blocked);
+    string? Blocked,
+    string Kind = WorkKinds.Advance);
 
 // ---- Rollups ----
 
@@ -1131,6 +1139,20 @@ public static class RunnerKinds
 
     /// <summary><c>work</c>, and <c>go-to-work --once</c>: one heartbeat, and no second pass to apply an instruction to.</summary>
     public const string Once = "once";
+}
+
+/// <summary>
+/// The two things a dispatch can be, told apart by the move alone: a move into
+/// another column is an advance, and a move that ends in the column it started
+/// in is the review column's conflict work.
+/// </summary>
+public static class WorkKinds
+{
+    /// <summary>The increment moves the issue one column to the right.</summary>
+    public const string Advance = "advance";
+
+    /// <summary>The issue is in the review column and its branch conflicts with the trunk; the increment resolves that and leaves the issue where it is.</summary>
+    public const string Conflicts = "conflicts";
 }
 
 /// <summary>

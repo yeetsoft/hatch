@@ -229,7 +229,7 @@ the flag existed.
 | Backlog | 30 | | operator | Specified work, awaiting selection. |
 | To Do | 40 | | **agent** | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | **agent** | Write the code, get it green, push it, put it up for review. |
-| In Review | 60 | | operator | Read the pull request, wait for green, merge. |
+| In Review | 60 | | operator; **agent** only when its branch conflicts | Read the pull request, wait for green, merge. If the trunk has moved and the branch no longer merges, an agent resolves the conflicts and pushes; a branch that merges cleanly is never touched. |
 | Done | 70 | ✓ | operator | Terminal. |
 
 **Which column belongs to whom is not a field.** It is derived: a column an
@@ -1483,7 +1483,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Eight refusals**, and two of them are rules of the whole loop rather than
+**Nine refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -1491,9 +1491,13 @@ missing configuration:
    board, not a pass*. Said before the next one, which would otherwise refuse it
    with "there is nowhere for this to go": true of a shelf, and no use to
    somebody reading a queue wondering why a ticket they parked is not moving.
-3. There is no column to its right.
+3. There is no column to its right. On a board with no terminal column the
+   review column is the rightmost one and is where work ends, so this is what an
+   issue in it is told.
 4. The next column **is** terminal — *only the operator decides that something
-   shipped*.
+   shipped*. Never said of the review column: an issue in review is dispatched
+   to the review column itself rather than to the terminal one after it, and
+   whether that is worth doing is refusal 9's question.
 5. Something else holds a live [claim](#claim) on it — *somebody is working this
    right now*, named with the runner it is being worked from and when it was
    last heard from.
@@ -1501,16 +1505,41 @@ missing configuration:
    an agent*.
 7. The project's [repositories](#repository) match none of the remotes the
    caller declared, and the move is into the column where the code gets
-   written. A caller that declares nothing — an older CLI, or the issue page —
+   written, or the conflict move in the review column. A caller that declares
+   nothing — an older CLI, or the issue page —
    is not folded by this at all: declaring is opt-in, which is what keeps them
    working unchanged. A project bound to nothing is worked from the caller's
    standing checkout exactly as before; one bound to remotes none of which
    match is refused unless the caller says it will clone what it lacks.
 8. Something it [depends on](#dependency) is unfinished, and the move is into
-   the column where the code gets written.
+   the column where the code gets written. The conflict move is not gated: the
+   code it merges is already written.
+9. The issue is in the review column and its branch does not conflict with the
+   trunk. What the runners found is stored on the board as one verdict per
+   repository, and the sentence is the one that fits: *no runner has checked its
+   branch against the trunk yet*; *more than one branch on origin is named for it
+   — delete the ones that are not its branch*; *no branch on origin is named for
+   it*; or *its branch merges cleanly with the trunk — nothing for an agent to
+   do*. Any one repository conflicting is enough to clear it. Where the project
+   binds repositories only the verdicts for ones it still binds are read, since
+   a conflict in a repository the project no longer has is no reason to wake an
+   agent.
 
 …and then, if none of those, the ordinary one: no playbook covers this
 transition for this type.
+
+**An issue in the review column is dispatched to the review column.** Its move
+ends where it began, and `WorkDto` and `QueueEntryDto` say so with `kind`:
+`conflicts` for this move and `advance` for every other. The reason is that only
+the operator moves work into a terminal column, so there is no move to the right
+an agent may make from review — but a pull request that stopped merging cleanly
+because something else landed is a job, and it is the only one left there. Code
+decides whether a branch conflicts, from a verdict a runner took with git; the
+prompt is never asked. The order is a question needing a person, a repository
+needing a clone, and last a clean branch needing nothing at all — so a runner
+with no checkout is told that, and not that the branch conflicts. `hatch queue`
+prints the clear row as `In Review  resolving conflicts with <trunk>`, not as an
+arrow to the column the row is already in.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -1655,13 +1684,26 @@ paragraph, which is what the description is for. Setting one is a person's
 (`PATCH /api/hatch/issues/{key}/playbook`); reading one is anybody's who can
 read the issue.
 
-Seven rows are seeded, for the same reason the columns are: a Hatch whose agent
+Eight rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken.
 They cover every transition an agent owns, so `go-to-work` on a fresh install
 needs no configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
 that renamed its columns first seeds nothing, which is the right failure: a
 playbook wired to the wrong transition is worse than an empty table.
+
+**A row from the review column to itself is the conflict playbook.** It is what
+a session is told when an issue in review has a branch that no longer merges
+with the trunk (see [the dispatcher](#the-dispatcher)), and it is the eighth
+seed: every type, `sonnet`, `high`, a prompt that resolves the conflicts, builds,
+tests, commits the merge and pushes it to the same branch, and never rebases or
+force-pushes. Only the review column may name itself — measured as
+`Columns.AwaitingReview` is, the column immediately left of the first terminal
+one — and the Playbooks page and the API refuse any other column in a sentence
+saying so, since a row nothing would ever dispatch reads as one that works. The
+migration measures the column in SQL rather than by name, seeds only where no
+row from it to itself exists, and takes the row back on a rollback only while
+its prompt is still the stock text.
 
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
@@ -1697,12 +1739,15 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Eight conditions. An issue is the loop's to pick up when it meets every one, and
+Nine conditions. An issue is the loop's to pick up when it meets every one, and
 the sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is a column to its right, and that column is not terminal.** The end
    of the board is not a transition, and the step into a terminal column is the
-   operator's: *only the operator decides that something shipped*.
+   operator's: *only the operator decides that something shipped*. The review
+   column is the one exception to the wording and not to the rule: its move is
+   to itself, so it has a column to go to whenever a terminal one stands after
+   it, and condition 8 is what decides whether it is worth going.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -1721,13 +1766,22 @@ the sentence saying which one it failed is what `work/queue` reports:
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here and only when the move is into the column
-   where the code gets written, the same restriction the dependency below
-   carries. See [the dispatcher](#the-dispatcher) for the exact sentence.
+   where the code gets written or the conflict move in review, the same
+   restriction the dependency below carries. See
+   [the dispatcher](#the-dispatcher) for the exact sentence.
 7. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **A playbook covers that transition for that type.** Without one there is
+8. **If it is in the review column, its branch conflicts with the trunk.** This
+   is the only thing that makes an issue in review actionable, and it is decided
+   by code: a runner merges the branch against the trunk with git and reports a
+   verdict, and the dispatcher reads it. A clean branch that has merely fallen
+   behind is left alone — the forge brings it up to date, and nothing here does
+   it for the sake of tidiness. It sits after the repository and the question
+   because a question needs a person, a repository needs a clone, and a clean
+   branch needs nothing at all.
+9. **A playbook covers that transition for that type.** Without one there is
    nothing to say to the session — and a column no playbook leads out of is
    exactly [how a column becomes the operator's](#status), which is why the
    absence is a fold rather than an error. **This is also where the issue's
@@ -1735,8 +1789,8 @@ the sentence saying which one it failed is what `work/queue` reports:
    pick up is a type no row names for that move, said in the words that name
    the fix.
 
-Six of them — 1, 2, 5, 6, 7 and 8 — are facts about the issue, and `work/{key}`
-asks them too. The other two are the loop's policy and are asked only when the
+Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and
+`work/{key}` asks them too. The other two are the loop's policy and are asked only when the
 pass is asking; see [one more, on `next` alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and

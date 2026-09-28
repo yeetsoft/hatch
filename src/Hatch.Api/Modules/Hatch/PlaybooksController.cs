@@ -136,11 +136,26 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// </summary>
     private async Task<string?> Refusal(int from, int to, string types, int? id, CancellationToken ct)
     {
-        if (from == to) return "a playbook moves an issue between two columns, not into the one it is in";
-
         var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
         if (!known.Contains(from)) return $"there is no column {from}";
         if (!known.Contains(to)) return $"there is no column {to}";
+
+        // One column may name itself: the review column of the board as it
+        // stands, where a row from it to itself is the conflict playbook - what
+        // a session is told when the branch of an issue in review no longer
+        // merges. Measured, and never by name, for the reason Columns says.
+        // The row is refused for every other column because nothing would ever
+        // dispatch it, and a playbook that does nothing reads as one that works.
+        if (from == to)
+        {
+            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+            var review = Columns.AwaitingReview(statuses);
+            if (review?.Id != from)
+            {
+                return $"a playbook moves an issue between two columns - only the review column, \"{review?.Name}\", " +
+                       "may name itself, and that row is the conflict playbook";
+            }
+        }
 
         var clash = await db.Playbooks
             .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types && p.Id != id, ct);
