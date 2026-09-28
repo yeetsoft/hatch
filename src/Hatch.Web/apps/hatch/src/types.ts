@@ -15,7 +15,7 @@ export const ISSUE_TYPES: IssueType[] = ['epic', 'story', 'task', 'bug'];
 export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   epic: ['epic'],
   story: ['epic'],
-  task: ['story', 'bug'],
+  task: ['story', 'bug', 'epic'],
   bug: ['epic', 'story'],
 };
 
