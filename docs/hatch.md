@@ -1808,11 +1808,11 @@ into, is folded past, with the reason, and never reaches this step at all; one
 it can clone is cloned before this step, with the claim already held.
 
 The loop fetches, stashes anything the tree was carrying, and puts the checkout
-back on the default branch before it spawns anything — so a session's first act
-is cutting a branch, and the thing it cuts from is not in question. A binding's
-own base branch beats `origin/HEAD` for that checkout; `HATCH_BASE_BRANCH`
-still only ever overrides the checkout the loop is standing in, as it always
-has.
+back on the default branch before it does anything else — so whatever comes
+next starts from a base that is not in question. A binding's own base branch
+beats `origin/HEAD` for that checkout; `HATCH_BASE_BRANCH` still only ever
+overrides the checkout the loop is standing in, as it always has. What comes
+next is [the branch step](#the-issues-branch), and then the spawn.
 
 This is the loop's job rather than a [playbook](#playbooks)'s for the reason
 every load-bearing sentence in a prompt eventually demonstrates: a playbook is
@@ -1864,6 +1864,101 @@ binding's own base branch first where the checkout has one, then `origin/HEAD`,
 then the remote itself for a checkout that never got either, and
 `HATCH_BASE_BRANCH` — for the checkout the loop is standing in only — for an
 installation that calls it something else.
+
+A merge the runner started and never finished — the process was interrupted
+halfway through the branch step — is aborted by the next reset instead of ending
+the night. The runner writes a marker in the git directory before it starts one,
+which is how it tells its own unfinished merge from somebody else's; a merge
+with no marker is a person's, and still ends the night, because it is not the
+runner's to abort.
+
+#### The issue's branch
+
+A ticket that comes back for more work has a branch, and usually a pull request
+on it. A session told to cut a fresh branch from the trunk abandons both — and
+which branch is a ticket's was until now only prose in three places. So the
+runner does it, after the reset and after the [self-change check](#where-the-loop-lives),
+and before the spawn:
+
+- **The branch of record is the one branch on `origin` named for the key**:
+  `<key-lowercased>`, or that and a hyphen and anything after it, compared
+  case-insensitively. `ha-3-` is not `ha-31-…`. There is no field on the issue
+  for it, because the naming is already what every pull request here does, and a
+  second place to keep it is a second place for it to be wrong.
+- **A branch whose changes are all in the trunk counts as absent.** The test is
+  that `git merge-tree --write-tree` of the trunk and the branch yields the
+  trunk's own tree — which is true of a squash merge too, where the branch's
+  commits are nowhere in the trunk's history and an ancestry check would call it
+  unmerged for ever. The prompt then says the old branch merged and names a
+  branch to cut that is not on `origin` (or here).
+- **One branch: the tree goes onto it, at `origin`'s tip, and the trunk is
+  merged into it.** The prompt says which branch, at which sha, how many commits
+  ahead of the trunk, and whether the merge was a no-op, clean or conflicted. On
+  a conflict the merge is left *in progress*, and the prompt lists the files and
+  says to resolve them and commit the merge first.
+- **Two or more unmerged branches: nothing is guessed.** The runner asks on the
+  ticket which to use, with each branch an option, and spawns nothing. The
+  answer arrives in the next session's prompt; an answer that names one of them
+  is used, and one that names none is passed on to the session rather than asked
+  again.
+- **With no branch, the tree is on the trunk** and the prompt names the branch to
+  cut, `<key-lowercased>-<slug of the title>`.
+- **The copy on this machine is only a copy.** Behind `origin`, it is
+  fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
+  under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and
+  the branch goes to `origin`'s. Nothing that exists only here is thrown away
+  silently.
+- **Every checkout that has a branch for the key** is treated this way; the others
+  stay on the trunk.
+
+It is a **merge and never a rebase**, and nothing here is force-pushed: a branch
+under review is somebody's to read, and that is the history this repository
+already has. The prompt's `## The branch` section says all of this, and says it
+overrides any instruction about branching in the playbook above it — because a
+stock playbook still says to cut a branch from `origin/main`, which on a ticket
+that has one would abandon it.
+
+`hatch work KEY` does the same reset and the same branch step before it spawns.
+One difference: a tree with changes in it is **refused, naming the files**, rather
+than stashed, because somebody is sitting there and they are theirs.
+`hatch work KEY --dry-run` prints the branch the increment would start on and what
+it would merge, read from the refs as they stand — it fetches nothing and moves
+nothing.
+
+#### Leaving the tree
+
+When the session ends, and before the claim is let go, the runner puts the tree
+the way the next increment expects it. None of this happens when the lease was
+lost — the ticket is somebody else's by then, and nothing is written on it or
+pushed for it — but the checkouts are still put back on the trunk, so that a
+restart between increments builds from there and not from whatever branch the
+last session left checked out.
+
+- **A merge, rebase or cherry-pick left in progress is aborted.** None of the
+  three can be stashed, so left, each would end the night.
+- **Uncommitted changes are stashed** under a message naming the ticket, and the
+  ticket is told how many files.
+- **Commits on the issue's branch that `origin` does not have are named** — the
+  branch, how many, and the tip — and not pushed. Whether a branch is fit to
+  leave the machine is the session's call: green before pushed.
+- **Commits left on the local trunk go to `<key-lowercased>-rescued-<short sha>`**
+  and the ticket names the branch, rather than leaving them to the reflog.
+- **The checkout goes back on the trunk**, at `origin`'s tip.
+- **A pull request's branch is brought up to date with the trunk**, when the
+  issue has a pull request recorded and the branch on `origin` does not contain
+  the trunk. The runner does it without a worktree: `git merge-tree` for the
+  result, `git commit-tree` with both parents for the commit, and a plain push of
+  that commit to the branch. The push is a fast-forward or nothing — somebody
+  pushing in between makes it refuse, and it is never forced — and no agent is
+  involved when the merge is clean. A merge that conflicts lists the files on the
+  ticket and pushes nothing; turning that state into work for an agent is not
+  this step's job. This needs git 2.38 or later; an older one is said
+  once, on the terminal, and the step is skipped.
+
+Everything found goes to the ticket in **one comment**, so a reviewer reads one
+thing. None of it fails the increment: a refused push — the forge, branch
+protection, somebody else's push landing first — is a line on the ticket, and so
+is a stash that would not go. The runner never pushes to the trunk.
 
 ### When an increment does nothing
 
@@ -2078,13 +2173,18 @@ it again. Two triggers, because the answer to which one on the ticket was both:
   launches it — hashed on disk rather than read out of git, since the files that
   are there are the files that run. The baseline is taken once at startup, and
   the check happens after the reset, which is the only moment new source can
-  have arrived. The changed paths are named on the way out.
+  have arrived, and before [the branch step](#the-issues-branch), so the tree
+  is on the trunk when it is read: an issue's branch that edits the loop's own
+  source does not make the loop restart the moment it is checked out. The
+  changed paths are named on the way out.
 - **Age**, `--restart-after MINUTES`, thirty by default and `0` to turn it off.
   It is the backstop for the loop this would otherwise miss entirely: an idle
   loop never resets — a fetch every interval all night against a remote with
   nothing to say is a fetch for nothing — so it never sees a change, and would
   sit there on the old code until morning. Read where no claim is held, so a
-  restart is never something a ticket is waiting behind.
+  restart is never something a ticket is waiting behind — and with every
+  checkout [back on the trunk](#leaving-the-tree) after each increment, the build
+  it restarts as is the trunk's, and not whichever branch the last session left.
 
 What survives the restart is what was typed and what has been spent.
 `--max-runs`, `--max-spend`, `--until`, `--under`, `--interval`, `--quiet` and

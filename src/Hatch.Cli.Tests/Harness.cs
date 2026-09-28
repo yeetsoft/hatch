@@ -120,16 +120,78 @@ public sealed class FakeWorkspace
     /// </summary>
     public Action? Watching { get; set; }
 
+    /// <summary>
+    /// Everything a pass asked of any checkout, in order and in one list -
+    /// <c>prepare</c>, <c>enter</c>, <c>plan</c>, <c>leave</c> and <c>return</c>,
+    /// each with the path - so the order between them can be asserted, and not
+    /// only the order within each.
+    /// </summary>
+    public List<string> Calls { get; } = [];
+
+    /// <summary>What a checkout not named in <see cref="EntryFor"/> finds: no branch, and a name to cut.</summary>
+    public Func<string, string, BranchEntry>? Entry { get; set; }
+
+    /// <summary>One checkout's own answer to branch entry.</summary>
+    public Dictionary<string, BranchEntry> EntryFor { get; } = [];
+
+    /// <summary>The lines <see cref="IWorkspace.Leave"/> answers with, for every checkout.</summary>
+    public List<string> LeaveNotes { get; } = [];
+
+    /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced.</summary>
+    public List<(string Path, string Key, bool Sync)> Left { get; } = [];
+
+    /// <summary>What each <c>Enter</c> was given as the answer to a which-branch question.</summary>
+    public List<string?> Answers { get; } = [];
+
+    /// <summary>Whether <see cref="IWorkspace.Prepare"/> was told to stash, per call.</summary>
+    public List<bool> Stashed { get; } = [];
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
     {
-        public Reset Prepare()
+        public Reset Prepare(bool stash = true)
         {
             owner.Prepared.Add(path);
+            owner.Calls.Add($"prepare {path}");
+            owner.Stashed.Add(stash);
             owner.Watching?.Invoke();
             return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
         }
+
+        public BranchEntry Enter(string key, string title, string? answer)
+        {
+            owner.Calls.Add($"enter {path}");
+            owner.Answers.Add(answer);
+            return Answer(key, title);
+        }
+
+        public BranchEntry Plan(string key, string title, string? answer)
+        {
+            owner.Calls.Add($"plan {path}");
+            return Answer(key, title) is var entry
+                ? new BranchEntry
+                {
+                    Path = entry.Path, Kind = entry.Kind, Branch = entry.Branch, Sha = entry.Sha, Ahead = entry.Ahead,
+                    Merge = entry.Merge, Conflicted = entry.Conflicted, Candidates = entry.Candidates,
+                    Merged = entry.Merged, Cut = entry.Cut, Planned = true,
+                }
+                : entry;
+        }
+
+        public Leaving Leave(string key, bool syncPullRequest)
+        {
+            owner.Calls.Add($"leave {path}");
+            owner.Left.Add((path, key, syncPullRequest));
+            return new Leaving(path, [.. owner.LeaveNotes]);
+        }
+
+        public void Return() => owner.Calls.Add($"return {path}");
+
+        private BranchEntry Answer(string key, string title) =>
+            owner.EntryFor.TryGetValue(path, out var one) ? one
+            : owner.Entry?.Invoke(path, key)
+              ?? new BranchEntry { Path = path, Kind = BranchKind.None, Cut = Branches.Cut(key, title) };
     }
 }
 

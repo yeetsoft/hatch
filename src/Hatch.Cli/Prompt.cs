@@ -13,7 +13,10 @@ namespace Hatch.Cli;
 /// </remarks>
 public static class Prompt
 {
-    public static string Compose(WorkDto work, IReadOnlyList<Checkouts.RepositoryLine>? repositories = null)
+    public static string Compose(
+        WorkDto work,
+        IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
+        IReadOnlyList<BranchEntry>? branches = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
@@ -49,6 +52,8 @@ public static class Prompt
                 : $"{r.Remote}  (no checkout here)"));
             lines.Add("");
         }
+
+        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches));
 
         if (work.Children.Count > 0)
         {
@@ -94,6 +99,84 @@ public static class Prompt
 
         lines.AddRange(Tail(key, to, work.IssueUrl, repositories));
         return string.Join('\n', lines);
+    }
+
+    /// <summary>
+    /// The git state the session starts in, as the runner left it. Written as
+    /// fact rather than instruction wherever it can be, and the one instruction
+    /// it does give - that it overrides the playbook - is there because a stock
+    /// playbook still tells a session to cut a branch from the trunk.
+    /// </summary>
+    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries)
+    {
+        yield return "## The branch";
+        yield return "";
+        yield return "This is the state the runner left the tree in. It overrides any instruction about";
+        yield return "which branch to start from or whether to cut one in the playbook above.";
+        yield return "";
+
+        foreach (var entry in entries)
+        {
+            var where = entries.Count > 1 ? $"{entry.Path}: " : "";
+
+            switch (entry.Kind)
+            {
+                case BranchKind.Entered:
+                    yield return $"- {where}on `{entry.Branch}` at {entry.Sha}, {entry.Ahead} commit(s) ahead of the trunk.";
+                    foreach (var line in Merge(entry)) yield return $"  {line}";
+                    if (entry.LocalAhead)
+                        yield return "  The copy on this machine was ahead of origin, and is the one you are on.";
+                    if (entry.KeptAs.Length > 0)
+                        yield return $"  This machine's copy had diverged from origin's. Its commits are kept on `{entry.KeptAs}`; the branch is origin's.";
+                    yield return "  Continue on it: do not cut a new branch, and push to it, so the pull request follows.";
+                    break;
+
+                case BranchKind.None:
+                    yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
+                    break;
+
+                case BranchKind.AlreadyMerged:
+                    yield return $"- {where}origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk. "
+                        + $"The tree is on the trunk at origin's tip; cut `{entry.Cut}`, which is not on origin.";
+                    break;
+
+                case BranchKind.Several:
+                    yield return $"- {where}origin has {entry.Candidates.Count} unmerged branches for this issue: "
+                        + string.Join(", ", entry.Candidates.Select(c => $"`{c}`"))
+                        + ". The tree is on the trunk. The answer under \"Decisions already made\" below says which to use.";
+                    break;
+
+                default:
+                    yield return $"- {where}the runner could not enter the issue's branch ({entry.Problem}). The tree is on the trunk.";
+                    break;
+            }
+        }
+
+        yield return "";
+    }
+
+    private static IEnumerable<string> Merge(BranchEntry entry)
+    {
+        switch (entry.Merge)
+        {
+            case MergeOutcome.NoOp:
+                yield return "The trunk is already in it: nothing was merged.";
+                break;
+
+            case MergeOutcome.Clean:
+                yield return $"The trunk was merged in cleanly and committed, so the branch is now at {entry.Head}. That merge is not pushed.";
+                break;
+
+            case MergeOutcome.Conflicted:
+                yield return "**The merge of the trunk is in progress and has conflicts.** Conflicted files:";
+                foreach (var file in entry.Conflicted) yield return $"  - {file}";
+                yield return "Resolve them and commit the merge before you do anything else.";
+                break;
+
+            case MergeOutcome.Failed:
+                yield return $"The trunk would not merge in ({entry.Problem}). Merge it yourself before you do anything else.";
+                break;
+        }
     }
 
     /// <summary>

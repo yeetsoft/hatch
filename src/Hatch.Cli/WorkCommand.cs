@@ -178,8 +178,13 @@ public sealed class WorkCommand(Runtime runtime)
         runtime.Say.Line($"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
+
+        // What the branch step would do, read from the refs as they stand - so
+        // as of the last fetch, and nothing here fetches, checks out or merges.
+        var plan = new Lifecycle(runtime).Plan(work, chosen);
+        foreach (var entry in plan) runtime.Say.Line($"# would enter: {entry.Sentence()}");
         runtime.Say.Line("");
-        runtime.Say.Lines(Prompt.Compose(work, chosen.Repositories).Split('\n'));
+        runtime.Say.Lines(Prompt.Compose(work, chosen.Repositories, plan).Split('\n'));
         return 0;
     }
 
@@ -331,15 +336,50 @@ public sealed class WorkCommand(Runtime runtime)
             model ??= work.Playbook?.Model ?? "";
             effort ??= work.Playbook?.Effort ?? "";
 
-            if (attach) return await AttachAsync(work, model, effort, claim, chosen, ct);
+            // The tree is made ready the way the loop makes it, and for the same
+            // reason: a session should not have to work out its own base. One
+            // difference - a tree with changes in it is refused rather than
+            // stashed, because somebody is sitting there and they are theirs.
+            foreach (var (path, baseBranch) in chosen.Resets)
+            {
+                switch (runtime.Workspace(path, baseBranch).Prepare(stash: false))
+                {
+                    case Reset.Never:
+                        return 1;
 
-            // Zero for an increment that happened, whatever the session exited
-            // with: the report is where "it went badly" is said, and a shell
-            // that treated a hard ticket as a broken command would be one more
-            // thing an operator has to work around.
-            await runtime.Increment().RunAsync(
-                work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories);
-            return 0;
+                    case Reset.Later:
+                        runtime.Say.Complain($"hatch: the workspace is not ready ({path}) - try again");
+                        return 1;
+                }
+            }
+
+            var lifecycle = new Lifecycle(runtime);
+            var entering = await lifecycle.EnterAsync(work, chosen, ct);
+            if (entering.Asked)
+            {
+                await lifecycle.LeaveAsync(work, chosen, ownsTicket: false, ct);
+                return 2;
+            }
+
+            var owned = true;
+            try
+            {
+                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, ct);
+
+                // Zero for an increment that happened, whatever the session exited
+                // with: the report is where "it went badly" is said, and a shell
+                // that treated a hard ticket as a broken command would be one more
+                // thing an operator has to work around.
+                var report = await runtime.Increment().RunAsync(
+                    work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries);
+                owned = !report.LostLease;
+                return 0;
+            }
+            finally
+            {
+                owned &= claim.Lost is null;
+                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None);
+            }
         }
         finally
         {
@@ -358,7 +398,8 @@ public sealed class WorkCommand(Runtime runtime)
     /// is not the heartbeat's call.
     /// </remarks>
     private async Task<int> AttachAsync(
-        WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen, CancellationToken ct)
+        WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen,
+        IReadOnlyList<BranchEntry> branches, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
         runtime.Say.Line($"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
@@ -366,7 +407,7 @@ public sealed class WorkCommand(Runtime runtime)
         runtime.Say.Line("");
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories), Quiet: false, chosen.AddDirs),
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches), Quiet: false, chosen.AddDirs),
             ct);
     }
 

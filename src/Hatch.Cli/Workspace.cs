@@ -23,7 +23,37 @@ public enum Reset
 /// </summary>
 public interface IWorkspace
 {
-    Reset Prepare();
+    /// <param name="stash">
+    /// Whether a dirty tree is stashed, which is what an unattended loop does,
+    /// or refused with a sentence naming the files, which is what a person
+    /// running one increment by hand is owed.
+    /// </param>
+    Reset Prepare(bool stash = true);
+
+    /// <summary>
+    /// Put the tree on the issue's branch on origin, with the trunk merged in -
+    /// or leave it on the trunk and say what the session is to cut. Called with
+    /// the tree already on the trunk.
+    /// </summary>
+    /// <param name="answer">A person's answer to which of several branches to use, if one has been given.</param>
+    BranchEntry Enter(string key, string title, string? answer);
+
+    /// <summary>What <see cref="Enter"/> would do, read from the refs as they stand. Changes nothing, and fetches nothing.</summary>
+    BranchEntry Plan(string key, string title, string? answer);
+
+    /// <summary>
+    /// Leave the tree the way the next increment expects to find it: nothing
+    /// half-done, nothing uncommitted, on the trunk - with what was found
+    /// along the way said as lines for the ticket.
+    /// </summary>
+    /// <param name="syncPullRequest">The issue has a pull request, so its branch on origin is brought up to date with the trunk.</param>
+    Leaving Leave(string key, bool syncPullRequest);
+
+    /// <summary>
+    /// Back on the trunk and nothing else - what an increment whose lease went
+    /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
+    /// </summary>
+    void Return();
 }
 
 /// <summary>
@@ -50,7 +80,7 @@ public interface IWorkspace
 /// is still something to count, with the reflog holding the commits
 /// themselves.</para>
 /// </remarks>
-public sealed class Workspace(string root, string? configuredBase, Action<string> say, Action<string> complain)
+public sealed partial class Workspace(string root, string? configuredBase, Action<string> say, Action<string> complain)
     : IWorkspace
 {
     /// <summary>
@@ -103,7 +133,7 @@ public sealed class Workspace(string root, string? configuredBase, Action<string
     }
 
     /// <summary>Put the tree on the trunk, at the remote's tip.</summary>
-    public Reset Prepare()
+    public Reset Prepare(bool stash = true)
     {
         if (!Git("rev-parse", "--git-dir").Ok)
         {
@@ -141,7 +171,13 @@ public sealed class Workspace(string root, string? configuredBase, Action<string
             return Reset.Never;
         }
 
-        if (!Stash()) return Reset.Never;
+        // Before the tree is looked at for changes: a merge left half-done
+        // shows up there as a wall of conflicted files, and is not something a
+        // stash can take. The runner's own is taken back; anybody else's is not
+        // the runner's to abort.
+        if (!SettleMerge()) return Reset.Never;
+
+        if (!(stash ? Stash() : Refuse())) return Reset.Never;
 
         if (Git("rev-parse", "--verify", "--quiet", $"refs/heads/{trunk}").Ok)
         {
@@ -173,6 +209,76 @@ public sealed class Workspace(string root, string? configuredBase, Action<string
         PruneGone(trunk);
 
         return Reset.Ready;
+    }
+
+    /// <summary>
+    /// The refusal a person is owed instead of a stash: they are sitting there,
+    /// and the changes in the tree are theirs to look at.
+    /// </summary>
+    private bool Refuse()
+    {
+        var dirty = Git("status", "--porcelain");
+        if (!dirty.Ok || dirty.Out.Trim().Length == 0) return true;
+
+        var files = dirty.Out.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Length > 3 ? l[3..] : l).ToList();
+        var named = string.Join(", ", files.Take(5));
+        if (files.Count > 5) named += $", and {files.Count - 5} more";
+
+        complain($"hatch: the tree has changes in it ({named}) - commit or stash them first; this is not stashing them for you");
+        return false;
+    }
+
+    /// <summary>
+    /// A merge in progress, and whether it is the runner's: it wrote a marker
+    /// before it started one, so a merge that is there with the marker was
+    /// interrupted, and one that is there without was somebody's.
+    /// </summary>
+    /// <remarks>
+    /// The marker is cleared whenever no merge is in progress, so one that
+    /// outlived its merge - the session resolved it and committed - does not
+    /// make a later merge by a person look like the runner's.
+    /// </remarks>
+    private bool SettleMerge()
+    {
+        var marker = MarkerPath();
+        var merging = MergeInProgress();
+
+        if (!merging)
+        {
+            if (marker is not null && File.Exists(marker)) File.Delete(marker);
+            return true;
+        }
+
+        if (marker is null || !File.Exists(marker))
+        {
+            complain("hatch: a merge is in progress in the tree and hatch did not start it - finish it or abort it by hand");
+            return false;
+        }
+
+        if (!Git("merge", "--abort").Ok)
+        {
+            complain("hatch: a merge the loop started was never finished, and would not abort - abort it by hand");
+            return false;
+        }
+
+        File.Delete(marker);
+        say("hatch:   aborted a merge the loop started and never finished");
+        return true;
+    }
+
+    private bool MergeInProgress() => GitPath("MERGE_HEAD") is { } head && File.Exists(head);
+
+    private string? MarkerPath() => GitPath("hatch-merge");
+
+    /// <summary>A file under the git directory - which is not <c>.git</c> in a worktree or a submodule.</summary>
+    private string? GitPath(string name)
+    {
+        var path = Git("rev-parse", "--git-path", name);
+        if (!path.Ok) return null;
+
+        var text = path.Out.Trim();
+        return text.Length == 0 ? null : System.IO.Path.GetFullPath(text, root);
     }
 
     /// <summary>
@@ -258,7 +364,13 @@ public sealed class Workspace(string root, string? configuredBase, Action<string
         }
     }
 
-    private readonly record struct Ran(bool Ok, string Out);
+    private readonly record struct Ran(int Code, string Out, string Err)
+    {
+        public bool Ok => Code == 0;
+
+        /// <summary>What git complained of, first line, for a sentence that is not a transcript.</summary>
+        public string Why => Err.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+    }
 
     private Ran Git(params string[] args)
     {
@@ -275,16 +387,18 @@ public sealed class Workspace(string root, string? configuredBase, Action<string
         try
         {
             using var process = Process.Start(start);
-            if (process is null) return new Ran(false, "");
+            if (process is null) return new Ran(-1, "", "");
 
+            // Both at once: a command with more to say on stderr than a pipe
+            // holds would otherwise wait for a reader that is busy on stdout.
+            var stderr = process.StandardError.ReadToEndAsync();
             var stdout = process.StandardOutput.ReadToEnd();
-            process.StandardError.ReadToEnd();
             process.WaitForExit();
-            return new Ran(process.ExitCode == 0, stdout);
+            return new Ran(process.ExitCode, stdout, stderr.GetAwaiter().GetResult());
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return new Ran(false, "");
+            return new Ran(-1, "", "");
         }
     }
 }
