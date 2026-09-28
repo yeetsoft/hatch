@@ -815,7 +815,8 @@ public class WorkController(
                     ? (await MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
                     : []),
             IssueUrl(issueDto.Key),
-            KindOf(from, to));
+            KindOf(from, to),
+            await IssueMessagesController.UnreadAsync(db, issue.Id, ct));
     }
 
     /// <summary>

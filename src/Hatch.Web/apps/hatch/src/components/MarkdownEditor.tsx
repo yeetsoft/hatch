@@ -1,122 +1,104 @@
-/* A box for writing markdown in: VS Code's editor where there is a pointer to
-   use it, the plain <textarea> everywhere else.
+/* The box prose is written in.
 
-   Two bodies, one component. `PlainEditor` is exactly the box this replaced -
-   a <textarea> that grows with its text - and is what a touch screen gets for
-   good (Monaco does not support touch browsers) and what everybody else has
-   until the editor's chunk has arrived. `MonacoEditor` is the editor, in the
-   house tokens. The value is the caller's state, so the text carries across
-   the swap on its own; what would not is the caret, so the swap carries that.
+   A drop-in for the `<textarea>` at each place a person writes markdown: VS
+   Code's own editor (Monaco) - several cursors, select-next-occurrence, move and
+   copy lines, find and replace, markdown highlighting - dressed in the house
+   tokens so it reads as a Hatch field that happens to be powerful.
 
-   Loading is what keeps a page no heavier than it was. The editor is
-   `lib/monaco.ts`, and this is the one place that reaches it, with a dynamic
-   import that Vite cuts into its own chunk. By default it is requested on
-   mount - right for a box somebody opens with a gesture (Edit, New issue). A box
-   that is already on the page when it loads passes `deferred`, and the request
-   waits for the first focus or pointer over its plain box, so the page pays
-   nothing until somebody reaches for it. A request from `focus` lands mid-typing,
-   which is what the caret carry-over is for.
+   TWO BODIES, ONE COMPONENT. `PlainEditor` is today's textarea, and it is what
+   is shown on a touch screen (Monaco does not support touch browsers) and until
+   Monaco's chunk has arrived. `MonacoEditor` takes over when it has. The value
+   is the caller's state, so the text carries across the swap; the caret and
+   focus are carried too, because a box that is on the page when it loads
+   requests the chunk from its first `focus`, which lands mid-typing.
 
-   Lives here and not in @hatch/ui: the ui barrel pulls every component's CSS
-   into every app, and only this app writes prose. */
+   LOADING. Monaco is a few megabytes and most pages have no editor on them, so
+   it is a chunk of its own (lib/monaco.ts is the only importer) and this file
+   reaches it with a dynamic `import()`. By default it is asked for on mount,
+   which is right for a box opened by a gesture - Edit, New issue, a row's
+   Prompt. A box that is already there when the page loads passes `deferred`,
+   and asks on the first `focus` or `pointerenter` instead, so the issue page
+   pays nothing until somebody reaches for the comment box.
 
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+   It is in apps/hatch and not @hatch/ui: the ui barrel pulls every component's
+   CSS into every app, and only this app writes prose. */
+
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import { useTheme } from '@hatch/ui';
-import type { editor } from 'monaco-editor/editor/editor.api';
-import { editorTheme, readTokens } from '../lib/editorTheme';
+import { clientLogger } from '../lib/clientLogger';
+import { normalizeEol } from '../lib/text';
 import { clampedHeight, parseCeiling, useAutoGrow } from '../lib/useAutoGrow';
+
+type MonacoModule = typeof import('../lib/monaco');
+
+/** Kept once it has arrived, so the second editor on a page - or the same one
+    reopened - starts as an editor and does not flash the textarea first. */
+let loaded: MonacoModule | null = null;
+let loading: Promise<MonacoModule> | null = null;
+
+function loadMonaco(): Promise<MonacoModule> {
+  loading ??= import('../lib/monaco').then((m) => (loaded = m));
+  // A failed fetch must be retryable: the next box to ask starts over.
+  loading.catch(() => (loading = null));
+  return loading;
+}
+
+/** Where the caret was in the textarea a Monaco editor replaces. */
+interface Handoff {
+  focused: boolean;
+  start: number;
+  end: number;
+}
+
+interface PlainHandle {
+  capture(): Handoff | null;
+}
 
 export interface MarkdownEditorProps {
   value: string;
   onChange: (next: string) => void;
   /** The height it opens at, and the floor it never goes back under. */
   rows: number;
-  /** The ceiling, as it was on the textarea: a class whose `max-height` is the
-      most the box grows to. Lands on the host, so the max-height is the host's. */
+  /** Where the ceiling comes from: its `max-height` bounds how far it grows. */
   className?: string;
-  /** Shown while empty. */
   placeholder?: string;
-  /** What a screen reader calls it. Where the box sits in a `Field` this is the
-      field's label text, and the `Field` is rendered `as="div"` - see
-      `focusOnLabelClick`. */
+  /** What a screen reader calls it. Inside a `Field`, that field's label text. */
   ariaLabel: string;
-  /** The box is on the page from the start rather than opened by a gesture:
-      fetch the editor when it is first focused or pointed at, not before. */
+  /** The box is on the page when it loads: ask for the editor only once it is
+      focused or pointed at. */
   deferred?: boolean;
 }
 
-type MonacoModule = typeof import('../lib/monaco');
-
-// One request for the whole page: the module is evaluated once, and every
-// editor after the first mounts straight into it.
-let loading: Promise<MonacoModule> | null = null;
-let loaded: MonacoModule | null = null;
-
-function loadMonaco(): Promise<MonacoModule> {
-  loading ??= import('../lib/monaco').then(
-    (m) => (loaded = m),
-    (err) => {
-      // A chunk that would not arrive is asked for again next time, not cached.
-      loading = null;
-      throw err;
-    },
-  );
-  return loading;
-}
-
-const isCoarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-
-/** Where a caret was in the box that is being swapped out. */
-interface Carry {
-  focused: boolean;
-  start: number;
-  end: number;
-}
-
-/**
- * Focuses the box when its `Field`'s label is clicked. A <label> chooses its
- * control as the first labelable descendant, and Monaco has none it can be
- * relied on to choose - the answer differs by browser - so a site renders its
- * `Field` `as="div"` and this does the association. It reaches into `Field`'s
- * class names: the one coupling to @hatch/ui's markup.
- */
-function focusOnLabelClick(from: HTMLElement, focus: () => void): () => void {
-  const label = from.closest('.hatch-field__control')?.querySelector('.hatch-field__label');
-  label?.addEventListener('click', focus);
-  return () => label?.removeEventListener('click', focus);
-}
-
 export function MarkdownEditor(props: MarkdownEditorProps) {
-  const [coarse] = useState(isCoarse);
-  const [wanted, setWanted] = useState(!props.deferred);
-  // The editor once it is there, and the caret of the box it replaced.
-  const [ready, setReady] = useState<{ monaco: MonacoModule; from: Carry | null } | null>(
-    !coarse && loaded ? { monaco: loaded, from: null } : null,
+  // Decided once per mount. A tablet with a trackpad reports a coarse primary
+  // pointer and gets the textarea too - said in HA-56, not a bug.
+  const [coarse] = useState(() => window.matchMedia('(pointer: coarse)').matches);
+  const [ready, setReady] = useState<{ monaco: MonacoModule; handoff: Handoff | null } | null>(() =>
+    !coarse && loaded ? { monaco: loaded, handoff: null } : null,
   );
-  const plain = useRef<HTMLTextAreaElement>(null);
+  const [wanted, setWanted] = useState(!props.deferred);
+  const plain = useRef<PlainHandle>(null);
 
   useEffect(() => {
     if (coarse || !wanted || ready) return;
-    let alive = true;
+    let live = true;
     loadMonaco().then(
       (monaco) => {
-        if (!alive) return;
-        const el = plain.current;
-        const from = el && { focused: document.activeElement === el, start: el.selectionStart, end: el.selectionEnd };
-        setReady({ monaco, from });
+        if (live) setReady({ monaco, handoff: plain.current?.capture() ?? null });
       },
-      // Not arriving leaves the plain box, which still writes the same value.
-      () => {},
+      // The textarea it is still showing works; say why it never changed.
+      (e: unknown) => clientLogger.error('The editor failed to load', { message: String(e) }),
     );
     return () => {
-      alive = false;
+      live = false;
     };
   }, [coarse, wanted, ready]);
 
-  if (ready) return <MonacoEditor {...props} monaco={ready.monaco} from={ready.from} />;
-  return <PlainEditor {...props} ref={plain} onWant={coarse ? undefined : () => setWanted(true)} />;
+  if (!ready) return <PlainEditor {...props} handle={plain} onWanted={() => setWanted(true)} />;
+  return <MonacoEditor {...props} monaco={ready.monaco} handoff={ready.handoff} />;
 }
 
+/** Today's textarea, exactly. */
 function PlainEditor({
   value,
   onChange,
@@ -124,127 +106,133 @@ function PlainEditor({
   className,
   placeholder,
   ariaLabel,
-  ref,
-  onWant,
-}: MarkdownEditorProps & {
-  /** The textarea, for the parent to read its caret from at the swap. */
-  ref: Ref<HTMLTextAreaElement>;
-  /** Somebody reached for the box: the first focus or pointer over it. */
-  onWant?: () => void;
-}) {
-  const grow = useAutoGrow(value);
-  useImperativeHandle(ref, () => grow.current as HTMLTextAreaElement, [grow]);
+  handle,
+  onWanted,
+}: MarkdownEditorProps & { handle: Ref<PlainHandle>; onWanted: () => void }) {
+  const ref = useAutoGrow(value);
+  useFocusFromLabel(ref, () => ref.current?.focus());
 
-  useEffect(() => {
-    const el = grow.current;
-    return el ? focusOnLabelClick(el, () => el.focus()) : undefined;
-  }, [grow]);
+  // What the parent asks for at the moment the editor arrives: where the caret
+  // is in this box, so the one that replaces it can put it back.
+  useImperativeHandle(handle, () => ({
+    capture() {
+      const el = ref.current;
+      return el ? { focused: document.activeElement === el, start: el.selectionStart, end: el.selectionEnd } : null;
+    },
+  }));
 
   return (
     <textarea
-      ref={grow}
+      ref={ref}
       className={`hatch-description-editor${className ? ` ${className}` : ''}`}
       rows={rows}
       value={value}
       placeholder={placeholder}
       aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.value)}
-      onFocus={onWant}
-      onPointerEnter={onWant}
+      onFocus={onWanted}
+      onPointerEnter={onWanted}
     />
   );
 }
 
-/** Monaco reads text with `\n`, and so does this: a stored description with
-    `\r\n` must not differ from the draft made of it before a key is pressed. */
-const lf = (text: string) => text.replace(/\r\n?/g, '\n');
-
-// Named once per appearance and defined once. `setTheme` returns early when the
-// theme object is the one it already has, so recolouring is switching between
-// two names, not redefining one.
-const definedThemes = new Set<string>();
-
-function applyTheme(monaco: MonacoModule, resolved: 'light' | 'dark') {
-  const name = `hatch-${resolved}`;
-  if (!definedThemes.has(name)) {
-    const tokens = readTokens(getComputedStyle(document.documentElement));
-    monaco.editor.defineTheme(name, editorTheme(tokens, resolved === 'dark'));
-    definedThemes.add(name);
-  }
-  // Global to the page: every open editor follows.
-  monaco.editor.setTheme(name);
+/**
+ * A click on the field's label puts the caret in the editor.
+ *
+ * Sites render their `Field` with `as="div"`, so there is no `<label>` to do
+ * this: a `<label>` picks the first *labelable* descendant, which under Chromium
+ * is not Monaco's EditContext `<div>` and under Firefox and Safari is Monaco's
+ * 1px input area - a different control per browser. So the browser is taken out
+ * of it. This reaches into `Field`'s own class names (`packages/ui`'s Field.tsx),
+ * the one coupling to that markup; where there is no `Field` there is no label
+ * to click and this does nothing.
+ */
+function useFocusFromLabel(el: RefObject<HTMLElement | null>, focus: () => void) {
+  const latest = useRef(focus);
+  useEffect(() => {
+    latest.current = focus;
+  });
+  useEffect(() => {
+    const label = el.current?.closest('.hatch-field__control')?.querySelector('.hatch-field__label');
+    if (!label) return;
+    const onClick = () => latest.current();
+    label.addEventListener('click', onClick);
+    return () => label.removeEventListener('click', onClick);
+  }, [el]);
 }
 
-const px = (value: string) => {
-  const n = parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
+const px = (custom: string, fallback: number) => {
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(custom));
+  return Number.isFinite(n) ? n : fallback;
 };
 
 function MonacoEditor({
   monaco,
-  from,
+  handoff,
   value,
   onChange,
   rows,
   className,
   placeholder,
   ariaLabel,
-}: MarkdownEditorProps & { monaco: MonacoModule; from: Carry | null }) {
-  const { resolved } = useTheme();
+}: MarkdownEditorProps & { monaco: MonacoModule; handoff: Handoff | null }) {
   const host = useRef<HTMLDivElement>(null);
-  const instance = useRef<{ editor: editor.IStandaloneCodeEditor; model: editor.ITextModel } | null>(null);
-  // The subscription is made once, so it reads what is current through these.
-  const onChangeRef = useRef(onChange);
-  const rowsRef = useRef(rows);
+  const editorRef = useRef<ReturnType<MonacoModule['editor']['create']> | null>(null);
+  const modelRef = useRef<ReturnType<MonacoModule['editor']['createModel']> | null>(null);
   const applying = useRef(false);
-  // What the editor opens on. Read once, by the effect that creates it: after
-  // that `value` is applied by its own effect, and the rest is options.
-  const opening = useRef({ value, placeholder, ariaLabel });
-
+  const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
-    rowsRef.current = rows;
   });
+  const { resolved } = useTheme();
 
-  // Re-themed in a passive effect, which is what makes the tokens it reads
-  // current: ThemeProvider writes <html data-theme> in a layout effect, and
-  // every layout effect in a commit runs before any passive one. Declared before
-  // the mount effect so an editor is created in the theme already on screen.
-  useEffect(() => applyTheme(monaco, resolved), [monaco, resolved]);
+  const { EndOfLinePreference, EditorOption } = monaco.editor;
 
-  useEffect(() => {
+  // Re-colours an open editor when the theme flips. Passive, on purpose:
+  // ThemeProvider writes `<html data-theme>` in a layout effect, and every layout
+  // effect in a commit runs before any passive one - so the tokens read here are
+  // the new theme's. A layout effect would read the old ones. (The first colouring
+  // is done below, before the editor exists; there the tokens are long settled.)
+  useEffect(() => monaco.applyTheme(resolved), [monaco, resolved]);
+
+  useFocusFromLabel(host, () => editorRef.current?.focus());
+
+  // rows, ariaLabel, placeholder and the initial value are read once: a site that
+  // changed the first three on a live editor would be a new feature, and none
+  // does.
+  useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
-
-    // Font and size come from the host's CSS rather than from parsing tokens:
-    // a computed value is px whatever unit the token is written in.
     const style = getComputedStyle(el);
-    const fontSize = px(style.fontSize);
-    const lineHeight = px(style.lineHeight);
-    const padY = px(style.getPropertyValue('--sp-2'));
-    const padX = px(style.getPropertyValue('--sp-3'));
-    const chrome = el.offsetHeight - el.clientHeight;
+    const lineHeight = parseFloat(style.lineHeight);
+    const padding = px('--sp-2', 8);
+    const chrome = el.offsetHeight - el.clientHeight || 2;
 
-    // Monaco lays out against the host's size when it is created, and an
-    // element holding only an absolutely-positioned child has none.
-    el.style.height = `${rowsRef.current * (lineHeight || fontSize * 1.5) + 2 * padY + chrome}px`;
+    // A box with no height has no width to wrap to; open at the floor and let
+    // the content size say the rest.
+    el.style.height = `${rows * (Number.isFinite(lineHeight) ? lineHeight : 21) + 2 * padding + chrome}px`;
 
-    const model = monaco.editor.createModel(lf(opening.current.value), 'markdown');
-    const code = monaco.editor.create(el, {
+    // A model of our own, created from the LF form: line endings are the
+    // stored text's business and never the editor's.
+    monaco.applyTheme(resolved);
+    const model = monaco.editor.createModel(normalizeEol(value), 'markdown');
+    const editor = monaco.editor.create(el, {
       model,
       automaticLayout: true,
       fontFamily: style.fontFamily,
-      fontSize,
-      lineHeight,
-      padding: { top: padY, bottom: padY },
-      lineDecorationsWidth: padX,
-      lineNumbersMinChars: 0,
+      fontSize: parseFloat(style.fontSize),
+      lineHeight: Number.isFinite(lineHeight) ? lineHeight : 0,
+      minimap: { enabled: false },
       lineNumbers: 'off',
       glyphMargin: false,
       folding: false,
-      minimap: { enabled: false },
+      // The room a field's text has from its border, which a gutter of
+      // decorations would otherwise be.
+      lineDecorationsWidth: px('--sp-3', 12),
+      lineNumbersMinChars: 0,
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,
+      overviewRulerBorder: false,
       renderLineHighlight: 'none',
       wordWrap: 'on',
       scrollBeyondLastLine: false,
@@ -258,74 +246,71 @@ function MonacoEditor({
       bracketPairColorization: { enabled: false },
       unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
       contextmenu: false,
-      // A three-row box is shorter than the find widget; this makes room.
+      padding: { top: padding, bottom: padding },
+      // A three-row box is shorter than the find widget; this makes room for it.
       find: { addExtraSpaceOnTop: true },
-      placeholder: opening.current.placeholder,
-      ariaLabel: opening.current.ariaLabel,
+      placeholder,
+      ariaLabel,
     });
-    instance.current = { editor: code, model };
+    editorRef.current = editor;
+    modelRef.current = model;
 
-    // Grows with the text between the height it opened at and the ceiling its
-    // place has, then scrolls inside itself. `max-height` is the host's, and CSS
-    // holds it even where the computed value is a calc() that cannot be read as
-    // px here - the ceiling read is an optimisation of that, not the guarantee.
-    const fit = () => {
-      const ceiling = parseCeiling(getComputedStyle(el).maxHeight);
-      const floor = rowsRef.current * code.getOption(monaco.editor.EditorOption.lineHeight) + 2 * padY + chrome;
-      el.style.height = `${clampedHeight(floor, ceiling, code.getContentHeight(), chrome)}px`;
-    };
-    fit();
-
-    const subscriptions = [
-      code.onDidContentSizeChange(fit),
-      code.onDidChangeModelContent(() => {
-        if (!applying.current) onChangeRef.current(model.getValue());
-      }),
-    ];
-    const unlisten = focusOnLabelClick(el, () => code.focus());
-
-    // Somebody who began typing in the plain box keeps their caret.
-    if (from) {
-      const start = model.getPositionAt(from.start);
-      const end = model.getPositionAt(from.end);
-      code.setSelection({
-        selectionStartLineNumber: start.lineNumber,
-        selectionStartColumn: start.column,
-        positionLineNumber: end.lineNumber,
-        positionColumn: end.column,
+    // Carry the caret over from the textarea this replaces.
+    if (handoff) {
+      const a = model.getPositionAt(handoff.start);
+      const b = model.getPositionAt(handoff.end);
+      editor.setSelection({
+        selectionStartLineNumber: a.lineNumber,
+        selectionStartColumn: a.column,
+        positionLineNumber: b.lineNumber,
+        positionColumn: b.column,
       });
-      if (from.focused) code.focus();
+      if (handoff.focused) editor.focus();
     }
 
-    return () => {
-      unlisten();
-      for (const s of subscriptions) s.dispose();
-      code.dispose();
-      model.dispose();
-      instance.current = null;
-      el.style.height = '';
+    const fit = () => {
+      const floor = rows * editor.getOption(EditorOption.lineHeight) + 2 * padding + chrome;
+      const ceiling = parseCeiling(getComputedStyle(el).maxHeight);
+      el.style.height = `${clampedHeight(floor, ceiling, editor.getContentHeight(), chrome)}px`;
     };
-    // Made once per mount: everything that changes after is applied by the
-    // effects below.
-  }, [monaco, from]);
+    fit();
+    const sized = editor.onDidContentSizeChange(fit);
+    // The ceiling is written against the screen; `automaticLayout` watches the
+    // box and not the viewport.
+    window.addEventListener('resize', fit);
 
-  // A new `value` - a save landing, a send emptying the box, a Revert - goes in
-  // behind the flag, so it is not reported back as if it had been typed.
+    const changed = model.onDidChangeContent(() => {
+      if (applying.current) return;
+      onChangeRef.current(model.getValue(EndOfLinePreference.LF));
+    });
+
+    return () => {
+      window.removeEventListener('resize', fit);
+      changed.dispose();
+      sized.dispose();
+      editor.dispose();
+      model.dispose();
+      editorRef.current = null;
+      modelRef.current = null;
+    };
+    // Once per mount, on purpose: see the note above the effect.
+  }, []);
+
+  // A value the editor did not write itself - a save landing, a send emptying
+  // the box, Revert - goes in behind `applying`, so it is not echoed back as an
+  // edit. Compared as LF, so line endings alone never count as a change.
   useEffect(() => {
-    const open = instance.current;
-    const next = lf(value);
-    if (!open || open.model.getValue() === next) return;
+    const model = modelRef.current;
+    if (!model) return;
+    const next = normalizeEol(value);
+    if (next === model.getValue(EndOfLinePreference.LF)) return;
     applying.current = true;
     try {
-      open.model.setValue(next);
+      model.setValue(next);
     } finally {
       applying.current = false;
     }
-  }, [value]);
-
-  useEffect(() => {
-    instance.current?.editor.updateOptions({ placeholder, ariaLabel });
-  }, [placeholder, ariaLabel]);
+  }, [value, EndOfLinePreference]);
 
   return <div ref={host} className={`hatch-md-editor${className ? ` ${className}` : ''}`} />;
 }

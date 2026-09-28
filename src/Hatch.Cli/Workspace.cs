@@ -101,9 +101,17 @@ public interface IWorkspace
 /// is still something to count, with the reflog holding the commits
 /// themselves.</para>
 /// </remarks>
-public sealed partial class Workspace(string root, string? configuredBase, Action<string> say, Action<string> complain)
+/// <param name="git">
+/// How git is run, where something other than a process apiece is wanted - a
+/// test host that is slow to fork, chiefly. Null, which is every runner, spawns.
+/// </param>
+public sealed partial class Workspace(
+    string root, string? configuredBase, Action<string> say, Action<string> complain, Workspace.GitRunner? git = null)
     : IWorkspace
 {
+    /// <summary>Git in a directory: its exit code, standard output and standard error.</summary>
+    public delegate (int Code, string Out, string Err) GitRunner(string dir, string[] args);
+
     /// <summary>
     /// What a branch is cut from, and the one thing about it that cannot be
     /// written down in this repository: a repository's trunk is called whatever
@@ -395,6 +403,12 @@ public sealed partial class Workspace(string root, string? configuredBase, Actio
 
     private Ran Git(params string[] args)
     {
+        if (git is not null)
+        {
+            var (code, stdout, stderr) = git(root, args);
+            return new Ran(code, stdout, stderr);
+        }
+
         var start = new ProcessStartInfo
         {
             FileName = "git",

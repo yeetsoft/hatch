@@ -30,16 +30,17 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             // Oldest first: a comment thread is read downwards.
             .OrderBy(c => c.CreatedAt)
             .ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt })
+            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt, c.DeliveredAt, c.DeliveredTo })
             .ToListAsync(ct);
 
         return comments
-            .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt))
+            .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt, c.DeliveredAt, c.DeliveredTo))
             .ToList();
     }
 
     /// <summary>
-    /// Say something on the issue - a note, a question, or the answer to one.
+    /// Say something on the issue - a note, a question, the answer to one, or a
+    /// message to whichever session is working it.
     /// </summary>
     /// <remarks>
     /// Nothing here refuses an API key an answer, and that is a deliberate gap
@@ -66,7 +67,7 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
 
         var kind = request.Kind?.Trim() ?? EfHatchComment.Note;
         if (!EfHatchComment.IsValidKind(kind))
-            return BadRequest($"\"{kind}\" is not a kind of comment - it is \"{EfHatchComment.Question}\", \"{EfHatchComment.Answer}\", or nothing at all");
+            return BadRequest($"\"{kind}\" is not a kind of comment - it is \"{EfHatchComment.Question}\", \"{EfHatchComment.Answer}\", \"{EfHatchComment.Message}\", or nothing at all");
 
         // An answer names its question; nothing else may. Checked rather than
         // ignored, because a client that sent both a note and an answersId has
@@ -125,6 +126,7 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             {
                 EfHatchComment.Question => EfHatchIssueEvent.Asked,
                 EfHatchComment.Answer => EfHatchIssueEvent.Answered,
+                EfHatchComment.Message => EfHatchIssueEvent.Messaged,
                 _ => EfHatchIssueEvent.Commented,
             },
             Payload = kind == EfHatchComment.Answer

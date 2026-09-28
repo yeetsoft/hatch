@@ -110,9 +110,54 @@ public static class Prompt
             lines.Add("");
         }
 
+        // What was said to the agent on this ticket while nobody was working
+        // it. A message sent mid-run reaches that run by its hooks; one that
+        // nothing read is carried here instead, so it is neither lost nor
+        // delivered twice - the runner marks exactly these read as it spawns.
+        if (work.Messages is { Count: > 0 } said)
+        {
+            lines.Add("## Said to you since the last session");
+            lines.Add("");
+
+            for (var i = 0; i < said.Count; i++)
+            {
+                if (i > 0)
+                {
+                    lines.Add("");
+                    lines.Add("---");
+                    lines.Add("");
+                }
+
+                lines.Add(Message(key, said[i], whileWorking: false));
+            }
+
+            lines.Add("");
+        }
+
         lines.AddRange(Tail(key, to, work.IssueUrl, repositories));
         return string.Join('\n', lines);
     }
+
+    /// <summary>
+    /// One message to the agent, in the words both ways of delivering it use:
+    /// the hook that puts it in front of a running session, and the prompt that
+    /// carries it into the next. One method, so the two cannot come to say
+    /// different things.
+    /// </summary>
+    /// <remarks>
+    /// The last sentence is there because nothing structural can prove a model
+    /// acted on what it was handed. Asking it to say so on the ticket is the
+    /// nearest a person watching the ticket gets to knowing.
+    /// </remarks>
+    public static string Message(string key, CommentDto message, bool whileWorking) =>
+        string.Join('\n',
+            $"{message.Author} sent this to you on {key} at {Format.Stamp(message.CreatedAt)}" +
+                (whileWorking ? ", while you were working:" : ", after the last session on it ended:"),
+            "",
+            message.Body.ReplaceLineEndings("\n"),
+            "",
+            "It was sent to change what you are doing now. Apply it, and if it changes your plan," +
+                $" say so on the ticket (hatch comment {key} \"...\").");
 
     /// <summary>
     /// The facts of the conflict the playbook is about: the branch and the trunk

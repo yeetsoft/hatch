@@ -12,6 +12,8 @@ const comment = (kind: CommentKind, body: string, answersId: number | null = nul
   answersId,
   options: null,
   createdAt: '2026-09-05T00:00:00Z',
+  deliveredAt: null,
+  deliveredTo: null,
 });
 
 describe('threadQuestions', () => {

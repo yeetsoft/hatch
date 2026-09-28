@@ -1,34 +1,32 @@
-/* The editor's code, and the only file that imports it.
+/* Monaco, and only as much of it as a markdown box needs.
 
-   Nothing else may import `monaco-editor` - not statically, not with
-   `import()` - because this module is the seam Vite cuts the chunk along:
-   `MarkdownEditor` reaches it with `import('../lib/monaco')`, and that is what
-   keeps a few megabytes of script off every page that has no editor on it. A
-   second importer drags Monaco into whatever chunk it lives in. `oxlint` will
-   not catch that; this header is the whole of the rule. (A type-only import, as
-   `editorTheme.ts` has, is erased and is fine.)
+   THIS IS THE ONLY MODULE THAT MAY IMPORT `monaco-editor`, and it is only ever
+   reached as `import('../lib/monaco')` from components/MarkdownEditor.tsx. That
+   dynamic import is what makes Vite give the editor a chunk of its own, so a
+   page that has no editor on it never downloads one (HA-56, criterion 14). A
+   second importer - static, or dynamic from somewhere else - would drag the
+   editor into whatever chunk it sits in. Nothing enforces this: oxlint has no
+   rule for it, so it is said here. (`import type` is fine; it is erased.)
 
-   Why these paths and not `import 'monaco-editor'`. The bare import is
-   `editor.main`, which registers ~80 languages, the TypeScript, CSS, HTML and
-   JSON services and a language-server client - all of it for a box that writes
-   markdown. So this takes the core (`editor.api`) and adds, one by one, the
-   contributions a prose editor uses. What is *not* registered is as deliberate
-   as what is: `suggest`, `hover`, `codeAction`, `links`, `unicodeHighlighter`,
-   `wordHighlighter`, `bracketMatching`, `contextmenu` and `comment`. Most of
-   "nothing pops up while typing prose" is that omission; the options at the
-   call site are belt and braces.
+   Not the bare `monaco-editor`: its entry registers ~80 languages, the
+   TypeScript, CSS, HTML and JSON services and a language-server client, none of
+   which a comment box wants. `editor.api` is the core with no contributions,
+   and each `features/<name>/register` below opts one back in. What is left out is
+   most of "nothing pops up while typing prose" (criterion 4): no suggest, hover,
+   code action, links, unicode highlighting, word highlighting, bracket matching,
+   context menu or comment toggling.
 
-   Why the version is exact. `features/<name>/register` and
-   `languages/definitions/<name>/register` are not a documented API and have
-   moved between minors. `package.json` pins `0.57.0` with no caret so that an
-   install cannot quietly move them; a bump is a change to read the tarball for.
+   THE VERSION IS PINNED EXACTLY in package.json, no caret, for this file's sake.
+   `features/<name>/register` and `languages/definitions/<name>` are reached through the
+   package's `./*` export map, not through a documented API, and they have moved
+   between minors. An upgrade is a decision, made with this list in front of it.
 
-   Why the worker is imported here and not fetched. `?worker` makes Vite emit it
-   under `assets/` and serve it from Hatch's own origin. The loader that
-   `@monaco-editor/react` uses fetches Monaco from a CDN, which is the
-   third-party dependency the house declines for its own font (tokens.css §1);
-   with the WAN down, every editor still opens. The find widget's icons are a
-   font emitted the same way, from the CSS that `codicon/register` imports. */
+   Nothing comes from another host. The worker is bundled by Vite (`?worker`)
+   and served from Hatch's own origin, and the find widget's icons are a font
+   that only `features/codicon/register` pulls in - so with the WAN down and the
+   LAN up, the editor still opens, highlighted, with its icons (criterion 13).
+   `@monaco-editor/react` is not used for the opposite reason: its loader fetches
+   Monaco from a CDN by default. */
 
 import 'monaco-editor/features/multicursor/register';
 import 'monaco-editor/features/find/register';
@@ -43,7 +41,34 @@ import 'monaco-editor/features/toggleTabFocusMode/register';
 import 'monaco-editor/features/codicon/register';
 import 'monaco-editor/languages/definitions/markdown/register';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+import { editor } from 'monaco-editor/editor/editor.api';
+import { EDITOR_TOKEN_NAMES, editorTheme, type EditorTokens } from './editorTheme';
 
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+globalThis.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
-export { editor } from 'monaco-editor/editor/editor.api';
+/* Applied once per resolved theme, and never redefined: `setTheme` returns
+   early when handed the theme *object* it already has, so re-colouring is a
+   second name, not a second definition of the first. It lives here, and not in
+   the component, so the theme's mapping travels in this chunk rather than in
+   every page's. */
+const defined = new Set<string>();
+
+/**
+ * Colours every open editor in the house palette for `resolved`, reading the
+ * tokens off the page at the moment of the call - so the caller must be at a
+ * point where `<html data-theme>` is current.
+ */
+export function applyTheme(resolved: 'light' | 'dark'): void {
+  const name = `hatch-${resolved}`;
+  if (!defined.has(name)) {
+    const style = getComputedStyle(document.documentElement);
+    const tokens = Object.fromEntries(EDITOR_TOKEN_NAMES.map((n) => [n, style.getPropertyValue(n)])) as EditorTokens;
+    editor.defineTheme(name, editorTheme(tokens, resolved === 'dark'));
+    defined.add(name);
+  }
+  // Global to the page: every open editor follows, which is what a theme flip
+  // wants.
+  editor.setTheme(name);
+}
+
+export { editor };

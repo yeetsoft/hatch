@@ -273,4 +273,176 @@ public sealed class IncrementTests
 
         await claim.ReleaseAsync();
     }
+    // ---- Hearing a message sent while it works ----
+
+    private static async Task<(IncrementReport Report, Claim Claim)> RunWithAsync(Harness h, WorkDto work)
+    {
+        var (claim, _) = await HoldingAsync(h, work.Issue.Key, Guid.NewGuid());
+        h.Wire.Reply("POST", $"/api/hatch/issues/{work.Issue.Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", $"/api/hatch/issues/{work.Issue.Key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/hatch/work/{work.Issue.Key}", Fixtures.Work(work.Issue.Key, from: "In Review"));
+        h.Wire.Json("GET", $"/api/hatch/issues/{work.Issue.Key}/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+        return (report, claim);
+    }
+
+    [Fact]
+    public async Task The_spawned_session_is_given_a_settings_file_outside_the_checkout_with_both_hooks()
+    {
+        using var h = new Harness();
+        string? path = null, text = null;
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            path = request.HookSettings;
+            text = path is null ? null : File.ReadAllText(path);
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var (_, claim) = await RunWithAsync(h, Fixtures.Work("AER-1"));
+
+        Assert.NotNull(path);
+        Assert.False(path!.StartsWith(h.Root, StringComparison.Ordinal), "the settings file is inside the checkout");
+        Assert.StartsWith(h.Temp, path, StringComparison.Ordinal);
+
+        var hooks = System.Text.Json.JsonDocument.Parse(text!).RootElement.GetProperty("hooks");
+        var step = hooks.GetProperty("PostToolUse")[0];
+        Assert.Equal("*", step.GetProperty("matcher").GetString());
+        var stepHook = step.GetProperty("hooks")[0];
+        Assert.Equal("command", stepHook.GetProperty("type").GetString());
+        Assert.Equal(10, stepHook.GetProperty("timeout").GetInt32());
+        Assert.Contains("inbox \"AER-1\" --hook post-tool-use --stamp ", stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "inbox.stamp"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+
+        var stop = hooks.GetProperty("Stop")[0].GetProperty("hooks")[0];
+        Assert.Equal(10, stop.GetProperty("timeout").GetInt32());
+        Assert.EndsWith("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_hooks_directory_is_gone_after_the_run_and_the_checkout_was_never_written_to()
+    {
+        using var h = new Harness();
+        string? directory = null;
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            directory = Path.GetDirectoryName(request.HookSettings);
+            Assert.True(Directory.Exists(directory));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+        var before = Directory.GetFileSystemEntries(h.Root, "*", SearchOption.AllDirectories).Order().ToList();
+
+        var (_, claim) = await RunWithAsync(h, Fixtures.Work("AER-1"));
+
+        Assert.NotNull(directory);
+        Assert.False(Directory.Exists(directory));
+        Assert.Equal(before, Directory.GetFileSystemEntries(h.Root, "*", SearchOption.AllDirectories).Order().ToList());
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_hooks_directory_is_gone_when_the_session_is_stopped_too()
+    {
+        using var h = new Harness();
+        string? directory = null;
+        h.Sessions.Behaviour = (request, onLine, ct) =>
+        {
+            directory = Path.GetDirectoryName(request.HookSettings);
+            return FakeSessions.UntilStopped()(request, onLine, ct);
+        };
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict, "\"taken\"");
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(directory);
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact]
+    public async Task Unread_messages_are_marked_by_id_before_the_session_is_spawned()
+    {
+        using var h = new Harness();
+        var spawnedAfter = -1;
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/messages/deliver", new[] { Fixtures.Message(7), Fixtures.Message(9) });
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            spawnedAfter = h.Wire.Count("POST", "/api/hatch/issues/AER-1/messages/deliver");
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var (_, claim) = await RunWithAsync(
+            h, Fixtures.Work("AER-1", messages: [Fixtures.Message(7), Fixtures.Message(9)]));
+
+        Assert.Equal(1, spawnedAfter);
+        var marked = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/messages/deliver")).Read<MessageDeliverRequest>();
+        Assert.Equal([7L, 9L], marked.Ids);
+
+        // And they were said in the prompt the session was handed.
+        Assert.Contains("use the other table", h.Sessions.Spawned[0].Prompt, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_dispatch_with_no_messages_marks_nothing()
+    {
+        using var h = new Harness();
+
+        var (_, claim) = await RunWithAsync(h, Fixtures.Work("AER-1", messages: []));
+
+        Assert.Equal(0, h.Wire.Count("POST", "/api/hatch/issues/AER-1/messages/deliver"));
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_failure_to_mark_them_does_not_stop_the_spawn()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/messages/deliver", HttpStatusCode.InternalServerError, "boom");
+
+        var (report, claim) = await RunWithAsync(h, Fixtures.Work("AER-1", messages: [Fixtures.Message(7)]));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.True(report.Moved);
+        Assert.Contains(h.Say.Complained, l => l.Contains("could not mark", StringComparison.Ordinal));
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_quiet_run_is_wired_the_same_way()
+    {
+        using var h = new Harness();
+        h.Sessions.Behaviour = (request, _, _) =>
+        {
+            Assert.NotNull(request.HookSettings);
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
+
+        Assert.Single(h.Sessions.Spawned);
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public void The_hooks_run_this_binary_where_it_is_hatch_and_the_bare_word_otherwise()
+    {
+        Assert.Equal("/opt/hatch/hatch", SessionHooks.Binary("/opt/hatch/hatch"));
+        Assert.Equal("hatch", SessionHooks.Binary("/usr/share/dotnet/dotnet"));
+        Assert.Equal("hatch", SessionHooks.Binary(null));
+    }
 }

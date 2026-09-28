@@ -731,6 +731,33 @@ public class WorkControllerTests
         Assert.Equal("per-node", Assert.Single(carried.Answers).Body);
     }
 
+    [Fact]
+    public async Task Work_CarriesTheUnreadMessagesAndNotTheOnesAlreadyDelivered()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "watched", h.Todo);
+        await h.SayAsync(issue, EfHatchComment.Message, "the first, already read", deliveredAt: Now);
+        await h.SayAsync(issue, EfHatchComment.Message, "use the other table");
+        await h.SayAsync(issue, EfHatchComment.Note, "sha abc123");
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        // Only the unread message rides the dispatch: a delivered one has been
+        // read, and a note was never said to the agent.
+        var carried = Assert.Single(work.Messages!);
+        Assert.Equal("use the other table", carried.Body);
+        Assert.Null(carried.DeliveredAt);
+    }
+
+    [Fact]
+    public async Task Work_CarriesNoMessagesWhenThereAreNone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "quiet", h.Todo);
+
+        Assert.Empty(Value(await h.Work.GetWork(Key(issue), null, default)).Messages!);
+    }
+
     // ---- Matching ----
 
     [Fact]
@@ -2038,6 +2065,22 @@ public class WorkControllerTests
             Db.Comments.Add(comment);
             await Db.SaveChangesAsync();
             return comment;
+        }
+
+        /// <summary>A comment of any kind, written straight to the table, optionally already delivered.</summary>
+        public async Task SayAsync(EfHatchIssue issue, string kind, string body, DateTimeOffset? deliveredAt = null)
+        {
+            Db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = "Nathan",
+                Body = body,
+                Kind = kind,
+                CreatedAt = Now,
+                DeliveredAt = deliveredAt,
+                DeliveredTo = deliveredAt is null ? null : "somewhere:/checkouts/one",
+            });
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>

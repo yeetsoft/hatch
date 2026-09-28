@@ -31,3 +31,11 @@ export function truncate(text: string, max: number = CARD_TEXT_MAX): string {
   // that a run of long tokens does not throw away half the text to find a gap.
   return `${(space > max * 0.667 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
+
+/**
+ * `text` with every line ending as `\n`, which is what an editor's value is.
+ * A stored description can carry `\r\n` (pasted from a Windows tool, or filed
+ * over the API), and the browser's textarea and Monaco both hand back `\n`: a
+ * draft that has not been touched must not read as different for that alone.
+ */
+export const normalizeEol = (text: string): string => text.replace(/\r\n?/g, '\n');

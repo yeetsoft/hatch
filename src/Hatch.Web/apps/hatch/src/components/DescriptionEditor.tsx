@@ -14,6 +14,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button } from '@hatch/ui';
 import { renderMarkdown } from '../lib/markdown';
+import { normalizeEol } from '../lib/text';
 import { MarkdownEditor } from './MarkdownEditor';
 
 export function DescriptionEditor({
@@ -74,7 +75,9 @@ export function DescriptionEditor({
     if (ok) setPreview(true);
   }
 
-  const dirty = draft !== value;
+  // Line endings alone are not an edit: the editor's text is always `\n`, and
+  // a stored description may not be.
+  const dirty = normalizeEol(draft) !== normalizeEol(value);
 
   return (
     <>
@@ -107,8 +110,7 @@ export function DescriptionEditor({
         )
       ) : (
         // `rows` is the height it opens at and the floor it never goes back
-        // under; the editor measures the rest. No `Field` wraps it - the
-        // section's heading is the label - so `ariaLabel` is the whole of its name.
+        // under; the editor measures its own growth.
         <MarkdownEditor
           value={draft}
           onChange={setDraft}

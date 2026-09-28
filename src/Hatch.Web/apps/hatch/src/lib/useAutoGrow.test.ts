@@ -21,10 +21,8 @@ describe('grownHeight', () => {
   });
 });
 
-/* The editor measures its own content and so has a ceiling as well as a floor;
-   the textarea's ceiling is CSS's, and never reaches this arithmetic. */
 describe('clampedHeight', () => {
-  it('takes the height the content needs, plus the border, between the two ends', () => {
+  it('takes the content plus the border while it is between the ends', () => {
     expect(clampedHeight(100, 480, 300, 2)).toBe(302);
   });
 
@@ -37,24 +35,23 @@ describe('clampedHeight', () => {
   });
 
   it('keeps the floor when the ceiling is under it', () => {
-    expect(clampedHeight(200, 150, 900, 2)).toBe(200);
+    expect(clampedHeight(300, 200, 900, 2)).toBe(300);
   });
 
-  it('has no ceiling when there is none', () => {
+  it('has no ceiling at Infinity', () => {
     expect(clampedHeight(100, Infinity, 5000, 2)).toBe(5002);
   });
 });
 
 describe('parseCeiling', () => {
-  it('reads a length in px', () => {
+  it('reads a pixel length', () => {
     expect(parseCeiling('480px')).toBe(480);
     expect(parseCeiling('192.5px')).toBe(192.5);
   });
 
-  it('reads none, empty and the unreadable as no ceiling', () => {
+  it('reads none, empty and anything unreadable as no ceiling', () => {
     expect(parseCeiling('none')).toBe(Infinity);
     expect(parseCeiling('')).toBe(Infinity);
-    expect(parseCeiling('50%')).toBe(Infinity);
-    expect(parseCeiling('max(30rem, 10px)')).toBe(Infinity);
+    expect(parseCeiling('30rem')).toBe(Infinity);
   });
 });

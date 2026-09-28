@@ -736,8 +736,23 @@ how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
 moves the warning with it — and it is not expiry: a claim past its lease is
 drawn as no claim at all, on the card and on the page, because the server has
-already stopped sending one. Neither polls. Both go stale with the read they
-came from and come back current on the next one.
+already stopped sending one. Neither polls, with one bounded exception: the
+issue page re-reads its comments and claim every five seconds **while a message
+to the agent is waiting under a live claim** and the tab is on screen, and stops
+the moment nothing is waiting, the claim ends, or the tab is hidden. The state
+of that message changes on its own, and the person who just pressed Send is
+watching for the change — the reason `useRunners` polls, and no other reason
+extends it. Everything else goes stale with the read it came from and comes back
+current on the next one.
+
+**The Claim section talks to the session.** A box there, *Tell the agent*, posts a
+comment of kind `message`, and each message under it says in words where it
+stands: *not read yet* while a claim is live, *read 2 minutes ago by
+`<runner>`*, or, when nobody is working the issue, *not read — nobody is working
+AER-12; the next session on it is told*. The same words sit on the message in
+the Comments thread. See [Comment, question and answer](#comment-question-and-answer)
+for what *read* means, and [What a runner does](#what-a-runner-does-in-order)
+for how a message reaches a session.
 
 **Clearing a claim does not stop the runner.** The operator's
 `DELETE .../claim` takes the lease off the row and nothing else: that session
@@ -831,15 +846,17 @@ batched query for a list of issues.
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
-`Options`, `CreatedAt`.
+`Options`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
-mind. Two are not, and those carry a `Kind`.
+mind. Three are not, and those carry a `Kind`.
 
 - A **question** (`Kind = "question"`) is an agent saying it cannot proceed
   without a decision that is not its to make.
 - An **answer** (`Kind = "answer"`) is that decision, bound to the question it
   settles by `AnswersId`.
+- A **message** (`Kind = "message"`) is something said to whichever session is
+  working the issue, written from the Claim panel.
 
 A question is a row rather than a heading in a comment body for the same reason
 a ready date is a column rather than a line saying "not until March": something
@@ -869,6 +886,23 @@ nobody kept, and the sentence the next agent's prompt carries is the same
 sentence a person reads six months later. A second column saying it in numbers
 is a second thing that can come to disagree with the first.
 
+**A message is not every comment, on purpose.** The server cannot tell an
+operator's comment from the session's own — both arrive on the same key under
+the same name — so delivering every comment would feed a session its own commit
+notes, and a note is often written for a reader six months on rather than for the
+agent now. The Claim box talks to the agent; the Comments box stays a note.
+
+`DeliveredAt` and `DeliveredTo` are null on everything but a message that has been
+read. **Read means put into a session's context**: the hook that printed it, or
+the runner that put it in a prompt, is what marks it, and nothing can prove the
+model acted on it. `DeliveredTo` is the live claim's runner, or the caller's name
+where nothing held the issue. They are written once, by `POST
+/issues/{key}/messages/deliver`, whose conditional `UPDATE` repeats "and still
+unread" in its `WHERE` — the way the claim closes its races
+([`IssueClaims.cs`](../src/Hatch.Api/Modules/Hatch/IssueClaims.cs)) — so two
+checks that race return a message once between them. Unread messages ride the
+dispatch as `WorkDto.Messages`.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -878,7 +912,8 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `asked`, `answered`,
+`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+names the comment and the runner), `asked`, `answered`,
 `imported`.
 
 Nothing renders this, and it has been written since the first release anyway,
@@ -1116,7 +1151,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written |
-| `/issues/{key}/comments` | GET, POST | POST carries the kind, the `answersId`, and a question's options |
+| `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
+| `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
@@ -1947,9 +1983,27 @@ One pass, from the board to the release:
    us: the lease goes straight back, and the walk goes on.
 4. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
-   would be a fetch spent on an increment that never happens. For a conflict
-   dispatch the runner then **checks the branch again**, before it enters it —
-   see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
+   would be a fetch spent on an increment that never happens. Two things are
+   done at the spawn so that a message to the agent is heard:
+   - **The hooks.** The runner writes a settings file into a directory of its
+     own under the system's temporary directory — outside every checkout, so
+     `git status` shows only what the session changed — and hands it to the
+     session with `--settings`. It declares a `PostToolUse` hook (every tool) and
+     a `Stop` hook, each ten seconds long, each running `hatch inbox <key>`. The
+     per-step one asks Hatch at most once every fifteen seconds, by the
+     modification time of a stamp file beside the settings; the stop one always
+     asks, and a message it finds keeps the session going until it has been read.
+     What comes back is printed as the hook's JSON, and `inbox` marks it read.
+     Any failure — Hatch down, slow past five seconds, a Hatch without the route
+     — prints nothing and exits zero, and the message stays unread for a later
+     step. The directory is deleted when the session ends. An attached (`-i`)
+     session gets no hooks: somebody is at the keyboard.
+   - **The marking.** The dispatch carries the messages nothing has read
+     (`WorkDto.Messages`); the prompt prints them under *Said to you since the
+     last session*, and the runner marks exactly those ids read immediately
+     before it spawns. `work --dry-run` prints the heading and marks nothing.
+   For a conflict dispatch the runner then **checks the branch again**, before
+   it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
 5. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
@@ -2297,6 +2351,13 @@ The CLI is one program — [`src/Hatch.Cli`](../src/Hatch.Cli), published as a
 single binary called `hatch`. Every command is a command of it: `board`, `next`,
 `queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
 `questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
+
+One command in it is not for a person: `inbox`, which the hooks a spawned session
+runs call to be handed a message and mark it read. It sits beside
+`runner-claude-token` in `Program.Internal`, a command no session is ever told
+about — if sessions knew of it, one could mark its operator's messages read
+without reading them, and the page would say something untrue.
+`DocsContractTests` holds that.
 
 It got there in two steps, for two different reasons.
 

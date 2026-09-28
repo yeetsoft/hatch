@@ -522,57 +522,147 @@
   flex-wrap: wrap;
 }
 
+/* One look for every control in the bar: search, project, types, the waiting
+   switch and assignee are the same height, radius, border, font and padding.
+   The look carries a meaning: at rest is "holding its default", tinted is
+   "holding something else" - which is how tasks hidden by default avoid
+   looking like a change somebody made.
+
+   A fixed height rather than matching paddings, because a native <select>, a
+   <button> and an <input> each work out their own line height. */
+.hatch-board-filters {
+  --facet-h: 2.25rem;
+}
+
+.hatch-facet,
+.hatch-board-search {
+  box-sizing: border-box;
+  height: var(--facet-h);
+}
+
+.hatch-facet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition),
+    box-shadow var(--transition);
+}
+
+.hatch-facet:hover {
+  border-color: var(--line-strong);
+}
+
+/* Its name, inside the control, beside the value. */
+.hatch-facet__label {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 600;
+}
+
+.hatch-facet__caret {
+  flex: none;
+}
+
+/* The select inside a facet is stripped to its text: the wrapper draws the box.
+   Whose cards to draw is a native <select> and not IssuePicker - that component
+   exists for sixty issue keys sharing a prefix, and a household's worth of
+   names is neither long enough nor ambiguous enough to need it. */
+.hatch-facet select {
+  appearance: none;
+  max-width: 12rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.hatch-facet select:focus {
+  box-shadow: none;
+}
+
+.hatch-facet:focus-within,
+.hatch-facet:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+/* Tinted: not at its default. The ring above is --primary-bg, which is this
+   ground, so a lit control takes an outline for focus instead. */
+.hatch-facet--lit,
+.hatch-board-search--lit {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+}
+
+.hatch-facet--lit .hatch-facet__label {
+  color: inherit;
+}
+
+.hatch-facet--lit:focus-within,
+.hatch-facet--lit:focus-visible {
+  box-shadow: none;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .hatch-board-search {
   flex: 0 1 22rem;
   min-width: 12rem;
 }
 
-.hatch-type-toggles {
+/* The Types panel. Rows are padded like a menu item. */
+.hatch-types-panel {
   display: flex;
-  gap: var(--sp-1);
+  flex-direction: column;
+  min-width: 12rem;
 }
 
-/* Whose cards to draw. A native <select> and not IssuePicker: that component
-   exists for sixty issue keys sharing a prefix, and a household's worth of
-   names is neither long enough nor ambiguous enough to need it. */
-.hatch-assignee-filter {
-  flex: 0 0 auto;
-  max-width: 12rem;
-}
-
-/* Which project's cards to draw - drawn only when the board has more than
-   one, same as the picker on the Plan page. */
-.hatch-project-filter {
-  flex: 0 0 auto;
-  max-width: 12rem;
-}
-
-/* A toggle rather than a checkbox: four of these sit in a row and read as one
-   control, which is what they are. The pressed state is `aria-pressed` as well
-   as a class - the colour is the only thing a sighted reader gets, and it must
-   not be the only thing anybody gets. */
-.hatch-type-toggle {
-  padding: var(--sp-1) var(--sp-2-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--t-label);
-  font-weight: 600;
+.hatch-types-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
-  transition: all var(--transition);
 }
 
-.hatch-type-toggle:hover {
-  color: var(--ink);
-  border-color: var(--line-strong);
+.hatch-types-row:hover {
+  background: var(--primary-bg);
 }
 
-.hatch-type-toggle.on {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--on-accent);
+.hatch-types-row input {
+  accent-color: var(--primary);
+}
+
+.hatch-types-name {
+  text-transform: capitalize;
+}
+
+.hatch-types-count {
+  margin-left: auto;
+  padding-left: var(--sp-4);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-types-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  border-top: 1px solid var(--line-strong);
 }
 
 .hatch-filter-count {
@@ -1086,29 +1176,29 @@ input.hatch-inline-title-input {
   font-family: var(--mono);
 }
 
-/* The editor's frame - MarkdownEditor's host, which Monaco fills. It wears what
-   base.css gives every field (the border, the radius, the hover and the focus
-   ring), because Monaco draws its own text but not its own edge: the host is
-   the field, and `:focus-within` is `textarea:focus` for a box whose focus lives
-   on a child. --r-ctl and not --r-in: this is a field, not a block nested in a
-   card.
+/* The frame of the Monaco editor (components/MarkdownEditor.tsx), which draws
+   its own text and so is dressed here from the outside: the border, radius,
+   ground, hover and focus ring are `base.css`'s textarea rules restated for a
+   div, because a div matches none of them. `--r-ctl`, not `--r-in`: that is the
+   radius every input, select and textarea has; `--r-in` is for blocks nested in
+   a card. Font and line height are declared here because the component reads
+   them back off the host with getComputedStyle and hands them to Monaco - CSS
+   is the one source for them.
 
-   The three font declarations are what the component reads back with
-   getComputedStyle to give Monaco, so the tokens stay the one place the type
-   is set. `overflow: hidden` keeps the editor inside the radius. The site's
-   ceiling class (.hatch-grows, .hatch-peek-box) sits on the same element and
-   supplies only `max-height`, but .hatch-peek-box also asks to scroll: this rule
-   comes after it so the host clips and the editor is what scrolls. */
+   The height is inline, written by the component from what is in the editor,
+   and the ceiling is whatever `max-height` the site's class (`.hatch-grows`,
+   `.hatch-peek-box`) puts on this same element. */
 .hatch-md-editor {
+  box-sizing: border-box;
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   background: var(--card);
   overflow: hidden;
-  transition: border-color var(--transition), box-shadow var(--transition);
   font-family: var(--mono);
   font-size: var(--t-body);
   line-height: var(--lh-body);
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
 
 .hatch-md-editor:hover:not(:focus-within) {
@@ -1486,8 +1576,19 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
-.hatch-comment-box textarea {
-  width: 100%;
+/* The answer to an open question: one line, the input across the card and the
+   button beside it - not a box with the button under it, which is what the
+   Comments box above is. */
+.hatch-answer-box {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.hatch-answer-box input {
+  flex: 1;
+  min-width: 0;
 }
 
 .hatch-events summary {
@@ -1623,6 +1724,41 @@ input.hatch-inline-title-input {
   overflow-wrap: anywhere;
 }
 
+/* The box that talks to the agent, and what has been said to it. Set apart from
+   the facts above by a rule, because the facts describe the session and this is
+   what the person does about it. */
+.hatch-claim-tell {
+  margin: var(--sp-3) 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.hatch-claim-tell-label {
+  font-weight: 600;
+}
+
+.hatch-claim-tell .hatch-comment-box {
+  margin-top: var(--sp-2);
+}
+
+.hatch-claim-messages {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* The band the thread gives a message, so the same message reads as the same
+   thing in both places. */
+.hatch-claim-message,
+.hatch-comment-message {
+  border-left: 2px solid var(--success);
+  padding-left: var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
 /* The dialog's stack, as .hatch-cascade is for the close offer. */
 .hatch-claim-clear {
   display: flex;
@@ -1656,9 +1792,9 @@ input.hatch-inline-title-input {
   border: 1px solid var(--line);
   background: transparent;
   color: inherit;
-  border-radius: var(--r-ctl);
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--t-label);
+  border-radius: var(--r-in);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-body);
   cursor: pointer;
 }
 
@@ -1907,20 +2043,14 @@ input.hatch-inline-title-input {
   white-space: nowrap;
 }
 
-/* The prompt, unfolded under its row. Full width and a monospace box, because
-   what is being edited is an instruction whose line breaks are load-bearing -
-   the agent reads it as written. */
+/* The prompt, unfolded under its row. The editor is full width and monospace on
+   its own (`.hatch-md-editor`): what is being edited is an instruction whose
+   line breaks are load-bearing - the agent reads it as written. */
 .hatch-playbook-prompt {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
-}
-
-.hatch-playbook-prompt textarea {
-  width: 100%;
-  font-family: var(--mono);
-  line-height: 1.5;
 }
 
 /* ---- Questions ----
@@ -2079,12 +2209,6 @@ input.hatch-inline-title-input {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
-}
-
-.hatch-waiting-toggle.on {
-  background: var(--warn);
-  border-color: var(--warn);
-  color: var(--on-accent);
 }
 
 /* The band down the left edge is what makes this card different from the four

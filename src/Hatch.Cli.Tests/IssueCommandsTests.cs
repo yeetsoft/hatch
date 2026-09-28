@@ -41,6 +41,26 @@ public sealed class IssueCommandsTests
     // ---- show ----
 
     [Fact]
+    public async Task Show_says_of_each_message_whether_it_was_read_and_says_nothing_of_a_note()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[]
+        {
+            Fixtures.Comment("a note"),
+            Fixtures.Message(2, "not yet"),
+            Fixtures.Message(3, "already", deliveredAt: DateTimeOffset.Parse("2026-09-28T03:05:00+00:00"), deliveredTo: "somewhere:/checkouts/one"),
+        });
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("Nathan (to the agent, not read yet):", h.Said, StringComparison.Ordinal);
+        Assert.Contains("Nathan (to the agent, read 2026-09-28T03:05:00+00:00 by somewhere:/checkouts/one):", h.Said, StringComparison.Ordinal);
+        Assert.Contains("] hatch:\n", h.Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Show_prints_the_header_the_edges_it_has_and_the_brief()
     {
         using var h = new CliHarness();
