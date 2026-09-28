@@ -3013,6 +3013,23 @@ button.hatch-option.chosen {
   overflow-y: auto;
 }
 
+/* A group is Human or Agent, each holding two sections. The panel's own gap
+   now separates the two groups; this one separates a group's own sections. */
+.hatch-attention-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-attention-group-heading {
+  margin: 0;
+  font-size: var(--t-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
 .hatch-attention-section {
   display: flex;
   flex-direction: column;

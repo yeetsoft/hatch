@@ -13,6 +13,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// screen the operator lives on (docs/hatch.md, "Goals") and it is refetched
 /// after every action - two round trips per drag would be felt, and a board
 /// assembled from separate reads can show a card in two columns at once.
+///
+/// This is also where the WIP meter is read: <see cref="Wip.LoadAsync"/> runs
+/// against the same status list and the same instant the cards are drawn
+/// against, so the board and its meter never disagree about what is claimed.
 /// </summary>
 [ApiController]
 [Route("api/hatch/board")]
@@ -26,9 +30,12 @@ public class BoardController(
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
+            .ToListAsync(ct);
+
+        var statusDtos = statuses
             .Select(s => new StatusDto(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips))
-            .ToListAsync(ct);
+            .ToList();
 
         // Ordered by (StatusId, Expedited desc, Rank, Id) so the client can
         // slice the one list into columns without sorting, and so two cards
@@ -87,8 +94,11 @@ public class BoardController(
             assignees[i.Id] = await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct);
 
         // One instant for the whole board, so two cards claimed a second apart
-        // are not judged against two different clocks.
+        // are not judged against two different clocks - and so the WIP load
+        // below is judged against the same clock as every card's own claim.
         var now = time.GetUtcNow();
+
+        var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
 
         var cards = issues.Select(i => new IssueCardDto(
             IssueKey.Format(i.ProjectKey, i.Number),
@@ -106,6 +116,6 @@ public class BoardController(
             i.Expedited,
             i.Express)).ToList();
 
-        return new BoardDto(statuses, cards);
+        return new BoardDto(statusDtos, cards, wip?.ToDto());
     }
 }

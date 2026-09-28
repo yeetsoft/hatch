@@ -564,14 +564,18 @@ public record IssueEventDto(long Id, string Actor, string Kind, JsonElement? Pay
 // ---- What is waiting on a person ----
 
 /// <summary>
-/// An issue standing in the review column with somewhere to review it.
+/// An issue standing in the review column with somewhere to review it, and
+/// not held back by a conflict or a failed build.
 /// </summary>
 /// <param name="PullRequestUrl">
 /// Non-null, unlike <see cref="IssueDto.PullRequestUrl"/>: an issue with
 /// nowhere to review it is not a row here at all. It is counted instead - see
 /// <see cref="AttentionDto.InReviewWithoutPullRequest"/> - because a control
 /// that lit up for a ticket nobody can act on is a control nobody reads after
-/// a week.
+/// a week. Nor is an issue whose pull request is listed under
+/// <see cref="AttentionDto.Conflicts"/> or <see cref="AttentionDto.FailingBuilds"/>
+/// in the same response - see <see cref="AttentionDto.ReviewsHeldBack"/> - for
+/// the same reason: a person cannot act on either.
 /// </param>
 public record ReviewDto(string Key, string Title, string Type, string PullRequestUrl);
 
@@ -586,9 +590,10 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// </summary>
 /// <param name="Reviews">
 /// The review column's own issues that carry a pull request, in that column's
-/// board order. Which column that is, is measured and not named
-/// (<c>Columns.AwaitingReview</c>); a board too short to have one answers
-/// with none rather than with an error.
+/// board order, and are not held back by a conflict or a failed build - see
+/// <see cref="ReviewsHeldBack"/>. Which column is the review column is
+/// measured and not named (<c>Columns.AwaitingReview</c>); a board too short
+/// to have one answers with none rather than with an error.
 /// </param>
 /// <param name="InReviewWithoutPullRequest">
 /// How many issues stand in that column with no pull request recorded. Not
@@ -615,12 +620,20 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// failing build, and one it cannot fix becomes a question, which already
 /// lights the control.
 /// </param>
+/// <param name="ReviewsHeldBack">
+/// How many issues in that column carry a pull request but are held back -
+/// listed under <paramref name="Conflicts"/> or <paramref name="FailingBuilds"/>
+/// in this same response, so a pull request never appears in both halves.
+/// Held back because a red build or a conflict is not ready for a person, and
+/// the loop is already on it. Defaults to zero so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
     IReadOnlyList<ConflictDto> Conflicts,
-    IReadOnlyList<FailingBuildDto>? FailingBuilds = null);
+    IReadOnlyList<FailingBuildDto>? FailingBuilds = null,
+    int ReviewsHeldBack = 0);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -660,7 +673,25 @@ public record FailingBuildDto(
 /// unable to tell an empty board from a filtered one - and an agent asking what
 /// it may work on has one comparison to make instead of a flag to know about.
 /// </remarks>
-public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues);
+/// <param name="Wip">
+/// How full the WIP section is right now, or null where the board has never
+/// heard of WIP - no column flagged, or no limit row - so a board that has
+/// never turned this on serves exactly what it served before.
+/// </param>
+public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null);
+
+/// <summary>
+/// How full the WIP section is right now, the shape <c>GET /board</c> carries
+/// and <c>hatch board</c> prints one line from. Not <see cref="WipSectionDto"/>:
+/// that is the settings route's shape (a nullable limit, no load); this one is
+/// always a load against a limit that is known to exist.
+/// </summary>
+/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once.</param>
+/// <param name="Types">The issue types this slice counts - the limit row's own types.</param>
+/// <param name="StatusIds">The counted columns, in board order. Never includes a deferred or terminal column, whatever it is flagged.</param>
+/// <param name="Load">How many counted issues are on the board right now - inside the section, plus <paramref name="ClaimedInbound"/>.</param>
+/// <param name="ClaimedInbound">Of <paramref name="Load"/>, how many are outside the section but claimed and on their way in.</param>
+public record WipDto(int Limit, IReadOnlyList<string> Types, IReadOnlyList<int> StatusIds, int Load, int ClaimedInbound);
 
 // ---- The importer ----
 

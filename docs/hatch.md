@@ -798,6 +798,34 @@ is no `GET`: both lists ride `IssueDto`, where the board, the page and a client
 at a terminal need them anyway. Both directions land in the issue's history, on the issue that
 waits and on it alone.
 
+### WIP
+
+How full the [WIP section](#status) is right now, as one number against one
+limit — the read every later story shares (`Wip.LoadAsync` in
+`Modules/Hatch/Wip.cs`) rather than counting for itself.
+
+**The load** is every issue of a counted type sitting in a WIP column, plus
+every issue of a counted type outside the section that holds a live
+[claim](#claim) whose next column is itself a WIP column. Which columns count
+and which types count are exactly what `IsWip` and the `WipLimits` row already
+say — see [Status](#status) — narrowed the same way: a deferred or terminal
+column never counts, whatever it is flagged.
+
+**The claimed-inbound half** exists because a claim is what stops a second
+runner filling the same slot: an issue in a feeder column that a runner has
+already taken is effectively on its way into the section, and letting it
+through the gate while ignoring it in the count would let the section overfill
+by exactly the number of runners working the feeder column at once. It counts
+only while the claim is live — an unclaimed issue in a feeder column counts for
+nothing — and it drops out of the load the instant the claim does, one second
+past the TTL, same as if it had never been claimed.
+
+`null` means no WIP at all: no column is flagged, or no limit row exists. A
+board that has never turned WIP on reads exactly as one that predates it.
+
+Read at `GET /api/hatch/board`'s `wip` block, and printed as one line by
+`hatch board`.
+
 ### Claim
 
 Seven nullable columns on the issue row — `ClaimToken`, `ClaimedBy`,
@@ -1412,7 +1440,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ limit, types, statusIds }` — the flagged columns that are neither deferred nor terminal, in board order |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, statusIds? }`, the bulk rule throughout: `limit` is a string (`""` clears it, a whole number of one or more sets it), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
-| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them |
+| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: the section's limit, counted types, status ids, load and claimed-inbound part, or `null` where no column is flagged or no limit is set (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
@@ -1441,7 +1469,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, and (listed, not counted) the issues in review whose branch conflicts. One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -1576,6 +1604,13 @@ has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
+The panel draws two groups, in this order: **Human** — pull requests to
+review, then questions to answer — and **Agent** — branches that conflict,
+then builds that fail. A pull request only ever appears under one of the two:
+one the loop is still working through a conflict or a red build on is not a
+person's to look at yet, so it moves out of the pull-request section and into
+the group naming what is holding it back, rather than sitting in both.
+
 Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
@@ -1595,7 +1630,8 @@ answer worth having, and it is the one it gives most of the time.
       "pullRequestUrl": "https://forge.example/pulls/14",
       "checks": [ { "canonical": "forge.example/owner/repo", "trunk": "main",
                     "files": ["src/a.cs", "src/b.cs"], ... } ] }
-  ]
+  ],
+  "reviewsHeldBack": 1
 }
 ```
 
@@ -1635,6 +1671,13 @@ the control — so counting the conflict as well would light it twice for one
 problem, and for the ordinary case, one the loop fixes before anybody looks, it
 would light it for nothing. `attentionCount` leaves it out and its test says so.
 
+A conflicted issue that carries a pull request is also pulled out of `reviews`
+and counted instead in `reviewsHeldBack`, never appearing in both lists at
+once. A branch that does not merge is not ready for a person to review, and the
+loop is already the one working on it — a pull request sitting in the Human
+group for that reason would be a link with nothing to do at the other end of
+it.
+
 ### The issue in review whose build has failed
 
 `failingBuilds` is the fourth list, and it too does **not** light the control. It
@@ -1650,6 +1693,11 @@ well would light the control twice for one problem, and for the ordinary case �
 one the loop fixes before anybody looks — for nothing. `attentionCount` leaves
 it out and its test says so.
 
+The same hold-back applies here: an issue with a failed build that carries a
+pull request is pulled out of `reviews` and counted in `reviewsHeldBack`
+instead, for the same reason a conflicted one is — a red build is not ready
+for a person, and the loop is already on it.
+
 ### The issue in review with no pull request
 
 `inReviewWithoutPullRequest` is the one number here that is not a row, and it is
@@ -1659,10 +1707,15 @@ judging by hand. A control that counted those would be permanently loud, and a
 permanently loud control is one nobody reads after a week.
 
 So they never make it loud, and they are not silently dropped either. The
-section's empty state has two wordings, and the count is what picks between
-them: *Nothing is up for review*, or *3 issues are in review with no pull
-request recorded*. A ticket whose agent forgot `hatch pr` is visible without
-shouting.
+section's empty state has three wordings, and the counts are what pick between
+them: *Nothing is up for review*; *3 issues are in review with no pull request
+recorded*; *1 pull request is waiting on the loop*, for `reviewsHeldBack`
+alone. The last two combine into one sentence when both counts are nonzero, so
+a ticket whose agent forgot `hatch pr` and a pull request the loop is still
+clearing a conflict on are both visible at once, without either shouting. A
+ticket with no pull request at all is never counted in `reviewsHeldBack`: that
+count is only ever about a pull request the loop is sitting on, not about a
+ticket with nowhere to review it in the first place.
 
 The control keeps itself current on a sixty-second poll and on
 `visibilitychange`, the way [the battery](#the-battery) does, and a read that
