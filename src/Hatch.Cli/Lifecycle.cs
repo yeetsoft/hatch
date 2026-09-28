@@ -110,6 +110,8 @@ public sealed class Lifecycle(Runtime runtime)
                 var left = runtime.Workspace(path, baseBranch).Leave(key, pullRequest);
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
+
+                if (left.Found is { } found) await ReportAsync(key, path, found, chosen, ct);
             }
 
             if (lines.Count == 0) return;
@@ -122,6 +124,41 @@ public sealed class Lifecycle(Runtime runtime)
             // Nothing here fails an increment: the work happened, and what is
             // left is housekeeping that the next reset does as well.
             runtime.Say.Complain($"hatch: {key} - the tree could not be left tidy, or the ticket told - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// What origin's branch looks like after the increment, put on the board
+    /// without waiting for the poll: a pull request that conflicts the moment it
+    /// opens is conflict work on the next pass. A verdict the board would not
+    /// take is one line, and never a reason for the ticket not to be told what
+    /// the tidy found.
+    /// </summary>
+    private async Task ReportAsync(string key, string path, Verdict found, Checkouts.Choice chosen, CancellationToken ct)
+    {
+        // The binding's own remote where the project has one, and the standing
+        // checkout's where it binds nothing: the board keys a verdict on the
+        // canonical form of either.
+        var remote = chosen.Repositories.FirstOrDefault(r => r.Path == path)?.Remote
+            ?? runtime.Checkouts.FirstOrDefault(c => c.Path == path)?.Remote;
+        if (remote is null)
+        {
+            runtime.Say.Complain($"hatch: {key} - {Path.GetFileName(path.TrimEnd('/', '\\'))} has no remote to report its branch under");
+            return;
+        }
+
+        try
+        {
+            await runtime.Board.MergeCheckAsync(
+                key,
+                new MergeCheckRequest(
+                    remote, found.Trunk, found.TrunkSha, found.Kind, found.Branch, found.BranchSha, found.Files,
+                    runtime.RunnerName),
+                ct);
+        }
+        catch (HatchException e)
+        {
+            runtime.Say.Complain($"hatch: {key} - the board did not take the verdict on its branch - {e.Message}");
         }
     }
 

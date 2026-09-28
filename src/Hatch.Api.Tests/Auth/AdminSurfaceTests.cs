@@ -186,6 +186,12 @@ public class AdminSurfaceTests
         // answer instead of a hundred.
         "WorkController.GetQueue",
 
+        // What a runner's poll reads to find the branches in review it holds a
+        // checkout for: the queue's own read, without its folds, because a
+        // verdict is a fact about a branch and not work. It writes nothing and
+        // narrows nothing a key could not already read from `/issues`.
+        "WorkController.GetReview",
+
         // The read a meter is drawn from, Hatch-scoped like the rest of the
         // module: it says how far along a subtree is, which is exactly what a
         // key holder asking "what is left under this epic" is entitled to.

@@ -282,6 +282,68 @@ public static class Checkouts
         IReadOnlyList<RepositoryLine> Repositories);
 
     /// <summary>
+    /// GroupBy rather than ToDictionary: two checkouts can now share one
+    /// remote - two clones of the same repository named on one runner - which
+    /// was impossible when the only source was the standing checkout. The first
+    /// survivor wins, in discovery's own order (standing, then named in the
+    /// order given), which is the sensible one.
+    /// </summary>
+    private static Dictionary<string, CheckoutEntry> ByRemote(IReadOnlyList<CheckoutEntry> checkouts) =>
+        checkouts.Where(c => c.Remote is not null).GroupBy(c => c.Remote!).ToDictionary(g => g.Key, g => g.First());
+
+    /// <summary>
+    /// A binding's matched checkout: the server's own MatchedRemote first,
+    /// matched against what it declared - or, for a checkout this pass itself
+    /// just cloned, which the server never saw, one whose raw Remote happens to
+    /// equal this binding's own. Safe because a pre-existing checkout whose raw
+    /// .Remote equalled a binding's Remote exactly would already have
+    /// MatchedRemote set by the server; the raw fallback can only ever resolve
+    /// a checkout this pass just cloned.
+    /// </summary>
+    private static CheckoutEntry? MatchOf(WorkRepositoryDto r, Dictionary<string, CheckoutEntry> byRemote) =>
+        r.MatchedRemote is { } m && byRemote.TryGetValue(m, out var byDeclared)
+            ? byDeclared
+            : byRemote.TryGetValue(r.Remote, out var byRaw) ? byRaw : null;
+
+    /// <summary>One checkout an in-review issue is checked in, and what to report the verdict under.</summary>
+    /// <param name="Remote">The spelling this runner declares the checkout with - null for a standing checkout with no <c>origin</c>, which has nothing to report under.</param>
+    /// <param name="Canonical">The binding's canonical remote, which is how a stored verdict is matched to it - null where the project binds nothing.</param>
+    public sealed record Polled(string Path, string? Remote, string? BaseBranch, string? Canonical);
+
+    /// <summary>
+    /// Every checkout an in-review issue is looked at in: each bound repository
+    /// this runner holds, or - where the project binds nothing - the standing
+    /// checkout. The rule <see cref="Choose"/> applies, without its insistence
+    /// on the primary: a verdict is a fact about each repository's branch, and
+    /// one this runner holds is worth taking whether or not the first is.
+    /// </summary>
+    public static IReadOnlyList<Polled> Served(
+        IReadOnlyList<WorkRepositoryDto> repositories,
+        IReadOnlyList<CheckoutEntry> checkouts,
+        string? standingBaseBranch)
+    {
+        if (repositories.Count == 0)
+            return checkouts.Where(c => c.Standing)
+                .Take(1)
+                .Select(c => new Polled(c.Path, c.Remote, standingBaseBranch, null))
+                .ToList();
+
+        var byRemote = ByRemote(checkouts);
+        var served = new List<Polled>();
+        foreach (var r in repositories)
+        {
+            if (MatchOf(r, byRemote) is not { } matched) continue;
+
+            // HATCH_BASE_BRANCH beats a binding's own, for the standing
+            // checkout only - as it does in Choose.
+            var baseBranch = matched.Standing ? standingBaseBranch ?? r.BaseBranch : r.BaseBranch;
+            served.Add(new Polled(matched.Path, matched.Remote, baseBranch, r.Canonical));
+        }
+
+        return served;
+    }
+
+    /// <summary>
     /// Where to spawn an unbound project's dispatch, or one bound to
     /// repositories this runner holds - or null when the primary matched
     /// nothing this runner has, which is the caller's cue to treat the ticket
@@ -296,25 +358,8 @@ public static class Checkouts
         if (repositories.Count == 0)
             return new Choice(standingRoot, [], [(standingRoot, standingBaseBranch)], []);
 
-        // GroupBy rather than ToDictionary: two checkouts can now share one
-        // remote - two clones of the same repository named on one runner -
-        // which was impossible when the only source was the standing checkout.
-        // The first survivor wins, in discovery's own order (standing, then
-        // named in the order given), which is the sensible one.
-        var byRemote = checkouts.Where(c => c.Remote is not null)
-            .GroupBy(c => c.Remote!).ToDictionary(g => g.Key, g => g.First());
-
-        // A binding's matched checkout: the server's own MatchedRemote first,
-        // matched against what it declared - or, for a checkout this pass
-        // itself just cloned, which the server never saw, one whose raw Remote
-        // happens to equal this binding's own. Safe because a pre-existing
-        // checkout whose raw .Remote equalled a binding's Remote exactly would
-        // already have MatchedRemote set by the server; the raw fallback can
-        // only ever resolve a checkout this pass just cloned.
-        CheckoutEntry? Match(WorkRepositoryDto r) =>
-            r.MatchedRemote is { } m && byRemote.TryGetValue(m, out var byDeclared)
-                ? byDeclared
-                : byRemote.TryGetValue(r.Remote, out var byRaw) ? byRaw : null;
+        var byRemote = ByRemote(checkouts);
+        CheckoutEntry? Match(WorkRepositoryDto r) => MatchOf(r, byRemote);
 
         var primary = repositories.Single(r => r.Primary);
         if (Match(primary) is null) return null;

@@ -82,6 +82,28 @@ public static class Fixtures
     public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false) =>
         new(Issue(key, expedited: expedited), Status(3, "In Progress"), Status(4, "In Review"), blocked);
 
+    /// <summary>One in-review issue, as the poll reads it: its key, the repositories it is bound to, and the verdicts stored on it.</summary>
+    public static ReviewEntryDto Review(
+        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, IReadOnlyList<MergeCheckDto>? checks = null) =>
+        new(key, repositories ?? [], checks ?? []);
+
+    /// <summary>A verdict the board holds, at the shas it was taken at.</summary>
+    public static MergeCheckDto Stored(
+        string verdict, string trunkSha, string? branch = null, string? branchSha = null,
+        string remote = "https://example.test/repo.git", string canonical = "example.test/repo",
+        string trunk = "main", IReadOnlyList<string>? files = null) =>
+        new(remote, canonical, trunk, trunkSha, verdict, branch, branchSha, files ?? [], DateTimeOffset.UnixEpoch, "test:/checkout", "hatch");
+
+    /// <summary>What <c>ls-remote --heads</c> answers: the trunk, and every branch by name.</summary>
+    public static RemoteHeads Heads(string trunkSha, params (string Name, string Sha)[] branches) =>
+        new("main", new Dictionary<string, string>(
+            [new("main", trunkSha), .. branches.Select(b => new KeyValuePair<string, string>(b.Name, b.Sha))]));
+
+    /// <summary>What a check reads off the refs.</summary>
+    public static Verdict Judged(
+        string kind, string trunkSha, string? branch = null, string? branchSha = null, params string[] files) =>
+        new(kind, "main", trunkSha, branch, branchSha, files);
+
     public static CommentDto Comment(string body = "ok") =>
         new(1, "hatch", body, "comment", null, null, DateTimeOffset.UnixEpoch);
 

@@ -50,6 +50,24 @@ public interface IWorkspace
     Leaving Leave(string key, bool syncPullRequest);
 
     /// <summary>
+    /// The trunk's name, and every branch origin has - one <c>ls-remote</c>,
+    /// which fetches nothing and changes nothing here. Null where origin did not
+    /// answer, or where this git cannot check a branch against the trunk.
+    /// </summary>
+    RemoteHeads? Heads();
+
+    /// <summary>Fetch from origin, moving the remote-tracking refs and touching no worktree or index. Whether it went.</summary>
+    bool Fetch();
+
+    /// <summary>
+    /// Whether the issue's branch on origin merges with the trunk, read from
+    /// the remote-tracking refs as they stand - so after a <see cref="Fetch"/>,
+    /// and without one of its own. Null where that cannot be said: a git too old
+    /// to have <c>merge-tree --write-tree</c>, or a merge it could not judge.
+    /// </summary>
+    Verdict? Check(string key);
+
+    /// <summary>
     /// Back on the trunk and nothing else - what an increment whose lease went
     /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
     /// </summary>

@@ -136,7 +136,19 @@ public sealed class BranchEntry
 }
 
 /// <summary>What the end of an increment did to one checkout, as lines for the ticket.</summary>
-public sealed record Leaving(string Path, IReadOnlyList<string> Notes);
+/// <param name="Found">What origin's branch for the issue now looks like against the trunk - null where nothing is known, which is where the end of the increment did not fetch.</param>
+public sealed record Leaving(string Path, IReadOnlyList<string> Notes, Verdict? Found = null);
+
+/// <summary>
+/// Whether an issue's branch on origin merges with the trunk, as the refs in
+/// one checkout stand - what the board stores, said in git's terms.
+/// </summary>
+/// <param name="Kind">One of <see cref="MergeVerdicts"/>.</param>
+/// <param name="TrunkSha">Full, and so are <paramref name="BranchSha"/>'s: two runners agree on a verdict by agreeing on the two shas.</param>
+/// <param name="Branch">Absent for <c>none</c> and <c>ambiguous</c>, which name no one branch.</param>
+/// <param name="Files">The conflicted paths, for <c>conflicted</c>.</param>
+public sealed record Verdict(
+    string Kind, string Trunk, string TrunkSha, string? Branch, string? BranchSha, IReadOnlyList<string> Files);
 
 /// <summary>
 /// The rules about branch names, kept apart from git so they can be read - and

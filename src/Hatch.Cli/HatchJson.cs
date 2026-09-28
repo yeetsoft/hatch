@@ -39,6 +39,8 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<QuestionDto>))]
 [JsonSerializable(typeof(List<IssueCardDto>))]
 [JsonSerializable(typeof(List<QueueEntryDto>))]
+[JsonSerializable(typeof(List<ReviewEntryDto>))]
+[JsonSerializable(typeof(MergeCheckDto))]
 [JsonSerializable(typeof(ProjectRepositoryDto))]
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 
@@ -51,6 +53,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ClaimRequest))]
 [JsonSerializable(typeof(ClaimHeartbeatRequest))]
 [JsonSerializable(typeof(RunnerHeartbeatRequest))]
+[JsonSerializable(typeof(MergeCheckRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 internal sealed partial class HatchJson : JsonSerializerContext;

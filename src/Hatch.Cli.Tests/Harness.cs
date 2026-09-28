@@ -122,7 +122,7 @@ public sealed class FakeWorkspace
 
     /// <summary>
     /// Everything a pass asked of any checkout, in order and in one list -
-    /// <c>prepare</c>, <c>enter</c>, <c>plan</c>, <c>leave</c> and <c>return</c>,
+    /// <c>prepare</c>, <c>enter</c>, <c>plan</c>, <c>leave</c>, <c>return</c>, <c>heads</c>, <c>fetch</c> and <c>check</c>,
     /// each with the path - so the order between them can be asserted, and not
     /// only the order within each.
     /// </summary>
@@ -139,6 +139,21 @@ public sealed class FakeWorkspace
 
     /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced.</summary>
     public List<(string Path, string Key, bool Sync)> Left { get; } = [];
+
+    /// <summary>What one checkout's <c>ls-remote</c> answers. A checkout with no entry has an origin that does not answer.</summary>
+    public Dictionary<string, RemoteHeads?> HeadsFor { get; } = [];
+
+    /// <summary>What one checkout's fetch answers. A checkout with no entry fetches.</summary>
+    public Dictionary<string, bool> FetchFor { get; } = [];
+
+    /// <summary>What one issue's branch is judged to be in one checkout, by path and key. No entry is a verdict nobody could reach.</summary>
+    public Dictionary<(string Path, string Key), Verdict?> VerdictFor { get; } = [];
+
+    /// <summary>What <see cref="IWorkspace.Leave"/> found about origin's branch, per checkout - null where it fetched nothing.</summary>
+    public Dictionary<string, Verdict?> FoundFor { get; } = [];
+
+    /// <summary>Every fetch the poll made, by path.</summary>
+    public List<string> Fetched => [.. Calls.Where(c => c.StartsWith("fetch ", StringComparison.Ordinal)).Select(c => c["fetch ".Length..])];
 
     /// <summary>What each <c>Enter</c> was given as the answer to a which-branch question.</summary>
     public List<string?> Answers { get; } = [];
@@ -183,7 +198,25 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"leave {path}");
             owner.Left.Add((path, key, syncPullRequest));
-            return new Leaving(path, [.. owner.LeaveNotes]);
+            return new Leaving(path, [.. owner.LeaveNotes], owner.FoundFor.GetValueOrDefault(path));
+        }
+
+        public RemoteHeads? Heads()
+        {
+            owner.Calls.Add($"heads {path}");
+            return owner.HeadsFor.GetValueOrDefault(path);
+        }
+
+        public bool Fetch()
+        {
+            owner.Calls.Add($"fetch {path}");
+            return owner.FetchFor.GetValueOrDefault(path, true);
+        }
+
+        public Verdict? Check(string key)
+        {
+            owner.Calls.Add($"check {path} {key}");
+            return owner.VerdictFor.GetValueOrDefault((path, key));
         }
 
         public void Return() => owner.Calls.Add($"return {path}");

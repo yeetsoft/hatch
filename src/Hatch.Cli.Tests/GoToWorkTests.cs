@@ -898,4 +898,294 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Clone.Requested);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
+
+    // ---- What is in review: the poll ----
+
+    private const string ReviewRoute = "/api/hatch/work/review";
+    private const string BeatRoute = "/api/hatch/runners/test%3A%2Fcheckout";
+    private const string Remote = "https://example.test/repo.git";
+
+    private static string Verdicts(string key) => $"/api/hatch/issues/{key}/merge-check";
+
+    /// <summary>The board's review column, and what it takes when a verdict is put.</summary>
+    private static void InReview(Harness h, params ReviewEntryDto[] entries)
+    {
+        h.Wire.Json("GET", ReviewRoute, entries);
+        foreach (var entry in entries)
+            h.Wire.Json("PUT", Verdicts(entry.Key), Fixtures.Stored(MergeVerdicts.Clean, "t1"));
+    }
+
+    private static IReadOnlyList<Call> Puts(Harness h, string key) => h.Wire.To("PUT", Verdicts(key));
+
+    private static FakeTimeProvider AClock() => new(new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    public async Task The_poll_runs_before_the_pass_and_puts_what_it_found_under_the_checkouts_remote()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        // The order is the point: what the board knows about a branch is fresh
+        // before anything is claimed, and the poll's fetch is not the pass's.
+        Assert.Equal(
+            [$"heads {h.Root}", $"fetch {h.Root}", $"check {h.Root} AER-2", $"prepare {h.Root}"],
+            h.Workspace.Calls.Take(4));
+
+        var put = Assert.Single(Puts(h, "AER-2")).Read<MergeCheckRequest>();
+        Assert.Equal(Remote, put.Remote);
+        Assert.Equal(MergeVerdicts.Clean, put.Verdict);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal("t1", put.TrunkSha);
+        Assert.Equal("aer-2-thing", put.Branch);
+        Assert.Equal("b1", put.BranchSha);
+        Assert.Equal("test:/checkout", put.Runner);
+
+        // Declared the way the queue is: the checkouts, and no clones.
+        var read = Assert.Single(h.Wire.To("GET", ReviewRoute));
+        Assert.Contains("standing=true", read.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("clones", read.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_verdict_that_changes_is_said_in_one_line_and_one_that_does_not_is_not()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] =
+            Fixtures.Judged(MergeVerdicts.Conflicted, "t1", "aer-2-thing", "b1", "a.cs", "b.cs", "c.cs");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: AER-2 conflicts with main (3 files)");
+    }
+
+    [Fact]
+    public async Task An_interval_in_which_nothing_moved_prints_nothing_and_fetches_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        // The board's own verdict names the one branch, at the shas origin has.
+        InReview(h, Fixtures.Review("AER-2", checks: [Fixtures.Stored(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1")]));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"), ("aer-9-other", "z9"));
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Contains($"heads {h.Root}", h.Workspace.Calls);
+        Assert.Empty(h.Workspace.Fetched);
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("check ", StringComparison.Ordinal));
+        Assert.Empty(Puts(h, "AER-2"));
+        Assert.DoesNotContain(h.Say.Said.Concat(h.Say.Complained), l => l.Contains("AER-2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_stored_verdict_a_restarted_runner_finds_again_fetches_nothing_and_a_moved_branch_fetches_once()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2", checks: [Fixtures.Stored(
+            MergeVerdicts.Conflicted, "t1", "aer-2-thing", "b1", files: ["a.cs"])]));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+
+        // Two processes, which is what a restart is: the second has remembered
+        // nothing, and the board's stored verdict is all it has to go on.
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+        Assert.Empty(h.Workspace.Fetched);
+
+        // The branch moved on origin, so the verdict no longer stands for it.
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b2"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-2-thing", "b2");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+        Assert.Equal([h.Root], h.Workspace.Fetched);
+        Assert.Single(Puts(h, "AER-2"));
+    }
+
+    [Fact]
+    public async Task A_verdict_is_taken_by_repository_and_a_repository_the_runner_lacks_is_left_alone()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var held = Fixtures.Repository(Remote, canonical: "example.test/repo", primary: true, matchedRemote: Remote);
+        var lacked = Fixtures.Repository("https://example.test/other.git", canonical: "example.test/other", matchedRemote: null);
+
+        InReview(h, Fixtures.Review(
+            "AER-2", [held, lacked], [Fixtures.Stored(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1")]));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        // Matched by the binding's canonical remote, so the stored verdict for
+        // the repository this runner holds is the one that vouches.
+        Assert.Equal([$"heads {h.Root}"], h.Workspace.Calls.Where(c => c.StartsWith("heads ", StringComparison.Ordinal)));
+        Assert.Empty(h.Workspace.Fetched);
+    }
+
+    [Fact]
+    public async Task Two_issues_that_moved_in_one_checkout_cost_one_fetch()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"), Fixtures.Review("AER-3"));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"), ("aer-3-thing", "c1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1");
+        h.Workspace.VerdictFor[(h.Root, "AER-3")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-3-thing", "c1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Equal([h.Root], h.Workspace.Fetched);
+        Assert.Equal(
+            [$"check {h.Root} AER-2", $"check {h.Root} AER-3"],
+            h.Workspace.Calls.Where(c => c.StartsWith("check ", StringComparison.Ordinal)));
+        Assert.Single(Puts(h, "AER-2"));
+        Assert.Single(Puts(h, "AER-3"));
+    }
+
+    [Fact]
+    public async Task The_poll_is_made_at_most_once_per_interval_and_again_when_one_has_gone_by()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1");
+
+        // Two increments back to back, on a clock that stands still: the second
+        // pass follows the first at once, and is not an interval later.
+        var clock = AClock();
+        var runtime = h.Runtime with { Clock = clock };
+        await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default);
+
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.Single(h.Workspace.Calls, c => c.StartsWith("heads ", StringComparison.Ordinal));
+
+        // The same two, with an interval going by during the first.
+        h.Workspace.Calls.Clear();
+        clock = AClock();
+        h.Workspace.Watching = () => clock.Advance(TimeSpan.FromSeconds(61));
+        await new GoToWorkCommand(h.Runtime with { Clock = clock }).RunAsync(["--max-runs", "2"], default);
+
+        Assert.Equal(2, h.Workspace.Calls.Count(c => c.StartsWith("heads ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_paused_runner_does_not_poll()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Wire.Json("POST", BeatRoute, new RunnerInstructionDto(RunnerStates.Paused, null, null, null, null));
+
+        using var interrupting = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "1"], interrupting.Token);
+
+        await Harness.Eventually(() => h.Wire.To("POST", BeatRoute).Count >= 2, "a paused runner to heartbeat twice");
+        await interrupting.CancelAsync();
+        await running;
+
+        Assert.Empty(h.Wire.To("GET", ReviewRoute));
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("heads ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_verdict_the_board_refused_is_one_line_and_is_asked_again_next_interval_and_ends_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("GET", ReviewRoute, new[] { Fixtures.Review("AER-2") });
+        h.Wire.Reply("PUT", Verdicts("AER-2"), HttpStatusCode.BadRequest, "\"a verdict names the runner that took it\"");
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-2-thing", "b1");
+
+        var clock = AClock();
+        h.Workspace.Watching = () => clock.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Clock = clock }).RunAsync(["--max-runs", "2"], default));
+
+        // Nothing was remembered, so the second interval asked again; and the
+        // same refusal is not said twice.
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.Equal(2, Puts(h, "AER-2").Count);
+        Assert.Single(h.Say.Complained, l => l.Contains("did not take the verdict", StringComparison.Ordinal));
+        Assert.Equal(2, h.Workspace.Fetched.Count);
+    }
+
+    [Fact]
+    public async Task A_merged_branch_is_fetched_once_and_not_again_until_the_trunk_or_a_branch_moves()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        // The verdict for a merged branch names no branch sha, so the board's
+        // own copy cannot vouch for it. The runner's memory has to.
+        InReview(h, Fixtures.Review("AER-2", checks: [Fixtures.Stored(MergeVerdicts.None, "t0")]));
+        h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.None, "t1");
+
+        var clock = AClock();
+        var prepared = 0;
+        h.Workspace.Watching = () =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(61));
+
+            // The trunk moves on origin before the third interval.
+            if (++prepared == 2)
+            {
+                h.Workspace.HeadsFor[h.Root] = Fixtures.Heads("t2", ("aer-2-thing", "b1"));
+                h.Workspace.VerdictFor[(h.Root, "AER-2")] = Fixtures.Judged(MergeVerdicts.None, "t2");
+            }
+        };
+
+        await new GoToWorkCommand(h.Runtime with { Clock = clock }).RunAsync(["--max-runs", "3"], default);
+
+        Assert.Equal(3, h.Workspace.Calls.Count(c => c.StartsWith("heads ", StringComparison.Ordinal)));
+        Assert.Equal([h.Root, h.Root], h.Workspace.Fetched);
+        Assert.Equal(2, Puts(h, "AER-2").Count);
+    }
+
+    [Fact]
+    public async Task An_origin_that_does_not_answer_a_board_that_cannot_be_read_and_a_checkout_with_no_origin_are_a_line_each()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h, Fixtures.Review("AER-2"));
+
+        // No heads scripted: the origin does not answer.
+        var clock = AClock();
+        h.Workspace.Watching = () => clock.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Clock = clock }).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Say.Complained, l => l.Contains("origin did not answer", StringComparison.Ordinal));
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.Empty(h.Workspace.Fetched);
+
+        // A board that will not say what is in review.
+        using var unread = new Harness();
+        OneTicket(unread);
+        unread.Wire.Reply("GET", ReviewRoute, HttpStatusCode.InternalServerError, "\"broken\"");
+        Assert.Equal(0, await new GoToWorkCommand(unread.Runtime).RunAsync(["--once"], default));
+        Assert.Single(unread.Say.Complained, l => l.Contains("no branch was checked", StringComparison.Ordinal));
+        Assert.Single(unread.Sessions.Spawned);
+
+        // A standing checkout that has no origin has nothing to report under.
+        using var homeless = new Harness();
+        OneTicket(homeless);
+        InReview(homeless, Fixtures.Review("AER-2"));
+        var runtime = homeless.Runtime with { Checkouts = [new CheckoutEntry(homeless.Root, null, Standing: true)] };
+        homeless.Workspace.HeadsFor[homeless.Root] = Fixtures.Heads("t1", ("aer-2-thing", "b1"));
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+        Assert.Single(homeless.Say.Complained, l => l.Contains("no origin remote", StringComparison.Ordinal));
+        Assert.DoesNotContain(homeless.Workspace.Calls, c => c.StartsWith("heads ", StringComparison.Ordinal));
+    }
 }

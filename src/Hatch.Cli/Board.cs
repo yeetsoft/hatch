@@ -34,6 +34,25 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Every issue in review that these checkouts hold a repository for, with
+    /// the verdicts the board has stored on each - what a poll needs to decide
+    /// which branches to look at. Nothing is asked when there are no checkouts,
+    /// because a caller declaring none is answered with nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<ReviewEntryDto>> ReviewAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, CancellationToken ct)
+    {
+        var parts = DeclareParts(checkouts);
+        if (parts.Count == 0) return [];
+
+        return await Client.GetAsync<List<ReviewEntryDto>>($"/api/hatch/work/review?{string.Join('&', parts)}", ct) ?? [];
+    }
+
+    /// <summary>What this runner found origin's branch for an issue to be, in one repository. Replaces the one stored.</summary>
+    public Task<MergeCheckDto?> MergeCheckAsync(string key, MergeCheckRequest request, CancellationToken ct) =>
+        Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/merge-check", request, ct);
+
+    /// <summary>
     /// The dispatch for one named issue.
     /// </summary>
     /// <param name="heldToken">

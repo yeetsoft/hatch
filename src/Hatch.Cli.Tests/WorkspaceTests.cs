@@ -439,3 +439,246 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
     }
 }
+
+/// <summary>Asking origin what it holds, and whether a branch merges with the trunk - against real git.</summary>
+public sealed class WorkspaceCheckTests : RepoFixture
+{
+    // ---- Heads ----
+
+    [Fact]
+    public void Heads_names_the_trunk_and_every_branch_origin_has_and_touches_nothing_here()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Refs(_work);
+
+        var heads = ws.Heads();
+
+        Assert.NotNull(heads);
+        Assert.Equal("main", heads.Trunk);
+        Assert.Equal(Tip(_origin, "main"), heads.Shas["main"]);
+        Assert.Equal(Tip(_origin, "ha-31-thing"), heads.Shas["ha-31-thing"]);
+        Assert.Equal(40, heads.Shas["ha-31-thing"].Length);
+        Assert.Equal(before, Refs(_work));
+    }
+
+    [Fact]
+    public void Heads_is_null_where_origin_does_not_answer()
+    {
+        var ws = Ws();
+        G(_work, "remote", "set-url", "origin", Path.Combine(_temp, "gone.git"));
+
+        Assert.Null(ws.Heads());
+    }
+
+    // ---- Check ----
+
+    [Fact]
+    public void A_branch_that_already_has_the_trunk_is_clean_at_the_full_shas()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        Assert.True(ws.Fetch());
+
+        var verdict = ws.Check("HA-31");
+
+        Assert.NotNull(verdict);
+        Assert.Equal(MergeVerdicts.Clean, verdict.Kind);
+        Assert.Equal("main", verdict.Trunk);
+        Assert.Equal(Tip(_origin, "main"), verdict.TrunkSha);
+        Assert.Equal("ha-31-thing", verdict.Branch);
+        Assert.Equal(Tip(_origin, "ha-31-thing"), verdict.BranchSha);
+        Assert.Empty(verdict.Files);
+    }
+
+    [Fact]
+    public void A_branch_the_trunk_has_moved_past_without_a_conflict_is_clean()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.Clean, ws.Check("HA-31")!.Kind);
+    }
+
+    [Fact]
+    public void A_branch_that_conflicts_says_which_files_and_leaves_the_tree_alone()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Refs(_work);
+
+        Assert.True(ws.Fetch());
+        var verdict = ws.Check("HA-31");
+
+        Assert.NotNull(verdict);
+        Assert.Equal(MergeVerdicts.Conflicted, verdict.Kind);
+        Assert.Equal(["a.txt"], verdict.Files);
+        Assert.Equal(Tip(_origin, "ha-31-thing"), verdict.BranchSha);
+        Assert.Equal(Tip(_origin, "main"), verdict.TrunkSha);
+
+        // Objects and remote-tracking refs are all that was written: the tree
+        // is on the trunk, clean, with nothing half-merged.
+        Assert.Equal("main", Current(_work));
+        Assert.Equal("", G(_work, "status", "--porcelain").Trim());
+        Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+        Assert.Equal("", G(_work, "stash", "list").Trim());
+        Assert.Equal(
+            before.Split('\n').Where(l => !l.Contains("refs/remotes/")).Order(),
+            Refs(_work).Split('\n').Where(l => !l.Contains("refs/remotes/")).Order());
+    }
+
+    [Fact]
+    public void A_merged_branch_is_none_with_no_branch_on_the_verdict()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        G(_other, "merge", "--quiet", "--ff-only", "origin/ha-31-first");
+        G(_other, "push", "--quiet", "origin", "main");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31");
+
+        Assert.NotNull(verdict);
+        Assert.Equal(MergeVerdicts.None, verdict.Kind);
+        Assert.Null(verdict.Branch);
+        Assert.Null(verdict.BranchSha);
+        Assert.Equal(Tip(_origin, "main"), verdict.TrunkSha);
+    }
+
+    [Fact]
+    public void A_squash_merged_branch_is_none_though_its_commits_are_nowhere_in_the_trunk()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        File.WriteAllText(Path.Combine(_other, "x.txt"), "x");
+        Commit(_other, "Squash of ha-31-first");
+        G(_other, "push", "--quiet", "origin", "main");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-31")!.Kind);
+    }
+
+    [Fact]
+    public void Two_unmerged_branches_are_ambiguous_and_name_neither()
+    {
+        Publish("ha-31-one", "x.txt", "x");
+        Publish("ha-31-two", "y.txt", "y");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31");
+
+        Assert.Equal(MergeVerdicts.Ambiguous, verdict!.Kind);
+        Assert.Null(verdict.Branch);
+        Assert.Null(verdict.BranchSha);
+    }
+
+    [Fact]
+    public void An_issue_with_no_branch_is_none_and_a_check_reads_the_refs_as_they_stand()
+    {
+        var ws = Ws();
+        ws.Fetch();
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-31")!.Kind);
+
+        // Pushed after the fetch: a check does no network, so it does not know.
+        Publish("ha-31-thing", "x.txt", "x");
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-31")!.Kind);
+
+        ws.Fetch();
+        Assert.Equal(MergeVerdicts.Clean, ws.Check("HA-31")!.Kind);
+    }
+
+    [Fact]
+    public void A_branch_for_another_key_that_starts_the_same_is_not_this_issues_to_check()
+    {
+        Publish("ha-3-other", "x.txt", "x");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-31")!.Kind);
+        Assert.Equal(MergeVerdicts.Clean, ws.Check("HA-3")!.Kind);
+    }
+
+    // ---- Leaving reports what origin's branch looks like ----
+
+    [Fact]
+    public void After_leaving_with_a_merge_pushed_the_check_reads_the_new_tip_on_origin()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var pushed = Tip(_origin, "ha-31-thing");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", syncPullRequest: true);
+
+        // The push moved the remote-tracking ref, or this reads the old tip -
+        // and if it does not on some git, Leave has to fetch once more.
+        var tip = Tip(_origin, "ha-31-thing");
+        Assert.NotEqual(pushed, tip);
+        Assert.NotNull(left.Found);
+        Assert.Equal(MergeVerdicts.Clean, left.Found.Kind);
+        Assert.Equal(tip, left.Found.BranchSha);
+        Assert.Equal(Tip(_origin, "main"), left.Found.TrunkSha);
+    }
+
+    [Fact]
+    public void After_leaving_with_the_trunk_already_in_the_branch_the_verdict_is_clean_at_its_tip()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", syncPullRequest: true);
+
+        Assert.Equal(MergeVerdicts.Clean, left.Found!.Kind);
+        Assert.Equal(Tip(_origin, "ha-31-thing"), left.Found.BranchSha);
+    }
+
+    [Fact]
+    public void After_leaving_where_the_merge_conflicts_the_verdict_names_the_files_and_nothing_was_pushed()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        var before = Tip(_origin, "ha-31-thing");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", syncPullRequest: true);
+
+        Assert.Equal(MergeVerdicts.Conflicted, left.Found!.Kind);
+        Assert.Equal(["a.txt"], left.Found.Files);
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void After_leaving_with_no_branch_or_a_merged_one_the_verdict_is_none()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.Equal(MergeVerdicts.None, ws.Leave("HA-31", syncPullRequest: true).Found!.Kind);
+    }
+
+    [Fact]
+    public void Nothing_is_found_where_leaving_did_not_fetch()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        // No pull request, so no sync and no fetch: nothing is known.
+        Assert.Null(ws.Leave("HA-31", syncPullRequest: false).Found);
+
+        // A fetch that did not answer is nothing known either.
+        G(_work, "remote", "set-url", "origin", Path.Combine(_temp, "gone.git"));
+        Assert.Null(ws.Leave("HA-31", syncPullRequest: true).Found);
+    }
+}

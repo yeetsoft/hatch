@@ -165,6 +165,67 @@ public class WorkController(
             r.Blocked)).ToList();
     }
 
+    /// <summary>
+    /// Every issue in the review column that the caller holds a checkout for,
+    /// with what the board has stored about its branch - the list a runner
+    /// polls to decide which branches to look at.
+    ///
+    /// <para>It is not the queue. A verdict is a fact about a branch and not
+    /// work, so nothing narrows it: not <c>under</c>, a claim, an open
+    /// question, a ready date or an assignee. An issue somebody else has
+    /// claimed, or is waiting on an answer, still has a branch that may have
+    /// started conflicting, and the poll is what says so.</para>
+    ///
+    /// <para><c>clones</c> is ignored, because a poll clones nothing: a
+    /// repository this runner has never cloned is not one it can check, and
+    /// the queue's "no runner has checked" fold is the honest answer for
+    /// it.</para>
+    /// </summary>
+    /// <remarks>
+    /// A caller that declares nothing holds no checkout, so it is answered
+    /// with an empty list - unlike the queue, where declaring nothing opts out
+    /// of the fold. There is no "every issue" a poll could usefully be handed.
+    /// </remarks>
+    [HttpGet("review")]
+    public async Task<ActionResult<IReadOnlyList<ReviewEntryDto>>> GetReview(
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        CancellationToken ct = default)
+    {
+        var repos = RepositoryDeclaration.From(remote, standing, null);
+        if (!repos.IsDeclared) return new List<ReviewEntryDto>();
+
+        var statuses = await OrderedStatusesAsync(ct);
+        if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewEntryDto>();
+
+        var inReview = await db.Issues.AsNoTracking()
+            .Where(i => i.StatusId == review.Id)
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.MergeChecks)
+            .ToListAsync(ct);
+
+        var entries = new List<ReviewEntryDto>();
+        foreach (var issue in inReview)
+        {
+            var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
+
+            // The same rule as the repository fold, without the clones
+            // allowance: an unbound project is checked from the standing
+            // checkout, and a bound one from whichever of its repositories the
+            // caller declared.
+            var held = bound.Count == 0 ? repos.Standing : bound.Any(r => repos.Match(r.Canonical) is not null);
+            if (!held) continue;
+
+            entries.Add(new ReviewEntryDto(
+                IssueKey.Format(issue.Project.Key, issue.Number),
+                bound.Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical))).ToList(),
+                issue.MergeChecks.OrderBy(m => m.Canonical, StringComparer.Ordinal).Select(IssueMergeChecks.Project).ToList()));
+        }
+
+        return entries;
+    }
+
     // ---- The walk ----
 
     /// <summary>

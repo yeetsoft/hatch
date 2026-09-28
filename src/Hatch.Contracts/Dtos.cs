@@ -799,6 +799,22 @@ public record QueueEntryDto(
     StatusDto? ToStatus,
     string? Blocked);
 
+/// <summary>
+/// One issue in the review column that the caller holds a checkout of: its key,
+/// the repositories it is bound to, and the verdicts the board has stored.
+/// </summary>
+/// <remarks>
+/// What a runner's poll needs and no more - the key to name the branches, the
+/// repositories to map to checkouts on disk, and the stored verdicts to tell
+/// whether a fetch would find anything new. Nothing here is a fold, because a
+/// verdict is a fact about a branch and not work.
+/// </remarks>
+/// <param name="Repositories">The project's bound repositories, with <see cref="WorkRepositoryDto.MatchedRemote"/> set on the ones the caller declared. Empty for an unbound project, which is checked from the standing checkout.</param>
+public record ReviewEntryDto(
+    string Key,
+    IReadOnlyList<WorkRepositoryDto> Repositories,
+    IReadOnlyList<MergeCheckDto> Checks);
+
 // ---- Rollups ----
 
 /// <summary>

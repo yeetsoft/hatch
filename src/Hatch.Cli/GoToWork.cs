@@ -647,6 +647,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // the ones a pass prints on its way past something.
         var line = new Chatter { Line = "reading the board" };
 
+        // What the loop has learned about the branches in review, carried from
+        // one interval to the next - see ReviewPoll for why it is worth keeping.
+        var reviews = new ReviewPoll();
+
         while (!ct.IsCancellationRequested)
         {
             // Once per iteration, at the top - which is the one moment in a
@@ -710,6 +714,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             paused.Clear();
 
+            // After the heartbeat and the pause, so a paused runner checks
+            // nothing, and before the pass - busy or idle, once per interval.
+            await PollAsync(reviews, interval, ct);
+
             var pass = await PassAsync(under, quiet, tally, idle, busy, interval, once, restart, line, ct);
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
@@ -730,6 +738,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         if (ct.IsCancellationRequested) tally.StopWhy ??= "interrupted";
         return false;
+    }
+
+    /// <summary>
+    /// Whether the branches of what is in review still merge with the trunk, at
+    /// most once per interval. Nothing in it fails a pass.
+    /// </summary>
+    private async Task PollAsync(ReviewPoll reviews, int interval, CancellationToken ct)
+    {
+        // The clock the restart is timed by, so a test that moves it moves this.
+        if (!reviews.Due(runtime.Clock.GetUtcNow(), interval)) return;
+
+        await reviews.RunAsync(runtime, ct);
     }
 
     private enum Pass

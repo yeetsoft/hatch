@@ -231,6 +231,91 @@ public sealed class LifecycleTests
         Assert.Contains(h.Say.Complained, l => l.Contains("could not be left tidy, or the ticket told"));
     }
 
+    // ---- What the end of an increment found about origin's branch ----
+
+    private const string MergeCheck = "/api/hatch/issues/AER-1/merge-check";
+
+    private static void Takes(Harness h, HttpStatusCode code = HttpStatusCode.OK) =>
+        h.Wire.Reply("PUT", MergeCheck, code, code == HttpStatusCode.OK
+            ? System.Text.Json.JsonSerializer.Serialize(Fixtures.Stored(MergeVerdicts.Conflicted, "t1"), Fixtures.Json)
+            : "\"no\"");
+
+    [Fact]
+    public async Task What_the_tidy_found_is_put_on_the_board_under_the_projects_remote_for_that_checkout()
+    {
+        using var h = new Harness();
+        var repo = Fixtures.Repository(
+            "git@example.test:owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: h.Runtime.Checkouts[0].Remote);
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", repositories: [repo]), pullRequest: "https://forge.example/pr/1");
+        Takes(h);
+        h.Workspace.FoundFor[h.Root] = Fixtures.Judged(MergeVerdicts.Conflicted, "t1", "aer-1-thing", "b1", "a.cs", "b.cs");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var put = Assert.Single(h.Wire.To("PUT", MergeCheck)).Read<MergeCheckRequest>();
+        Assert.Equal("git@example.test:owner/repo.git", put.Remote);
+        Assert.Equal(MergeVerdicts.Conflicted, put.Verdict);
+        Assert.Equal("t1", put.TrunkSha);
+        Assert.Equal("b1", put.BranchSha);
+        Assert.Equal(["a.cs", "b.cs"], put.Files);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task Where_the_project_binds_nothing_what_the_tidy_found_goes_under_the_standing_checkouts_remote()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pr/1");
+        Takes(h);
+        h.Workspace.FoundFor[h.Root] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-1-thing", "b1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Equal("https://example.test/repo.git", Assert.Single(h.Wire.To("PUT", MergeCheck)).Read<MergeCheckRequest>().Remote);
+    }
+
+    [Fact]
+    public async Task A_tidy_that_found_nothing_out_puts_nothing()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pr/1");
+        Takes(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(h.Wire.To("PUT", MergeCheck));
+    }
+
+    [Fact]
+    public async Task A_verdict_the_board_refuses_is_a_line_and_the_tidy_comment_is_still_written()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pr/1");
+        Takes(h, HttpStatusCode.BadRequest);
+        h.Workspace.LeaveNotes.Add("2 uncommitted file(s) were stashed");
+        h.Workspace.FoundFor[h.Root] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-1-thing", "b1");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Wire.To("PUT", MergeCheck));
+        Assert.Single(h.Say.Complained, l => l.Contains("did not take the verdict on its branch", StringComparison.Ordinal));
+        Assert.Contains("- 2 uncommitted file(s) were stashed", Assert.Single(Tidied(h)).Body);
+    }
+
+    [Fact]
+    public async Task A_lost_lease_reports_nothing_about_the_branch()
+    {
+        using var h = new Harness();
+        Board(h, taken: true, pullRequest: "https://forge.example/pr/1");
+        Takes(h);
+        h.Workspace.FoundFor[h.Root] = Fixtures.Judged(MergeVerdicts.Clean, "t1", "aer-1-thing", "b1");
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(h.Wire.To("PUT", MergeCheck));
+    }
+
     // ---- hatch work ----
 
     [Fact]

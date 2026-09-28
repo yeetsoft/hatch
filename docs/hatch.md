@@ -1119,6 +1119,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/review` | GET | Every issue in the review column that the caller holds a checkout for, with its bound repositories (`WorkRepositoryDto`, `matchedRemote` set) and its stored [verdicts](#merge-check) — what a runner's [poll](#what-a-runner-does-in-order) reads. `?remote=` (repeatable) and `?standing=` as on the queue; a caller that declares neither is answered with nothing. Not narrowed by `ancestorKey`, a claim, a question, a date or an assignee — a verdict is a fact about a branch and not work — and `clones` is ignored, because a poll clones nothing |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
@@ -1830,7 +1831,48 @@ up after it.
 
 ### What a runner does, in order
 
-One pass, from the board to the release:
+**Before the pass, once per interval: look at what is in review.** After the
+heartbeat and before the queue is read — on an idle pass and a busy one alike,
+and not at all while the runner is paused — the loop asks `work/review` which
+in-review issues it holds a checkout for, and whether each one's branch still
+merges with the trunk. It asks `git ls-remote --heads origin` once per checkout
+that has an issue to look at, and **fetches only what that says moved**:
+
+- For each issue the runner builds a fingerprint from what `ls-remote` printed:
+  the trunk's sha and every branch the key names, as `name:sha`, sorted.
+- An issue is *unchanged*, and costs nothing, when this runner has already
+  checked that fingerprint and the board took the verdict, or when the board's
+  stored `clean` or `conflicted` verdict names the one branch at the trunk sha
+  and branch sha `ls-remote` printed. The second is what stops a restarted
+  runner fetching everything once for nothing.
+- The first is why the fingerprint exists. A `none` or `ambiguous` verdict has no
+  branch sha for the stored one to be compared with, and an in-review ticket whose
+  pull request has merged — the commonest thing in the column — would otherwise
+  be fetched every interval all night.
+- Every other issue marks its checkout as needing a fetch. A checkout is fetched
+  **once**, however many of its issues moved, then each is checked with
+  `git merge-tree --write-tree` and the verdict is `PUT` to the board. The
+  fingerprint is remembered only after the board took it, so a refused `PUT` is
+  asked again next interval.
+
+None of it touches a worktree or an index: a fetch writes refs and objects, and
+`merge-tree --write-tree` writes objects. The terminal hears about a verdict only
+when it changes — `hatch: HA-12 conflicts with main (3 files)` — and an interval
+in which nothing moved prints nothing. Every failure is one line and nothing more
+(an origin that does not answer, a refused `PUT`, a board that cannot be read, a
+git older than 2.38 — said once per run), said again only if it changes, and none
+of them fails the pass or ends the night. A repository this runner has never
+cloned is not polled; the queue's *"no runner has checked"* fold is the honest
+answer for it.
+
+The end of an increment reports too. When [leaving the tree](#leaving-the-tree)
+fetched to bring a pull request's branch up to date, it checks what origin's
+branch now looks like — whatever it then did or declined to do — and the verdict
+is `PUT` without waiting for the poll, so a pull request that conflicts the
+moment it opens is conflict work on the next pass. Nothing is reported where it
+did not fetch, because nothing is known, and nothing is reported for a lost lease.
+
+Then one pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
    the person-assignee fold — and answers with every row and the reason it was
@@ -1924,6 +1966,15 @@ Nothing it does destroys work that cannot be got back:
 It runs once an increment is known to be due, not once per pass — on an idle
 board the difference is a `git fetch` every interval until morning, against a
 remote with nothing to say. The guarantee is about the spawn either way.
+
+The [review poll](#what-a-runner-does-in-order) is held to the same rule, and
+that is why it asks `git ls-remote` first. A loop that fetched every interval to
+find out whether a pull request's branch had moved would be exactly the loop this
+section says the runner is not: what is in review is mostly branches nobody has
+touched, and one round trip that changes nothing is all it takes to know that. It
+fetches — the same `git fetch --prune origin` a reset makes — only in a checkout
+where a trunk or a branch a verdict depends on has moved, once, and it never
+leaves the tree anywhere but on the trunk.
 
 Two things can go wrong, and they are not the same thing. A fetch that does not
 answer is **a minute of network**, and the loop waits its interval and asks
@@ -2029,6 +2080,12 @@ last session left checked out.
   ticket and pushes nothing; turning that state into work for an agent is not
   this step's job. This needs git 2.38 or later; an older one is said
   once, on the terminal, and the step is skipped.
+- **What origin's branch looks like afterwards is reported to the board** — clean
+  at the new sha after a merge was pushed, clean where the trunk was already in
+  it, conflicted with the files where the merge was refused, or no branch — as a
+  [verdict](#merge-check), by the same code path for every outcome. A verdict the
+  board will not take is one line on the terminal and does not stop the comment
+  below being written.
 
 Everything found goes to the ticket in **one comment**, so a reviewer reads one
 thing. None of it fails the increment: a refused push — the forge, branch

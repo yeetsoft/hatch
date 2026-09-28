@@ -91,9 +91,13 @@ public sealed partial class Workspace
         if (!Git("checkout", "--quiet", "-B", trunk, trunkRef).Ok)
             Note($"the tree would not go back to {trunk}", bad: true);
 
-        if (syncPullRequest) Sync(lower, trunk, Note);
+        // What origin's branch looks like now, when Sync fetched and so the refs
+        // are current - whatever Sync then did or declined to do, which is the
+        // one place every outcome can be read the same way. Nothing is known
+        // where it did not fetch, and nothing is claimed.
+        var found = syncPullRequest && Sync(lower, trunk, Note) ? Check(lower) : null;
 
-        return new Leaving(root, notes);
+        return new Leaving(root, notes, found);
     }
 
     public void Return()
@@ -132,15 +136,13 @@ public sealed partial class Workspace
     /// result, <c>commit-tree</c> for the commit, and a push that is a
     /// fast-forward or nothing.
     /// </summary>
-    private void Sync(string lowerKey, string trunk, Action<string, bool> note)
+    /// <returns>Whether origin was fetched, so that the remote-tracking refs are as origin has them.</returns>
+    private bool Sync(string lowerKey, string trunk, Action<string, bool> note)
     {
         if (!AtLeast(MergeTree))
         {
-            // Once, not once per checkout per increment: it is the same news
-            // every time, and the tree is the same tree.
-            if (Interlocked.Exchange(ref _oldGitSaid, 1) == 0)
-                complain($"hatch:   this git is older than {MergeTree}, which is what merging a pull request's branch without a worktree needs - not doing it");
-            return;
+            SayOldGit("merging a pull request's branch without a worktree");
+            return false;
         }
 
         // Fetched again: the session may have pushed, and the answer about what
@@ -148,7 +150,7 @@ public sealed partial class Workspace
         if (!Git("fetch", "--quiet", "--prune", "origin").Ok)
         {
             note("could not fetch from origin, so the pull request's branch was not brought up to date", true);
-            return;
+            return false;
         }
 
         var (open, _) = Branched(lowerKey, trunk);
@@ -156,27 +158,27 @@ public sealed partial class Workspace
         {
             if (open.Count > 1)
                 note($"more than one branch on origin names this issue ({string.Join(", ", open)}), so which is the pull request's was not guessed", true);
-            return;
+            return true;
         }
 
         var branch = open[0];
         var remote = $"refs/remotes/origin/{branch}";
         var trunkRef = $"refs/remotes/origin/{trunk}";
 
-        if (Git("merge-base", "--is-ancestor", trunkRef, remote).Ok) return;
+        if (Git("merge-base", "--is-ancestor", trunkRef, remote).Ok) return true;
 
         var merge = Git("merge-tree", "--write-tree", "--name-only", trunkRef, remote);
         if (merge.Code == 1)
         {
             var files = ConflictedFiles(merge.Out);
             note($"{trunk} does not merge into {branch} on origin - conflicts in {string.Join(", ", files)}; nothing was pushed", true);
-            return;
+            return true;
         }
 
         if (!merge.Ok)
         {
             note($"could not work out a merge of {trunk} into {branch}: {merge.Why}", true);
-            return;
+            return true;
         }
 
         var tree = merge.Out.Split('\n')[0].Trim();
@@ -184,13 +186,26 @@ public sealed partial class Workspace
         if (!commit.Ok)
         {
             note($"could not commit a merge of {trunk} into {branch}: {commit.Why}", true);
-            return;
+            return true;
         }
 
         var sha = commit.Out.Trim();
         var push = Git("push", "--quiet", "origin", $"{sha}:refs/heads/{branch}");
         if (push.Ok) note($"{trunk} was merged into {branch} on origin, now at {sha[..Math.Min(9, sha.Length)]}", false);
         else note($"the push of {trunk} merged into {branch} was refused - {push.Why}; the pull request's branch is as it was", true);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Once, not once per checkout per increment: it is the same news every
+    /// time, and the tree is the same tree.
+    /// </summary>
+    /// <param name="what">What could not be done, as the tail of "which is what ... needs".</param>
+    private void SayOldGit(string what)
+    {
+        if (Interlocked.Exchange(ref _oldGitSaid, 1) == 0)
+            complain($"hatch:   this git is older than {MergeTree}, which is what {what} needs - not doing it");
     }
 
     private bool AtLeast(Version floor)

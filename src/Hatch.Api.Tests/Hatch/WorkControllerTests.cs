@@ -1093,6 +1093,120 @@ public class WorkControllerTests
             Only(await h.Work.GetQueue(0, null, standing: true, ct: default)).Blocked);
     }
 
+    // ---- The review read: which branches a runner looks at ----
+
+    [Fact]
+    public async Task Review_AnswersOnlyTheReviewColumn()
+    {
+        var h = await NewAsync();
+        var inReview = await h.FileAsync("story", "in review", h.Review);
+        await h.FileAsync("story", "underway", h.InProgress);
+        await h.FileAsync("story", "shipped", h.Done);
+
+        var entries = Value(await h.Work.GetReview(standing: true, ct: default));
+
+        Assert.Equal([Key(inReview)], entries.Select(e => e.Key));
+        Assert.Empty(entries.Single().Repositories);
+        Assert.Empty(entries.Single().Checks);
+    }
+
+    [Fact]
+    public async Task Review_IsEmptyForACallerThatDeclaredNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "in review", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(ct: default)));
+    }
+
+    [Fact]
+    public async Task Review_ChecksAnUnboundProjectOnlyFromAStandingCheckout()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "in review", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(remote: ["https://example.com/o/r"], standing: false, ct: default)));
+        Assert.Single(Value(await h.Work.GetReview(standing: true, ct: default)));
+    }
+
+    [Fact]
+    public async Task Review_NamesTheBoundRepositoriesAndWhichOneTheRunnerHolds()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/one", "main");
+        await h.BindRepositoryAsync("https://example.com/o/two");
+        await h.FileAsync("story", "in review", h.Review);
+
+        var entry = Value(await h.Work.GetReview(remote: ["git@example.com:o/two.git"], ct: default)).Single();
+
+        Assert.Equal(2, entry.Repositories.Count);
+        Assert.True(entry.Repositories[0].Primary);
+        Assert.Equal("main", entry.Repositories[0].BaseBranch);
+        Assert.Null(entry.Repositories[0].MatchedRemote);
+        Assert.Equal("git@example.com:o/two.git", entry.Repositories[1].MatchedRemote);
+    }
+
+    [Fact]
+    public async Task Review_LeavesOutABoundIssueTheRunnerHasNoCheckoutOf_AndNeverClones()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "in review", h.Review);
+
+        // A poll clones nothing, so a repository the runner lacks is not one
+        // it can check - and the standing checkout is no answer for a project
+        // that binds something.
+        Assert.Empty(Value(await h.Work.GetReview(remote: ["https://example.com/other.git"], standing: true, ct: default)));
+    }
+
+    [Fact]
+    public async Task Review_IsNotNarrowedByAClaimAQuestionADateOrAnAssignee()
+    {
+        var h = await NewAsync();
+        var claimed = await h.FileAsync("story", "claimed", h.Review);
+        var asked = await h.FileAsync("story", "asked", h.Review);
+        var later = await h.FileAsync("story", "later", h.Review, readyAt: Now.AddDays(30));
+        var assigned = await h.FileAsync("story", "assigned", h.Review);
+
+        await h.ClaimAsync(claimed);
+        await h.AskAsync(asked, "which?");
+        await h.AssignAsync(assigned, personId: Guid.NewGuid());
+
+        Assert.Equal(
+            [Key(claimed), Key(asked), Key(later), Key(assigned)],
+            Value(await h.Work.GetReview(standing: true, ct: default)).Select(e => e.Key));
+    }
+
+    [Fact]
+    public async Task Review_CarriesTheStoredVerdicts()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "in review", h.Review);
+        h.Db.MergeChecks.Add(new EfHatchMergeCheck
+        {
+            IssueId = issue.Id,
+            Remote = "https://example.com/o/r",
+            Canonical = "example.com/o/r",
+            Trunk = "main",
+            TrunkSha = "aaaa",
+            Verdict = MergeVerdicts.Conflicted,
+            Branch = "aer-1-thing",
+            BranchSha = "bbbb",
+            Files = "a.cs\nb.cs",
+            CheckedAt = Now,
+            Runner = "here:/checkout",
+            CheckedBy = "hatch-agent",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var check = Value(await h.Work.GetReview(remote: ["https://example.com/o/r"], ct: default)).Single().Checks.Single();
+
+        Assert.Equal(MergeVerdicts.Conflicted, check.Verdict);
+        Assert.Equal("bbbb", check.BranchSha);
+        Assert.Equal(["a.cs", "b.cs"], check.Files);
+    }
+
     [Fact]
     public async Task Queue_NamesTheAncestorHoldingTheEdge()
     {
