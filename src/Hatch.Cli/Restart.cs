@@ -58,13 +58,13 @@ public interface ISelf
 
 /// <summary>The real one, over the files this program is compiled from.</summary>
 /// <remarks>
-/// <para>Three places, and each is in the set for a reason.
+/// <para>Four places, and each is in the set for a reason.
 /// <c>src/Hatch.Cli</c> is the loop. <c>src/Hatch.Contracts</c> is what
 /// it is compiled against, so a wire record that changed is a runner that has
-/// to be rebuilt. And <c>scripts/hatch.sh</c> is in it because it resolves the
-/// runner and reads the settings - a night that improved the script is a night
-/// running the old one until somebody stops it, which is the thing being built
-/// away from.</para>
+/// to be rebuilt. And <c>scripts/hatch.sh</c> and <c>scripts/hatch.ps1</c> are
+/// in it because each resolves the runner and reads the settings - a night that
+/// improved the script is a night running the old one until somebody stops it,
+/// which is the thing being built away from.</para>
 ///
 /// <para>Paths are recorded repo-relative with forward slashes and sorted
 /// ordinally before hashing, so the digest is the same number on either
@@ -77,6 +77,7 @@ public sealed class LoopSource(string root) : ISelf
     internal static readonly string[] Paths =
     [
         "scripts/hatch.sh",
+        "scripts/hatch.ps1",
         "src/Hatch.Cli",
         "src/Hatch.Contracts",
     ];

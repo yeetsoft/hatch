@@ -10,6 +10,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// The stock implementation playbook stops telling a session to cut its own
 /// branch - and only where nobody has edited it.
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class PlaybookBranchStepTests
 {
     [Fact]

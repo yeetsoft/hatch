@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { grownHeight } from './useAutoGrow';
+import { clampedHeight, grownHeight, parseCeiling } from './useAutoGrow';
 
 /* The hook itself is layout - it has to be looked at in a browser, and the
    operator does that. What can be pinned down here is the arithmetic, which is
@@ -18,5 +18,40 @@ describe('grownHeight', () => {
      what makes deleting lines shrink to that floor and stop. */
   it('lands on the floor when the content is the floor', () => {
     expect(grownHeight(402, 400, 2)).toBe(402);
+  });
+});
+
+describe('clampedHeight', () => {
+  it('takes the content plus the border while it is between the ends', () => {
+    expect(clampedHeight(100, 480, 300, 2)).toBe(302);
+  });
+
+  it('never goes under the height the box opened at', () => {
+    expect(clampedHeight(100, 480, 40, 2)).toBe(100);
+  });
+
+  it('stops at the ceiling', () => {
+    expect(clampedHeight(100, 480, 900, 2)).toBe(480);
+  });
+
+  it('keeps the floor when the ceiling is under it', () => {
+    expect(clampedHeight(300, 200, 900, 2)).toBe(300);
+  });
+
+  it('has no ceiling at Infinity', () => {
+    expect(clampedHeight(100, Infinity, 5000, 2)).toBe(5002);
+  });
+});
+
+describe('parseCeiling', () => {
+  it('reads a pixel length', () => {
+    expect(parseCeiling('480px')).toBe(480);
+    expect(parseCeiling('192.5px')).toBe(192.5);
+  });
+
+  it('reads none, empty and anything unreadable as no ceiling', () => {
+    expect(parseCeiling('none')).toBe(Infinity);
+    expect(parseCeiling('')).toBe(Infinity);
+    expect(parseCeiling('30rem')).toBe(Infinity);
   });
 });

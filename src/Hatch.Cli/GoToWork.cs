@@ -262,8 +262,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// What the runner exits with to ask the supervisor in <c>hatch.sh</c> to
-    /// build the new source and run it again.
+    /// What the runner exits with to ask the supervisor in <c>scripts/hatch.sh</c>
+    /// or <c>scripts/hatch.ps1</c> to build the new source and run it again.
     /// </summary>
     /// <remarks>
     /// 75 is <c>EX_TEMPFAIL</c> - "try again" - and collides with nothing else

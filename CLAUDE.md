@@ -27,7 +27,14 @@ no copy of this repository's scripts on their `PATH`. Only `work` and
 **In this checkout, [`scripts/hatch.sh`](scripts/hatch.sh) reaches every one of
 those commands**, finding or building the binary and handing over. Use it where
 `hatch` is not installed; the two are the same commands and the same arguments,
-and this file writes `./scripts/hatch.sh` below for exactly that reason.
+and this file writes `./scripts/hatch.sh` below for exactly that reason. In
+Windows PowerShell or PowerShell 7 it is [`scripts\hatch.ps1`](scripts/hatch.ps1),
+the same door and the same supervisor; where the execution policy refuses
+scripts (the Windows client default), run
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\hatch.ps1 <command>`,
+or allow the account once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+A session on Windows runs its commands in Git Bash, where `hatch.sh` runs the
+built `hatch.exe`.
 
 Access is an API key — `Authorization: Bearer hatch_ak_…` — read from three
 layers, highest first: an exported `HATCH_BASE`/`HATCH_KEY`, then
@@ -118,7 +125,7 @@ a playbook is wrong, say so on the ticket. The API refuses to let you route
 around it, and it refuses on purpose.
 
 Work on the loop itself — `src/Hatch.Cli`, `scripts/hatch.sh`,
-`src/Hatch.Contracts` — reaches the next increment rather than the next
+`scripts/hatch.ps1`, `src/Hatch.Contracts` — reaches the next increment rather than the next
 night: when its own source changes on the trunk, the loop rebuilds and comes
 back as the new version.
 

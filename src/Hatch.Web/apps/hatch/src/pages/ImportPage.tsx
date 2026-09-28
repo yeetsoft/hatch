@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Text } from '@hatch/ui';
 import type { BadgeTone } from '@hatch/ui';
 import { getProjects, previewImport, previewText, runImport } from '../api/client';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { message } from '../lib/errors';
 import type { ImportResult, ParsedEpic, PlanState, Project } from '../types';
 
@@ -192,9 +193,17 @@ export function ImportPage() {
 
           <Field
             label="Body"
+            as="div"
             hint="Markdown, the same shape a plan file has: ## Phase opens a story, each checkbox under it is a task."
           >
-            <textarea rows={16} value={body} onChange={(e) => setBody(e.target.value)} />
+            <MarkdownEditor
+              value={body}
+              onChange={setBody}
+              rows={16}
+              className="hatch-grows"
+              deferred
+              ariaLabel="Body"
+            />
           </Field>
 
           <div className="hatch-form-actions">
