@@ -384,9 +384,29 @@ export interface IssueEvent {
   at: string;
 }
 
+/** How full the WIP section is right now. Mirrors WipDto - not WipSection
+    (the settings shape, with a nullable limit and no load): this one is always
+    a load against a limit known to exist. */
+export interface Wip {
+  /** How many issues of `types` may sit across the counted columns at once. */
+  limit: number;
+  /** The issue types this slice counts - the limit row's own types. */
+  types: IssueType[];
+  /** The counted columns, in board order. Never a deferred or terminal one. */
+  statusIds: number[];
+  /** How many counted issues are on the board right now - inside the section, plus `claimedInbound`. */
+  load: number;
+  /** Of `load`, how many are outside the section but claimed and on their way in. */
+  claimedInbound: number;
+}
+
 export interface Board {
   statuses: Status[];
   issues: IssueCard[];
+  /** How full the WIP section is, or null/undefined where the board has never
+      heard of WIP - no column flagged, or no limit set. Optional so existing
+      Board fixtures still type-check; the server always sends the key. */
+  wip?: Wip | null;
 }
 
 // ---- The importer ----

@@ -38,4 +38,119 @@ public static class Wip
 
         return new WipSectionDto(limit, EfHatchPlaybook.SplitTypes(EfHatchWipLimit.StoriesAndBugs), statusIds);
     }
+
+    /// <summary>
+    /// How full the WIP section is right now, or null where the board has never
+    /// turned WIP on: no limit row, or no column left flagged (and neither
+    /// deferred nor terminal). Every board caller - <c>BoardController</c>
+    /// today, the move gate and the dispatcher's fold later - reads the answer
+    /// from here rather than counting for itself.
+    /// </summary>
+    /// <param name="statuses">
+    /// The board's own status list, already loaded by the caller: no second
+    /// query, and the same entities <see cref="Columns.Target"/> is asked about.
+    /// </param>
+    /// <param name="now">
+    /// The instant every claim on the board is judged against. Callers that also
+    /// draw claims elsewhere in the same request should read it once and pass
+    /// that same value here, so a card drawn as claimed and the load's
+    /// claimed-inbound part agree.
+    /// </param>
+    public static async Task<WipSection?> LoadAsync(
+        HatchContext db, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
+    {
+        var limit = await db.WipLimits.AsNoTracking()
+            .Where(w => w.Types == EfHatchWipLimit.StoriesAndBugs)
+            .Select(w => (int?)w.Limit)
+            .SingleOrDefaultAsync(ct);
+
+        if (limit is not { } value) return null;
+
+        var section = statuses
+            .Where(s => s.IsWip && !s.IsDeferred && !s.IsTerminal)
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
+            .Select(s => s.Id)
+            .ToList();
+
+        if (section.Count == 0) return null;
+
+        var sectionIds = section.ToHashSet();
+        var feeders = statuses
+            .Where(s => !sectionIds.Contains(s.Id) && Columns.Target(statuses, s) is { } target && sectionIds.Contains(target.Id))
+            .Select(s => s.Id)
+            .ToHashSet();
+
+        var types = EfHatchPlaybook.SplitTypes(EfHatchWipLimit.StoriesAndBugs);
+
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => types.Contains(i.Type) && (sectionIds.Contains(i.StatusId) || feeders.Contains(i.StatusId)))
+            .Select(i => new
+            {
+                i.Id,
+                i.StatusId,
+                Claim = new ClaimSnapshot(
+                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+            })
+            .ToListAsync(ct);
+
+        var counted = rows
+            .Where(r => sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
+            .Select(r => r.Id)
+            .ToHashSet();
+
+        var claimedInbound = rows.Count(r => !sectionIds.Contains(r.StatusId) && counted.Contains(r.Id));
+
+        return new WipSection(value, types, section, counted, claimedInbound);
+    }
+}
+
+/// <summary>
+/// One reading of the WIP section, as <see cref="Wip.LoadAsync"/> takes it: the
+/// limit, the counted types, the section's columns, and which issues are the
+/// load right now. Callers ask it questions rather than re-deriving any of this
+/// - <see cref="Inside"/> and <see cref="Counts"/> exist so the move gate
+/// (HA-89) and the dispatcher's fold (HA-90) never work out the section or the
+/// types for themselves.
+/// </summary>
+public sealed class WipSection
+{
+    private readonly IReadOnlySet<int> _section;
+    private readonly IReadOnlySet<string> _types;
+    private readonly IReadOnlySet<long> _counted;
+
+    internal WipSection(
+        int limit, IReadOnlyList<string> types, IReadOnlyList<int> statusIds, IReadOnlySet<long> counted, int claimedInbound)
+    {
+        Limit = limit;
+        Types = types;
+        StatusIds = statusIds;
+        Load = counted.Count;
+        ClaimedInbound = claimedInbound;
+        _section = statusIds.ToHashSet();
+        _types = types.ToHashSet();
+        _counted = counted;
+    }
+
+    public int Limit { get; }
+    public IReadOnlyList<string> Types { get; }
+    public IReadOnlyList<int> StatusIds { get; }
+    public int Load { get; }
+    public int ClaimedInbound { get; }
+
+    /// <summary>Whether a column counts towards the section - <see cref="StatusIds"/>, as a set.</summary>
+    public bool Inside(int statusId) => _section.Contains(statusId);
+
+    /// <summary>Whether an issue type counts towards this limit - <see cref="Types"/>, as a set.</summary>
+    public bool Counts(string type) => _types.Contains(type);
+
+    /// <summary>
+    /// Whether this issue is one of the ones <see cref="Load"/> was summed from:
+    /// in the section, or outside it and holding a live claim whose next column
+    /// is in the section. <see cref="Load"/> is always exactly the count of
+    /// issues this is true for.
+    /// </summary>
+    public bool Counted(EfHatchIssue issue) => _counted.Contains(issue.Id);
+
+    public WipDto ToDto() => new(Limit, Types, StatusIds, Load, ClaimedInbound);
 }
