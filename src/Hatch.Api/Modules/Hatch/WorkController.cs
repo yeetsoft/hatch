@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -23,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IOptions<AppsOptions> apps) : ControllerBase
+    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>
     /// The issue an unattended run should pick up: the top of the rightmost
@@ -167,7 +168,8 @@ public class WorkController(
             ToStatusDto(r.From),
             r.To is null ? null : ToStatusDto(r.To),
             r.Blocked,
-            r.Kind)).ToList();
+            r.Kind,
+            r.Hop)).ToList();
     }
 
     /// <summary>
@@ -357,12 +359,14 @@ public class WorkController(
                     open.TryGetValue(issue.Id, out var waiting);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
+                    var hop = issue.Express && status.ExpressSkips;
+                    var blocked = Blocked(
+                        issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
+                        assignees[issue.Id], repos, merged, built, hop);
                     rows.Add(new ScanRow(
-                        issue, status, to,
-                        Blocked(
-                            issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
-                            assignees[issue.Id], repos, merged, built),
-                        KindOf(issue, status, to, merged, built)));
+                        issue, status, to, blocked,
+                        KindOf(issue, status, to, merged, built),
+                        hop && blocked is null));
                 }
             }
         }
@@ -371,7 +375,8 @@ public class WorkController(
     }
 
     /// <summary>One issue the pass looked at, and what it decided.</summary>
-    private sealed record ScanRow(EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind);
+    private sealed record ScanRow(
+        EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop);
 
     /// <summary>
     /// A finished pass, or the argument it would not accept. A refusal carries
@@ -703,6 +708,78 @@ public class WorkController(
             ct);
     }
 
+    /// <summary>
+    /// Carries an express issue across the column it stands in, with no
+    /// session - the loop's own write, on the loop's own say-so. Judged fresh
+    /// as the move is made, with the same <see cref="Blocked"/> a named
+    /// dispatch is judged by, so a stale runner cannot carry an issue the
+    /// server would no longer carry.
+    /// </summary>
+    /// <remarks>
+    /// Takes no claim: a claim protects a session that runs for minutes, and a
+    /// hop is one write. Writes <c>status_changed</c> naming the caller as the
+    /// actor and carrying <c>express: true</c>, the same event a move writes,
+    /// so a card that passed a gate with nobody present says so on its trail.
+    /// </remarks>
+    [HttpPost("{key}/hop")]
+    public async Task<ActionResult<IssueDto>> HopWork(
+        string key,
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        [FromQuery] bool? clones = null,
+        CancellationToken ct = default)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        var statuses = await OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+        var to = Columns.Target(statuses, from);
+        var repos = RepositoryDeclaration.From(remote, standing, clones);
+        var now = time.GetUtcNow();
+
+        var playbook = to is null ? null : await MatchAsync(from.Id, to.Id, issue.Type, ct);
+        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
+        var waiting = questions.Count(q => q.Answers.Count == 0);
+
+        var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
+        var merged = inReview ? (await MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
+        var built = inReview ? (await BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
+
+        var hop = to is not null && issue.Express && from.ExpressSkips;
+        var blocked = Blocked(
+            issue, from, to, playbook, waiting,
+            null, // a hop takes no ready-date fold of its own - see Blocked's loop parameter
+            await DependencyGate.ForAsync(db, statuses, ct),
+            new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
+            Columns.Implementation(statuses),
+            await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
+            repos, merged, built, hop);
+
+        if (blocked is not null) return Conflict(blocked);
+        if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
+
+        var target = Columns.Advance(statuses, from)!;
+        var actor = await caller.ActorNameAsync(ct);
+
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = actor,
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
+            At = now,
+        });
+        issue.Rank = await ranks.BottomAsync(target.Id, ct);
+        issue.StatusId = target.Id;
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
     // ---- Resolution ----
 
     /// <summary>
@@ -738,7 +815,7 @@ public class WorkController(
                 ProjectKey = i.Project!.Key,
                 i.Number, i.Type, i.Title, i.StatusId, i.Rank,
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
-                i.AssigneePersonId, i.AssigneeApiKeyId, i.Expedited,
+                i.AssigneePersonId, i.AssigneeApiKeyId, i.Expedited, i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -759,7 +836,8 @@ public class WorkController(
                 IssueMoment.Format(c.DueAt, c.DueAtHasTime),
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, c.AssigneePersonId, c.AssigneeApiKeyId, ct),
                 Claim: claims.Project(c.Claim, claimed.Now),
-                Expedited: c.Expedited));
+                Expedited: c.Expedited,
+                Express: c.Express));
 
         var playbook = to is null ? null : await MatchAsync(from.Id, to.Id, issue.Type, ct);
 
@@ -786,6 +864,13 @@ public class WorkController(
             .Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical)))
             .ToList();
 
+        var hop = to is not null && issue.Express && from.ExpressSkips;
+        var blocked = Blocked(
+            issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
+            await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
+            repos, merged, built, hop);
+        var hopped = hop && blocked is null;
+
         return new WorkDto(
             issueDto,
             ToStatusDto(from),
@@ -799,7 +884,10 @@ public class WorkController(
             // payload, and is how a printed line says where the value came
             // from. Everything else stays the matched row's own, so the
             // dispatch names the playbook that spoke *and* the values that won.
-            playbook is null ? null : PlaybooksController.ToDto(playbook) with
+            //
+            // Null on a hop, even where a playbook covers the move, so no
+            // client can spawn a session for it by accident - see WorkDto.Hop.
+            hopped || playbook is null ? null : PlaybooksController.ToDto(playbook) with
             {
                 Model = issue.ModelOverride ?? playbook.Model,
                 Effort = issue.EffortOverride ?? playbook.Effort,
@@ -807,13 +895,11 @@ public class WorkController(
             childCards,
             repositories,
             questions,
-            Blocked(
-                issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
-                await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-                repos, merged, built),
+            blocked,
             IssueUrl(issueDto.Key),
             KindOf(issue, from, to, merged, built),
-            await IssueMessagesController.UnreadAsync(db, issue.Id, ct));
+            await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
+            hopped);
     }
 
     /// <summary>
@@ -915,6 +1001,14 @@ public class WorkController(
     /// about the work rather than the pass's policy, so a named dispatch is
     /// refused by it too - see <see cref="RepositoryFold"/>.
     /// </param>
+    /// <param name="hop">
+    /// Whether this issue is express and stands in a column marked
+    /// <see cref="EfHatchStatus.ExpressSkips"/> - see
+    /// <see cref="EfHatchIssue.Express"/>. Checked last, after every other fold,
+    /// because a hop answers only "does this column still need a session" and
+    /// every other reason to hold the issue back still applies to it exactly as
+    /// it applies to any other issue.
+    /// </param>
     private static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -928,7 +1022,8 @@ public class WorkController(
         AssigneeDto? assignee,
         RepositoryDeclaration repos,
         IReadOnlyList<EfHatchMergeCheck> verdicts,
-        IReadOnlyList<EfHatchBuildCheck> builds)
+        IReadOnlyList<EfHatchBuildCheck> builds,
+        bool hop)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -990,6 +1085,12 @@ public class WorkController(
         // least useful thing to say about an issue that is folded for a reason
         // somebody can act on.
         if (conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is { } reviewBlock) return reviewBlock;
+
+        // The hop answers condition 8 and nothing else: an express issue in a
+        // column marked ExpressSkips needs no playbook, because the loop
+        // carries it on itself rather than spawning a session for it. Every
+        // fold above still applies exactly as it applies to any other issue.
+        if (hop) return null;
 
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
@@ -1058,5 +1159,5 @@ public class WorkController(
         db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
 
     private static StatusDto ToStatusDto(EfHatchStatus s) =>
-        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.Color);
+        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.Color, s.ExpressSkips);
 }

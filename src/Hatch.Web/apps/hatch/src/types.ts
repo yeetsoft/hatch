@@ -52,6 +52,10 @@ export interface Status {
       deferred ones included - `boardColumns` in lib/columns.ts is what drops
       them, and it is the one place that does. */
   isDeferred: boolean;
+  /** Whether an express issue standing here is carried on to the next column
+      with no session - see Issue.express. Not a "whose column is this" flag:
+      who works a column is still derived from the playbook matrix. */
+  expressSkips: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
@@ -114,6 +118,11 @@ export interface IssueCard {
       non-expedited one in its column, so nothing here sorts - see
       IssueCardDto.Expedited. */
   expedited: boolean;
+  /** Carried past a column marked *Express skips* with no session, as long as
+      it has no unanswered question. A gate-passer and not a sort key - the
+      opposite of `expedited` - so nothing here sorts either. See
+      IssueCardDto.Express. */
+  express: boolean;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -245,6 +254,12 @@ export interface Issue {
       reaches and writable only by a person, through its own route - see
       IssueExpediteController. */
   expedited: boolean;
+  /** Carried past a column marked *Express skips* with no session, as long as
+      it has no unanswered question - the opposite shape from `expedited`: a
+      gate-passer, not a sort key. Taken from the parent at filing and at no
+      other time. Readable by anybody a dispatch reaches and writable only by
+      a person, through its own route - see IssueExpressController. */
+  express: boolean;
   /** What a runner last found when it merged this issue's branch against the
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */

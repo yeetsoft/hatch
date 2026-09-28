@@ -22,6 +22,7 @@ const card = (key: string, statusId: number): IssueCard => ({
   assignee: null,
   claim: null,
   expedited: false,
+  express: false,
 });
 
 const rect = (left: number, top: number, width: number, height: number): ClientRect => ({

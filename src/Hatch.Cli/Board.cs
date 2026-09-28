@@ -83,6 +83,27 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Carries an express issue one column right, with no session - see
+    /// docs/hatch.md, "The hop". A <c>409</c> is not a fault: the row changed
+    /// between the scan and this call, the same as a lost claim race, and the
+    /// caller walks on to the next clear row rather than treating it as a
+    /// refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> HopAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string key, CancellationToken ct, bool clones = false)
+    {
+        var parts = DeclareParts(checkouts, clones);
+        var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/hop{query}", null, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/hop"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
     /// What a pass would take, without taking it.
     /// </summary>
     /// <remarks>
