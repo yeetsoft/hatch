@@ -115,6 +115,106 @@ public class IssueClaimTests
         Assert.Equal("somewhere:/checkouts/one", row.ClaimRunner);
     }
 
+    // ---- One runner per line of the tree ----
+
+    [SkippableFact]
+    public async Task ATakeOnTheChildOfAClaimedIssue_IsRefusedNamingTheParent_AndWritesNothing()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var child = await h.FileAsync(parent);
+        await h.TakeAsync(parent, "somewhere:/checkouts/one");
+
+        var refusal = Conflict(await h.Claims.TakeClaim(child, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Equal(
+            $"Nathan is working {parent}, above this, from somewhere:/checkouts/one, last heard from just now",
+            refusal);
+        Assert.Null((await h.RowAsync(child)).ClaimToken);
+        Assert.Empty(await h.EventKindsAsync(child));
+    }
+
+    [SkippableFact]
+    public async Task ATakeOnTheParentOfAClaimedChild_IsRefused()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var child = await h.FileAsync(parent);
+        await h.TakeAsync(child, "somewhere:/checkouts/one");
+
+        var refusal = Conflict(await h.Claims.TakeClaim(parent, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Equal(
+            $"Nathan is working {child}, below this, from somewhere:/checkouts/one, last heard from just now",
+            refusal);
+        Assert.Null((await h.RowAsync(parent)).ClaimToken);
+        Assert.Empty(await h.EventKindsAsync(parent));
+    }
+
+    [SkippableFact]
+    public async Task ATakeOnASibling_Succeeds()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var one = await h.FileAsync(parent);
+        var two = await h.FileAsync(parent);
+        await h.TakeAsync(one, "somewhere:/checkouts/one");
+
+        Value(await h.Claims.TakeClaim(two, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.NotNull((await h.RowAsync(two)).ClaimToken);
+    }
+
+    [SkippableFact]
+    public async Task ARelativesExpiredClaim_DoesNotRefuseATake()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var child = await h.FileAsync(parent);
+        await h.TakeAsync(parent, "somewhere:/checkouts/one");
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+
+        Value(await h.Claims.TakeClaim(child, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.NotNull((await h.RowAsync(child)).ClaimToken);
+    }
+
+    [SkippableFact]
+    public async Task TwoTakesOnAParentAndItsChild_NeverBothKeepAClaim()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var child = await h.FileAsync(parent);
+        var parentId = (await h.RowAsync(parent)).Id;
+        var childId = (await h.RowAsync(child)).Id;
+
+        // Both takes decided against the pre-claim state, so each one's write
+        // lands on a row of its own and neither WHERE can see the other. This
+        // is what the check after the write is for.
+        var one = h.Connect();
+        var two = h.Connect();
+        var claims = TestClaims.With();
+
+        var mine = Guid.NewGuid();
+        var theirs = Guid.NewGuid();
+        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", Now, default));
+        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", Now, default));
+
+        // One thread cannot make both look before either lets go, so this
+        // ordering ends with exactly one claim: the first check sees the
+        // second's claim and releases its own, and the second then sees
+        // nothing and keeps its own. The assertion is the guarantee - at most
+        // one, never both - not the ordering.
+        var first = await claims.ConfirmLineAsync(one, parentId, mine, Now, default);
+        var second = await claims.ConfirmLineAsync(two, childId, theirs, Now, default);
+
+        Assert.NotNull(first);
+        Assert.Null(second);
+
+        var held = new[] { await h.RowAsync(parent), await h.RowAsync(child) }.Count(r => r.ClaimToken is not null);
+        Assert.Equal(1, held);
+    }
+
     [SkippableFact]
     public async Task AClaimWithoutARunner_IsRefused()
     {
@@ -500,10 +600,17 @@ public class IssueClaimTests
         }
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
-        public async Task<string> FileAsync()
+        public async Task<string> FileAsync(string? parent = null)
         {
             var number = next++;
             var db = Connect();
+
+            long? parentId = null;
+            if (parent is not null)
+            {
+                IssueKey.TryParse(parent, out var parentProject, out var parentNumber);
+                parentId = (await db.Issues.AsNoTracking().WithKey(parentProject, parentNumber).FirstAsync()).Id;
+            }
 
             db.Issues.Add(new EfHatchIssue
             {
@@ -512,6 +619,7 @@ public class IssueClaimTests
                 Type = "story",
                 Title = "a thing to do",
                 StatusId = StatusId,
+                ParentId = parentId,
                 Rank = 1024 * number,
                 CreatedBy = "operator",
                 CreatedAt = Now,
