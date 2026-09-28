@@ -62,18 +62,28 @@ export function attentionLabel(attention: Attention | null): string {
 /**
  * Which emptiness the pull request section is in.
  *
- * The two are different facts and the difference is the point. Nothing in
+ * Three are different facts and the difference is the point. Nothing in
  * review at all is a quiet board. Things in review with no pull request
  * recorded is a ticket whose agent forgot `hatch pr` - invisible everywhere
  * else, and the reason this wording exists rather than one flat "nothing here".
+ * And a pull request held back by a conflict or a failed build is not this
+ * section's to show either - it is already in the Agent group, and this is
+ * where a person is told it is not theirs to look at yet. The two wordings
+ * combine when both counts are nonzero, no-pull-request first.
  */
 export function reviewEmptyWords(attention: Attention | null): string {
   const without = attention?.inReviewWithoutPullRequest ?? 0;
-  if (without === 0) return 'Nothing is up for review.';
+  const heldBack = attention?.reviewsHeldBack ?? 0;
 
-  return without === 1
+  const parts: string[] = [];
+  if (without > 0) parts.push(without === 1
     ? '1 issue is in review with no pull request recorded.'
-    : `${without} issues are in review with no pull request recorded.`;
+    : `${without} issues are in review with no pull request recorded.`);
+  if (heldBack > 0) parts.push(heldBack === 1
+    ? '1 pull request is waiting on the loop.'
+    : `${heldBack} pull requests are waiting on the loop.`);
+
+  return parts.length > 0 ? parts.join(' ') : 'Nothing is up for review.';
 }
 
 /** The other section's empty state. One wording: a question either exists or it

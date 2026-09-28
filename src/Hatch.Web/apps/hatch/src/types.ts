@@ -794,14 +794,16 @@ export interface Utilization {
 
 // ---- What is waiting on a person ----
 
-/** An issue up for review with somewhere to review it. Mirrors ReviewDto. */
+/** An issue up for review with somewhere to review it, and not held back by a
+    conflict or a failed build. Mirrors ReviewDto. */
 export interface Review {
   key: string;
   title: string;
   type: string;
   /** Never null, unlike `Issue.pullRequestUrl`: an issue with nowhere to review
       it is not a row here at all, it is a number in
-      `inReviewWithoutPullRequest`. */
+      `inReviewWithoutPullRequest`. Nor is one held back by a conflict or a
+      failed build - see `Attention.reviewsHeldBack`. */
   pullRequestUrl: string;
 }
 
@@ -832,8 +834,9 @@ export interface FailingBuild {
     shows up as a lit widget whose list is empty. */
 export interface Attention {
   /** The review column's issues that carry a pull request, in that column's own
-      board order. Which column that is, is the server's to say - measured off
-      the board's shape, and deliberately not re-derived here from `/board`. */
+      board order, and are not held back by a conflict or a failed build - see
+      `reviewsHeldBack`. Which column that is, is the server's to say - measured
+      off the board's shape, and deliberately not re-derived here from `/board`. */
   reviews: Review[];
   /** How many stand in that column with nothing to review them. Said in the
       empty state and never counted towards the badge - see `attentionCount`. */
@@ -850,6 +853,11 @@ export interface Attention {
       loop's to fix, so never counted towards the badge - see `attentionCount`.
       Absent from a board that predates them. */
   failingBuilds?: FailingBuild[];
+  /** How many issues in that column carry a pull request but are held back -
+      listed under `conflicts` or `failingBuilds` in this same response, so a
+      pull request never appears in both halves. Held back because a red build
+      or a conflict is not ready for a person, and the loop is already on it. */
+  reviewsHeldBack: number;
 }
 
 // ---- Who is sitting here ----

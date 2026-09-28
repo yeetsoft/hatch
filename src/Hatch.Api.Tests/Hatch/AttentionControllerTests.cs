@@ -247,6 +247,86 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).FailingBuilds!);
     }
 
+    // ---- The held-back half ----
+
+    [Fact]
+    public async Task Attention_HoldsBackAConflictedIssueFromReviews_AndCountsIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "stopped merging", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        // Held back, not listed: the loop is already on this one, and a
+        // control that lit up for it would be one a person cannot act on.
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Equal(Key(issue), Assert.Single(attention.Conflicts).Key);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnIssueWithAFailedBuild_AndCountsIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "red", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Equal(Key(issue), Assert.Single(attention.FailingBuilds!).Key);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnIssueWithACleanVerdictAndAPassedBuild()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(Key(issue), Assert.Single(attention.Reviews).Key);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnIssueAgainOnceItsConflictClears()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "was stuck", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        Assert.Equal(1, Value(await h.Attention.GetAttention(default)).ReviewsHeldBack);
+
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(Key(issue), Assert.Single(attention.Reviews).Key);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotCountAnIssueWithNoPullRequestAsHeldBack()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a branch and no link", h.Review);
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        // A held-back count is about a pull request the loop is sitting on -
+        // an issue with nowhere to review it in the first place is the other
+        // emptiness, not this one.
+        Assert.Equal(0, attention.ReviewsHeldBack);
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -415,10 +495,19 @@ public class AttentionControllerTests
             return issue;
         }
 
-        /// <summary>A runner's verdict, written straight to the row: these tests are about who reads it, not about what the route refuses.</summary>
+        /// <summary>
+        /// A runner's verdict, written straight to the row: these tests are about
+        /// who reads it, not about what the route refuses. Replaces any existing
+        /// row for the same issue and repository, mirroring what
+        /// <c>MergeCheckController</c> does for real, so a second call for the
+        /// same issue and remote clears the first rather than leaving both.
+        /// </summary>
         public async Task CheckAsync(
             EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo")
         {
+            Db.MergeChecks.RemoveRange(
+                Db.MergeChecks.Where(m => m.IssueId == issue.Id && m.Remote == remote));
+
             Db.MergeChecks.Add(new EfHatchMergeCheck
             {
                 IssueId = issue.Id,
@@ -436,9 +525,13 @@ public class AttentionControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>Replaces any existing row for the same issue and repository, for the same reason <see cref="CheckAsync"/> does.</summary>
         public async Task BuildAsync(
             EfHatchIssue issue, string verdict, string[]? failing = null, string remote = "forge.example/owner/repo")
         {
+            Db.BuildChecks.RemoveRange(
+                Db.BuildChecks.Where(b => b.IssueId == issue.Id && b.Remote == remote));
+
             Db.BuildChecks.Add(new EfHatchBuildCheck
             {
                 IssueId = issue.Id,
