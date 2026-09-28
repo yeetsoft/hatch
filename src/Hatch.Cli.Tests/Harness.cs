@@ -226,6 +226,57 @@ public sealed class FakeWorkspace
 }
 
 /// <summary>
+/// The forge, without one to ask: a test says what the build on a sha came to,
+/// and reads back every question. Silent until told - a forge that cannot answer
+/// and does not say why, so a test that is not about builds hears nothing of them.
+/// </summary>
+public sealed class FakeForge
+{
+    /// <summary>Every read asked for, as <c>path sha</c>, in order.</summary>
+    public List<string> Reads { get; } = [];
+
+    /// <summary>Every log asked for, by the check's name.</summary>
+    public List<string> Logs { get; } = [];
+
+    /// <summary>What every read answers, unless <see cref="ReadFor"/> says otherwise.</summary>
+    public ForgeAnswer Answer { get; set; } = new(null, null);
+
+    /// <summary>What a read of one sha answers.</summary>
+    public Dictionary<string, ForgeAnswer> ReadFor { get; } = [];
+
+    /// <summary>What a read answers, given the path and the sha - for a test that has to say something different the second time.</summary>
+    public Func<string, string, ForgeAnswer?>? Reading { get; set; }
+
+    /// <summary>The excerpt a failing check's log gives, by the check's name. Absent is no log.</summary>
+    public Dictionary<string, string> Excerpts { get; } = [];
+
+    /// <summary>Every canonical identity a forge was made for, in order.</summary>
+    public List<string?> Canonicals { get; } = [];
+
+    public IForge For(string path, string? canonical)
+    {
+        Canonicals.Add(canonical);
+        return new Bound(this, path);
+    }
+
+    private sealed class Bound(FakeForge owner, string path) : IForge
+    {
+        public Task<ForgeAnswer> ReadAsync(string sha, CancellationToken ct)
+        {
+            owner.Reads.Add($"{path} {sha}");
+            return Task.FromResult(
+                owner.Reading?.Invoke(path, sha) ?? owner.ReadFor.GetValueOrDefault(sha, owner.Answer));
+        }
+
+        public Task<string?> LogAsync(FailingCheck check, CancellationToken ct)
+        {
+            owner.Logs.Add(check.Name);
+            return Task.FromResult(owner.Excerpts.GetValueOrDefault(check.Name));
+        }
+    }
+}
+
+/// <summary>
 /// A clone, without a network to make one from: a test sets what each attempt
 /// answers, and reads back every remote and path asked for.
 /// </summary>
@@ -322,6 +373,7 @@ public sealed class Harness : IDisposable
             Heartbeat: heartbeat ?? Beat)
         {
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
+            Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
             NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire)),
             MakeClone = Clone.Factory,
@@ -343,6 +395,9 @@ public sealed class Harness : IDisposable
 
     /// <summary>The tree, as the pass finds it. Ready unless a test says otherwise.</summary>
     public FakeWorkspace Workspace { get; } = new();
+
+    /// <summary>Where the build on a tip is read from. Silent - it cannot answer, and says nothing - unless a test says what a build came to.</summary>
+    public FakeForge Forge { get; } = new();
 
     /// <summary>What a clone into a workspace does, when a test configures one at all.</summary>
     public FakeClone Clone { get; } = new();

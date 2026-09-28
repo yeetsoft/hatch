@@ -155,6 +155,23 @@ public sealed class GoToWorkPollTests
         Assert.Contains(h.Say.Complained, l => l.Contains("could not read what is in review", StringComparison.Ordinal));
     }
 
+    /// <summary>A runner that cannot read builds says so once and goes on: the pass that follows works whatever the forge said.</summary>
+    [Fact]
+    public async Task A_forge_that_cannot_answer_costs_one_line_and_the_night_goes_on()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h);
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-9/build-check", Fixtures.Build());
+        h.Forge.Answer = new ForgeAnswer(null, "gh is not installed");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-9/build-check"));
+        Assert.Single(h.Say.Complained, l => l.Contains("could not read builds", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// Timed by the interval and not by the iteration: a loop that finishes an
     /// increment and goes straight on asks git nothing more than one that waited.

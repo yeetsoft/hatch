@@ -19,6 +19,7 @@ public sealed class PollTests
     private static readonly string Tip2 = new('d', 40);
 
     private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
+    private static string PutBuild(string key) => $"/api/hatch/issues/{key}/build-check";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -48,6 +49,13 @@ public sealed class PollTests
         }
 
         public Task RunAsync() => Poll.RunAsync(Runtime, Interval, default);
+
+        /// <summary>What the board answers a build verdict with: the row it now holds.</summary>
+        public Rig Keeps(string key, BuildCheckDto held)
+        {
+            H.Wire.Replace("PUT", PutBuild(key), HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
+            return this;
+        }
 
         /// <summary>Time passing, to the next interval.</summary>
         public Rig Later(int seconds = Interval)
@@ -532,6 +540,306 @@ public sealed class PollTests
         Assert.Contains("remote=https%3A%2F%2Fexample.test%2Frepo.git", query, StringComparison.Ordinal);
         Assert.Contains("standing=true", query, StringComparison.Ordinal);
         Assert.DoesNotContain("clones", query, StringComparison.Ordinal);
+    }
+
+    // ---- The build on the tip ----
+
+    private static readonly DateTimeOffset Epoch = DateTimeOffset.UnixEpoch;
+
+    private static ForgeAnswer Failed(params string[] names) =>
+        new(new BuildRead(BuildVerdicts.Failed, (names.Length == 0 ? ["api"] : names).Select(n => new FailingCheck(n, $"https://forge.example/{n}", 9)).ToList()), null);
+
+    private static ForgeAnswer Read(string verdict) => new(new BuildRead(verdict, []), null);
+
+    /// <summary>One issue in review with one branch on origin, a merge verdict that is already known, and a board that keeps the build.</summary>
+    private static Rig Building(BuildCheckDto? stored = null, string sha = "", BuildCheckDto? kept = null)
+    {
+        var tip = sha.Length == 0 ? Tip : sha;
+        var review = stored is null
+            ? Fixtures.Review("AER-1")
+            : Fixtures.Review("AER-1", [], [], [stored]);
+        var rig = new Rig().Board(review);
+        rig.Keeps("AER-1", kept ?? Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", sha: tip));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_branch_in_review_gets_the_build_on_its_tip_read_and_reported_without_a_fetch_of_its_own()
+    {
+        using var rig = Building(kept: Fixtures.Build(BuildVerdicts.Failed, "example.test/repo", Tip, failing: ["api", "CI"]));
+        rig.H.Forge.Answer = Failed("CI", "api");
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal("aer-1-thing", put.Branch);
+        Assert.Equal(Tip, put.Sha);
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.Equal(["CI", "api"], put.Failing!.Select(f => f.Name));
+        Assert.Equal("https://forge.example/CI", put.Failing![0].Url);
+        Assert.Equal("test:/checkout", put.Runner);
+        Assert.False(put.PushedByIncrement);
+
+        // The merge half fetched once for itself; the build half added none.
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Contains($"hatch: AER-1 build on {Tip[..7]} failed (CI, api)", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task The_forge_is_handed_the_boards_identity_for_the_repository_where_the_project_binds_one()
+    {
+        var repo = Fixtures.Repository("https://example.test/repo.git", "example.test/repo", primary: true, matchedRemote: "https://example.test/repo.git");
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", [repo]));
+        rig.Keeps("AER-1", Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", Tip));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Equal(["example.test/repo"], rig.H.Forge.Canonicals);
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Failed)]
+    public async Task A_concluded_build_is_asked_about_once_however_many_intervals_pass(string verdict)
+    {
+        using var rig = Building(kept: Fixtures.Build(verdict, "example.test/repo", Tip));
+        rig.H.Forge.Answer = verdict == BuildVerdicts.Failed ? Failed() : Read(verdict);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+        Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Failed)]
+    public async Task A_runner_that_restarts_does_not_ask_again_about_a_build_the_board_already_holds(string verdict)
+    {
+        var stored = Fixtures.Build(verdict, "example.test/repo", Tip) with { Remote = "https://example.test/repo.git" };
+        using var rig = Building(stored);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_pending_build_is_asked_about_again_next_interval()
+    {
+        using var rig = Building(kept: Fixtures.Build(BuildVerdicts.Pending, "example.test/repo", Tip));
+        rig.H.Forge.Answer = Read(BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_pending_build_the_board_holds_is_not_vouched_for()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Pending, "example.test/repo", Tip) with { Remote = "https://example.test/repo.git" };
+        using var rig = Building(stored, kept: stored);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task None_is_asked_about_again_until_ten_minutes_after_the_board_first_heard_of_the_sha_and_then_not()
+    {
+        using var rig = Building();
+        rig.H.Forge.Answer = Read(BuildVerdicts.None);
+        var heard = new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero);
+        BuildCheckDto None(int minutes) =>
+            Fixtures.Build(BuildVerdicts.None, "example.test/repo", Tip, shaSince: heard) with { CheckedAt = heard.AddMinutes(minutes) };
+
+        // Just pushed: the checks have not appeared yet.
+        rig.Keeps("AER-1", None(0));
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        rig.Keeps("AER-1", None(9));
+        await rig.Later(60).RunAsync();
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+
+        // A read that was taken past the window is the last one.
+        rig.Keeps("AER-1", None(10));
+        await rig.Later(60).RunAsync();
+        Assert.Equal(3, rig.H.Forge.Reads.Count);
+
+        await rig.Later(60).RunAsync();
+        await rig.Later(60).RunAsync();
+        Assert.Equal(3, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_stored_none_read_past_the_window_vouches_for_its_tip_and_a_younger_one_does_not()
+    {
+        var heard = new DateTimeOffset(2026, 9, 27, 1, 0, 0, TimeSpan.Zero);
+        var old = Fixtures.Build(BuildVerdicts.None, "example.test/repo", Tip, shaSince: heard) with
+        {
+            Remote = "https://example.test/repo.git", CheckedAt = heard.AddMinutes(10),
+        };
+        using (var rig = Building(old))
+        {
+            rig.H.Forge.Answer = Read(BuildVerdicts.None);
+            await rig.RunAsync();
+            Assert.Empty(rig.H.Forge.Reads);
+        }
+
+        using (var rig = Building(old with { CheckedAt = heard.AddMinutes(9) }))
+        {
+            rig.H.Forge.Answer = Read(BuildVerdicts.None);
+            await rig.RunAsync();
+            Assert.Single(rig.H.Forge.Reads);
+        }
+    }
+
+    [Fact]
+    public async Task A_stored_verdict_about_another_sha_does_not_vouch_and_a_moved_tip_is_read_again()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Failed, "example.test/repo", Tip2) with { Remote = "https://example.test/repo.git" };
+        using var rig = Building(stored, kept: Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", Tip));
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Moved));
+        await rig.Later().RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}", $"{rig.H.Root} {Moved}"], rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_verdict_that_says_what_the_board_says_is_reported_and_not_announced_again()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Pending, "example.test/repo", Tip) with { Remote = "https://example.test/repo.git" };
+        using var rig = Building(stored, kept: stored);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+        Assert.DoesNotContain(rig.H.Say.Said, l => l.Contains("build on", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_ambiguous_or_missing_branch_is_not_read()
+    {
+        using var rig = Building();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-1-again", Tip2)]);
+        await rig.RunAsync();
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        await rig.Later().RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_answer_reports_nothing_says_one_line_once_and_leaves_the_merge_half_alone()
+    {
+        using var rig = Building();
+        rig.H.Forge.Answer = new ForgeAnswer(null, "gh is not installed");
+
+        await rig.RunAsync();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip2));
+        await rig.Later().RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+        Assert.Equal(["hatch: could not read builds in checkout - gh is not installed"], rig.H.Say.Complained);
+
+        // The merge half reported both times, whatever the forge said.
+        Assert.Equal(2, rig.H.Wire.To("PUT", Put("AER-1")).Count);
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_answer_is_one_call_for_the_checkout_and_not_one_per_issue()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"), Fixtures.Review("AER-2"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.Answer = new ForgeAnswer(null, "gh is not installed");
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_forge_that_throws_is_a_line_and_the_merge_half_still_reported()
+    {
+        using var rig = Building();
+        rig.H.Forge.Reading = (_, _) => throw new InvalidOperationException("gh fell over");
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
+        Assert.Contains("gh fell over", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_board_that_would_not_take_the_build_is_a_line_and_is_asked_again_next_interval()
+    {
+        using var rig = Building();
+        rig.H.Wire.Replace("PUT", PutBuild("AER-1"), HttpStatusCode.NotFound, "\"no route\"");
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+        Assert.Single(rig.H.Say.Complained);
+        Assert.Contains("would not take the build", rig.H.Say.Complained[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stored_build_is_matched_by_the_boards_identity_where_the_project_binds_one()
+    {
+        var repo = Fixtures.Repository("https://example.test/repo.git", "example.test/repo", primary: true, matchedRemote: "https://example.test/repo.git");
+        var stored = Fixtures.Build(BuildVerdicts.Failed, "example.test/repo", Tip);
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", [repo], [], [stored]));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_checkout_whose_trunk_origin_lacks_still_has_its_builds_read()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"));
+        rig.Keeps("AER-1", Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", Tip));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["aer-1-thing"] = Tip });
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        // The merge half says it could not compare; the build needs no trunk.
+        Assert.Single(rig.H.Forge.Reads);
+        Assert.Contains("origin has no main", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
     }
 
     [Fact]

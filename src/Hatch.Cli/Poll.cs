@@ -2,7 +2,8 @@ namespace Hatch.Cli;
 
 /// <summary>
 /// The loop's look at every branch in review: whether it still merges with the
-/// trunk, asked of git and told to the board.
+/// trunk, asked of git, and what the build on its tip came to, asked of the
+/// runner's own <c>gh</c> - both told to the board.
 /// </summary>
 /// <remarks>
 /// <para><b>An idle loop must not fetch all night.</b> So the poll asks
@@ -21,6 +22,19 @@ namespace Hatch.Cli;
 /// compared what it saw with the last verdict. It remembers the fingerprint
 /// instead, in memory, once the board has taken the verdict.</para>
 ///
+/// <para><b>The build half asks about one sha, until its build concludes.</b>
+/// <c>ls-remote</c> has already given every branch's tip, so it needs no fetch.
+/// A build that has concluded on a sha does not change, short of a re-run, so a
+/// <c>passed</c> or <c>failed</c> verdict is asked about once - and a board that
+/// already holds one for the tip vouches for it, which is what stops a runner
+/// that was restarted asking again. <c>pending</c> is asked again next interval.
+/// <c>none</c> is asked again for <see cref="NoneWindow"/> after the board first
+/// heard about the sha, because a push's checks take a few seconds to appear and
+/// a <c>none</c> straight after one is usually premature; past it a repository
+/// with no CI stops costing two <c>gh</c> calls an interval. A runner that
+/// cannot read builds says so once and reads nothing, and nothing about it fails
+/// the merge half, a pass or a night.</para>
+///
 /// <para>It runs between passes on the loop's one thread, so it never overlaps
 /// a session, and touches no worktree or index, so the tree stays on the trunk.
 /// Nothing in it ends a night: every failure is one line, and a line that says
@@ -28,12 +42,16 @@ namespace Hatch.Cli;
 /// </remarks>
 public sealed class Poll
 {
+    /// <summary>How long a sha that reads <c>none</c> is asked about again, counted from when the board first heard about it.</summary>
+    public static readonly TimeSpan NoneWindow = TimeSpan.FromMinutes(10);
+
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
+    private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
     /// <summary>One issue in one checkout, and what the board already holds for it.</summary>
-    private sealed record Target(string Key, Checkouts.Polled Where, MergeCheckDto? Stored);
+    private sealed record Target(string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild);
 
     /// <summary>
     /// Takes the verdicts that are due, if this interval's poll is - once per
@@ -104,7 +122,10 @@ public sealed class Poll
 
                 var key = (where.Path, where.BaseBranch);
                 if (!targets.TryGetValue(key, out var list)) targets[key] = list = [];
-                list.Add(new Target(issue.Key, where, stored));
+                var storedBuild = (issue.BuildChecks ?? []).FirstOrDefault(c =>
+                    where.Canonical is not null ? c.Canonical == where.Canonical : c.Remote == where.Remote);
+
+                list.Add(new Target(issue.Key, where, stored, storedBuild));
             }
         }
 
@@ -123,66 +144,196 @@ public sealed class Poll
                 continue;
             }
 
-            var moved = new List<(Target Target, string Fingerprint)>();
-            foreach (var target in issues)
+            // The merge half, and then the build half whatever it did: a build
+            // that is still pending is asked about again on a branch that has
+            // not moved, and neither half is the other's reason to stop.
+            await CheckMergesAsync(runtime, complain, path, name, workspace, heads, issues, ct);
+            await ReadBuildsAsync(runtime, complain, path, name, heads, issues, ct);
+        }
+    }
+
+    /// <summary>The merge half for one checkout: fetch once if anything moved, and report the verdicts that are due.</summary>
+    private async Task CheckMergesAsync(
+        Runtime runtime, Action<string> complain, string path, string name, IWorkspace workspace,
+        RemoteHeads heads, List<Target> issues, CancellationToken ct)
+    {
+        var moved = new List<(Target Target, string Fingerprint)>();
+        foreach (var target in issues)
+        {
+            if (heads.Fingerprint(target.Key) is not { } fingerprint)
             {
-                if (heads.Fingerprint(target.Key) is not { } fingerprint)
-                {
-                    complain($"hatch: origin has no {heads.Trunk} for {name}, so its branches in review were not checked");
-                    break;
-                }
-
-                if (_seen.TryGetValue((path, target.Key), out var seen) && seen == fingerprint) continue;
-
-                if (Vouches(target.Stored, heads, target.Key))
-                {
-                    _seen[(path, target.Key)] = fingerprint;
-                    continue;
-                }
-
-                moved.Add((target, fingerprint));
+                complain($"hatch: origin has no {heads.Trunk} for {name}, so its branches in review were not checked");
+                break;
             }
 
-            if (moved.Count == 0) continue;
+            if (_seen.TryGetValue((path, target.Key), out var seen) && seen == fingerprint) continue;
 
-            // Once, however many of the checkout's issues moved.
-            if (!workspace.Fetch())
+            if (Vouches(target.Stored, heads, target.Key))
             {
-                complain($"hatch: could not fetch from origin for {name}, so its branches in review were not checked");
+                _seen[(path, target.Key)] = fingerprint;
                 continue;
             }
 
-            var unknown = 0;
-            foreach (var (target, fingerprint) in moved)
+            moved.Add((target, fingerprint));
+        }
+
+        if (moved.Count == 0) return;
+
+        // Once, however many of the checkout's issues moved.
+        if (!workspace.Fetch())
+        {
+            complain($"hatch: could not fetch from origin for {name}, so its branches in review were not checked");
+            return;
+        }
+
+        var unknown = 0;
+        foreach (var (target, fingerprint) in moved)
+        {
+            if (workspace.Check(target.Key) is not { } verdict)
             {
-                if (workspace.Check(target.Key) is not { } verdict)
+                unknown++;
+                continue;
+            }
+
+            try
+            {
+                await runtime.Board.MergeCheckAsync(
+                    target.Key, verdict.ToRequest(target.Where.Remote!, runtime.RunnerName), ct);
+            }
+            catch (HatchException e)
+            {
+                // Not remembered: a verdict the board refused is asked
+                // again next interval.
+                complain($"hatch: {target.Key} - the board would not take the verdict on its branch - {e.Message}");
+                continue;
+            }
+
+            _seen[(path, target.Key)] = fingerprint;
+
+            if (target.Stored is null || !verdict.Says(target.Stored))
+                runtime.Say.Line($"hatch: {verdict.Words(target.Key)}");
+        }
+
+        if (unknown > 0)
+            complain($"hatch: {unknown} branch(es) in review in {name} could not be checked against {heads.Trunk}");
+    }
+
+    /// <summary>
+    /// The build half for one checkout: for each issue whose branch is the one
+    /// branch origin has for it, read the build on its tip unless something
+    /// already vouches for it, and report what it came to.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in here throws out of the poll: a forge that cannot answer is one
+    /// line per checkout and the rest of the checkout's issues are left alone
+    /// this interval - one <c>gh</c> call that failed, not one per issue - and
+    /// anything else is a line and the next checkout.
+    /// </remarks>
+    private async Task ReadBuildsAsync(
+        Runtime runtime, Action<string> complain, string path, string name, RemoteHeads heads,
+        List<Target> issues, CancellationToken ct)
+    {
+        try
+        {
+            foreach (var target in issues)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                // Exactly one branch: the merge check that says which is the
+                // issue's is what made it an issue with a branch at all, and a
+                // build is about a tip, not about a guess between two.
+                if (heads.Candidates(target.Key) is not [var branch]) continue;
+                var sha = heads.Shas[branch];
+
+                if (_seenBuild.TryGetValue((path, target.Key), out var seen) && seen == sha) continue;
+
+                if (VouchesBuild(target.StoredBuild, sha))
                 {
-                    unknown++;
+                    _seenBuild[(path, target.Key)] = sha;
                     continue;
                 }
 
+                var answer = await runtime.Forge(path, target.Where.Canonical).ReadAsync(sha, ct);
+                if (answer.Read is not { } read)
+                {
+                    // The checkout and not the issue or the sha, so that the
+                    // poll's dedupe holds however many issues are in review.
+                    if (answer.Why is { } why) complain($"hatch: could not read builds in {name} - {why}");
+                    return;
+                }
+
+                BuildCheckDto? kept;
                 try
                 {
-                    await runtime.Board.MergeCheckAsync(
-                        target.Key, verdict.ToRequest(target.Where.Remote!, runtime.RunnerName), ct);
+                    kept = await runtime.Board.BuildCheckAsync(
+                        target.Key,
+                        new BuildCheckRequest(
+                            target.Where.Remote!, branch, sha, read.Verdict,
+                            read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),
+                            runtime.RunnerName),
+                        ct);
                 }
                 catch (HatchException e)
                 {
                     // Not remembered: a verdict the board refused is asked
-                    // again next interval.
-                    complain($"hatch: {target.Key} - the board would not take the verdict on its branch - {e.Message}");
+                    // again next interval. A board that predates build checks
+                    // answers this way for every issue, and says so once.
+                    complain($"hatch: {target.Key} - the board would not take the build on its branch - {e.Message}");
                     continue;
                 }
 
-                _seen[(path, target.Key)] = fingerprint;
+                // What the board says it now holds, which is what says when it
+                // first heard about the sha. A board that answered nothing has
+                // only what was read: a none is asked about again.
+                var concluded = kept is not null
+                    ? Concluded(kept)
+                    : read.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
+                if (concluded) _seenBuild[(path, target.Key)] = sha;
 
-                if (target.Stored is null || !verdict.Says(target.Stored))
-                    runtime.Say.Line($"hatch: {verdict.Words(target.Key)}");
+                var was = target.StoredBuild;
+                if (was is null || was.Sha != sha || was.Verdict != read.Verdict)
+                    runtime.Say.Line($"hatch: {BuildWords(target.Key, sha, read)}");
             }
-
-            if (unknown > 0)
-                complain($"hatch: {unknown} branch(es) in review in {name} could not be checked against {heads.Trunk}");
         }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not read builds in {name} - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Whether the board's stored verdict is still the answer for this tip: it is
+    /// about the same sha and is <c>passed</c> or <c>failed</c>, or is <c>none</c>
+    /// and was read ten minutes or more after the board first heard about the
+    /// sha. <c>pending</c> never is.
+    /// </summary>
+    private static bool VouchesBuild(BuildCheckDto? stored, string sha) =>
+        stored is not null && stored.Sha == sha && Concluded(stored);
+
+    /// <summary>
+    /// Whether a verdict is one that will not change without a re-run.
+    /// <c>CheckedAt</c> and not now: it stops asking only after a read that was
+    /// itself taken past the window.
+    /// </summary>
+    private static bool Concluded(BuildCheckDto check) => check.Verdict switch
+    {
+        BuildVerdicts.Passed or BuildVerdicts.Failed => true,
+        BuildVerdicts.None => check.CheckedAt - check.ShaSince >= NoneWindow,
+        _ => false,
+    };
+
+    /// <summary>A line for the terminal: <c>HA-12 build on 1a2b3c4 failed (api, CI)</c>.</summary>
+    private static string BuildWords(string key, string sha, BuildRead read)
+    {
+        var at = sha.Length > 7 ? sha[..7] : sha;
+
+        return read.Verdict switch
+        {
+            BuildVerdicts.Failed => $"{key} build on {at} failed ({string.Join(", ", read.Failing.Select(f => f.Name))})",
+            BuildVerdicts.Passed => $"{key} build on {at} passed",
+            BuildVerdicts.Pending => $"{key} build on {at} is still running",
+            _ => $"{key} build on {at} - no checks ran",
+        };
     }
 
     /// <summary>

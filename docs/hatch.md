@@ -66,8 +66,14 @@ absence starts to hurt:
   everything in it. The one exception is the API key, whose scope is a
   statement about *which surface*, never about which verb.
 - **No swimlanes, sprints, or WIP limits.**
-- **No GitHub integration.** A commit sha in a comment is the link, and it is
-  written by whoever did the work.
+- **No GitHub integration beyond one read.** A commit sha in a comment is the
+  link, and it is written by whoever did the work. What is read is the build on
+  the tip of a branch in review, and it is read by the runner's own `gh`, never
+  by the server — see [the build half of checking the branches in
+  review](#checking-the-branches-in-review). What is still not read: whether a
+  pull request is approved, whether it merges (that is git's answer), and
+  anything at all from the server. Nothing in Hatch names a forge or inspects a
+  host.
 - **No websockets.** The board refetches on action and on focus, and every 30
   seconds while it is on screen, and at once when it returns to the screen. It
   was once refetched on action and focus alone, on the premise that whoever
@@ -327,7 +333,11 @@ address — anything else is refused with a sentence, because a field whose only
 job is to be clicked should not hold something that does not open. Nothing
 parses the host: a self-hosted forge on a private address is a pull request like
 any other, and a column that only accepted one company's would be a fact about
-exactly one installation.
+exactly one installation. The field is still never parsed, and **the build is
+not read from it**: the runner asks `gh` about the checkout's repository, at the
+board's own identity for it (see [checking the branches in
+review](#checking-the-branches-in-review)), so a pull request nobody recorded
+still has its build read.
 
 #### Assignee
 
@@ -2340,6 +2350,52 @@ answer, a board that refuses a verdict or cannot be read, a git older than 2.38
 counts as a failed increment or ends the night, and a line that says what the
 last poll's did is not said again until something changes.
 
+**The build on the tip, asked of `gh`.** After each checkout's merge half, and
+whatever it did, the poll reads the build on the tip of every branch it just
+looked at that has exactly one candidate on origin — at the sha `ls-remote`
+already printed, so it needs no fetch of its own — and puts a
+[build verdict](#build-check) to the board. It runs `gh` in the checkout, as
+whichever account the runner's `gh` is signed in as, and spends that account's
+API budget:
+
+- `GH_REPO` is set to the board's canonical identity for the repository
+  (`host/owner/repo`, which is `gh`'s own `[HOST/]OWNER/REPO` form), where the
+  project binds one, and neither it nor a host is set where it does not: `gh`
+  resolves the repository from the checkout's remotes. Setting it also stops
+  `gh` preferring an `upstream` remote over `origin`.
+- **`gh api` ignores the host in `GH_REPO`** and asks the default host, so the
+  two `api` calls also pass `--hostname` with the canonical's first segment.
+  Without it a repository on another host would be read from a same-named
+  repository on the default host, and the verdict would be wrong without
+  saying so. This hands `gh` an argument taken from the board's own canonical;
+  Hatch still names no forge and inspects no host, and a host `gh` cannot reach
+  reads no builds. `gh run view` honours the host and is given none.
+- It reads `check-runs` and the commit `status` for the sha, and classifies by
+  the [four verdicts](#build-check). Only the status endpoint's `statuses` list
+  counts: its own `state` says `pending` for a sha with no statuses at all.
+  `--paginate` prints one document per page, so both calls use `--jq` and are
+  read a line at a time.
+- **A build is asked about until it concludes, and no longer.** `passed` and
+  `failed` do not change on a sha, so they are asked once, and a board that
+  already holds one for the tip vouches for it — a restarted loop does not ask
+  again. `pending` is asked again next interval. `none` is asked again until ten
+  minutes after the board first heard about the sha (`ShaSince`), because a
+  push's checks take a few seconds to appear and a `none` straight after one is
+  usually premature; past that a repository with no CI costs nothing more. A
+  moved tip is a new sha and is asked afresh.
+- **A runner that cannot read builds says so once and reads nothing.** A `gh`
+  that is not installed, is not signed in, or cannot reach the host is one line
+  — `hatch: could not read builds in <checkout> - <why>`, naming the checkout
+  and not the issue so the dedupe holds — and the checkout's other issues are
+  left alone that interval: one failed call, not one per issue. Nothing about
+  it fails the merge half, a pass or a night, and the queue explains such an
+  issue exactly as it does today. A board that predates build checks answers the
+  write with a `404`, which is the same kind of line and is asked again next
+  interval.
+
+The terminal hears about a build only when it changes — `hatch: HA-12 build on
+1a2b3c4 failed (api, CI)`.
+
 ### When an increment does nothing
 
 The one failure mode of an unattended loop that is dangerous rather than merely
@@ -3013,8 +3069,13 @@ code already settles is a round trip through a person for nothing.
   [the one edge](#the-one-edge-that-is-deliberately-cut).
 - **Reporting.** The events are there; nothing renders them. The Plan view
   answers the question that was actually being asked.
-- **GitHub integration.** A branch and a PR are named in a comment by whoever
-  made them.
+- **GitHub integration, beyond one read.** A branch and a PR are named in a
+  comment by whoever made them. The one thing read from a forge is the build on
+  an in-review branch's tip, through the runner's own `gh`
+  ([checking the branches in review](#checking-the-branches-in-review)). Review
+  state, mergeability, webhooks and anything the server would ask a forge itself
+  are deferred: each is a credential on the server, which is what the runner
+  asking `gh` as whoever it is signed in as avoids.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
 - **Pushed updates.** The board polls (see above); a server-sent signal would

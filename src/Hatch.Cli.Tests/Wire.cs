@@ -58,6 +58,18 @@ public sealed class Wire : HttpMessageHandler
     public Wire Json(string method, string path, object body) =>
         Reply(method, path, HttpStatusCode.OK, JsonSerializer.Serialize(body, Fixtures.Json));
 
+    /// <summary>Answer this route with this from now on, in place of whatever it answered before.</summary>
+    public Wire Replace(string method, string path, HttpStatusCode code, string body = "")
+    {
+        lock (_gate)
+        {
+            _rules.RemoveAll(r => r.Route == $"{method} {path}");
+            _rules.Add(new Rule($"{method} {path}", code, body));
+        }
+
+        return this;
+    }
+
     /// <summary>Answer this route this way once, then fall through to whatever is behind it.</summary>
     public Wire Once(string method, string path, HttpStatusCode code, string body = "")
     {
