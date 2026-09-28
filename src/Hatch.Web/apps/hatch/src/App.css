@@ -108,6 +108,13 @@
   margin: 0 auto;
 }
 
+/* The board has no title row: its first line is the filter row, and it sits at
+   --sp-6 because that is where every page's first line sits (.hatch-page,
+   .hatch-issue-page) and where the header's top edge used to be, so moving
+   between the board and any other page does not make the first line jump. What
+   the header took - its height, its own margin-bottom and the one --sp-4 gap it
+   held in this column - goes to the columns. A smaller rung would buy more
+   room at the cost of a first line higher than every other page's. */
 .hatch-board-page {
   flex: 1;
   min-height: 0;
@@ -582,6 +589,17 @@
   font: inherit;
   font-size: var(--t-label);
   cursor: pointer;
+}
+
+/* The auto margin takes the row's spare space, so this sits at the right edge
+   of whichever line it lands on; flex: none keeps it from shrinking below its
+   label when the row wraps. */
+.hatch-filter-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  margin-left: auto;
 }
 
 /* ---- The summary dialog ---- */

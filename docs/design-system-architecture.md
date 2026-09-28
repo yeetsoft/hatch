@@ -211,8 +211,9 @@ from a build that looked successful.
 ### Two entry points, because they are two kinds of thing
 
 `tokens.css` states values and paints nothing. `base.css` paints: the box model,
-the body's face and ground, the heading scale bound to the type registers, and
-the native form controls.
+the body's face and ground, the heading scale bound to the type registers, the
+native form controls, and one utility, `.hatch-visually-hidden`: a name that
+must be in the outline but not on the screen.
 
 The native controls are why `base.css` exists at all rather than being a
 convenience. `<Field>` renders a label around a control the *app* supplies — a
