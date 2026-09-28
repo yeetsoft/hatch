@@ -20,9 +20,11 @@ import {
   removeDependency,
   setAssignee,
   setExpedited,
+  setExpress,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { ExpediteControl } from '../components/ExpediteControl';
+import { ExpressControl } from '../components/ExpressControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
@@ -35,6 +37,7 @@ import { MomentChip } from '../components/MomentChip';
 import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
+import { StatusSteps } from '../components/StatusSteps';
 import { MomentField } from '../components/MomentField';
 import { BuildCheckChips } from '../components/BuildCheckChips';
 import { MergeConflictChips } from '../components/MergeConflictChips';
@@ -46,8 +49,9 @@ import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
-import { boardColumns, isSettled } from '../lib/columns';
+import { isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
+import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
@@ -301,6 +305,21 @@ export function IssuePage() {
     [key, load],
   );
 
+  /* Carried past a column marked Express skips, with no session. Its own call
+     for the reason `saveExpedited` is - its own endpoint, closed to an API
+     key - and otherwise exactly it. */
+  const saveExpress = useCallback(
+    async (express: boolean) => {
+      try {
+        await setExpress(key, express);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      }
+    },
+    [key, load],
+  );
+
   /* Taking the ticket back off a runner. Its own call for the reason
      `saveAssignee` is - its own endpoint, closed to an API key - and otherwise
      exactly `save`: it re-reads, so the section, the card and the trail below
@@ -506,6 +525,19 @@ export function IssuePage() {
             />
           </Field>
 
+          {/* `as="div"` for the reason the fields above it are. */}
+          <Field
+            label="Express"
+            as="div"
+            hint="Carried past a column marked Express skips, with no session, whenever it holds no open question."
+          >
+            <ExpressControl
+              express={issue.express}
+              directory={directory}
+              onChange={(express) => void saveExpress(express)}
+            />
+          </Field>
+
           <MomentField
             label="Ready"
             hint="Folded off the board until this day."
@@ -620,17 +652,9 @@ export function IssuePage() {
  * of this thing" - the first question anybody opens an issue with - the same
  * size as its ready date. Here it is the page's own band: the column it is in,
  * in that column's colour, and the whole board's worth of columns beside it as
- * one press each.
- *
- * Every column is offered, in board order, because Hatch has no transition
- * rules on purpose (docs/hatch.md, "Non-goals") - any status to any status,
- * we trust ourselves.
- *
- * Including the deferred ones, which is what makes this band the only way onto
- * the shelf. The board cannot offer them - a column there is a drop target, and
- * work must not be parked by being dragged one lane too far - so they are drawn
- * here, after a divider, as the presses they are: a decision about this ticket,
- * made on this ticket's page.
+ * one press each, drawn by StatusSteps - the same group the board peek's
+ * status picker opens, so the two screens cannot disagree about what is on
+ * offer.
  */
 function StatusBar({
   statuses,
@@ -642,25 +666,6 @@ function StatusBar({
   onMove: (statusId: number) => void;
 }) {
   const current = statuses.find((s) => s.id === statusId);
-  const lanes = boardColumns(statuses);
-  const shelf = statuses.filter((s) => s.isDeferred);
-
-  const step = (status: Status) => {
-    const here = status.id === statusId;
-    return (
-      <button
-        key={status.id}
-        type="button"
-        className={`hatch-status-step${here ? ' here' : ''}${status.isDeferred ? ' deferred' : ''}`}
-        style={statusVars(status.color)}
-        aria-pressed={here}
-        disabled={here}
-        onClick={() => onMove(status.id)}
-      >
-        {status.name}
-      </button>
-    );
-  };
 
   return (
     <section className="hatch-status-bar" style={statusVars(current?.color)} aria-label="Status">
@@ -669,22 +674,7 @@ function StatusBar({
         {current ? <StatusPill status={current} size="lg" /> : <span className="text-muted">unknown</span>}
       </div>
 
-      <div className="hatch-status-steps" role="group" aria-label="Move this issue">
-        {lanes.map(step)}
-
-        {/* Grouped and labelled rather than run on to the end of the row,
-            because these do not continue the board - they leave it. A board
-            with no deferred column draws neither the divider nor the label and
-            reads exactly as it did before. */}
-        {shelf.length > 0 && (
-          <>
-            <span className="hatch-status-shelf-label" aria-hidden="true">
-              or park it
-            </span>
-            {shelf.map(step)}
-          </>
-        )}
-      </div>
+      <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} />
     </section>
   );
 }
@@ -1446,21 +1436,3 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
   );
 }
 
-/**
- * One line saying what an event did. Long values are cut rather than wrapped -
- * a description edit carries both whole texts in its payload, and the trail is
- * a list of what happened, not a diff viewer.
- */
-function describe(event: IssueEvent): string {
-  const { from, to } = event.payload ?? {};
-  /* A delivery names the runner it was handed to and nothing it changed from. */
-  if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
-  if (from === undefined && to === undefined) return '';
-  return `${short(from)} → ${short(to)}`;
-}
-
-function short(value: unknown): string {
-  if (value === null || value === undefined) return 'none';
-  const text = String(value);
-  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
-}

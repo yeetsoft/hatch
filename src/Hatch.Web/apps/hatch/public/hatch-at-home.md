@@ -856,7 +856,8 @@ HATCH_BASE         the origin of your Hatch
 HATCH_KEY          hatch_ak_... Optional against a Hatch with its wall off
 HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH
 HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments
-HATCH_RUNNER       what the board calls this runner (default host:/path)
+HATCH_RUNNER       what the board calls this runner (default: a character from
+                   the cast list, chosen once per checkout - see `hatch config`)
 HATCH_ROOT         the checkout to work in (default: upwards from here)
 HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on
                    the platform's path separator (: on Unix, ; on Windows)

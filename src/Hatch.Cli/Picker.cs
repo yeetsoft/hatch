@@ -23,7 +23,21 @@ public enum Pick
 
     /// <summary>Every clear candidate is somebody else's right now.</summary>
     Busy,
+
+    /// <summary>
+    /// An express issue was carried across the column it stood in - see
+    /// <see cref="HoppedIssue"/>. No claim was taken and no session runs, so
+    /// there is nothing for the caller to let go of.
+    /// </summary>
+    Hopped,
 }
+
+/// <summary>
+/// One issue a walk carried across itself, with no session - what
+/// <see cref="Pick.Hopped"/> carries beside <see cref="Picked.Outcome"/>, the
+/// way <see cref="Pick.Claimed"/> carries <see cref="Picked.Work"/>.
+/// </summary>
+public sealed record HoppedIssue(string Key, string From, string To);
 
 /// <param name="Busy">One line per candidate that was taken, naming the key and who has it.</param>
 /// <param name="Chosen">
@@ -50,7 +64,8 @@ public sealed record Picked(
     Checkouts.Choice? Chosen = null,
     IReadOnlyList<CheckoutEntry>? Checkouts = null,
     IReadOnlyList<IncrementReport>? CloneFailures = null,
-    string? Refusal = null);
+    string? Refusal = null,
+    HoppedIssue? Hopped = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -110,14 +125,43 @@ public sealed class Picker(
         // The rows nothing folded, in the board's order. The queue has already
         // folded past everything under a live claim held by somebody else, so
         // this is a shortlist and not the whole column.
-        var clear = queue.Where(q => q.Blocked is null).Select(q => q.Issue.Key).ToList();
+        var clear = queue.Where(q => q.Blocked is null).ToList();
         if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
         var busy = new List<string>();
         var cloneFailures = new List<IncrementReport>();
 
-        foreach (var key in clear.Take(Attempts))
+        foreach (var entry in clear.Take(Attempts))
         {
+            var key = entry.Issue.Key;
+
+            // A clear row with Hop is carried across itself - no claim, no
+            // session. The server re-judges it as the write is made, so a 409
+            // here is the same "the row changed under us" a lost claim race
+            // is, and the walk goes on exactly as it does there.
+            if (entry.Hop)
+            {
+                string? walkOn;
+                try
+                {
+                    (_, walkOn) = await board.HopAsync(checkouts, key, ct, _clones);
+                }
+                catch (HatchException e)
+                {
+                    say.Complain(e.Message);
+                    return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
+                }
+
+                if (walkOn is not null)
+                {
+                    busy.Add($"  {key}  {walkOn}");
+                    continue;
+                }
+
+                return new Picked(Pick.Hopped, null, null, queue, busy, Checkouts: checkouts,
+                    Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?"));
+            }
+
             var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat);
 
             if (refused is { Held: true })

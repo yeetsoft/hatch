@@ -128,6 +128,9 @@ function Row({
           {/* Said out loud rather than left to the absent controls, because a
               row with no buttons reads as a bug otherwise. */}
           <Text tone="muted">{runner.kind === 'loop' ? 'loop' : 'one increment'}</Text>
+          {/* The machine and checkout, under the name now that the name is a
+              character and not a path - absent from an older CLI's row. */}
+          {runner.where && <Text tone="muted">{runner.where}</Text>}
         </td>
         <td>
           <Badge tone={TONES[activity]}>{activityWords(runner, now)}</Badge>

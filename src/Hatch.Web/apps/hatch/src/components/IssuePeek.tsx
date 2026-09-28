@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal } from '@hatch/ui';
-import { getIssue, patchIssue, setExpedited } from '../api/client';
+import { getIssue, patchIssue, setExpedited, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { ExpediteControl } from './ExpediteControl';
+import { ExpressControl } from './ExpressControl';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
-import { StatusPill } from './StatusPill';
+import { StatusPicker } from './StatusPicker';
 import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
 import { isSettled } from '../lib/columns';
@@ -26,6 +27,14 @@ interface Asked {
   expedited?: boolean;
   expediteError?: string;
   expediting?: boolean;
+  /** A move is out for this card: the status picker's pill stays disabled
+      until it answers. */
+  moving?: boolean;
+  moveError?: string;
+  /** The same, for express. */
+  express?: boolean;
+  expressError?: string;
+  expressing?: boolean;
 }
 
 /**
@@ -58,17 +67,29 @@ interface Asked {
  * opens on a dialog you can close. The description gets a box of its own inside
  * that - a paragraph's worth, the same in both views - because the field people
  * open a card to skim should not be the field that fills the dialog.
+ *
+ * The status pill doubles as the way to move the card: pressed, it opens the
+ * same column list the issue page's status bar offers (`StatusPicker`,
+ * `StatusSteps`). A move goes through `onMove` rather than growing its own
+ * request here, so it is the board's one move path - the same one a drag
+ * takes - that earns the drop's Undo chicklet and its offer to close what is
+ * under a card sent into a terminal column or onto the shelf.
  */
 export function IssuePeek({
   card,
   status,
+  statuses,
   directory,
   onExpedited,
+  onMove,
   onClose,
 }: {
   card: IssueCard | null;
   /** The column it is sitting in, or undefined if the board has moved underneath. */
   status?: Status;
+  /** Every column, deferred ones included - `board.statuses` - for the status
+      picker's band. */
+  statuses: Status[];
   /** Everybody who could own an issue, and who the caller is - fetched once by
       the board and handed down, so a dialog opening does not cost a request to
       find out whether the reader is a person. Null while it is still loading,
@@ -76,6 +97,9 @@ export function IssuePeek({
   directory: AssigneeDirectory | null;
   /** Something on this card changed on the server: the board reloads. */
   onExpedited: () => void;
+  /** Move the card to another column, the same path a drag takes. Rejects with
+      the server's own sentence on a refusal. */
+  onMove: (key: string, statusId: number) => Promise<void>;
   onClose: () => void;
 }) {
   const key = card?.key ?? null;
@@ -157,6 +181,43 @@ export function IssuePeek({
     [key, apply, onExpedited],
   );
 
+  /* The board's own move path - the optimistic repaint, the request and the
+     reload all live in BoardPage's `send`/`commit`, so a refusal has already
+     reloaded the board by the time it reaches here. This only tracks the one
+     thing that is this dialog's alone: the pill is busy while the request is
+     out, and the server's sentence is shown beside the chips on a refusal. */
+  const move = useCallback(
+    async (statusId: number) => {
+      if (!key) return;
+      apply(key, { moving: true, moveError: undefined });
+      try {
+        await onMove(key, statusId);
+        apply(key, { moving: false });
+      } catch (err) {
+        apply(key, { moving: false, moveError: message(err) });
+      }
+    },
+    [key, apply, onMove],
+  );
+
+  /* Carried past a column marked Express skips, with no session, or no
+     longer. Its own endpoint - the write is closed to an API key - and
+     otherwise exactly `expedite`. */
+  const express = useCallback(
+    async (next: boolean) => {
+      if (!key) return;
+      apply(key, { expressing: true, expressError: undefined });
+      try {
+        const issue = await setExpress(key, next);
+        apply(key, { express: issue.express, expressing: false });
+        onExpedited();
+      } catch (err) {
+        apply(key, { expressing: false, expressError: message(err) });
+      }
+    },
+    [key, apply, onExpedited],
+  );
+
   // Rendered unconditionally so the dialog's own open/closed handling - focus,
   // escape, the scrim - is the one that runs. Its title needs a card, though,
   // so a closed peek has nothing to say. Below every hook: the rules of hooks
@@ -191,7 +252,16 @@ export function IssuePeek({
       <div className="hatch-peek">
         <div className="hatch-peek-meta">
           <TypeBadge type={card.type} />
-          {status && <StatusPill status={status} />}
+          {status && (
+            <StatusPicker
+              key={card.key}
+              issueKey={card.key}
+              status={status}
+              statuses={statuses}
+              busy={asked.moving ?? false}
+              onMove={(statusId) => void move(statusId)}
+            />
+          )}
           {card.parentKey && (
             <Link to={`/issues/${card.parentKey}`} onClick={onClose}>
               ↳ {card.parentKey}
@@ -200,6 +270,7 @@ export function IssuePeek({
           {/* No onClose, unlike the parent link: this leaves Hatch for a new
               tab, and the card is meant to still be here when they come back. */}
           <PullRequestLink url={asked.pullRequestUrl ?? null} />
+          {asked.moveError && <span className="text-danger">{asked.moveError}</span>}
         </div>
 
         <p className="hatch-peek-title">{card.title}</p>
@@ -217,6 +288,13 @@ export function IssuePeek({
             onChange={(next) => void expedite(next)}
           />
           {asked.expediteError && <span className="text-danger">{asked.expediteError}</span>}
+          <ExpressControl
+            express={asked.express ?? card.express}
+            directory={directory}
+            busy={asked.expressing ?? false}
+            onChange={(next) => void express(next)}
+          />
+          {asked.expressError && <span className="text-danger">{asked.expressError}</span>}
         </div>
 
         {(card.readyAt || card.dueAt) && (

@@ -114,6 +114,17 @@ function CardFace({ card, waiting, terminal }: Required<Omit<CardProps, 'card'>>
             ↑
           </span>
         )}
+        {/* Express, beside expedite and drawn the same way - its own glyph and
+            no stripe, because the stripe on the card is expedite's alone. A
+            card that is both carries both marks. */}
+        {card.express && (
+          <span
+            className="hatch-card-express"
+            title="Express - carried past a column marked Express skips, with no session"
+          >
+            »
+          </span>
+        )}
         {/* Something is holding this one right now. On the face rather than on
             the page, so the drag preview carries it too - a card being moved is
             exactly the card where knowing a runner is mid-increment on it

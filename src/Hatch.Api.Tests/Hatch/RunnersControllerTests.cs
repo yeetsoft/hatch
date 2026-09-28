@@ -176,6 +176,57 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Mine);
     }
 
+    // ---- Where it runs ----
+
+    [Fact]
+    public async Task Where_IsStoredAndReadBack()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: "here:/checkouts/one"));
+
+        Assert.Equal("here:/checkouts/one", (await h.OneAsync()).Where);
+    }
+
+    [Fact]
+    public async Task ALiveRowAtAnotherWhere_Is409AndLeftUnchanged()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: "here:/checkouts/one"));
+
+        var refusal = await h.Runners.Heartbeat(
+            Runner, new RunnerHeartbeatRequest(Where: "elsewhere:/checkouts/two"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("here:/checkouts/one", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Contains("hatch config", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Equal("here:/checkouts/one", (await h.OneAsync()).Where);
+    }
+
+    [Fact]
+    public async Task AGoneRowAtAnotherWhere_IsTakenOver()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: "here:/checkouts/one"));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: "elsewhere:/checkouts/two"));
+
+        Assert.Equal("elsewhere:/checkouts/two", (await h.OneAsync()).Where);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoWhere_IsNeverRefusedOnThatAccount()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: "here:/checkouts/one"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.NotNull(instruction);
+        Assert.Equal("here:/checkouts/one", (await h.OneAsync()).Where);
+    }
+
     // ---- What it is working ----
 
     [Fact]

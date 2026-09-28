@@ -137,7 +137,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to, work.IssueUrl, repositories));
+        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.Express));
         return string.Join('\n', lines);
     }
 
@@ -366,7 +366,8 @@ public static class Prompt
     /// increment ends.
     /// </summary>
     private static IEnumerable<string> Tail(
-        string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories) =>
+        string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
+        bool express) =>
     [
         "## Reaching Hatch",
         "",
@@ -421,6 +422,7 @@ public static class Prompt
         "What the repository can answer, answer by reading the repository. A question",
         "the code already settles is a round trip through a person for nothing.",
         "",
+        ..Express(express),
         "## Where this increment ends",
         "",
         $"{key} should be in \"{to}\" when you stop, and no further.",
@@ -443,6 +445,26 @@ public static class Prompt
         "marked as never having said what it did - so the block is worth the two",
         "lines it takes. Write it last, and write it once.",
     ];
+
+    /// <summary>
+    /// The section told to a session on an express ticket, or nothing at all -
+    /// every ticket on a stock board. Two things, and no more: that it is
+    /// express, and what that means for whether a person reads it before it
+    /// moves on.
+    /// </summary>
+    private static IEnumerable<string> Express(bool express) => express
+        ?
+        [
+            "## This ticket is express",
+            "",
+            "Two things follow. Where this issue stands in a column marked *Express",
+            "skips*, the loop carries it on to the next column itself, without a person",
+            "reading it first - no session runs and nothing is spent. An unanswered",
+            "question is what stops that: anything that needs a person's eye is asked,",
+            "not assumed, the same as it would be on any other ticket.",
+            "",
+        ]
+        : [];
 
     /// <summary>
     /// Which checkout "the repository root" means, said only once there is more

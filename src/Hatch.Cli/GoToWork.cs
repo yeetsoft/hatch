@@ -439,7 +439,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             return 1;
         }
 
-        if (repoFlags.Count > 0 || workspaceFlag is not null)
+        var repoOverridden = repoFlags.Count > 0 || workspaceFlag is not null;
+        if (repoOverridden)
         {
             // The whole list for this run, in place of Settings.Repos - the
             // highest layer wins whole, as the settings already fold, rather
@@ -462,14 +463,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
             var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
-            var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
 
+            // Not yet named for the new root - that asks the board, and asking
+            // is deferred past the lock below, so a lock refusal touches the
+            // wire for nothing.
             runtime = runtime with
             {
                 Checkouts = repoCheckouts,
                 Root = root,
-                RunnerName = runnerName,
-                Board = runtime.NewBoard(runnerName),
                 Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
         }
@@ -540,6 +541,24 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         try
         {
+            // Named for the new root only once the locks say this loop
+            // actually gets to run - so a lock refusal above never touched the
+            // wire - and inside this try, so a failure here still releases
+            // them in the finally below.
+            if (repoOverridden)
+            {
+                var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), runtime.Root));
+                var runnerName = await Checkout.RunnerAsync(
+                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, lookupBoard, ct, runtime.RunnersPath);
+
+                runtime = runtime with
+                {
+                    RunnerName = runnerName,
+                    Where = Checkout.Where(Checkout.Host(), runtime.Root),
+                    Board = runtime.NewBoard(runnerName),
+                };
+            }
+
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
@@ -558,6 +577,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
             var restarting = false;
+            var refused = false;
 
             try
             {
@@ -583,6 +603,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // tally is printed from here and not from the loop.
                 tally.StopWhy ??= "interrupted";
             }
+            catch (HatchException e)
+            {
+                // The one heartbeat answer that is not weather: this name is
+                // already the live runner somewhere else. Nothing was claimed,
+                // and this is not an ordinary end of night - it is exit 1, so a
+                // supervisor watching the exit code notices.
+                runtime.Say.Complain(e.Message);
+                refused = true;
+            }
             finally
             {
                 // A restart is the middle of a night and not the end of one: the
@@ -595,7 +624,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
-            return restarting ? RestartExitCode : 0;
+            return refused ? 1 : restarting ? RestartExitCode : 0;
         }
         finally
         {
@@ -734,16 +763,19 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (pass == Pass.Restarting) return true;
 
             // `--once` is the loop's own dry run against a board that is not a
-            // fixture: one pass, whatever it found, and out.
-            if (once)
+            // fixture: one pass, whatever it found, and out. A hop is not that
+            // pass - it spawns nothing and costs nothing, so `--once` waits for
+            // the pass that actually is one.
+            if (once && pass is not Pass.Hopped)
             {
                 tally.StopWhy = "--once, and the pass is done";
                 return false;
             }
 
             // An increment that ran is followed by the next one immediately. The
-            // interval is what to do when there was nothing to do.
-            if (pass is Pass.Worked or Pass.Asked or Pass.Cleared) continue;
+            // interval is what to do when there was nothing to do. A hop reads
+            // the board again straight away, the same as a cleared conflict.
+            if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
             if (!await NapAsync(interval, tally, ct)) return false;
         }
 
@@ -777,6 +809,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         /// longer offers it, so there is nothing to wait for.
         /// </summary>
         Asked,
+
+        /// <summary>
+        /// An express issue was carried across the column it stood in - see
+        /// docs/hatch.md, "The hop". No claim, no reset, no session, and no
+        /// tally: <c>--max-runs</c> and <c>--once</c> count sessions, and a hop
+        /// is not one - so the next pass is asked for at once, the same as
+        /// <see cref="Cleared"/>.
+        /// </summary>
+        Hopped,
     }
 
     /// <summary>
@@ -805,7 +846,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
     {
-        var told = await runtime.Runners().BeatAsync(
+        var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Line: line.Line,
@@ -815,13 +856,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Clones: runtime.Settings.Workspace is not null,
-                Mine: mine),
+                Mine: mine,
+                Where: runtime.Where),
             ct);
+
+        // The one heartbeat answer that ends a run: this name is already the
+        // live runner somewhere else, so nothing here is claimed.
+        if (beat.Refusal is { Length: > 0 } refusal) throw new HatchException($"hatch: {refusal}");
 
         // `--once` says hello and reads nothing back. There is no second pass
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
-        return once ? null : told;
+        return once ? null : beat.Instruction;
     }
 
     /// <summary>
@@ -918,6 +964,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 line.Line = "the board refused this pass";
                 tally.StopWhy = picked.Refusal;
                 return Pass.Fatal;
+
+            case Pick.Hopped:
+                idle.Clear();
+                busy.Clear();
+                var hop = picked.Hopped!;
+                var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  express, no session";
+                line.Line = hopLine;
+                runtime.Say.Line($"hatch: {hopLine}");
+                return Pass.Hopped;
         }
 
         idle.Clear();

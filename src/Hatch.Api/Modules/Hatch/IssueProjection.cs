@@ -160,7 +160,8 @@ public static class IssueProjection
                 claims.Project(ClaimSnapshot.Of(issue), now),
                 issue.Expedited,
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
-                buildChecks.TryGetValue(issue.Id, out var builds) ? builds : []);
+                buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
+                issue.Express);
         });
     }
 

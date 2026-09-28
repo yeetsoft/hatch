@@ -37,6 +37,53 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_on_a_hop_prints_no_prompt()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1", hop: true));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default);
+
+        Assert.Equal(0, code);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.Contains("/claim", StringComparison.Ordinal)));
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("## The ticket", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.StartsWith("# AER-1 In Progress -> In Review", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("express: carried across with no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_named_hop_exits_0_takes_no_claim_and_spawns_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", hop: true));
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
+
+        Assert.Equal(0, code);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task With_no_key_a_hop_exits_0_takes_no_claim_and_spawns_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-9", hop: true) });
+        h.Wire.Json("POST", "/api/hatch/work/AER-9/hop", Fixtures.Issue("AER-9"));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync([], default);
+
+        Assert.Equal(0, code);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-9/hop"));
+    }
+
+    [Fact]
     public async Task A_ticket_another_runner_holds_refuses_and_spawns_nothing()
     {
         using var h = new Harness();
@@ -393,7 +440,8 @@ public sealed class WorkCommandTests
         using var h = new Harness();
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
-        var runnerName = Checkout.Runner(null, Checkout.Host(), elsewhere);
+        var runnerName = await Checkout.RunnerAsync(
+            null, Checkout.Host(), elsewhere, null, default, h.Runtime.RunnersPath);
 
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));

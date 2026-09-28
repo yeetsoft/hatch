@@ -73,7 +73,7 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_KEY` | `hatch_ak_…`, optional against a Hatch with its wall off |
 | `HATCH_CLAUDE_BIN` | The `claude` CLI, if it is not on `PATH` |
 | `HATCH_BASE_BRANCH` | The trunk `go-to-work` resets to, if `origin/HEAD` does not say |
-| `HATCH_RUNNER` | What the board calls this runner. Default `host:/path/to/checkout` |
+| `HATCH_RUNNER` | What the board calls this runner. Default: a character from the cast list, chosen once per checkout - see `hatch config` |
 | `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
 | `HATCH_WORKSPACE` | A directory this runner owns entirely, where it clones every repository the board binds that it has no checkout of |
 

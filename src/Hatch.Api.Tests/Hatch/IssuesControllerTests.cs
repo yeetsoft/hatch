@@ -224,6 +224,96 @@ public class IssuesControllerTests
         Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
     }
 
+    // ---- Express, inherited at filing ----
+
+    [Fact]
+    public async Task FiledUnderAnExpressParent_IsBornExpress()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.ExpressAsync("AER-1", true);
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.True(child.Express);
+    }
+
+    [Fact]
+    public async Task TheCreatedEvent_NamesTheParentItTookExpressFrom()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.ExpressAsync("AER-1", true);
+
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var e = Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Equal("AER-1", e.Payload!.Value.GetProperty("expressFrom").GetString());
+    }
+
+    [Fact]
+    public async Task FiledUnderAParentThatIsNotExpress_IsNotExpress()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.False(child.Express);
+    }
+
+    [Fact]
+    public async Task FiledWithNoParent_IsNotExpress()
+    {
+        var h = await NewAsync();
+
+        var issue = await h.CreateAsync("task", "a chore");
+
+        Assert.False(issue.Express);
+    }
+
+    [Fact]
+    public async Task ReparentedUnderAnExpressParent_IsNotMarked()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.ExpressAsync("AER-1", true);
+        await h.CreateAsync("task", "a chore");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+
+        Assert.False(moved.Express);
+    }
+
+    [Fact]
+    public async Task InheritanceIsTheSame_WhetherAKeyOrAPersonFiles()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.ExpressAsync("AER-1", true);
+
+        // CreateIssue does not distinguish caller kind - the flag is taken from
+        // the parent regardless of who is filing, so a key filing children
+        // under something a person marked express is exactly how an express
+        // epic's stories run overnight.
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.True(child.Express);
+    }
+
+    [Fact]
+    public async Task UnmarkingTheParent_LeavesAnAlreadyFiledChildAsItWas()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.ExpressAsync("AER-1", true);
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        await h.ExpressAsync("AER-1", false);
+
+        Assert.True(Value(await h.Issues.GetIssue("AER-2", default)).Express);
+    }
+
     // ---- Events ----
 
     [Fact]
@@ -1689,6 +1779,48 @@ public class IssuesControllerTests
             Value(await h.Statuses.GetStatuses(default)).Where(s => s.IsDeferred).Select(s => s.Name));
     }
 
+    // ---- Express skips ----
+    //
+    // The night train's column flag: which columns carry an express issue
+    // across with no session. Set only through its own route - PutExpressSkips
+    // - and untouched by the two ordinary routes, the same split IsDeferred
+    // draws against PatchStatus except that neither CreateStatus nor
+    // PatchStatus can set this one at all.
+
+    [Fact]
+    public async Task ANewColumn_StartsUnticked()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
+
+        Assert.False(created.ExpressSkips);
+    }
+
+    [Fact]
+    public async Task PutExpressSkips_TicksAndUnticksIt()
+    {
+        var h = await NewAsync();
+
+        var ticked = Value(await h.Statuses.PutExpressSkips(h.Todo, new ExpressSkipsRequest(true), default));
+        Assert.True(ticked.ExpressSkips);
+
+        var unticked = Value(await h.Statuses.PutExpressSkips(h.Todo, new ExpressSkipsRequest(false), default));
+        Assert.False(unticked.ExpressSkips);
+    }
+
+    [Fact]
+    public async Task APatchOfOtherFields_LeavesExpressSkipsAlone()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutExpressSkips(h.Todo, new ExpressSkipsRequest(true), default);
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, new StatusPatchRequest("later", null, null), default));
+
+        Assert.Equal("later", patched.Name);
+        Assert.True(patched.ExpressSkips);
+    }
+
     [Fact]
     public async Task ReorderingAColumn_MovesIt()
     {
@@ -2316,6 +2448,20 @@ public class IssuesControllerTests
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
             issue.AssigneePersonId = personId;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Written straight to the row, the same as <see cref="AssignAsync"/> -
+        /// what the dedicated route accepts and refuses is
+        /// <c>IssueExpressControllerTests</c>' business, and these tests are
+        /// about what filing under an express parent makes of it.
+        /// </summary>
+        public async Task ExpressAsync(string key, bool express)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.Express = express;
             await Db.SaveChangesAsync();
         }
 

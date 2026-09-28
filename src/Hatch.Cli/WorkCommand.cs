@@ -105,13 +105,16 @@ public sealed class WorkCommand(Runtime runtime)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
             var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
-            var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
+            var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), root));
+            var runnerName = await Checkout.RunnerAsync(
+                runtime.Settings.Runner, Checkout.Host(), root, lookupBoard, ct, runtime.RunnersPath);
 
             runtime = runtime with
             {
                 Checkouts = repoCheckouts,
                 Root = root,
                 RunnerName = runnerName,
+                Where = Checkout.Where(Checkout.Host(), root),
                 Board = runtime.NewBoard(runnerName),
                 Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
@@ -181,6 +184,13 @@ public sealed class WorkCommand(Runtime runtime)
 
         if (Refuse(work)) return 2;
 
+        if (work.Hop)
+        {
+            runtime.Say.Line($"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
+            runtime.Say.Line("# express: carried across with no session");
+            return 0;
+        }
+
         var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
         if (chosen is null)
         {
@@ -227,13 +237,22 @@ public sealed class WorkCommand(Runtime runtime)
 
         // One heartbeat, so that an increment run by hand shows up beside the
         // loops on the Runners page rather than being a session nobody can see.
-        // The answer is not read: there is no second pass here to apply an
-        // instruction to, and the row ages out on its own once this exits.
-        await runtime.Runners().BeatAsync(
+        // The instruction is not read: there is no second pass here to apply
+        // one to, and the row ages out on its own once this exits. The one
+        // refusal that is not weather still ends the run, before anything is
+        // claimed.
+        var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: RunnerKinds.Once,
-                Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand"),
+                Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
+                Where: runtime.Where),
             ct);
+
+        if (beat.Refusal is { Length: > 0 } refusal)
+        {
+            runtime.Say.Complain($"hatch: {refusal}");
+            return 1;
+        }
 
         var clones = runtime.Settings.Workspace is not null;
 
@@ -264,6 +283,32 @@ public sealed class WorkCommand(Runtime runtime)
             }
 
             if (Refuse(named)) return 2;
+
+            // Express, standing in a column marked to skip: carried across with
+            // no session, and nothing above this has taken a checkout or a
+            // claim yet, so there is nothing to undo.
+            if (named.Hop)
+            {
+                string? walkOn;
+                try
+                {
+                    (_, walkOn) = await runtime.Board.HopAsync(runtime.Checkouts, key, ct, clones);
+                }
+                catch (HatchException e)
+                {
+                    runtime.Say.Complain(e.Message);
+                    return 1;
+                }
+
+                if (walkOn is not null)
+                {
+                    runtime.Say.Complain($"hatch: {key} - {walkOn}");
+                    return 2;
+                }
+
+                runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  express, no session");
+                return 0;
+            }
 
             // Without a clone, so that the ordinary case - already matched, or
             // never going to match at all - refuses exactly as it always has,
@@ -345,6 +390,11 @@ public sealed class WorkCommand(Runtime runtime)
                 case Pick.Refused:
                     runtime.Say.Complain(picked.Refusal ?? "hatch: the board refused this pass");
                     return 1;
+
+                case Pick.Hopped:
+                    var hop = picked.Hopped!;
+                    runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  express, no session");
+                    return 0;
             }
 
             if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };

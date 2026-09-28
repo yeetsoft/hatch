@@ -144,6 +144,61 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_carries_where_it_runs_from()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(h.Runtime.Where, beat.Where);
+    }
+
+    [Fact]
+    public async Task A_409_on_the_heartbeat_ends_a_loop_with_the_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Reply(
+            "POST", Beat, HttpStatusCode.Conflict,
+            "\"test:/checkout is already the runner on elsewhere:/tree - hatch config gives this checkout another name\"");
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.True(h.Say.Mentions("already the runner on elsewhere:/tree"));
+    }
+
+    [Fact]
+    public async Task A_409_on_the_heartbeat_ends_work_with_the_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Reply(
+            "POST", Beat, HttpStatusCode.Conflict,
+            "\"test:/checkout is already the runner on elsewhere:/tree - hatch config gives this checkout another name\"");
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.True(h.Say.Mentions("already the runner on elsewhere:/tree"));
+    }
+
+    [Fact]
+    public async Task A_500_on_the_heartbeat_is_weather_and_does_not_end_the_night()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Reply("POST", Beat, HttpStatusCode.InternalServerError, "\"boom\"");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
     public async Task A_loop_says_it_is_a_loop_and_carries_the_bounds_it_started_with()
     {
         using var h = new Harness();

@@ -52,6 +52,10 @@ export interface Status {
       deferred ones included - `boardColumns` in lib/columns.ts is what drops
       them, and it is the one place that does. */
   isDeferred: boolean;
+  /** Whether an express issue standing here is carried on to the next column
+      with no session - see Issue.express. Not a "whose column is this" flag:
+      who works a column is still derived from the playbook matrix. */
+  expressSkips: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
@@ -114,6 +118,11 @@ export interface IssueCard {
       non-expedited one in its column, so nothing here sorts - see
       IssueCardDto.Expedited. */
   expedited: boolean;
+  /** Carried past a column marked *Express skips* with no session, as long as
+      it has no unanswered question. A gate-passer and not a sort key - the
+      opposite of `expedited` - so nothing here sorts either. See
+      IssueCardDto.Express. */
+  express: boolean;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -125,7 +134,8 @@ export interface IssueCard {
     it would let anybody holding a board read steal a lease. */
 export interface IssueClaim {
   claimedBy: string;
-  /** The checkout holding it - `host:/path/to/checkout`, as the runner names itself. */
+  /** The runner holding it, as it names itself - a character from the cast
+      list, or `HATCH_RUNNER`'s override. */
   runner: string;
   claimedAt: string;
   /** When the holder was last heard from. The lease is over when this is older than the TTL. */
@@ -245,6 +255,12 @@ export interface Issue {
       reaches and writable only by a person, through its own route - see
       IssueExpediteController. */
   expedited: boolean;
+  /** Carried past a column marked *Express skips* with no session, as long as
+      it has no unanswered question - the opposite shape from `expedited`: a
+      gate-passer, not a sort key. Taken from the parent at filing and at no
+      other time. Readable by anybody a dispatch reaches and writable only by
+      a person, through its own route - see IssueExpressController. */
+  express: boolean;
   /** What a runner last found when it merged this issue's branch against the
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */
@@ -1033,9 +1049,9 @@ export type RunnerState = 'running' | 'paused' | 'stopping';
     claim leaves the row idle on the next poll rather than remembering a ticket
     nobody is working. */
 export interface Runner {
-  /** What it calls itself - `host:/path/to/checkout`, the same string its
-      claims carry. Its identity, and the last segment of every URL that reaches
-      it. */
+  /** What it calls itself - a character from the cast list, or `HATCH_RUNNER`'s
+      override. Its identity, and the last segment of every URL that reaches it,
+      the same string its claims carry. */
   name: string;
   kind: RunnerKind;
   firstSeenAt: string;
@@ -1057,6 +1073,10 @@ export interface Runner {
   clones: boolean | null;
   /** Whether this runner was started with do-my-work or --mine - working its owner's tickets only. */
   mine: boolean | null;
+  /** The machine and checkout this runner runs from, `host:/path` - drawn under
+      the name now that the name is a character and not a path. Null from an
+      older CLI that has not sent one yet. */
+  where: string | null;
   maxRuns: number | null;
   maxSpend: number | null;
   untilAt: string | null;

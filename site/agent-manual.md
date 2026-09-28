@@ -127,7 +127,7 @@ hatch: ignoring "<NAME>" in <path> - not one of: HATCH_BASE HATCH_KEY HATCH_CLAU
 | `HATCH_KEY` | all three | Optional. A `hatch_ak_…` bearer key. Empty means keyless mode. |
 | `HATCH_CLAUDE_BIN` | all three | The `claude` executable, if it is not on `PATH`. |
 | `HATCH_BASE_BRANCH` | all three | The trunk `go-to-work` resets to. Overrides `origin/HEAD` detection. |
-| `HATCH_RUNNER` | all three | What the board calls this runner. Default `<short hostname>:<checkout path>`, clipped to 240 characters from the front. |
+| `HATCH_RUNNER` | all three | What the board calls this runner. Default: a character from the cast list (`src/Hatch.Cli/runner-names.txt`), chosen once per checkout and recorded in the per-user `runners` file - see `hatch config`. Clipped to 240 characters from the front if set explicitly and longer than that. |
 | `HATCH_HEARTBEAT` | environment only in practice | Seconds of session silence before the terminal prints a pulse. Default `20`; `0` turns it off; anything else invalid falls back to 20. Not on the file allow-list. |
 | `HATCH_ROOT` | environment | The checkout to work in. Default: walk upwards from the working directory. |
 | `HATCH_NIGHT_STATE` | environment | A path where a night's totals cross a restart. Set only by the supervisor in `scripts/hatch.sh` or `scripts\hatch.ps1`. Its absence is how the loop knows nothing could restart it. |
@@ -154,12 +154,23 @@ two-minute timeout.
 
 ### The runner name
 
-`HATCH_RUNNER` if set, else `<hostname up to the first dot>:<checkout path>`.
-It is the same string every claim carries and the Runners page keys on. A
-related fingerprint, twelve hex characters of a SHA-256 over the canonical
-checkout path with symlinks resolved and each segment respelled as the disk
-holds it, names the per-checkout lock, so two spellings of one path take one
-lock.
+`HATCH_RUNNER` if set, else a character from the cast list in
+`src/Hatch.Cli/runner-names.txt` - main and recurring characters from five TV
+shows, plus the colorful one-offs. The choice is made once per checkout, the
+first time it is needed: a SHA-256 over the host and the canonical checkout
+path picks a starting slot, and the walk from there skips any name already
+recorded for another checkout on this machine or held by a live runner
+elsewhere on the board. The choice is then recorded in a per-user `runners`
+file beside `config` (`<canonical checkout path>=<name>`, mode 600), so every
+later run repeats it rather than choosing again - and `hatch config` offers it
+as the default and accepts another.
+
+It is the same string every claim carries and the Runners page keys on; the
+board separately stores `where` (`<short hostname>:<checkout path>`) beside
+it, shown under the name on the Runners page. A related fingerprint, twelve
+hex characters of a SHA-256 over the canonical checkout path with symlinks
+resolved and each segment respelled as the disk holds it, names the
+per-checkout lock, so two spellings of one path take one lock.
 
 ## `hatch config`
 
