@@ -5,6 +5,7 @@ import { getIssue, patchIssue, setExpedited } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { ExpediteControl } from './ExpediteControl';
 import { MomentChip } from './MomentChip';
+import { PullRequestLink } from './PullRequestLink';
 import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
@@ -13,10 +14,12 @@ import { message } from '../lib/errors';
 import type { AssigneeDirectory, IssueCard, Status } from '../types';
 
 /** What the peek had to ask for, and the card it asked about. `description`
-    undefined is "not here yet", which is what the Loading line reads off. */
+    undefined is "not here yet", which is what the Loading line reads off; so is
+    `pullRequestUrl`, where null is the server saying there is none. */
 interface Asked {
   key: string | null;
   description?: string;
+  pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
   /** What the server last said about the flag, or undefined while the card's own value stands. */
@@ -39,9 +42,16 @@ interface Asked {
  *
  * The comments and the history are still deliberately not fetched: they are the
  * reason the issue page exists, and so are the title, the type, the column, the
- * parent and the dates. This dialog adds one field, not a second issue page,
- * and it still hands over two ways to go further: the full issue in this tab,
- * or in a new one.
+ * parent and the dates. This dialog adds one read, not a second issue page, and
+ * it still hands over two ways to go further: the full issue in this tab, or in
+ * a new one.
+ *
+ * That one read also brings the pull request, which shows as the chip the issue
+ * page draws, in the row under the key. It rides on the fetch rather than on
+ * the card because only this dialog reads it: putting it on IssueCardDto would
+ * widen every board payload for a field no card draws. Like the description it
+ * is absent until the read answers, so a card that is still loading, or could
+ * not be read, shows no chip.
  *
  * It is laid out against the modal's `footer`: the three ways out sit under the
  * body rather than at the end of it, so a card whose brief runs to a page still
@@ -99,7 +109,11 @@ export function IssuePeek({
   useEffect(() => {
     if (!key) return;
     getIssue(key)
-      .then((issue) => apply(key, { description: issue.description }))
+      .then((issue) => apply(key, {
+          description: issue.description,
+          pullRequestUrl: issue.pullRequestUrl,
+        }),
+      )
       .catch((err: unknown) => apply(key, { loadError: message(err) }));
   }, [key, apply]);
 
@@ -113,7 +127,7 @@ export function IssuePeek({
       apply(key, { saveError: undefined });
       try {
         const issue = await patchIssue(key, { description: next });
-        apply(key, { description: issue.description });
+        apply(key, { description: issue.description, pullRequestUrl: issue.pullRequestUrl });
         return true;
       } catch (err) {
         apply(key, { saveError: message(err) });
@@ -183,6 +197,9 @@ export function IssuePeek({
               ↳ {card.parentKey}
             </Link>
           )}
+          {/* No onClose, unlike the parent link: this leaves Hatch for a new
+              tab, and the card is meant to still be here when they come back. */}
+          <PullRequestLink url={asked.pullRequestUrl ?? null} />
         </div>
 
         <p className="hatch-peek-title">{card.title}</p>
