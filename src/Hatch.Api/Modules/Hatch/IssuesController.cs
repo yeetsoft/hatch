@@ -532,6 +532,11 @@ public class IssuesController(
     /// A move within a column writes no event. Tidying a column is board
     /// hygiene rather than work, and logging it would bury the status changes
     /// that matter under a hundred lines of dragging.
+    ///
+    /// <c>FromStatusId</c> is a precondition on what the caller last saw: a
+    /// card that is anywhere else is a 409 and nothing is written. The board
+    /// does not live-update and the loop moves cards all night, so an undo
+    /// names the column it is taking the card out of.
     /// </remarks>
     [HttpPost("{key}/move")]
     public async Task<ActionResult<IssueDto>> MoveIssue(string key, IssueMoveRequest request, CancellationToken ct)
@@ -541,6 +546,12 @@ public class IssuesController(
 
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == request.StatusId, ct);
         if (status is null) return BadRequest($"there is no column {request.StatusId}");
+
+        if (request.FromStatusId is { } expected && issue.StatusId != expected)
+        {
+            var current = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
+            return Conflict($"{key} is in {current?.Name ?? "another column"} now - nothing moved");
+        }
 
         var after = await NeighbourIdAsync(request.AfterKey, ct);
         var before = await NeighbourIdAsync(request.BeforeKey, ct);

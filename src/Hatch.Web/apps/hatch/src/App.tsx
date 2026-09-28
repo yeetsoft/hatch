@@ -1,7 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
-import { CreatedIssuesProvider } from './components/CreatedIssues';
+import { ConfirmationsProvider } from './components/Confirmations';
 import { NavAttention } from './components/NavAttention';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavUtilization } from './components/NavUtilization';
@@ -37,8 +37,9 @@ function AppShell() {
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
        on the board and then read on the issue page it links to, so the stack
-       has to outlive the navigation between them. */
-    <CreatedIssuesProvider>
+       has to outlive the navigation between them - and its Undo has to work
+       from either. */
+    <ConfirmationsProvider>
       <div className="hatch-app">
         <TopBar
           appName="Hatch"
@@ -101,6 +102,6 @@ function AppShell() {
           </Routes>
         </main>
       </div>
-    </CreatedIssuesProvider>
+    </ConfirmationsProvider>
   );
 }

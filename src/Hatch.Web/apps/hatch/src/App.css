@@ -2923,9 +2923,9 @@ button.hatch-option.chosen {
   padding: var(--sp-3) 0;
 }
 
-/* ---- Filed-issue confirmations ---- */
+/* ---- Filed and moved issue confirmations ---- */
 
-/* The corner where an issue filed in this tab says so. Fixed to the window
+/* The corner where an issue filed, or a card moved, in this tab says so. Fixed to the window
    rather than placed in a page, because the chicklet outlives the page it was
    raised on: filing on the board and then opening the issue leaves the corner
    as it was. */
@@ -3011,6 +3011,15 @@ button.hatch-option.chosen {
   white-space: nowrap;
 }
 
+/* The title, and under a move the line that says what it did. Its own column so
+   the key and the close control keep their places whatever it holds. */
+.hatch-confirmation-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
 /* Two lines of title at most: enough to recognise which of six filings this
    one is, and not so much that a long title becomes a wall in the corner. */
 .hatch-confirmation-title {
@@ -3036,4 +3045,41 @@ button.hatch-option.chosen {
 
 .hatch-confirmation-close:hover {
   color: var(--ink);
+}
+
+/* From -> To, and the way to take it back. Quieter than the title: the drop was
+   the operator's own act, and this is only saying it landed. */
+.hatch-confirmation-move {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  color: var(--muted);
+}
+
+/* What a settled chicklet says instead of the move: it was taken back, or why
+   it was not. Ink rather than muted, because it is news. */
+.hatch-confirmation-note {
+  color: var(--ink);
+}
+
+/* The pill .hatch-confirmations-clear draws, for the same reason - a small
+   act in a small corner. */
+.hatch-confirmation-undo {
+  padding: 0 var(--sp-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--ink);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+
+.hatch-confirmation-undo:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.hatch-confirmation-undo:disabled {
+  color: var(--muted);
+  cursor: progress;
 }

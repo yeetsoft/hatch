@@ -699,6 +699,42 @@ public class IssuesControllerTests
         Assert.Contains("no column", Reason(result.Result));
     }
 
+    [Fact]
+    public async Task AMoveNamingTheColumnItIsIn_Moves()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null, h.Inbox), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    /// <summary>
+    /// The precondition that lets an undo run without overruling anyone: the
+    /// card has left the column the caller expected, so nothing moves, no
+    /// event is written and the rank is untouched.
+    /// </summary>
+    [Fact]
+    public async Task AMoveNamingAColumnItHasLeft_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("story", "the other");
+        var before = Value(await h.Issues.GetIssue("AER-1", default));
+        var eventsBefore = (await h.EventsAsync("AER-1")).Count;
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, "AER-2", null, h.Done), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("AER-1 is in ", Reason(result.Result));
+        Assert.Contains("nothing moved", Reason(result.Result));
+        var after = Value(await h.Issues.GetIssue("AER-1", default));
+        Assert.Equal(h.Inbox, after.StatusId);
+        Assert.Equal(before.Rank, after.Rank);
+        Assert.Equal(eventsBefore, (await h.EventsAsync("AER-1")).Count);
+    }
+
     // ---- Deleting ----
 
     /// <summary>

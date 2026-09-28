@@ -343,7 +343,12 @@ public record IssuePatchRequest(
 /// </summary>
 /// <param name="AfterKey">The card immediately above the drop, or null at the top of the column.</param>
 /// <param name="BeforeKey">The card immediately below it, or null at the bottom.</param>
-public record IssueMoveRequest(int StatusId, string? AfterKey, string? BeforeKey);
+/// <param name="FromStatusId">
+/// The column the caller believes the card is in. A card that has left that
+/// column is refused rather than moved - which is how an undo can never
+/// overrule a move somebody made since. Null asks nothing of where it is now.
+/// </param>
+public record IssueMoveRequest(int StatusId, string? AfterKey, string? BeforeKey, int? FromStatusId = null);
 
 // ---- Searching and editing in bulk ----
 

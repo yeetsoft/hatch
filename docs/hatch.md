@@ -59,7 +59,9 @@ absence starts to hurt:
   for one is [closing a subtree](#closing-a-subtree), and it is not a rule
   either: it is a question the browser asks a person after a move has already
   committed. Nothing is forbidden by it and nothing is required — the answer is
-  the operator's, and "leave them" is one of the two.
+  the operator's, and "leave them" is one of the two. Nor is
+  `fromStatusId` on a move: it is a precondition on what the caller last saw,
+  not a rule about which columns may follow which.
 - **No granular permissions.** Reaching Hatch at all means trusted to do
   everything in it. The one exception is the API key, whose scope is a
   statement about *which surface*, never about which verb.
@@ -517,6 +519,60 @@ Four smaller decisions, each of which reads as arbitrary until it is said:
   descendants, so dismissing it means *leave them*, never *undo that* — which is
   also what lets the drag stay optimistic, with no card springing back out of a
   column it was deliberately dropped in.
+
+The drop's chicklet can take an accepted cascade back too: see
+[taking a drop back](#taking-a-drop-back).
+
+#### Taking a drop back
+
+A card dropped into another column on the board is confirmed in the bottom-left
+corner, in the same chicklet a filing raises: the key (a link that opens the
+issue in a new tab), the title, *from → to*, and an **Undo**. Move chicklets
+stack with filed ones, newest at the bottom, and — for the reason a filing's
+never times out — stay until they are closed or *Dismiss all* is pressed: a
+timeout is a confirmation that expires while the operator is looking at
+something else. They live in the tab, above `<Routes>`, so they survive a click
+through to an issue, and Undo works from whichever page they are showing on.
+
+**Only a change of column is a transition.** A reorder inside a column raises
+nothing, as it writes no event, and a drop the server refuses raises nothing
+either. The chicklet comes after the reload, so the board it sits over already
+shows the move.
+
+⌘Z on a Mac and Ctrl+Z elsewhere press Undo on the newest move chicklet that has
+not been undone, and each further press takes the next one back. That shortcut
+belongs to the **board** — a keystroke made while reading an issue should not
+rearrange a board nobody is looking at — and it steps aside for a text field
+(where it is the field's own undo), for an open dialog, and for a drag under way.
+With nothing to undo it does nothing, and the browser keeps the key.
+
+**An undo never overrules somebody else.** The loop moves cards all night and
+the board does not live-update, so the request names the column the card is
+expected to be in, `fromStatusId`, and the server answers a card anywhere else
+with a `409` naming where it is and writes nothing. The chicklet then says so
+and offers no Undo. Any other failure leaves the button, so it can be pressed
+again.
+
+An undo is an ordinary move: it writes its own `status_changed` event, and the
+history shows the drop and the undo both. The card goes back between the
+neighbours it had — read by rank, over every card in the column, since that is
+how the server places it.
+
+**Undo takes back an accepted close offer too**, key for key, because a stack of
+work moves as a unit or not at all: an undo that left five tasks in Done under
+an epic now back in review would not be an undo. The chicklet says how many
+issues under the card were closed. Only what the offer *moved* is on it — an
+issue that was already closed stays where it is, and so does one the offer
+failed to move — and a dialog answered with "leave them" leaves an ordinary
+chicklet whose Undo moves only the card.
+
+The parent's move is checked first and gates the rest: if the card is no longer
+where it was dropped, nothing under it is touched either. Then each descendant
+goes back, one request at a time, top to bottom within its column — the server
+tries a request's `beforeKey` before its `afterKey`, so restoring top-down means
+each card's `afterKey` is already home when it lands, and neighbours return in
+their old order — to the column it held, each naming the column the offer put
+it in. One that has moved since stays where it is, and the chicklet names it.
 
 #### Deferring an issue
 
@@ -996,7 +1052,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
-| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey? }` — the server computes the rank |
+| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind, the `answersId`, and a question's options |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
