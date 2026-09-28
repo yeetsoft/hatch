@@ -6,14 +6,17 @@
 #
 #   - The door. `.\scripts\hatch.ps1 <anything>` is every command of the `hatch`
 #     program in src\Hatch.Cli - board, next, queue, show, start, move, comment,
-#     pr, depends, ask, questions, answer, api, config, work, go-to-work - with
-#     the arguments passed through whole and the program's own exit code handed
-#     back. This file finds the program, builds it if it has to, and hands over.
+#     pr, depends, ask, questions, answer, api, config, work, go-to-work,
+#     do-my-work - with the arguments passed through whole and the program's
+#     own exit code handed back. This file finds the program, builds it if it
+#     has to, and hands over.
 #
 #   - The supervisor. `go-to-work` asks to be restarted as a newer build by
 #     exiting 75, and nothing else on Windows catches that: a downloaded
 #     hatch.exe runs the loop it started as, all night. Here the loop is run,
 #     the 75 is caught, the source is built again, and the loop comes back.
+#     `do-my-work` is the same loop, supervised the same way, with `--mine` on
+#     the front of its arguments.
 #
 # Two things are here that hatch.sh has no need of, both because Windows is
 # Windows:
@@ -305,6 +308,10 @@ try {
 
   if ($command -ceq 'go-to-work') {
     $code = Invoke-GoToWork $rest
+  } elseif ($command -ceq 'do-my-work') {
+    # Exactly go-to-work --mine, one supervisor - so a restart keeps --mine
+    # exactly as it keeps every other flag the night started with.
+    $code = Invoke-GoToWork (@('--mine') + $rest)
   } elseif ($command -ceq 'work') {
     $runner = Use-RunCopy (Resolve-Runner)
     $code = Invoke-Runner $runner $Arguments @{ HATCH_ROOT = $Root }

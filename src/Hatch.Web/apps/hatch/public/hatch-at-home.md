@@ -377,17 +377,25 @@ the bulk endpoint and the plan reads. Read it on demand.
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
 `queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
-`questions`, `answer`, `config`, `work`, `go-to-work`, and `api` for everything
-else. It finds a column by name rather than by id — on the letters and digits
-alone, so `todo` at a terminal reaches the column the board calls `To Do` — and
-folds off cards whose ready date has not arrived, exactly as the board does.
-`hatch --help` lists the surface and every subcommand takes `-h` for its own.
+`questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
+for everything else. It finds a column by name rather than by id — on the
+letters and digits alone, so `todo` at a terminal reaches the column the board
+calls `To Do` — and folds off cards whose ready date has not arrived, exactly
+as the board does. `hatch --help` lists the surface and every subcommand
+takes `-h` for its own.
 
-Only `work` and `go-to-work` need a checkout, because only those two are about
-a codebase — the checkout you are standing in, or one named with `--repo` or
-`HATCH_REPOS`. The other fourteen are one request and a sentence about the
-answer, and `hatch board` from a directory that has never been a repository is
-the ordinary case.
+Only `work`, `go-to-work` and `do-my-work` need a checkout, because only those
+three are about a codebase — the checkout you are standing in, or one named
+with `--repo` or `HATCH_REPOS`. The other fourteen are one request and a
+sentence about the answer, and `hatch board` from a directory that has never
+been a repository is the ordinary case.
+
+`--mine` on `work`, `go-to-work` and `queue` narrows to the caller's own
+tickets — assigned to the person the calling key belongs to, or to the key
+itself. `hatch do-my-work` is exactly `go-to-work --mine`, for a runner that
+should spend its budget on one person's tickets and nobody else's; plain
+`go-to-work` still skips every person's own tickets, including the caller's,
+exactly as it always has.
 
 Its settings are read in three layers, highest first: an exported `HATCH_BASE`
 or `HATCH_KEY`, then `scripts/.env` in the checkout you happen to be

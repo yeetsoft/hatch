@@ -1525,4 +1525,14 @@ public class EfHatchRunner
 
     /// <summary>Whether this runner makes a clone for itself when it lacks one.</summary>
     public bool? Clones { get; set; }
+
+    /// <summary>
+    /// Whether this runner was started with <c>do-my-work</c> or
+    /// <c>--mine</c> - working its owner's tickets only. A fact about the
+    /// running process, written on every beat like <see cref="Clones"/> and
+    /// <see cref="Remotes"/>, and shown rather than editable: unlike
+    /// <see cref="Under"/> it is not a page's to set on a runner that is
+    /// already going.
+    /// </summary>
+    public bool? Mine { get; set; }
 }

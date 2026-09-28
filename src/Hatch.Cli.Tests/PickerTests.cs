@@ -156,6 +156,39 @@ public sealed class PickerTests
         Assert.Equal(Pick.Unreadable, picked.Outcome);
     }
 
+    /// <summary>
+    /// A 400 is the dispatcher saying this will never succeed as asked -
+    /// today, a --mine pass whose key belongs to nobody - and that is a
+    /// different situation from the ordinary weather a 500 or a dropped
+    /// connection is. Refused ends the night; Unreadable tries again.
+    /// </summary>
+    [Fact]
+    public async Task A_400_from_the_queue_read_is_refused_rather_than_unreadable()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("GET", Queue, HttpStatusCode.BadRequest,
+            "\"this key belongs to nobody, so it has no tickets of its own\"");
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Refused, picked.Outcome);
+        Assert.Contains("this key belongs to nobody", picked.Refusal);
+    }
+
+    [Fact]
+    public async Task Mine_is_sent_when_asked_for_and_not_otherwise()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await MakePicker(h).PickAsync(null, 0, default, Harness.Beat, mine: true);
+        await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        var calls = h.Wire.To("GET", Queue);
+        Assert.Contains("mine=true", calls[0].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("mine=true", calls[1].Query, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task An_epic_narrows_the_scan_and_nothing_else()
     {

@@ -126,7 +126,7 @@ using var terminate = Handle(PosixSignal.SIGTERM);
 
 try
 {
-    if (command is "work" or "go-to-work")
+    if (command is "work" or "go-to-work" or "do-my-work")
     {
         var runtime = new Runtime(
             Settings: settings,
@@ -145,9 +145,17 @@ try
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
         }.WithGit();
 
-        return command == "work"
-            ? await new WorkCommand(runtime).RunAsync(rest, cancelling.Token)
-            : await new GoToWorkCommand(runtime).RunAsync(rest, cancelling.Token);
+        return command switch
+        {
+            "work" => await new WorkCommand(runtime).RunAsync(rest, cancelling.Token),
+            "go-to-work" => await new GoToWorkCommand(runtime).RunAsync(rest, cancelling.Token),
+            // Exactly go-to-work --mine, so the two can never drift apart in
+            // which flags they accept. -h is asked of go-to-work's own usage
+            // rather than answered by prepending a flag in front of it - Usage.Wanted
+            // reads only the first argument, and --mine there would hide the ask.
+            _ => await new GoToWorkCommand(runtime).RunAsync(
+                Hatch.Cli.Usage.Wanted(rest) ? rest : ["--mine", .. rest], cancelling.Token),
+        };
     }
 
     var cli = new Cli(board, say, new Input(), settings, runnerName)
@@ -244,7 +252,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "board", "next", "queue", "show", "start", "move", "comment", "pr",
-        "depends", "ask", "questions", "answer", "api", "work", "go-to-work",
+        "depends", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -259,6 +267,7 @@ internal partial class Program
         "  hatch next \"in progress\"      ...or of any column",
         "  hatch queue                  every card a pass would look at, and why",
         "  hatch queue AER-1            ...under one epic",
+        "  hatch queue --mine           ...only your own",
         "  hatch show AER-12            the brief, plus its comments",
         "  hatch start AER-12           move it to \"in progress\"",
         "  hatch move AER-12 todo       ...or to any non-terminal column",
@@ -286,13 +295,14 @@ internal partial class Program
         "",
         "  hatch inbox AER-12 --hook stop    what was said to the session on it, marked read",
         "",
-        "The two that spawn an agent, and the only two that need a checkout or a",
+        "The three that spawn an agent, and the only three that need a checkout or a",
         "workspace to clone into - the one you are standing in, one named with --repo",
         "or HATCH_REPOS, or --workspace or HATCH_WORKSPACE to clone what is missing:",
         "",
         "  hatch work                   one increment on the next thing due",
         "  hatch work AER-12            ...or on this one",
         "  hatch work --under AER-1     ...or on the next thing under one epic",
+        "  hatch work --mine            ...or on the next of your own - AER-12 with this is refused",
         "  hatch work -i AER-12         ...in a session you sit in",
         "  hatch work --quiet           ...saying nothing until it is finished",
         "  hatch work --model opus --effort xhigh AER-12",
@@ -309,6 +319,8 @@ internal partial class Program
         "  hatch go-to-work --no-restart         ...never coming back as a newer one",
         "  hatch go-to-work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
         "  hatch go-to-work --workspace /clones           ...clone what the board binds, into /clones",
+        "  hatch go-to-work --mine      ...take only your own tickets, the whole night through",
+        "  hatch do-my-work             ...exactly go-to-work --mine, every flag above included",
         "",
         "Every command takes -h for its own usage block.",
         "",

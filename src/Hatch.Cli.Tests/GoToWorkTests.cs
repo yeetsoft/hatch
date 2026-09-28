@@ -90,6 +90,65 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Complained, l => l.Contains("the workspace is not ready", StringComparison.Ordinal));
     }
 
+    // ---- --mine ----
+
+    [Fact]
+    public async Task Mine_is_sent_on_the_queue_read()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--mine"], default);
+
+        Assert.Contains("mine=true", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_the_flag_mine_is_never_sent()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.DoesNotContain("mine=true", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_heartbeat_carries_mine()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--mine"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.True(beat.Mine);
+    }
+
+    /// <summary>
+    /// The same path "the workspace could not be reset" takes: nothing was
+    /// spawned, so this ends the night without counting toward the
+    /// three-failures tally - the sentence printed is the server's own, not
+    /// "three increments in a row failed".
+    /// </summary>
+    [Fact]
+    public async Task A_400_on_the_pick_ends_the_run_and_claims_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("GET", Queue, HttpStatusCode.BadRequest,
+            "\"this key belongs to nobody, so it has no tickets of its own\"");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--mine"], default);
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Said, l => l.Contains("this key belongs to nobody", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_busy_board_waits_rather_than_ending_and_does_not_read_like_an_empty_one()
     {

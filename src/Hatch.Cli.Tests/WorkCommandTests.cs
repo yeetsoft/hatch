@@ -277,6 +277,50 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_key_and_mine_together_is_a_refusal()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--mine"], default));
+        Assert.Contains(h.Say.Complained, l => l.Contains("not both", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task With_no_key_mine_is_sent_on_the_queue_read()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-9") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-9", Fixtures.Work("AER-9"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-9");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--mine"], default));
+        Assert.Contains("mine=true", h.Wire.To("GET", Queue)[0].Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A 400 from a --mine pass whose key belongs to nobody prints the server's
+    /// sentence and refuses, exactly the same shape any other refusal here
+    /// takes - nothing about it needed the Pick.Refused/Pass.Fatal machinery
+    /// go-to-work needs to keep a whole night running past one.
+    /// </summary>
+    [Fact]
+    public async Task Mine_refused_by_the_board_prints_the_sentence_and_exits_1()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("GET", Queue, HttpStatusCode.BadRequest,
+            "\"this key belongs to nobody, so it has no tickets of its own\"");
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["--mine"], default));
+        Assert.Contains(h.Say.Complained, l => l.Contains("this key belongs to nobody", StringComparison.Ordinal));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
     public async Task An_empty_board_says_which_of_the_three_empties_it_is()
     {
         using var h = new Harness();

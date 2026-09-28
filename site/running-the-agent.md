@@ -23,11 +23,12 @@ exhaustive reference for every flag and behaviour.
 - **A git checkout** of the repository the board is about, with a remote
   called `origin` — the one you are standing in, or one named with `--repo`
   or `HATCH_REPOS`, so a loop with none of its own still works the two or
-  three repositories already cloned on the machine. Only `work` and
-  `go-to-work` need one; every other command is one request and a sentence
-  about the answer. `--workspace` or `HATCH_WORKSPACE` is a third way in: a
-  directory the loop owns entirely, where it clones what the board binds that
-  it has no checkout of — for a machine with nothing cloned on it at all.
+  three repositories already cloned on the machine. Only `work`, `go-to-work`
+  and `do-my-work` need one; every other command is one request and a
+  sentence about the answer. `--workspace` or `HATCH_WORKSPACE` is a third
+  way in: a directory the loop owns entirely, where it clones what the board
+  binds that it has no checkout of — for a machine with nothing cloned on it
+  at all.
 
 Nothing else. The binary is self-contained: no .NET, no Node, no `gh`, no
 `jq`.
@@ -144,6 +145,7 @@ audit afterwards.
 hatch go-to-work                  until told to stop
 hatch go-to-work --once           one pass, and out
 hatch go-to-work --under AER-1    only inside that epic's subtree
+hatch go-to-work --mine           only your own tickets - see below
 hatch go-to-work --interval 300   seconds to wait when there was nothing to do (default 60)
 hatch go-to-work --quiet          no per-increment stream, only what each one ended as
 hatch go-to-work --repo /path/to/a/checkout    also serve that checkout, repeatable
@@ -153,6 +155,21 @@ hatch go-to-work --workspace /clones           clone what the board binds, into 
 A ticket key is refused here. This command's question is "what is next", and
 one ticket cannot be the answer twice. One increment on a named ticket is
 `hatch work AER-12`.
+
+### Sharing a board: `--mine` and `hatch do-my-work`
+
+If you share one board with other people, each running their own agent on
+their own budget, plain `go-to-work` still takes anything on the board an
+agent may move and skips every ticket assigned to a person — including your
+own. `--mine` narrows it further: it takes only a ticket assigned to the
+person your key belongs to, or to your key itself, and folds every other one.
+`hatch do-my-work` is exactly `hatch go-to-work --mine`, and takes every flag
+above.
+
+There is no single loop that works both the shared pool and your own tickets
+— run `go-to-work` for the pool and `do-my-work` separately for your own.
+Whose tickets your key's `--mine` reaches is set by an admin on the API Keys
+page, never by the key itself.
 
 ### One pass, in order
 

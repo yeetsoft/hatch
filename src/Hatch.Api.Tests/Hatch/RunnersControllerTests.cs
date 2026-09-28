@@ -161,6 +161,21 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Clones);
     }
 
+    /// <summary>Whether this runner was started with do-my-work or --mine, on the same terms Clones is.</summary>
+    [Fact]
+    public async Task Mine_IsSeededOverwrittenAndLeftAloneTheSameWayCloneIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Mine: true));
+        Assert.True((await h.OneAsync()).Mine);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Mine: false));
+        Assert.False((await h.OneAsync()).Mine);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.False((await h.OneAsync()).Mine);
+    }
+
     // ---- What it is working ----
 
     [Fact]

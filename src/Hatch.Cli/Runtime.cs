@@ -36,7 +36,7 @@ public sealed record Runtime(
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone);
 
-    public Idle Idle() => new(Board, Say, Checkouts, Settings.Workspace is not null);
+    public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
 
     public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts, TempDirectory);
 

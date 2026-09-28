@@ -282,7 +282,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     public static readonly string[] GoToWorkUsage =
     [
-        "usage: hatch go-to-work [--under <epic key>] [--once] [--quiet]",
+        "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]",
         "                        [--interval <seconds>] [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
         "                        [--stop-file <path>]",
@@ -297,6 +297,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  It takes no ticket key. One increment on a named ticket is `hatch work",
         "  AER-12`; this command's question is what is next, asked again and again.",
         "",
+        "  --mine             take only the caller's own tickets - assigned to the",
+        "                     person this key belongs to, or to the key itself. Plain",
+        "                     go-to-work still skips every person's tickets, including",
+        "                     your own; `hatch do-my-work` is this flag on by default,",
+        "                     and the two are otherwise identical",
         "  --under            stay inside one epic's subtree",
         "  --once             one pass, and out",
         "  --quiet            no per-increment stream, only what each one ended as",
@@ -343,6 +348,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var interval = 60;
         var once = false;
         var quiet = false;
+        var mine = false;
         var restartAfter = RestartAfterMinutes;
         var noRestart = false;
         int? maxRuns = null;
@@ -354,6 +360,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             switch (args[i])
             {
+                case "--mine": mine = true; break;
                 case "--under" when i + 1 < args.Length: under = args[++i]; break;
                 case "--interval" when i + 1 < args.Length:
                     if (!int.TryParse(args[++i], out interval) || interval < 1)
@@ -554,7 +561,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             try
             {
-                restarting = await LoopAsync(under, quiet, once, interval, tally, restart, ct);
+                restarting = await LoopAsync(under, quiet, mine, once, interval, tally, restart, ct);
 
                 // A restart that could not hand the night's totals over would be
                 // a fresh night: the budget back to nothing, the streak cleared,
@@ -630,7 +637,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
-        string? under, bool quiet, bool once, int interval, Tally tally, Restarts restart, CancellationToken ct)
+        string? under, bool quiet, bool mine, bool once, int interval, Tally tally, Restarts restart,
+        CancellationToken ct)
     {
         var idle = new SaidOnce();
         var busy = new SaidOnce();
@@ -656,7 +664,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // pass when no claim is held. That is what makes "picked up between
             // increments, after the one in flight has finished" true by
             // construction rather than by a check somewhere.
-            var told = await BeatAsync(line, under, tally, once, ct);
+            var told = await BeatAsync(line, under, mine, tally, once, ct);
 
             if (told is { State: RunnerStates.Stopping })
             {
@@ -721,7 +729,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // straight on asks git nothing more than one that waited.
             await poll.RunAsync(runtime, interval, ct);
 
-            var pass = await PassAsync(under, quiet, tally, idle, busy, interval, once, restart, line, ct);
+            var pass = await PassAsync(under, quiet, mine, tally, idle, busy, interval, once, restart, line, ct);
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
 
@@ -795,7 +803,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// first appearance without the runner having to know whether it is new.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
-        Chatter line, string? under, Tally tally, bool once, CancellationToken ct)
+        Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
     {
         var told = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
@@ -806,7 +814,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxSpend: tally.MaxSpend,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
-                Clones: runtime.Settings.Workspace is not null),
+                Clones: runtime.Settings.Workspace is not null,
+                Mine: mine),
             ct);
 
         // `--once` says hello and reads nothing back. There is no second pass
@@ -856,10 +865,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     }
 
     private async Task<Pass> PassAsync(
-        string? under, bool quiet, Tally tally,
+        string? under, bool quiet, bool mine, Tally tally,
         SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct)
     {
-        var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat);
+        var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
         var now = runtime.Clock.GetUtcNow();
 
         // A clone this walk could not make - recorded exactly as a failed spawn
@@ -877,7 +886,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 await SayQuietlyAsync(idle, now, interval, once,
                     digest: string.Join('\n', Digest.Of(picked.Queue)),
                     still: "hatch: still nothing an agent may move",
-                    inFull: () => runtime.Idle().ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct));
+                    inFull: () => runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct));
                 return Pass.Waited;
 
             case Pick.Busy:
@@ -899,6 +908,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 line.Line = "the board did not answer";
                 runtime.Say.Complain($"hatch: the board did not answer - asking again in {interval}s");
                 return Pass.Waited;
+
+            case Pick.Refused:
+                // A 400 is the dispatcher saying this will never succeed as
+                // asked - today, a --mine pass whose key belongs to nobody.
+                // The same path "the workspace could not be reset" takes:
+                // nothing was spawned, so this ends the night without going
+                // through the three-failures tally.
+                line.Line = "the board refused this pass";
+                tally.StopWhy = picked.Refusal;
+                return Pass.Fatal;
         }
 
         idle.Clear();

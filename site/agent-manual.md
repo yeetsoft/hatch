@@ -30,7 +30,7 @@ A name that is not a command is refused before anything is loaded:
 hatch: no such command "<x>" - `hatch --help` lists them.
 ```
 
-### The seventeen commands
+### The eighteen commands
 
 | Command | Needs a checkout | Writes to the board |
 |---|---|---|
@@ -50,13 +50,14 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `api` | no | as the method says |
 | `work` | **yes** | yes |
 | `go-to-work` | **yes** | yes |
+| `do-my-work` | **yes** | yes |
 | `runner-claude-token` | no | no |
 
 ### Start-up, in order
 
 1. Resolve the checkout: `HATCH_ROOT` if set and it exists, else the nearest
    ancestor of the working directory holding a `.git` file or directory. Only
-   `work` and `go-to-work` require one:
+   `work`, `go-to-work` and `do-my-work` require one:
    ```
    hatch: this is not a git repository, and a ticket is about a codebase.
    hatch:   run it inside a checkout, or name one in HATCH_ROOT.
@@ -76,7 +77,7 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `0` | It worked, or usage was asked for. For `work`, an increment ran, whatever the session exited with. |
 | `1` | A refusal: bad arguments, unknown command, not configured, not a repository, an HTTP fault, an unreadable board. |
 | `2` | Nothing to do, as an answer rather than a fault: `next` with nothing workable; `pr` read with no URL set; `work` when the board is idle, the ticket is blocked, or another runner has it; `runner-claude-token` when no token is saved. |
-| `75` | `go-to-work` asking its supervisor to rebuild and run it again. |
+| `75` | `go-to-work` (or `do-my-work`) asking its supervisor to rebuild and run it again. |
 | `130` | Interrupted. |
 | the session's | `work -i` returns the exit code of the attached `claude` process. |
 
@@ -338,13 +339,14 @@ the container needs no `jq`, `python` or `openssl`.
 ## `hatch work`
 
 ```
-usage: hatch work [<issue key>] [--under <epic key>] [-i] [--quiet]
+usage: hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]
                   [--model <model>] [--effort <effort>] [--dry-run]
 ```
 
 | Flag | Takes | Default | Meaning |
 |---|---|---|---|
 | positional | an issue key | none: take the next | Names the ticket outright |
+| `--mine` | | off | The next ticket `do-my-work` would take - only your own |
 | `--under <epic key>` | value | none: whole board | Look only under that epic's subtree |
 | `--dry-run` | | off | Print the prompt and exit. Claims nothing, spawns nothing. |
 | `-i`, `--interactive` | | off | A session you sit in, rather than a headless one |
@@ -352,8 +354,9 @@ usage: hatch work [<issue key>] [--under <epic key>] [-i] [--quiet]
 | `--model <model>` | value | the playbook's | Beat the playbook, for this run only |
 | `--effort <effort>` | value | the playbook's | Likewise |
 
-A key and `--under` together are refused. Any other `-`-prefixed token:
-`hatch: work does not take <flag>`.
+A key and `--under` together are refused, and so are a key and `--mine` -
+one names the ticket, the other narrows which one is picked. Any other
+`-`-prefixed token: `hatch: work does not take <flag>`.
 
 ### `--dry-run`
 
@@ -384,7 +387,8 @@ blocked: exit 2.
      /api/hatch/work/<key>?heldToken=<token>`, so the runner's own lease does
      not fold its own dispatch; if that read is now blocked, release and move
      on. Five refusals is a busy board. Idle or busy: exit 2. Unreadable:
-     exit 1.
+     exit 1. `--mine` sends `mine=true` on that read; a `400` (the calling
+     key belongs to nobody) prints the server's sentence and exits 1.
 4. **Model and effort**: the flag, else the playbook's. The server has already
    folded the issue's own override into the playbook it returns, so a flag
    beats an override and an override beats the row.
@@ -503,7 +507,7 @@ Joined with newlines, in this order:
 ## `hatch go-to-work`
 
 ```
-usage: hatch go-to-work [--under <epic key>] [--once] [--quiet]
+usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]
                         [--interval <seconds>] [--max-runs <n>]
                         [--max-spend <dollars>] [--until <HH:MM>]
                         [--stop-file <path>]
@@ -512,6 +516,7 @@ usage: hatch go-to-work [--under <epic key>] [--once] [--quiet]
 
 | Flag | Takes | Default | Meaning |
 |---|---|---|---|
+| `--mine` | | off | Take only the caller's own tickets - assigned to the person the calling key belongs to, or to the key itself. Plain `go-to-work` still skips every person's tickets, including the caller's own; `hatch do-my-work` is this flag on by default. |
 | `--under <epic key>` | value | none | Stay inside one epic's subtree |
 | `--once` | | off | One pass and out. Also heartbeats as kind `once` and disarms restarts. |
 | `--quiet` | | off | No per-increment stream, only what each one ended as |
@@ -550,9 +555,9 @@ of one checkout take one lock.
 1. **Check for the `claude` CLI** once, before the loop; missing, the run
    ends with `there is no claude CLI to spawn`.
 2. **Heartbeat** `POST /api/hatch/runners/<name>` with kind `loop`, the last
-   line said, and the current `--under`, `--max-runs`, `--max-spend` and
-   `--until`. Sent at the top, the one moment no claim is held. With `--once`
-   the answer is discarded.
+   line said, and the current `--under`, `--mine`, `--max-runs`, `--max-spend`
+   and `--until`. Sent at the top, the one moment no claim is held. With
+   `--once` the answer is discarded.
 3. The board answering **`stopping`** ends the run cleanly, exit 0: `the
    board asked this runner to stop`.
 4. **The board's bounds replace the flags**, absences included, so a cap
@@ -584,7 +589,10 @@ report.
 
 1. **Pick**, exactly as `work` does. Idle, busy or an unreadable board: wait
    an interval (`hatch: the board did not answer - asking again in
-   <interval>s`).
+   <interval>s`). A `400` on the pick - `--mine` from a key that belongs to
+   nobody - ends the run the same way a workspace that cannot be reset does:
+   the server's sentence is printed and the run stops, without counting
+   toward the three-failures tally, because nothing was spawned.
 2. With the claim held, print what was folded past: `hatch:   folded past N
    issue(s) on the way here:` with one line per reason, and `hatch:   another
    runner had  <key>  <sentence>` per busy ticket.
@@ -690,7 +698,8 @@ this order:
 5. `--until HH:MM has come`.
 
 And outside that list: the board answering `stopping`; a workspace that can
-never be reset; `--once`; no `claude` CLI; an interrupt.
+never be reset; a `400` on the pick (`--mine` from a key that belongs to
+nobody); `--once`; no `claude` CLI; an interrupt.
 
 ### The tally
 
@@ -703,18 +712,42 @@ hatch:   moved    <KEY>  <outcome>
 hatch:   stalled  <KEY>  <outcome>
 ```
 
+## `hatch do-my-work`
+
+Exactly `hatch go-to-work --mine`: one dispatch, so the two can never drift
+apart in which flags they accept. `scripts/hatch.sh do-my-work` and
+`scripts\hatch.ps1 do-my-work` supervise it exactly as they supervise
+`go-to-work`, restarts included - `--mine` is on the front of the arguments
+handed to the same supervised loop, so it survives a restart the way every
+other flag does.
+
+`hatch work --mine` does one increment the same way: the next ticket
+`do-my-work` would take. A key together with `--mine` is refused, the same
+shape a key with `--under` is. `hatch queue --mine` lists what a `--mine`
+pass would take, folding everything else with a sentence naming whose it is:
+`assigned to Ada, not to you`, or `assigned to nobody - a --mine pass takes
+only your own`.
+
+"Mine" is read off the calling key's owner - set by an admin on the API Keys
+page, never by the key itself or by anything the caller says about itself.
+A caller whose key belongs to nobody (never set, or its person since
+deleted) is refused before anything is scanned: `this key belongs to nobody,
+so it has no tickets of its own - an admin sets its owner on the API Keys
+page`.
+
 ## The Runners page, from the runner's side
 
 Every heartbeat is `POST /api/hatch/runners/<url-encoded name>` carrying the
-kind (`loop` or `once`), the last line printed, and the four bounds. The
-answer carries the state (`running`, `paused`, `stopping`) and the bounds the
-page holds, which replace the loop's own. A heartbeat that does not answer is
-weather: the loop keeps running on what it had. A row is idle while heard
-from, gone after ninety seconds of silence by default, and dropped from the
-read after ten times that. Nothing on the server starts or stops a process.
-The page's controls are person-only; a key can read and heartbeat, never
-write, because an agent that could raise its own `--max-spend` could raise
-its own budget.
+kind (`loop` or `once`), the last line printed, the four bounds, and whether
+this is a `--mine` loop. The answer carries the state (`running`, `paused`,
+`stopping`) and the bounds the page holds, which replace the loop's own. A
+heartbeat that does not answer is weather: the loop keeps running on what it
+had. A row is idle while heard from, gone after ninety seconds of silence by
+default, and dropped from the read after ten times that. Nothing on the
+server starts or stops a process. The page's controls are person-only; a key
+can read and heartbeat, never write, because an agent that could raise its
+own `--max-spend` could raise its own budget. `--mine` is shown on the row
+("own tickets only"), not editable there, unlike `--under`.
 
 ## HTTP surface
 
@@ -730,8 +763,8 @@ its own budget.
 | PATCH | `/api/hatch/issues/{key}` | `pr` set and clear |
 | POST, DELETE | `/api/hatch/issues/{key}/dependencies[/{other}]` | `depends` |
 | GET | `/api/hatch/questions?open=…`, `/api/hatch/issues/{key}/questions?open=…` | `questions`, `answer`, before and after an increment |
-| GET | `/api/hatch/work/queue?offsetMinutes=…[&ancestorKey=…]` | `queue`, the picker, the idle report |
-| GET | `/api/hatch/work/next?offsetMinutes=…[&ancestorKey=…]` | `work --dry-run` only |
+| GET | `/api/hatch/work/queue?offsetMinutes=…[&ancestorKey=…][&mine=true]` | `queue`, the picker, the idle report |
+| GET | `/api/hatch/work/next?offsetMinutes=…[&ancestorKey=…][&mine=true]` | `work --dry-run` only |
 | GET | `/api/hatch/work/{key}[?heldToken=…]` | `work`, the picker's second read, the post-increment read |
 | POST | `/api/hatch/issues/{key}/claim` | taking a claim |
 | POST | `/api/hatch/issues/{key}/claim/heartbeat` | keeping it |

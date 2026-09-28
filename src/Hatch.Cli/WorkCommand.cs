@@ -13,7 +13,7 @@ public sealed class WorkCommand(Runtime runtime)
 {
     public static readonly string[] WorkUsage =
     [
-        "usage: hatch work [<issue key>] [--under <epic key>] [-i] [--quiet]",
+        "usage: hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]",
         "                  [--model <model>] [--effort <effort>] [--dry-run]",
         "                  [--repo <path>]... [--workspace <dir>]",
         "",
@@ -26,6 +26,9 @@ public sealed class WorkCommand(Runtime runtime)
         "  one outright; --under names the epic to look under. Not both - one says",
         "  which ticket, the other says where to look for one.",
         "",
+        "  --mine             the next ticket `hatch do-my-work` would take - only the",
+        "                     caller's own. Refused together with a key: one names the",
+        "                     ticket, the other narrows which ticket is picked",
         "  -i                 a session you sit in, rather than a headless one",
         "  --quiet            say nothing until the increment is finished",
         "  --model            beat the playbook, for this run only",
@@ -52,6 +55,7 @@ public sealed class WorkCommand(Runtime runtime)
         var dry = false;
         var attach = false;
         var quiet = false;
+        var mine = false;
         var repoFlags = new List<string>();
         string? workspaceFlag = null;
 
@@ -59,6 +63,7 @@ public sealed class WorkCommand(Runtime runtime)
         {
             switch (args[i])
             {
+                case "--mine": mine = true; break;
                 case "--model" when i + 1 < args.Length: model = args[++i]; break;
                 case "--effort" when i + 1 < args.Length: effort = args[++i]; break;
                 case "--under" when i + 1 < args.Length: under = args[++i]; break;
@@ -130,9 +135,19 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
+        // A key names the ticket; --mine narrows which ticket is picked when
+        // none is named - somebody who names one has already chosen it, the
+        // same refusal --under makes and for the same reason.
+        if (key is { Length: > 0 } && mine)
+        {
+            runtime.Say.Complain(
+                "hatch: work takes a key or --mine, not both - one names the ticket, the other narrows which ticket is picked");
+            return 1;
+        }
+
         return dry
-            ? await DryRunAsync(key, under, model, effort, ct)
-            : await SpendAsync(key, under, model, effort, attach, quiet, ct);
+            ? await DryRunAsync(key, under, mine, model, effort, ct)
+            : await SpendAsync(key, under, mine, model, effort, attach, quiet, ct);
     }
 
     /// <summary>
@@ -140,7 +155,8 @@ public sealed class WorkCommand(Runtime runtime)
     /// and reads <c>work/next</c> rather than walking the claim, since a dry run
     /// that took a lease would be exactly the thing it is a dry run of.
     /// </summary>
-    private async Task<int> DryRunAsync(string? key, string? under, string? model, string? effort, CancellationToken ct)
+    private async Task<int> DryRunAsync(
+        string? key, string? under, bool mine, string? model, string? effort, CancellationToken ct)
     {
         var clones = runtime.Settings.Workspace is not null;
 
@@ -149,7 +165,7 @@ public sealed class WorkCommand(Runtime runtime)
         {
             work = key is { Length: > 0 }
                 ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones)
-                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones);
+                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones, mine);
         }
         catch (HatchException e)
         {
@@ -159,7 +175,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         if (work is null)
         {
-            await runtime.Idle().ReportAsync(under, null, runtime.OffsetMinutes, ct);
+            await runtime.Idle(mine).ReportAsync(under, null, runtime.OffsetMinutes, ct);
             return 2;
         }
 
@@ -200,7 +216,8 @@ public sealed class WorkCommand(Runtime runtime)
         $"hatch: {key} - the project's repositories changed under us since this was read - try again";
 
     private async Task<int> SpendAsync(
-        string? key, string? under, string? model, string? effort, bool attach, bool quiet, CancellationToken ct)
+        string? key, string? under, bool mine, string? model, string? effort, bool attach, bool quiet,
+        CancellationToken ct)
     {
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
@@ -310,12 +327,12 @@ public sealed class WorkCommand(Runtime runtime)
         {
             // The same walk the loop uses, so one rule picks a ticket wherever
             // a ticket is picked.
-            var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat);
+            var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
 
             switch (picked.Outcome)
             {
                 case Pick.Idle:
-                    await runtime.Idle().ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct);
+                    await runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct);
                     return 2;
 
                 case Pick.Busy:
@@ -323,6 +340,10 @@ public sealed class WorkCommand(Runtime runtime)
                     return 2;
 
                 case Pick.Unreadable:
+                    return 1;
+
+                case Pick.Refused:
+                    runtime.Say.Complain(picked.Refusal ?? "hatch: the board refused this pass");
                     return 1;
             }
 

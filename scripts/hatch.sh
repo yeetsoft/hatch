@@ -4,8 +4,9 @@
 #
 # Almost nothing happens here any more. Every command - board, next, queue,
 # show, start, move, comment, pr, depends, ask, questions, answer, api, config,
-# work and go-to-work - is a command of the `hatch` program in src/Hatch.Cli,
-# and this file finds it, builds it if it has to, and hands over.
+# work, go-to-work and do-my-work - is a command of the `hatch` program in
+# src/Hatch.Cli, and this file finds it, builds it if it has to, and hands
+# over.
 #
 # It stopped being the CLI in AERIE-934. The reason is not that shell was the
 # wrong language for `curl | jq`; it is that an operator who clones Hatch into
@@ -224,11 +225,14 @@ rebuild_runner() {
   return 0
 }
 
-# `go-to-work` is the one command that is watched rather than replaced.
-# Everything else - including a name that is not a command at all, which the
-# program refuses better than a case statement here could - goes straight
-# through.
+# `go-to-work` is the one command that is watched rather than replaced, and
+# `do-my-work` is exactly that loop with `--mine` on the front of its
+# arguments - one supervisor, so a restart keeps `--mine` exactly as it keeps
+# every other flag the night started with. Everything else - including a name
+# that is not a command at all, which the program refuses better than a case
+# statement here could - goes straight through.
 case "${1:-}" in
   go-to-work) shift; supervise_go_to_work "$@" ;;
+  do-my-work) shift; supervise_go_to_work --mine "$@" ;;
   *)          exec_hatch "$@" ;;
 esac

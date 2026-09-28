@@ -73,6 +73,11 @@ export function repositoriesLabel(runner: Runner): string | null {
   return runner.clones ? `${repos}, clones what it lacks` : repos;
 }
 
+/** Whether this runner was started with do-my-work or --mine, as the word for the row - or null, drawn the same as `clones`. */
+export function mineLabel(runner: Runner): string | null {
+  return runner.mine ? 'own tickets only' : null;
+}
+
 /** The bounds as the form holds them: strings, because that is what inputs are
     and what the wire takes. */
 export interface RunnerBounds {

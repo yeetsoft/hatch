@@ -26,11 +26,12 @@ public sealed class Board(HatchClient client)
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false)
+        bool clones = false, bool mine = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
+        var narrowed = mine ? "&mine=true" : "";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
@@ -94,11 +95,12 @@ public sealed class Board(HatchClient client)
     /// </remarks>
     public async Task<WorkDto?> NextAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false)
+        bool clones = false, bool mine = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
+        var narrowed = mine ? "&mine=true" : "";
         return WithIssueUrl(await Client.GetAsync<WorkDto>(
-            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{Declare(checkouts, clones)}", ct));
+            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{narrowed}{Declare(checkouts, clones)}", ct));
     }
 
     /// <summary>

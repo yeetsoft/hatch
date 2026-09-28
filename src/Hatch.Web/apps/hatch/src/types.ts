@@ -1055,6 +1055,8 @@ export interface Runner {
   repositories: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
+  /** Whether this runner was started with do-my-work or --mine - working its owner's tickets only. */
+  mine: boolean | null;
   maxRuns: number | null;
   maxSpend: number | null;
   untilAt: string | null;

@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli;
 
 /// <summary>What a pass over the board came to.</summary>
@@ -11,6 +13,13 @@ public enum Pick
 
     /// <summary>The board could not be read - a reason to wait, not a reason to stop.</summary>
     Unreadable,
+
+    /// <summary>
+    /// The board answered, and refused - not a reason to wait, a reason to
+    /// stop. Today this is a <c>--mine</c> pass whose key belongs to nobody;
+    /// nothing about retrying makes it answer differently.
+    /// </summary>
+    Refused,
 
     /// <summary>Every clear candidate is somebody else's right now.</summary>
     Busy,
@@ -31,6 +40,7 @@ public enum Pick
 /// every candidate it walked past - the same shape a real failed spawn
 /// reports, so the tally's three-in-a-row rule sees it too.
 /// </param>
+/// <param name="Refusal">The sentence the board refused with - set only when <see cref="Outcome"/> is <see cref="Pick.Refused"/>.</param>
 public sealed record Picked(
     Pick Outcome,
     WorkDto? Work,
@@ -39,7 +49,8 @@ public sealed record Picked(
     IReadOnlyList<string> Busy,
     Checkouts.Choice? Chosen = null,
     IReadOnlyList<CheckoutEntry>? Checkouts = null,
-    IReadOnlyList<IncrementReport>? CloneFailures = null);
+    IReadOnlyList<IncrementReport>? CloneFailures = null,
+    string? Refusal = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -75,12 +86,20 @@ public sealed class Picker(
     private readonly bool _clones = workspace is not null;
 
     public async Task<Picked> PickAsync(
-        string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null)
+        string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)
     {
         IReadOnlyList<QueueEntryDto> queue;
         try
         {
-            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, _clones);
+            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, _clones, mine);
+        }
+        catch (HatchException e) when (e.Status == HttpStatusCode.BadRequest)
+        {
+            // A 400 is the dispatcher saying "this will never succeed as
+            // asked" - today, a --mine pass whose key belongs to nobody. Ends
+            // the night rather than the ordinary "the board didn't answer, try
+            // again" weather every other refusal here is.
+            return new Picked(Pick.Refused, null, null, [], [], Refusal: e.Message);
         }
         catch (HatchException e)
         {

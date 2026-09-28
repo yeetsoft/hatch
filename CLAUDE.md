@@ -13,16 +13,24 @@ ticket is a complete instruction, and the ticket is where the answer goes back.
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
 `queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
-`questions`, `answer`, `config`, `work`, `go-to-work`, and `api` for everything
-else. It finds a column by name rather than by id, on the letters and digits
-alone, so `todo` reaches the column the board calls `To Do`. Prefer it to raw
-`curl`; the raw calls below are what it is doing. `hatch --help` lists the
-surface, and every subcommand takes `-h` for its own.
+`questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
+for everything else. It finds a column by name rather than by id, on the
+letters and digits alone, so `todo` reaches the column the board calls `To Do`.
+Prefer it to raw `curl`; the raw calls below are what it is doing. `hatch
+--help` lists the surface, and every subcommand takes `-h` for its own.
+
+`--mine` on `work`, `go-to-work` and `queue` narrows to the caller's own
+tickets — assigned to the person the calling key belongs to, or to the key
+itself — never to a person's tickets generally: plain `go-to-work` still skips
+every person's own, exactly as it always has. `hatch do-my-work` is exactly
+`go-to-work --mine`, for a friend on a smaller budget who wants to spend it on
+their own tickets and nobody else's. Whose tickets a key's `--mine` reaches is
+set by an admin on the API Keys page, never by the key itself.
 
 It is one program — [`src/Hatch.Cli`](src/Hatch.Cli), published as a single
 binary for macOS, Windows and Linux — because an operator who clones Hatch has
-no copy of this repository's scripts on their `PATH`. Only `work` and
-`go-to-work` need to be run inside a git checkout.
+no copy of this repository's scripts on their `PATH`. Only `work`,
+`go-to-work` and `do-my-work` need to be run inside a git checkout.
 
 **In this checkout, [`scripts/hatch.sh`](scripts/hatch.sh) reaches every one of
 those commands**, finding or building the binary and handing over. Use it where
@@ -53,7 +61,8 @@ one.
 
 ### If the loop spawned you
 
-**This is most likely how you got here.** `go-to-work` runs increments back to
+**This is most likely how you got here.** `go-to-work` (or `do-my-work`, the
+same loop narrowed to one person's own tickets) runs increments back to
 back — the next actionable issue, one increment, ask again — so assume nobody is
 reading the terminal, and that the next increment starts the moment yours ends.
 
