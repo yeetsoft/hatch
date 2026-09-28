@@ -260,6 +260,7 @@ export function BoardPage() {
         onChange={changeFilter}
         assignees={assignees}
         projects={projects}
+        cards={board.issues}
         showing={visible.length}
         total={board.issues.length}
       />

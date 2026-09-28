@@ -155,3 +155,30 @@ export const revealType = (filter: CardFilter, type: IssueType): CardFilter =>
   filter.types.includes(type)
     ? filter
     : { ...filter, types: ISSUE_TYPES.filter((t) => t === type || filter.types.includes(t)) };
+
+/** How many cards of each type there are, zero included, so a row can say "0"
+    rather than nothing. Given the whole board and not the visible cards, for
+    the reason `assigneeFacets` is: choosing a thing must not shrink the list
+    you chose it from. */
+export function typeCounts(cards: IssueCard[]): Record<IssueType, number> {
+  const counts: Record<IssueType, number> = { epic: 0, story: 0, task: 0, bug: 0 };
+  for (const card of cards) counts[card.type] += 1;
+  return counts;
+}
+
+const PLURALS: Record<IssueType, string> = { epic: 'epics', story: 'stories', task: 'tasks', bug: 'bugs' };
+
+/** What the Types control says: `All`, `All but tasks` for three, and for one
+    or two the ones drawn (`Epics, stories`). */
+export function typesSummary(types: IssueType[]): string {
+  if (types.length >= ISSUE_TYPES.length) return 'All';
+  if (types.length === ISSUE_TYPES.length - 1) {
+    const missing = ISSUE_TYPES.find((type) => !types.includes(type));
+    if (missing) return `All but ${PLURALS[missing]}`;
+  }
+
+  const listed = ISSUE_TYPES.filter((type) => types.includes(type))
+    .map((type) => PLURALS[type])
+    .join(', ');
+  return listed.charAt(0).toUpperCase() + listed.slice(1);
+}

@@ -10,6 +10,8 @@ import {
   revealType,
   toggleType,
   toggleWaiting,
+  typeCounts,
+  typesSummary,
 } from './filter';
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, IssueCard } from '../types';
@@ -289,5 +291,39 @@ describe('revealType', () => {
 
   it('leaves the rest of the filter alone', () => {
     expect(revealType({ ...DEFAULT_FILTER, query: 'cert' }, 'task').query).toBe('cert');
+  });
+});
+
+describe('typesSummary', () => {
+  it('says All for every type and All but for the one missing', () => {
+    expect(typesSummary([...ISSUE_TYPES])).toBe('All');
+    expect(typesSummary(DEFAULT_FILTER.types)).toBe('All but tasks');
+    expect(typesSummary(['epic', 'task', 'bug'])).toBe('All but stories');
+  });
+
+  it('lists one or two types, plural and capitalised, in canonical order', () => {
+    expect(typesSummary(['epic'])).toBe('Epics');
+    expect(typesSummary(['story'])).toBe('Stories');
+    expect(typesSummary(['task'])).toBe('Tasks');
+    expect(typesSummary(['bug'])).toBe('Bugs');
+    expect(typesSummary(['epic', 'story'])).toBe('Epics, stories');
+    expect(typesSummary(['story', 'task'])).toBe('Stories, tasks');
+  });
+});
+
+describe('typeCounts', () => {
+  const board = [
+    card({ key: 'AER-1', type: 'epic' }),
+    card({ key: 'AER-2', type: 'task' }),
+    card({ key: 'AER-3', type: 'task' }),
+  ];
+
+  it('counts every type, and says zero for one with no cards', () => {
+    expect(typeCounts(board)).toEqual({ epic: 1, story: 0, task: 2, bug: 0 });
+  });
+
+  it('counts the cards a filter would hide', () => {
+    expect(typeCounts(board).task).toBe(2);
+    expect(filterCards(board, DEFAULT_FILTER)).toHaveLength(1);
   });
 });
