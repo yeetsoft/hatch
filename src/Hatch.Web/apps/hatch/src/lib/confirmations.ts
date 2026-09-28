@@ -10,6 +10,7 @@
  */
 
 import { restorePoint } from './place';
+import type { CloseOffer } from './closeSubtree';
 import type { Board, IssueMoveRequest } from '../types';
 
 /** A column named on a chicklet. The name is kept, because the chicklet is read
@@ -38,6 +39,19 @@ export interface FiledConfirmation extends Chicklet {
  */
 export type MoveState = 'moved' | 'undoing' | 'undone' | 'refused' | 'failed';
 
+/**
+ * One issue a close offer moved with the card, and how to put it back: where
+ * it stood before the drop, and the column the offer put it in, so the server
+ * refuses to pull it out of a column somebody has since moved it to.
+ */
+export interface CascadeEntry {
+  key: string;
+  restore: IssueMoveRequest;
+  /** Its rank before the drop. Not sent - the server owns the number - but it
+      is what puts the entries back in the order they were in. */
+  rank: number;
+}
+
 export interface MovedConfirmation extends Chicklet {
   kind: 'moved';
   from: ColumnRef;
@@ -47,6 +61,9 @@ export interface MovedConfirmation extends Chicklet {
       the column it was dropped into - so the server can refuse to take a card
       out of a column somebody else has since moved it to. */
   restore: IssueMoveRequest;
+  /** What an accepted close offer moved along with the card, and which Undo
+      takes back after it. Empty for a drop that closed nothing else. */
+  cascade: CascadeEntry[];
   state: MoveState;
   /** What the chicklet says once it has settled: what happened, or why not.
       Null while the move line is what it says. */
@@ -57,6 +74,8 @@ export type Confirmation = FiledConfirmation | MovedConfirmation;
 
 /** What raising a move takes: everything but what the stack owns. */
 export type MoveRaise = Pick<MovedConfirmation, 'issueKey' | 'title' | 'from' | 'to' | 'restore'>;
+
+const unsettled = { cascade: [] as CascadeEntry[], state: 'moved' as MoveState, note: null };
 
 /**
  * A newly filed issue, on the front of the stack.
@@ -74,7 +93,7 @@ export function raise(stack: Confirmation[], issue: { key: string; title: string
 /** A card dropped into another column, on the front of the stack, ready to be
     taken back. */
 export function raiseMove(stack: Confirmation[], move: MoveRaise, id: number): Confirmation[] {
-  return [{ ...move, id, kind: 'moved', state: 'moved', note: null }, ...stack];
+  return [{ ...move, ...unsettled, id, kind: 'moved' }, ...stack];
 }
 
 /** One chicklet closed, and every other one left exactly where it was. An id
@@ -130,4 +149,71 @@ export function dropConfirmation(board: Board, key: string, toStatusId: number):
     to: { id: to.id, name: to.name },
     restore: { ...back, fromStatusId: to.id },
   };
+}
+
+/**
+ * What the operator's accepted close offer moved, attached to the chicklet for
+ * the card it was asked about: the newest one, because the board raises that
+ * chicklet just before it asks.
+ *
+ * Merged by key rather than replaced. Pressing the dialog's confirm again after
+ * a partial refusal is safe - what already moved comes back unchanged - and a
+ * replacement would forget the first press's keys. A key with no chicklet
+ * (closed since, or never raised) attaches to nothing.
+ */
+export function withCascade(stack: Confirmation[], issueKey: string, entries: CascadeEntry[]): Confirmation[] {
+  const at = stack.findIndex((c) => c.kind === 'moved' && c.issueKey === issueKey);
+  const target = stack[at];
+  if (target?.kind !== 'moved') return stack;
+
+  const held = new Set(target.cascade.map((e) => e.key));
+  const added = entries.filter((e) => !held.has(e.key));
+  if (added.length === 0) return stack;
+
+  return stack.map((c, i) => (i === at ? { ...target, cascade: [...target.cascade, ...added] } : c));
+}
+
+/**
+ * What a close offer is about to take out of each column, as the requests that
+ * would put it back - read off the board before the drop, from the same board
+ * the drop was read from.
+ */
+export function cascadeEntries(board: Board, offer: CloseOffer): CascadeEntry[] {
+  return offer.cards.flatMap((card) => {
+    const back = restorePoint(board.issues, card.key);
+    return back ? [{ key: card.key, rank: card.rank, restore: { ...back, fromStatusId: offer.column.id } }] : [];
+  });
+}
+
+/**
+ * The order to put a cascade back in: column by column, top to bottom.
+ *
+ * The order matters because the server tries a request's `beforeKey` first and
+ * then its `afterKey`, and falls back to the bottom of the column. Top-down,
+ * each card's `afterKey` is already home when it lands, so neighbours that were
+ * adjacent before the drop return adjacent and in their old order - and a
+ * `beforeKey` that is still away costs nothing, because `afterKey` places it.
+ */
+export function cascadeOrder(entries: CascadeEntry[]): CascadeEntry[] {
+  return [...entries].sort((a, b) => (a.restore.statusId ?? 0) - (b.restore.statusId ?? 0) || a.rank - b.rank);
+}
+
+/**
+ * The sentence for a chicklet whose card is back, and whatever went back with
+ * it - naming each issue that stayed, and why.
+ *
+ * @param stayed One sentence per issue that could not go back; the server's own
+ * where it refused, which already names the issue and where it is now.
+ */
+export function undoneNote(c: MovedConfirmation, stayed: string[]): string {
+  const back = c.cascade.length - stayed.length;
+  const under = back > 0 ? `, with ${back} under it` : '';
+  const left = stayed.length > 0 ? `. Left where they are: ${stayed.join('; ')}` : '';
+  return `moved back to ${c.from.name}${under}${left}`;
+}
+
+/** The clause a move line gains when an accepted close offer took work with the
+    card. Empty when none did. */
+export function cascadeClause(c: MovedConfirmation): string {
+  return c.cascade.length > 0 ? `, and ${c.cascade.length} under it closed` : '';
 }

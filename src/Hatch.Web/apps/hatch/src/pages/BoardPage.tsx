@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
@@ -22,7 +22,9 @@ import { NewIssueDialog } from '../components/NewIssueDialog';
 import { StatusDot } from '../components/StatusPill';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
-import { dropConfirmation } from '../lib/confirmations';
+import type { CloseOffer } from '../lib/closeSubtree';
+import { cascadeEntries, dropConfirmation } from '../lib/confirmations';
+import type { CascadeEntry } from '../lib/confirmations';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
 import { NO_FILTER, assigneeFacets, filterCards, isFiltering } from '../lib/filter';
@@ -83,13 +85,26 @@ export function BoardPage() {
   /** The card a click opened a summary for. Null when the dialog is closed. */
   const [peeking, setPeeking] = useState<IssueCard | null>(null);
 
-  // The offer to close everything under a card dropped into a terminal column.
-  const closing = useCloseSubtree(reload);
-  const { ask } = closing;
-
   // The corner's chicklets: a drop raises one, and its Undo moves the card
   // back from wherever the operator is by then.
-  const { moved, undoNewest, onUndone } = useIssueConfirmations();
+  const { moved, cascaded, undoNewest, onUndone } = useIssueConfirmations();
+
+  /* Where each descendant of a card offered a close stood before the drop,
+     held by the card's key until the operator answers. By then the board has
+     been repainted and reloaded, and the answer to "back to where?" is gone
+     from it. */
+  const beforeClose = useRef(new Map<string, CascadeEntry[]>());
+  const closed = useCallback(
+    (offer: CloseOffer, changed: string[]) => {
+      const entries = (beforeClose.current.get(offer.key) ?? []).filter((e) => changed.includes(e.key));
+      cascaded(offer.key, entries);
+    },
+    [cascaded],
+  );
+
+  // The offer to close everything under a card dropped into a terminal column.
+  const closing = useCloseSubtree(reload, closed);
+  const { ask } = closing;
 
   useEffect(() => {
     getProjects()
@@ -159,6 +174,7 @@ export function BoardPage() {
       // read now, off the board as it stood: after the repaint below, the card
       // and its old neighbours are somewhere else.
       const move = dropConfirmation(board, placed.key, placed.statusId);
+      if (offer) beforeClose.current.set(offer.key, cascadeEntries(board, offer));
 
       // Applied before the request so the card does not spring back under the
       // cursor for a round trip. A refusal reloads, which is the honest

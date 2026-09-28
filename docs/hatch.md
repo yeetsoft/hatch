@@ -513,6 +513,9 @@ Four smaller decisions, each of which reads as arbitrary until it is said:
   also what lets the drag stay optimistic, with no card springing back out of a
   column it was deliberately dropped in.
 
+The drop's chicklet can take an accepted cascade back too: see
+[taking a drop back](#taking-a-drop-back).
+
 #### Taking a drop back
 
 A card dropped into another column on the board is confirmed in the bottom-left
@@ -547,6 +550,22 @@ An undo is an ordinary move: it writes its own `status_changed` event, and the
 history shows the drop and the undo both. The card goes back between the
 neighbours it had — read by rank, over every card in the column, since that is
 how the server places it.
+
+**Undo takes back an accepted close offer too**, key for key, because a stack of
+work moves as a unit or not at all: an undo that left five tasks in Done under
+an epic now back in review would not be an undo. The chicklet says how many
+issues under the card were closed. Only what the offer *moved* is on it — an
+issue that was already closed stays where it is, and so does one the offer
+failed to move — and a dialog answered with "leave them" leaves an ordinary
+chicklet whose Undo moves only the card.
+
+The parent's move is checked first and gates the rest: if the card is no longer
+where it was dropped, nothing under it is touched either. Then each descendant
+goes back, one request at a time, top to bottom within its column — the server
+tries a request's `beforeKey` before its `afterKey`, so restoring top-down means
+each card's `afterKey` is already home when it lands, and neighbours return in
+their old order — to the column it held, each naming the column the offer put
+it in. One that has moved since stays where it is, and the chicklet names it.
 
 #### Deferring an issue
 

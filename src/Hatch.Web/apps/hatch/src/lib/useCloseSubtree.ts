@@ -35,8 +35,14 @@ export interface CloseSubtree {
 /**
  * @param reload How the screen behind the dialog catches up with what the
  * cascade did - the board's `reload`, or the issue page's `load`.
+ * @param onClosed Told which keys the cascade moved, whenever it moved any -
+ * a partial refusal included, because the ones that moved did move. The board
+ * uses it to make the drop's chicklet able to take them back.
  */
-export function useCloseSubtree(reload: () => Promise<void>): CloseSubtree {
+export function useCloseSubtree(
+  reload: () => Promise<void>,
+  onClosed?: (offer: CloseOffer, changed: string[]) => void,
+): CloseSubtree {
   const [offer, setOffer] = useState<CloseOffer | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +77,8 @@ export function useCloseSubtree(reload: () => Promise<void>): CloseSubtree {
           statusId: offer.column.id,
         });
 
+        if (result.changed.length > 0) onClosed?.(offer, result.changed);
+
         // Some of them moved whatever else happened, so the screen behind the
         // dialog is caught up first either way.
         await reload();
@@ -95,7 +103,7 @@ export function useCloseSubtree(reload: () => Promise<void>): CloseSubtree {
         setBusy(false);
       }
     })();
-  }, [offer, busy, reload, close]);
+  }, [offer, busy, reload, close, onClosed]);
 
   return { offer, ask, close, confirm, busy, error, failures };
 }

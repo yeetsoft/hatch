@@ -2,7 +2,18 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { moveIssue } from '../api/client';
 import { appHref } from '../lib/basename';
-import { canUndo, dismiss, newestUndoable, raise, raiseMove, settle } from '../lib/confirmations';
+import {
+  cascadeClause,
+  cascadeOrder,
+  canUndo,
+  dismiss,
+  newestUndoable,
+  raise,
+  raiseMove,
+  settle,
+  undoneNote,
+  withCascade,
+} from '../lib/confirmations';
 import type { Confirmation, MovedConfirmation } from '../lib/confirmations';
 import { HttpError, message } from '../lib/errors';
 import { currentPlatform, undoShortcutLabel } from '../lib/shortcuts';
@@ -76,6 +87,11 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     [change],
   );
 
+  const cascaded = useCallback<IssueConfirmations['cascaded']>(
+    (issueKey, entries) => change((prev) => withCascade(prev, issueKey, entries)),
+    [change],
+  );
+
   const undo = useCallback<IssueConfirmations['undo']>(
     (id) => {
       const target = held.current.find((c) => c.id === id);
@@ -86,8 +102,24 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
+          // The card first, and alone gating the rest: if it is not where this
+          // chicklet left it, nothing under it is touched either.
           await moveIssue(target.issueKey, target.restore);
-          change((prev) => settle(prev, id, 'undone', `moved back to ${target.from.name}`));
+
+          // Then what the close offer took with it, one request at a time and
+          // top-down - see cascadeOrder. Each is checked against the column the
+          // offer put it in, so one that has moved since stays where it is and
+          // is named, and the others still go back.
+          const stayed: string[] = [];
+          for (const entry of cascadeOrder(target.cascade)) {
+            try {
+              await moveIssue(entry.key, entry.restore);
+            } catch (err) {
+              stayed.push(err instanceof HttpError && err.status === 409 ? message(err) : `${entry.key} - ${message(err)}`);
+            }
+          }
+
+          change((prev) => settle(prev, id, 'undone', undoneNote(target, stayed)));
           listeners.current.forEach((listener) => listener());
         } catch (err) {
           // A 409 is the server saying the card is not where this chicklet
@@ -117,8 +149,8 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
   // Steady across renders, so a surface holding any of these in a dependency
   // list is not re-running on every keystroke elsewhere.
   const value = useMemo(
-    () => ({ confirm, moved, undo, undoNewest, onUndone }),
-    [confirm, moved, undo, undoNewest, onUndone],
+    () => ({ confirm, moved, cascaded, undo, undoNewest, onUndone }),
+    [confirm, moved, cascaded, undo, undoNewest, onUndone],
   );
 
   return (
@@ -215,7 +247,7 @@ function MoveLine({ c, onUndo }: { c: MovedConfirmation; onUndo: (id: number) =>
   return (
     <span className="hatch-confirmation-move">
       <span className={c.state === 'moved' || undoing ? undefined : 'hatch-confirmation-note'}>
-        {settled ? c.note : `${c.from.name} → ${c.to.name}`}
+        {settled ? c.note : `${c.from.name} → ${c.to.name}${cascadeClause(c)}`}
       </span>
       {(c.state === 'moved' || c.state === 'failed' || undoing) && (
         <button
