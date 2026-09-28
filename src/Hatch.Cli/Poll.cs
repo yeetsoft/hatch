@@ -345,6 +345,7 @@ public sealed class Poll
     private static bool Vouches(MergeCheckDto? stored, RemoteHeads heads, string key)
     {
         if (stored is not { Verdict: MergeVerdicts.Clean or MergeVerdicts.Conflicted, Branch: { } branch }) return false;
+        if (stored.Verdict == MergeVerdicts.Clean && stored.HoldsTrunk is null) return false;
 
         return heads.Candidates(key) is [var only]
             && only == branch

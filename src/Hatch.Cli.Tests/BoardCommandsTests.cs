@@ -256,7 +256,7 @@ public sealed class BoardCommandsTests
         using var h = new CliHarness();
         var conflicted = new MergeCheckDto(
             "git@example.com:o/r.git", "example.com/o/r", "develop", new string('a', 40), MergeVerdicts.Conflicted,
-            "aer-7", new string('b', 40), ["src/A.cs"], DateTimeOffset.UnixEpoch, "host:/checkout", "somebody");
+            "aer-7", new string('b', 40), ["src/A.cs"], false, DateTimeOffset.UnixEpoch, "host:/checkout", "somebody");
         var review = Fixtures.Status(4, "In Review");
         h.Wire.Json("GET", "/api/hatch/work/queue", new[]
         {

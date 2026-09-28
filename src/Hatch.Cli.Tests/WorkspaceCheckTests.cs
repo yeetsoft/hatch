@@ -118,6 +118,7 @@ public sealed class WorkspaceCheckTests : RepoFixture
         Assert.Equal(OriginTip("ha-31-thing"), verdict.BranchSha);
         Assert.Equal(40, verdict.BranchSha!.Length);
         Assert.Empty(verdict.Files);
+        Assert.False(verdict.HoldsTrunk);
     }
 
     [Fact]
@@ -127,7 +128,29 @@ public sealed class WorkspaceCheckTests : RepoFixture
         var ws = Ws();
         ws.Fetch();
 
-        Assert.Equal(MergeVerdicts.Clean, ws.Check("HA-31")!.Kind);
+        var verdict = ws.Check("HA-31")!;
+        Assert.Equal(MergeVerdicts.Clean, verdict.Kind);
+        Assert.True(verdict.HoldsTrunk);
+    }
+
+    [Fact]
+    public void A_branch_that_falls_behind_and_then_merges_the_trunk_back_in_holds_it_again()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Fetch();
+        Assert.False(ws.Check("HA-31")!.HoldsTrunk);
+
+        G(_other, "fetch", "--quiet", "origin");
+        G(_other, "checkout", "--quiet", "-B", "ha-31-thing", "origin/ha-31-thing");
+        G(_other, "merge", "--quiet", "--no-edit", "origin/main");
+        G(_other, "push", "--quiet", "origin", "ha-31-thing");
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31")!;
+        Assert.Equal(MergeVerdicts.Clean, verdict.Kind);
+        Assert.True(verdict.HoldsTrunk);
     }
 
     [Fact]

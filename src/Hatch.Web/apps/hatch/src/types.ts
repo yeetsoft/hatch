@@ -232,6 +232,10 @@ export interface MergeCheck {
   branchSha: string | null;
   /** The conflicted paths, sorted. Empty unless the verdict is `conflicted`. */
   files: string[];
+  /** Whether the branch already held the trunk's tip. `false` for a clean
+      merge that is not yet an ancestor, or for `conflicted`. Null for
+      `none`/`ambiguous`, and on a verdict stored before this field existed. */
+  holdsTrunk: boolean | null;
   checkedAt: string;
   runner: string;
   checkedBy: string;

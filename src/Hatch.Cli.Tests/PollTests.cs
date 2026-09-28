@@ -26,9 +26,9 @@ public sealed class PollTests
             [new("main", trunk ?? Trunk), .. branches.Select(b => new KeyValuePair<string, string>(b.Name, b.Sha))]));
 
     private static Verdict Conflicted(params string[] files) =>
-        new(MergeVerdicts.Conflicted, "main", Trunk, "aer-1-thing", Tip, files.Length == 0 ? ["a.txt"] : files);
+        new(MergeVerdicts.Conflicted, "main", Trunk, "aer-1-thing", Tip, files.Length == 0 ? ["a.txt"] : files, false);
 
-    private static Verdict Clean() => new(MergeVerdicts.Clean, "main", Trunk, "aer-1-thing", Tip, []);
+    private static Verdict Clean(bool? holdsTrunk = true) => new(MergeVerdicts.Clean, "main", Trunk, "aer-1-thing", Tip, [], holdsTrunk);
 
     private static Verdict None() => new(MergeVerdicts.None, "main", Trunk, null, null, []);
 
@@ -93,6 +93,19 @@ public sealed class PollTests
         Assert.Equal(Tip, put.BranchSha);
         Assert.Equal(["a.txt", "b.txt"], put.Files);
         Assert.Equal("test:/checkout", put.Runner);
+        Assert.False(put.HoldsTrunk);
+    }
+
+    [Fact]
+    public async Task A_clean_verdict_reports_whether_it_holds_the_trunk()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean(true);
+
+        await rig.RunAsync();
+
+        Assert.True(Assert.Single(rig.H.Wire.To("PUT", Put("AER-1"))).Read<MergeCheckRequest>().HoldsTrunk);
     }
 
     [Fact]
@@ -257,7 +270,7 @@ public sealed class PollTests
     [Fact]
     public async Task A_stored_verdict_whose_shas_match_origin_costs_no_fetch_at_all()
     {
-        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/repo") with
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/repo", holdsTrunk: true) with
         {
             Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = "aer-1-thing", BranchSha = Tip,
         };
@@ -272,9 +285,33 @@ public sealed class PollTests
     }
 
     [Fact]
+    public async Task A_stored_clean_verdict_missing_the_holdstrunk_field_is_rechecked_once_though_nothing_moved()
+    {
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/repo") with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = "aer-1-thing", BranchSha = Tip,
+            HoldsTrunk = null,
+        };
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", null, stored));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean(true);
+
+        await rig.RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
+
+        await rig.Later().RunAsync();
+
+        // The fingerprint the first check recorded still holds: no second look.
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
+    }
+
+    [Fact]
     public async Task A_stored_conflicted_verdict_whose_shas_match_is_trusted_too()
     {
-        var stored = Fixtures.MergeCheck(MergeVerdicts.Conflicted, "main", "example.test/repo", "a.txt") with
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Conflicted, "main", "example.test/repo", files: ["a.txt"]) with
         {
             Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = "aer-1-thing", BranchSha = Tip,
         };
@@ -332,7 +369,7 @@ public sealed class PollTests
     [Fact]
     public async Task A_verdict_that_says_what_the_board_says_is_reported_and_not_announced()
     {
-        var stored = Fixtures.MergeCheck(MergeVerdicts.Conflicted, "main", "example.test/repo", "a.txt") with
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Conflicted, "main", "example.test/repo", files: ["a.txt"]) with
         {
             Remote = "https://example.test/repo.git", TrunkSha = Moved, Branch = "aer-1-thing", BranchSha = Tip,
         };

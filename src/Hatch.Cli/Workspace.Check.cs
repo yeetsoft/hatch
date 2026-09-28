@@ -45,12 +45,14 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
 /// <param name="Kind">One of <see cref="MergeVerdicts"/>.</param>
 /// <param name="TrunkSha">Full, so that two runners looking at the same two shas agree.</param>
 /// <param name="BranchSha">Full. Null for the two verdicts that are not about one branch.</param>
+/// <param name="HoldsTrunk">See <see cref="MergeCheckRequest.HoldsTrunk"/>.</param>
 public sealed record Verdict(
-    string Kind, string Trunk, string TrunkSha, string? Branch, string? BranchSha, IReadOnlyList<string> Files)
+    string Kind, string Trunk, string TrunkSha, string? Branch, string? BranchSha, IReadOnlyList<string> Files,
+    bool? HoldsTrunk = null)
 {
     /// <summary>The wire form, under the remote as this runner spells it.</summary>
     public MergeCheckRequest ToRequest(string remote, string runner) =>
-        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner);
+        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner, HoldsTrunk);
 
     /// <summary>
     /// The one line the terminal says when a verdict changes: <c>HA-12 conflicts
@@ -145,10 +147,10 @@ public sealed partial class Workspace
         // says so without asking for the merge - the test Sync makes, so the
         // two cannot disagree about which branches need a merge commit.
         if (Git("merge-base", "--is-ancestor", trunkRef, branchRef).Ok)
-            return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, []);
+            return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], true);
 
         var merge = Git("merge-tree", "--write-tree", "--name-only", trunkRef, branchRef);
-        if (merge.Ok) return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, []);
+        if (merge.Ok) return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], false);
 
         // Exit 1 is a conflict and the only exit that says so. A conflict with
         // no file named would be refused by the board and is not one to guess
@@ -158,7 +160,7 @@ public sealed partial class Workspace
         var files = ConflictedFiles(merge.Out);
         return files.Count == 0
             ? null
-            : new Verdict(MergeVerdicts.Conflicted, trunk, trunkSha, branch, branchSha, files);
+            : new Verdict(MergeVerdicts.Conflicted, trunk, trunkSha, branch, branchSha, files, false);
     }
 
     private string? FullSha(string reference)
