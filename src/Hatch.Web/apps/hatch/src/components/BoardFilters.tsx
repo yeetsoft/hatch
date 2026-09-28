@@ -39,6 +39,7 @@ export function BoardFilters({
 
   return (
     <div className="hatch-board-filters">
+      {/* type="search" on purpose; base.css says why. */}
       <input
         type="search"
         className="hatch-board-search"
