@@ -49,6 +49,17 @@ describe('tokens.css', () => {
     }
   });
 
+  /* Fixed tokens: the console is dark in both themes. Somebody tidying the
+     dark blocks "for completeness" would turn it white in one of them. */
+  it('declares the console tokens on :root and in neither dark block', () => {
+    const tokens = ['--console', '--console-line', '--on-console', '--console-dim', '--console-glow'];
+    for (const prop of tokens) {
+      expect(light, `${prop} is missing from :root`).toHaveProperty(prop);
+      expect(darkAttr, `${prop} must not be redefined in [data-theme='dark']`).not.toHaveProperty(prop);
+      expect(darkMedia, `${prop} must not be redefined under prefers-color-scheme`).not.toHaveProperty(prop);
+    }
+  });
+
   it('carries the chrome tokens in both dark blocks', () => {
     expect(darkAttr).toHaveProperty('--chrome');
     expect(darkMedia).toHaveProperty('--chrome');

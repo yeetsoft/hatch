@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTypingTarget, isUndoShortcut, undoShortcutLabel } from './shortcuts';
+import { isGoToShortcut, isTypingTarget, isUndoShortcut, undoShortcutLabel } from './shortcuts';
 
 const chord = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey', boolean>> = {}) => ({
   key,
@@ -8,6 +8,27 @@ const chord = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'shiftK
   shiftKey: false,
   altKey: false,
   ...mods,
+});
+
+describe('isGoToShortcut', () => {
+  it('is a bare slash', () => {
+    expect(isGoToShortcut(chord('/'))).toBe(true);
+  });
+
+  it('allows Shift, which some layouts need to type a slash', () => {
+    expect(isGoToShortcut(chord('/', { shiftKey: true }))).toBe(true);
+  });
+
+  it('steps aside for Meta, Ctrl and Alt', () => {
+    expect(isGoToShortcut(chord('/', { metaKey: true }))).toBe(false);
+    expect(isGoToShortcut(chord('/', { ctrlKey: true }))).toBe(false);
+    expect(isGoToShortcut(chord('/', { altKey: true }))).toBe(false);
+  });
+
+  it('is not any other key', () => {
+    expect(isGoToShortcut(chord('?', { shiftKey: true }))).toBe(false);
+    expect(isGoToShortcut(chord('z'))).toBe(false);
+  });
 });
 
 describe('isUndoShortcut', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareIssueKeys, matchesPickerQuery, pickerRows, splitKey } from './issuePicker';
+import { compareIssueKeys, matchesPickerQuery, matchesText, pickerRows, splitKey } from './issuePicker';
 import type { IssueCard } from '../types';
 
 /* Spread onto rather than written whole, so a new field on IssueCard is one
@@ -73,6 +73,17 @@ describe('compareIssueKeys', () => {
   it('orders two unreadable keys against each other by plain text', () => {
     expect(ordered('zebra', 'HATCH-1', 'apple')).toEqual(['HATCH-1', 'apple', 'zebra']);
     expect(compareIssueKeys('junk', 'junk')).toBe(0);
+  });
+});
+
+describe('matchesText', () => {
+  it('needs every term, in any order, ignoring case', () => {
+    expect(matchesText('Board: filters live in the URL', 'URL filters')).toBe(true);
+    expect(matchesText('Board: filters live in the URL', 'filters peek')).toBe(false);
+  });
+
+  it('matches everything when nothing was typed', () => {
+    expect(matchesText('anything', '  ')).toBe(true);
   });
 });
 

@@ -3303,3 +3303,246 @@ button.hatch-option.chosen {
   color: var(--muted);
   cursor: progress;
 }
+
+/* ---------------------------------------------------------------------------
+   The console: `/` on the board, and what it finds.
+
+   See components/OmniBar.tsx. A dark terminal over the dimmed board, in both
+   themes, on purpose - it looks like nothing else in the app, and its colours
+   are the fixed --console* tokens, which no dark block redefines. The order,
+   the matching and the status text are in lib/goTo.ts. */
+.hatch-omni-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  /* About a sixth of the way down, rather than centred: the list grows
+     downward, and the prompt never moves as rows come and go. */
+  padding: 16vh var(--sp-4) var(--sp-4);
+  background: var(--overlay);
+  /* Modal's layer. The two are never open together. */
+  z-index: 100;
+}
+
+.hatch-omni {
+  position: relative;
+  width: 100%;
+  /* A layout width, as Modal's 720px is: a console wider than this is a bar
+     across the screen, and its keys and titles stop being one glance. */
+  max-width: 640px;
+  overflow: hidden;
+  border: 1px solid var(--console-line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  color: var(--on-console);
+  font-family: var(--mono);
+  /* The scanlines: a 3px pitch (a literal, as the tokens file lets 1-3px be
+     free) at 3%, so they are felt rather than seen. */
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--on-console) 3%, transparent) 2px 3px),
+    var(--console);
+  animation: hatch-omni-in var(--transition) both;
+}
+
+/* The top bar's own gradient, which ties the console to the house. */
+.hatch-omni::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
+}
+
+@keyframes hatch-omni-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.hatch-omni-prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--console-line);
+  font-size: var(--t-subhead);
+}
+
+.hatch-omni-verb {
+  color: var(--console-dim);
+}
+
+.hatch-omni-chevron {
+  color: var(--console-glow);
+}
+
+/* Borderless and transparent. The three-class selector is what beats base.css's
+   text field, its hover ring and its focus ring, all of which are for a field
+   that is a control rather than a prompt. */
+.hatch-omni .hatch-omni-input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--on-console);
+  font: inherit;
+  /* Its blink is the browser's own, so no house motion rule is broken. */
+  caret-color: var(--console-glow);
+}
+
+.hatch-omni-list {
+  max-height: 50dvh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-body);
+}
+
+.hatch-omni-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-1-5) var(--sp-4);
+  cursor: pointer;
+}
+
+.hatch-omni-row.is-active {
+  background: color-mix(in srgb, var(--console-glow) 12%, transparent);
+}
+
+.hatch-omni-marker {
+  flex: none;
+  width: 1ch;
+  color: var(--console-glow);
+}
+
+/* Tabular figures in a fixed-width column, so HA-3 and HA-311 line up. */
+.hatch-omni-key {
+  flex: none;
+  min-width: 10ch;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hatch-omni-type {
+  flex: none;
+  min-width: 6ch;
+  color: var(--console-dim);
+}
+
+.hatch-omni-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The characters that matched. */
+.hatch-omni-row mark {
+  background: none;
+  color: var(--console-glow);
+  font-weight: 700;
+}
+
+.hatch-omni-column {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  color: var(--console-dim);
+  white-space: nowrap;
+}
+
+.hatch-omni-filtered {
+  flex: none;
+  color: var(--console-dim);
+  white-space: nowrap;
+}
+
+.hatch-omni-status {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--console-line);
+  color: var(--console-dim);
+  font-size: var(--t-micro);
+}
+
+.hatch-omni-keys kbd {
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-chip);
+  font: inherit;
+}
+
+/* The card the console found, and the ring drawn around it.
+
+   `hatch-card` is worn by Modal's panel too, so the resting rule is scoped to
+   what carries a key, and to a card that is not showing the browser's own
+   keyboard ring - an author outline here would replace that. An outline
+   composes with everything a card already wears: `asking` owns the background
+   and border colour, `waiting` the border style, `expedited` an inset shadow.
+   The transparent ring at rest is what lets it fade when it leaves. */
+.hatch-card:where([data-issue-key]):not(:focus-visible) {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--transition);
+}
+
+/* Later, so it wins the tie. */
+.hatch-card.found {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  /* Only while found: the sweep below is clipped to the card, and a card that
+     is not being looked for needs neither. */
+  position: relative;
+  overflow: hidden;
+}
+
+/* The console's scanline, carried onto the board: a band of --primary-bg
+   crosses the card once, left to right, as the ring arrives. */
+.hatch-card.found::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--primary-bg) 50%, transparent);
+  pointer-events: none;
+  animation: hatch-found-sweep 700ms ease-out both;
+}
+
+@keyframes hatch-found-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Every motion here answers a keypress, which the house's calm-motion rule
+   permits, and every one is off when the system asks. The ring is still drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .hatch-omni {
+    animation: none;
+  }
+
+  .hatch-card.found::after {
+    animation: none;
+    display: none;
+  }
+
+  .hatch-card:where([data-issue-key]):not(:focus-visible) {
+    transition: none;
+  }
+}
