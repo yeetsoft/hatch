@@ -368,6 +368,7 @@ public sealed class Harness : IDisposable
             Say: Say,
             Root: Root,
             RunnerName: "test:/checkout",
+            Where: "test:/checkout",
             TempDirectory: Temp,
             Checkouts: [new CheckoutEntry(Root, "https://example.test/repo.git", Standing: true)],
             Heartbeat: heartbeat ?? Beat)

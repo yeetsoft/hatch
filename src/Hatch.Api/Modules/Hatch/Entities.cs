@@ -1525,4 +1525,14 @@ public class EfHatchRunner
 
     /// <summary>Whether this runner makes a clone for itself when it lacks one.</summary>
     public bool? Clones { get; set; }
+
+    /// <summary>
+    /// The machine and checkout this runner runs from, <c>host:/path</c> - a
+    /// fact about the running process, overwritten on every heartbeat that
+    /// names one, the same as <see cref="Remotes"/>. It used to be
+    /// <see cref="Name"/> itself; now the name is a character, and this is
+    /// where a person goes to find the box that character is running on.
+    /// </summary>
+    [MaxLength(MaxNameLength)]
+    public string? Where { get; set; }
 }

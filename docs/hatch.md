@@ -791,11 +791,12 @@ claim.
 
 **A claim is drawn where the work is looked at.** A claimed card carries a dot
 in its head row, green while the holder is being heard from and amber once it
-has gone quiet, with who holds it, from where and how long since a word on the
-hover. The issue page draws a **Claim** section saying the same things at
-length: the holder, the `host:/path/to/checkout` they hold it from, when it was
-taken, when it was last heard from, and the last line the runner printed with
-how long ago it printed it. *Quiet* is half the lease without a word — a
+has gone quiet, with who is working it and how long since a word on the hover.
+The issue page draws a **Claim** section saying the same things at length,
+leading with the runner rather than who it runs for — "Buster Bluth is working
+AER-12", with ", for Nathan" appended only when the two differ — plus when it
+was taken, when it was last heard from, and the last line the runner printed
+with how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
 moves the warning with it — and it is not expiry: a claim past its lease is
 drawn as no claim at all, on the card and on the page, because the server has
@@ -2921,6 +2922,11 @@ top of the next pass, *after* whatever increment is in flight has finished.
 **The runner is named as its claim names it** — `host:/path/to/checkout`, or
 `HATCH_RUNNER`'s override, the same string every [claim](#claim) already
 carries. A runner has one identity and this is it; the table is keyed on it.
+Every heartbeat also carries `where` — the machine and checkout the process is
+actually running from — drawn on the Runners page under the name. A heartbeat
+whose name is already the *live* runner at a different `where` is refused with
+`409`: two live runners never share one row, and a gone row can still be taken
+over, which is how a checkout that moved keeps its name.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,

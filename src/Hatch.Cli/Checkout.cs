@@ -142,6 +142,19 @@ public static class Checkout
     }
 
     /// <summary>
+    /// The machine and checkout a runner runs from: the short hostname and the
+    /// path, because it is read by a person deciding which box to go and look
+    /// at. Kept apart from <see cref="Runner"/> now that the runner's name is a
+    /// character and this is a fact drawn beside it.
+    /// </summary>
+    /// <remarks>
+    /// The path here is the one that was typed, not <see cref="Canonical"/>'s -
+    /// this is a sentence for a person, and the sentence should say where
+    /// somebody would go looking.
+    /// </remarks>
+    public static string Where(string host, string root) => Cap($"{host}:{root}");
+
+    /// <summary>
     /// The server refuses a runner over
     /// <see cref="ClaimRequest.MaxRunnerLength"/>, and a refused claim is a
     /// loop that cannot start - so a long one loses its head rather than its

@@ -135,6 +135,7 @@ try
             Say: say,
             Root: primaryRoot,
             RunnerName: runnerName,
+            Where: Checkout.Where(Checkout.Host(), primaryRoot),
             TempDirectory: Path.GetTempPath(),
             Checkouts: checkouts)
         {

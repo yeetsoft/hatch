@@ -462,6 +462,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Checkouts = repoCheckouts,
                 Root = root,
                 RunnerName = runnerName,
+                Where = Checkout.Where(Checkout.Host(), root),
                 Board = runtime.NewBoard(runnerName),
                 Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
@@ -551,6 +552,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
             var restarting = false;
+            var refused = false;
 
             try
             {
@@ -576,6 +578,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // tally is printed from here and not from the loop.
                 tally.StopWhy ??= "interrupted";
             }
+            catch (HatchException e)
+            {
+                // The one heartbeat answer that is not weather: this name is
+                // already the live runner somewhere else. Nothing was claimed,
+                // and this is not an ordinary end of night - it is exit 1, so a
+                // supervisor watching the exit code notices.
+                runtime.Say.Complain(e.Message);
+                refused = true;
+            }
             finally
             {
                 // A restart is the middle of a night and not the end of one: the
@@ -588,7 +599,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
-            return restarting ? RestartExitCode : 0;
+            return refused ? 1 : restarting ? RestartExitCode : 0;
         }
         finally
         {
@@ -797,7 +808,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, Tally tally, bool once, CancellationToken ct)
     {
-        var told = await runtime.Runners().BeatAsync(
+        var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Line: line.Line,
@@ -806,13 +817,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxSpend: tally.MaxSpend,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
-                Clones: runtime.Settings.Workspace is not null),
+                Clones: runtime.Settings.Workspace is not null,
+                Where: runtime.Where),
             ct);
+
+        // The one heartbeat answer that ends a run: this name is already the
+        // live runner somewhere else, so nothing here is claimed.
+        if (beat.Refusal is { Length: > 0 } refusal) throw new HatchException($"hatch: {refusal}");
 
         // `--once` says hello and reads nothing back. There is no second pass
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
-        return once ? null : told;
+        return once ? null : beat.Instruction;
     }
 
     /// <summary>

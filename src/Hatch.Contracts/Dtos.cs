@@ -1457,6 +1457,11 @@ public static class RunnerStates
 /// on every beat rather than seeded once.
 /// </param>
 /// <param name="Clones">Whether this runner makes a clone for itself when it lacks one.</param>
+/// <param name="Where">
+/// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
+/// about the process, drawn under its name rather than as the name, now that
+/// <see cref="Name"/> is a character and not a path.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -1472,7 +1477,8 @@ public record RunnerDto(
     DateTimeOffset? UntilAt,
     int GoneAfterSeconds,
     string[] Repositories,
-    bool? Clones);
+    bool? Clones,
+    string? Where);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -1495,6 +1501,11 @@ public record RunnerDto(
 /// <see cref="ClaimRequest.MaxChatterLength"/> is truncated rather than
 /// refused.
 /// </param>
+/// <param name="Where">
+/// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
+/// about the process, written on every beat like <see cref="Remotes"/>. Absent
+/// from an older client, which is never refused on that account alone.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -1503,7 +1514,8 @@ public record RunnerHeartbeatRequest(
     decimal? MaxSpend = null,
     DateTimeOffset? UntilAt = null,
     IReadOnlyList<string>? Remotes = null,
-    bool? Clones = null);
+    bool? Clones = null,
+    string? Where = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat

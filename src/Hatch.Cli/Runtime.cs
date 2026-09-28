@@ -16,6 +16,7 @@ public sealed record Runtime(
     Terminal Say,
     string Root,
     string RunnerName,
+    string Where,
     string TempDirectory,
     IReadOnlyList<CheckoutEntry> Checkouts,
     TimeSpan? Heartbeat = null)

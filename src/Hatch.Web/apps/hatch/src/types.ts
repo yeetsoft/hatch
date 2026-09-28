@@ -125,7 +125,8 @@ export interface IssueCard {
     it would let anybody holding a board read steal a lease. */
 export interface IssueClaim {
   claimedBy: string;
-  /** The checkout holding it - `host:/path/to/checkout`, as the runner names itself. */
+  /** The runner holding it, as it names itself - a character from the cast
+      list, or `HATCH_RUNNER`'s override. */
   runner: string;
   claimedAt: string;
   /** When the holder was last heard from. The lease is over when this is older than the TTL. */
@@ -1033,9 +1034,9 @@ export type RunnerState = 'running' | 'paused' | 'stopping';
     claim leaves the row idle on the next poll rather than remembering a ticket
     nobody is working. */
 export interface Runner {
-  /** What it calls itself - `host:/path/to/checkout`, the same string its
-      claims carry. Its identity, and the last segment of every URL that reaches
-      it. */
+  /** What it calls itself - a character from the cast list, or `HATCH_RUNNER`'s
+      override. Its identity, and the last segment of every URL that reaches it,
+      the same string its claims carry. */
   name: string;
   kind: RunnerKind;
   firstSeenAt: string;
@@ -1055,6 +1056,10 @@ export interface Runner {
   repositories: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
+  /** The machine and checkout this runner runs from, `host:/path` - drawn under
+      the name now that the name is a character and not a path. Null from an
+      older CLI that has not sent one yet. */
+  where: string | null;
   maxRuns: number | null;
   maxSpend: number | null;
   untilAt: string | null;
