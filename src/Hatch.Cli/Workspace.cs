@@ -50,6 +50,27 @@ public interface IWorkspace
     Leaving Leave(string key, bool syncPullRequest);
 
     /// <summary>
+    /// The trunk's name and every branch on origin, from one <c>ls-remote</c> -
+    /// or null when origin does not answer. Fetches nothing, and touches no
+    /// branch or tree.
+    /// </summary>
+    RemoteHeads? Heads();
+
+    /// <summary>
+    /// Every remote-tracking ref made current, and nothing else: the fetch
+    /// <see cref="Prepare"/> makes, without moving the tree. False when origin
+    /// did not answer.
+    /// </summary>
+    bool Fetch();
+
+    /// <summary>
+    /// Whether the issue's branch on origin still merges with the trunk on
+    /// origin, read from the refs as they stand. Does not fetch, and touches no
+    /// worktree or index. Null when it cannot be said.
+    /// </summary>
+    Verdict? Check(string key);
+
+    /// <summary>
     /// Back on the trunk and nothing else - what an increment whose lease went
     /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
     /// </summary>

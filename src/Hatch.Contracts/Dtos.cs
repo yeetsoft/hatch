@@ -752,6 +752,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// a reviewer's browser uses, and a key cannot read the shell's config to find
 /// out.
 /// </param>
+/// <param name="Kind">
+/// One of <see cref="WorkKinds"/>: whether this dispatch moves the issue on
+/// (<c>advance</c>) or resolves the conflict its branch has with the trunk
+/// (<c>conflicts</c>). Derived from the move and stored nowhere - a conflict
+/// dispatch is exactly the one whose two ends are the same column.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -761,7 +767,25 @@ public record WorkDto(
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
-    string? IssueUrl);
+    string? IssueUrl,
+    string Kind = WorkKinds.Advance);
+
+/// <summary>
+/// What a dispatch is for. Two, and the second is the only dispatch that does
+/// not end in a different column.
+/// </summary>
+public static class WorkKinds
+{
+    /// <summary>Move the issue from its column to the next: every dispatch there has ever been.</summary>
+    public const string Advance = "advance";
+
+    /// <summary>
+    /// Resolve the merge conflict between the branch of an issue in review and
+    /// the trunk. It starts and ends in the review column, so it is judged by
+    /// the branch and not by the column.
+    /// </summary>
+    public const string Conflicts = "conflicts";
+}
 
 /// <summary>
 /// One of the project's bound remotes, as a dispatch names it - see
@@ -793,11 +817,35 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// entry with a null <c>Blocked</c> is the issue <c>work/next</c> returns for
 /// the same arguments, because it is the same walk.
 /// </param>
+/// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
-    string? Blocked);
+    string? Blocked,
+    string Kind = WorkKinds.Advance);
+
+/// <summary>
+/// One issue in the review column that a runner holds a checkout for, and what
+/// the board holds about its branch - what the runner's poll is read from.
+/// </summary>
+/// <remarks>
+/// A fact about a branch and not work, so it is not narrowed by a claim, a
+/// question, a date or an assignee: an issue somebody else is working still has
+/// a branch, and whether it conflicts is still worth knowing.
+/// </remarks>
+/// <param name="Key">The issue's key.</param>
+/// <param name="Repositories">
+/// The project's bound repositories, each with <see cref="WorkRepositoryDto.MatchedRemote"/>
+/// set to the runner's own spelling where the runner has a checkout of it.
+/// Empty for a project that binds nothing, which is checked from the runner's
+/// standing checkout.
+/// </param>
+/// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
+public record ReviewCheckDto(
+    string Key,
+    IReadOnlyList<WorkRepositoryDto> Repositories,
+    IReadOnlyList<MergeCheckDto> MergeChecks);
 
 // ---- Rollups ----
 

@@ -276,4 +276,240 @@ public sealed class LifecycleTests
         Assert.Contains(h.Say.Said, l => l.Contains("## The branch", StringComparison.Ordinal));
         Assert.Empty(h.Wire.Calls.Where(c => c.Method != "GET"));
     }
+
+    // ---- What origin's branch now looks like ----
+
+    private static Verdict Found(string kind = MergeVerdicts.Conflicted) =>
+        new(kind, "main", new string('a', 40), "aer-1-thing", new string('b', 40), kind == MergeVerdicts.Conflicted ? ["a.txt"] : []);
+
+    private static List<Call> Verdicts(Harness h) => [.. h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check")];
+
+    [Fact]
+    public async Task What_leaving_found_is_put_under_the_checkouts_remote()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var put = Assert.Single(Verdicts(h)).Read<MergeCheckRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal(MergeVerdicts.Conflicted, put.Verdict);
+        Assert.Equal(["a.txt"], put.Files);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task A_bound_project_puts_it_under_the_bindings_own_remote_for_each_checkout()
+    {
+        using var h = new Harness();
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: false, matchedRemote: "https://example.test/two.git");
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", repositories: [one, two]), pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor["/checkouts/two"] = Found();
+
+        var runtime = h.Runtime with
+        {
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: false),
+            ],
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        Assert.Equal("https://example.test/two.git", Assert.Single(Verdicts(h)).Read<MergeCheckRequest>().Remote);
+    }
+
+    [Fact]
+    public async Task Nothing_found_reports_nothing()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+    }
+
+    /// <summary>
+    /// A verdict the board refuses is a line of its own, and the comment about
+    /// the tree is still written.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_verdict_still_writes_the_tidy_comment()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Reply("PUT", "/api/hatch/issues/AER-1/merge-check", HttpStatusCode.BadRequest, "\"no\"");
+        h.Workspace.FoundFor[h.Root] = Found();
+        h.Workspace.LeaveNotes.Add("something was left");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Single(Verdicts(h));
+        Assert.Single(Tidied(h));
+        Assert.Contains(h.Say.Complained, l => l.Contains("would not take the verdict", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_lost_lease_puts_nothing()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1", taken: true);
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found();
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+        Assert.Empty(h.Workspace.Left);
+    }
+
+    [Fact]
+    public async Task A_checkout_with_no_origin_and_nothing_to_report_under_is_left_alone()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Workspace.FoundFor[h.Root] = Found();
+
+        await new GoToWorkCommand(h.Runtime with { Checkouts = [new CheckoutEntry(h.Root, null, Standing: true)] })
+            .RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+    }
+
+    // ---- Asking again about a conflict ----
+
+    private static readonly string TrunkSha = new('a', 40);
+
+    private static Verdict Says(string kind, params string[] files) =>
+        new(kind, "main", TrunkSha, "aer-1-thing", new string('b', 40), files);
+
+    /// <summary>Two checkouts of two repositories, as a project that binds both would resolve to.</summary>
+    private static (Lifecycle Lifecycle, Checkouts.Choice Chosen, WorkDto Work) TwoRepositories(
+        Harness h, HttpStatusCode put = HttpStatusCode.OK)
+    {
+        var runtime = h.Runtime with
+        {
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: false),
+            ],
+        };
+
+        var chosen = new Checkouts.Choice(
+            "/checkouts/one", ["/checkouts/two"],
+            [("/checkouts/one", null), ("/checkouts/two", null)],
+            [
+                new Checkouts.RepositoryLine("/checkouts/one", "https://example.test/one.git", true, null),
+                new Checkouts.RepositoryLine("/checkouts/two", "https://example.test/two.git", false, null),
+            ]);
+
+        h.Wire.Reply(
+            "PUT", "/api/hatch/issues/AER-1/merge-check", put,
+            put == HttpStatusCode.OK ? System.Text.Json.JsonSerializer.Serialize(Fixtures.MergeCheck(), Fixtures.Json) : "\"no\"");
+        return (new Lifecycle(runtime), chosen, Fixtures.ConflictWork("AER-1"));
+    }
+
+    [Fact]
+    public async Task A_recheck_checks_every_checkout_and_puts_every_verdict_under_its_own_remote()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+        h.Workspace.Verdicts[("/checkouts/one", "AER-1")] = Says(MergeVerdicts.Clean);
+        h.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Says(MergeVerdicts.Conflicted, "a.txt");
+
+        var found = await lifecycle.RecheckAsync(work, chosen, default);
+
+        Assert.Equal(["check /checkouts/one AER-1", "check /checkouts/two AER-1"], h.Workspace.Calls);
+        Assert.False(found.Unknown);
+        Assert.True(found.Reported);
+        Assert.Equal(["/checkouts/two"], found.Conflicts.Select(c => c.Path));
+        Assert.Equal(["a.txt"], found.Files);
+
+        var puts = h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check").Select(c => c.Read<MergeCheckRequest>()).ToList();
+        Assert.Equal(["https://example.test/one.git", "https://example.test/two.git"], puts.Select(p => p.Remote));
+    }
+
+    [Fact]
+    public async Task A_recheck_does_not_fetch_because_the_reset_already_did()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+
+        await lifecycle.RecheckAsync(work, chosen, default);
+
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("fetch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_recheck_that_cannot_read_one_checkout_is_unknown_and_still_reports_the_other()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+        h.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Says(MergeVerdicts.Clean);
+
+        var found = await lifecycle.RecheckAsync(work, chosen, default);
+
+        Assert.True(found.Unknown);
+        Assert.Single(found.Verdicts);
+        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check"));
+    }
+
+    [Fact]
+    public async Task A_recheck_whose_verdict_the_board_refused_says_it_was_not_reported()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h, HttpStatusCode.BadRequest);
+        h.Workspace.Verdicts[("/checkouts/one", "AER-1")] = Says(MergeVerdicts.Clean);
+        h.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Says(MergeVerdicts.Clean);
+
+        var found = await lifecycle.RecheckAsync(work, chosen, default);
+
+        Assert.False(found.Reported);
+        Assert.False(found.Unknown);
+        Assert.Empty(found.Conflicts);
+    }
+
+    [Fact]
+    public async Task A_judgement_fetches_each_checkout_first_and_then_checks_and_reports_the_same_way()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+        h.Workspace.Verdicts[("/checkouts/one", "AER-1")] = Says(MergeVerdicts.Clean);
+        h.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Says(MergeVerdicts.Clean);
+
+        var found = await lifecycle.JudgeAsync(work, chosen, default);
+
+        Assert.Equal(
+            [
+                "fetch /checkouts/one", "check /checkouts/one AER-1",
+                "fetch /checkouts/two", "check /checkouts/two AER-1",
+            ],
+            h.Workspace.Calls);
+        Assert.Empty(found.Conflicts);
+        Assert.Equal(2, h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check").Count);
+    }
+
+    [Fact]
+    public async Task A_judgement_whose_fetch_failed_is_unknown_for_that_checkout_and_does_not_check_it()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+        h.Workspace.FetchAnswer = false;
+        h.Workspace.Verdicts[("/checkouts/one", "AER-1")] = Says(MergeVerdicts.Clean);
+
+        var found = await lifecycle.JudgeAsync(work, chosen, default);
+
+        Assert.True(found.Unknown);
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("check", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check"));
+    }
 }
