@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_TEXT_MAX, truncate } from './text';
+import { CARD_TEXT_MAX, normalizeEol, truncate } from './text';
 
 describe('truncate', () => {
   it('leaves text that already fits exactly as it was', () => {
@@ -23,5 +23,15 @@ describe('truncate', () => {
   it('defaults to the length a card holds', () => {
     const long = 'word '.repeat(200);
     expect(truncate(long).length).toBeLessThanOrEqual(CARD_TEXT_MAX + 1);
+  });
+});
+
+describe('normalizeEol', () => {
+  it('turns CRLF and lone CR into LF', () => {
+    expect(normalizeEol('a\r\nb\rc\nd')).toBe('a\nb\nc\nd');
+  });
+
+  it('leaves text that has none alone', () => {
+    expect(normalizeEol('one line')).toBe('one line');
   });
 });
