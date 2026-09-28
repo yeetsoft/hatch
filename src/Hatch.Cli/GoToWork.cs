@@ -724,7 +724,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // An increment that ran is followed by the next one immediately. The
             // interval is what to do when there was nothing to do.
-            if (pass == Pass.Worked) continue;
+            if (pass is Pass.Worked or Pass.Asked) continue;
             if (!await NapAsync(interval, tally, ct)) return false;
         }
 
@@ -743,6 +743,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         /// claim goes back on the way out - a restart holds no ticket.
         /// </summary>
         Restarting,
+
+        /// <summary>
+        /// The ticket needed a person to say which branch, and the question is
+        /// on it. Nothing was spawned; the next pass reads a board that no
+        /// longer offers it, so there is nothing to wait for.
+        /// </summary>
+        Asked,
     }
 
     /// <summary>
@@ -932,6 +939,22 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 return Pass.Restarting;
             }
 
+            // After the change check, and that order is the point: the check
+            // reads the loop's own source off the disk, and an issue's branch
+            // that edits it would make the loop restart the moment it was
+            // checked out. On the trunk, the check sees what the trunk has.
+            var lifecycle = new Lifecycle(runtime);
+            var work = picked.Work!;
+            var entering = await lifecycle.EnterAsync(work, picked.Chosen!, ct);
+            if (entering.Asked)
+            {
+                // A checkout that did have one branch is on it: back to the
+                // trunk, so the restart between increments builds from there.
+                await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: false, ct);
+                line.Line = $"{work.Issue.Key} needs to be told which branch to use";
+                return Pass.Asked;
+            }
+
             runtime.Say.Line("");
 
             // The playbook's, and no flag reaches this: `work --model` is one
@@ -939,12 +962,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // across a night would be applying it to tickets nobody looked at.
             // What the loop does carry is the ticket's own model and effort,
             // which arrive folded into the playbook already.
-            var work = picked.Work!;
             var report = await runtime.Increment().RunAsync(
                 work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
-                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories);
+                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries);
 
             tally.Record(report);
+
+            // Before the lease is let go, because the ticket is still this
+            // runner's to write on: what the session left is said there, and the
+            // pull request's branch is brought up to date. A lease that went
+            // gets the trees back on the trunk and nothing written.
+            await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
 
             runtime.Say.Line("");
             runtime.Say.Line(report.Moved

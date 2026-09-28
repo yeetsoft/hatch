@@ -266,10 +266,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
               you continue the work rather than start it again. A previous run may have been
               aborted partway; if it ran to completion and only the status was left behind,
               say so and move it on.
-            - Branch from the remote, not from local main: fetch first, then cut
-              <key-lowercased>-<short-slug> from origin/main. Another session may share this
-              tree, and a branch cut from a local main carries their unpushed commits into
-              your push.
+            - Start on the branch the prompt's "The branch" section names, and cut none of
+              your own unless it tells you to: the runner has already put the tree on the
+              issue's branch with the trunk merged in, or on the trunk with a name to cut,
+              and that section overrides anything said here about where to branch from.
             - Work the child tasks in order, testing and committing along the way as it
               makes sense to. Read the pattern file the ticket names before writing the
               thing it patterns.

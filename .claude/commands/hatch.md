@@ -39,14 +39,23 @@ columns.
    ./scripts/hatch.sh start <KEY>
    ```
 
-3. **Branch from the remote, not from local main.** Another session may share
-   this tree, and a branch cut from a local main carries their unpushed commits
-   into your push:
+3. **Be on the ticket's branch.** `hatch work` has already put the tree on it:
+   the one branch on origin named for the key (`<key-lowercased>` or
+   `<key-lowercased>-…`), at origin's tip, with the trunk merged in — and its
+   prompt's `## The branch` section says which. Run by hand without `hatch work`,
+   do the same yourself:
 
    ```
    git fetch origin
-   git switch -c <key-lowercased>-<short-slug> origin/main
+   git branch -r --list 'origin/<key-lowercased>*'
    ```
+
+   If there is one, `git switch` to it and merge `origin/main` into it; if there
+   is none, cut `<key-lowercased>-<short-slug>` from `origin/main`, never from
+   local main — another session may share this tree, and a branch cut from a
+   local main carries their unpushed commits into your push. If there are two,
+   ask which rather than choosing. A branch already merged is finished: cut a
+   new one.
 
 4. **Implement it.** House rules apply and are not negotiable for this run:
    build with `make` (`make build`, `make test-api`, `make test-web`) and never

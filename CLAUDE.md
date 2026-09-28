@@ -50,17 +50,33 @@ one.
 back — the next actionable issue, one increment, ask again — so assume nobody is
 reading the terminal, and that the next increment starts the moment yours ends.
 
-- **The tree is already the trunk, and it is current.** The loop fetches and
-  resets every checkout the ticket's project is bound to onto its default
-  branch before it spawns you, so branch straight from where you are and do
-  not go looking for a base. Anything you leave uncommitted is stashed before
-  the next increment starts — recoverable with `git stash pop`, but not where
-  you left it — so work that matters is work that is committed and pushed. And
-  a tree that cannot be reset ends the night: clear a half-finished merge or a
-  conflicted file before you stop, rather than leaving it for whoever runs
-  next. A ticket for a repository this loop does not have is folded past, with
-  the reason, rather than dispatched — so nothing here is ever spawned in the
-  wrong checkout.
+- **The tree is on the issue's branch, or on the trunk with a name to cut, and
+  it is current.** The loop fetches and resets every checkout the ticket's
+  project is bound to onto its default branch, then looks on origin for the
+  one branch named for the key (`<key-lowercased>` or `<key-lowercased>-…`). If
+  there is one, you start on it, at origin's tip, with the trunk already merged
+  in; if there is none, you start on the trunk and are told the name to cut. Do
+  not go looking for a base, and do not cut a branch the prompt did not tell
+  you to: the prompt's `## The branch` section is the state you are in, and it
+  overrides any branching instruction in the playbook. A merge that conflicted
+  is left *in progress* — resolve it and commit it before anything else. Two
+  unmerged branches for one key stop the loop from spawning at all: it asks on
+  the ticket which to use, and you will find the answer under **Decisions
+  already made**.
+- **What you leave is put right for you, and said on the ticket.** When you
+  stop, and before the claim is let go, the loop aborts a merge, rebase or
+  cherry-pick you left in progress, stashes what is uncommitted (under a message
+  naming the ticket — recoverable with `git stash pop`, but not where you left
+  it), names any commits on the issue's branch that origin does not have, moves
+  commits left on the local trunk to `<key-lowercased>-rescued-<sha>`, puts every
+  checkout back on the trunk, and merges the trunk into your pull request's
+  branch on origin when it has fallen behind — without your tree, and without a
+  force-push. It never pushes your work for you: *green before pushed* is still
+  yours, so work that matters is committed **and pushed**. A tree that cannot be
+  reset ends the night, so clear a half-finished merge or a conflicted file
+  before you stop rather than leaving it for whoever runs next. A ticket for a
+  repository this loop does not have is folded past, with the reason, rather
+  than dispatched — so nothing here is ever spawned in the wrong checkout.
 - **Leave the ticket somewhere new.** An increment that ends with the ticket in
   the column it started in is a *stall*: the loop comments, opens a question
   against the issue, and moves on — and nothing further is dispatched there
