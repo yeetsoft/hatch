@@ -14,7 +14,8 @@
 import { useState, type ReactNode } from 'react';
 import { Button } from '@hatch/ui';
 import { renderMarkdown } from '../lib/markdown';
-import { useAutoGrow } from '../lib/useAutoGrow';
+import { normalizeEol } from '../lib/text';
+import { MarkdownEditor } from './MarkdownEditor';
 
 export function DescriptionEditor({
   title,
@@ -38,7 +39,7 @@ export function DescriptionEditor({
   /** What the last save was refused with, in the server's words. Drawn inside
       the section. Left off by a caller that reports errors somewhere else. */
   error?: string | null;
-  /** Appended to the textarea's classes: the ceiling differs by call site. */
+  /** Appended to the editor's classes: the ceiling differs by call site. */
   editorClassName?: string;
   /** Appended to the rendered markdown's, for a call site that has to cap the
       preview too. The issue page does not - the page scrolls, and a brief that
@@ -52,7 +53,6 @@ export function DescriptionEditor({
   const [known, setKnown] = useState(value);
   const [preview, setPreview] = useState(true);
   const [saving, setSaving] = useState(false);
-  const editor = useAutoGrow(draft);
 
   // Same reasoning as the title's - see InlineTitle on the issue page. A save
   // landing underneath the editor is the new stored text, and a draft written
@@ -75,7 +75,9 @@ export function DescriptionEditor({
     if (ok) setPreview(true);
   }
 
-  const dirty = draft !== value;
+  // Line endings alone are not an edit: the editor's text is always `\n`, and
+  // a stored description may not be.
+  const dirty = normalizeEol(draft) !== normalizeEol(value);
 
   return (
     <>
@@ -108,13 +110,13 @@ export function DescriptionEditor({
         )
       ) : (
         // `rows` is the height it opens at and the floor it never goes back
-        // under; useAutoGrow measures it rather than being told it.
-        <textarea
-          ref={editor}
-          className={`hatch-description-editor${editorClassName ? ` ${editorClassName}` : ''}`}
-          rows={rows}
+        // under; the editor measures its own growth.
+        <MarkdownEditor
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={setDraft}
+          rows={rows}
+          className={editorClassName}
+          ariaLabel="Description"
         />
       )}
     </>

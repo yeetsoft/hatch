@@ -31,6 +31,31 @@ export function grownHeight(floor: number, content: number, chrome: number): num
   return Math.max(floor, content + chrome);
 }
 
+/**
+ * The height a box that draws its own content should take, in outer
+ * (border-box) pixels: what the content needs, held between the height it
+ * opened at and the ceiling its place gives it.
+ *
+ * The same rule as `grownHeight` with the other end added. A textarea gets its
+ * ceiling from CSS `max-height` for free; an editor that lays itself out sets
+ * its host's `height` from the inside, so the clamp has to be done by hand.
+ * The floor wins over a ceiling below it, which is what `.hatch-grows`'s
+ * `max()` promises: a box never opens smaller than its rows to fit a screen.
+ */
+export function clampedHeight(floor: number, ceiling: number, content: number, chrome: number): number {
+  return Math.max(floor, Math.min(ceiling, content + chrome));
+}
+
+/**
+ * A computed `max-height` as a number of pixels. `getComputedStyle` resolves
+ * `max()` and `calc()` to px, so `'480px'` is the only shape that means a
+ * ceiling; `'none'`, an empty string and anything else mean there is none.
+ */
+export function parseCeiling(maxHeight: string): number {
+  const match = /^\s*(\d+(?:\.\d+)?)px\s*$/.exec(maxHeight);
+  return match ? Number(match[1]) : Infinity;
+}
+
 /** The box this one scrolls inside, whose position must survive a measurement. */
 function scrollParent(el: HTMLElement): HTMLElement | null {
   for (let node = el.parentElement; node; node = node.parentElement) {

@@ -30,6 +30,7 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssuePicker } from '../components/IssuePicker';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MomentChip } from '../components/MomentChip';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
@@ -49,7 +50,6 @@ import { message } from '../lib/errors';
 import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { openQuestions } from '../lib/questions';
-import { useAutoGrow } from '../lib/useAutoGrow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
@@ -1193,17 +1193,20 @@ function Asked({
         <QuestionOptions options={question.options} chosen={chosen} onChoose={(o) => setBody(o.label)} />
       )}
 
-      <div className="hatch-comment-box">
-        <textarea
-          rows={2}
+      <div className="hatch-answer-box">
+        <input
+          type="text"
           value={body}
+          aria-label="Your answer"
           placeholder={question.options ? 'Or say something else.' : 'The decision, in a sentence.'}
           onChange={(e) => setBody(e.target.value)}
-          // Meta/Ctrl+Enter sends, the convention every comment box in the
-          // world shares. A bare Enter has to stay a newline - an answer with a
-          // caveat under it is a good answer.
+          // A bare Enter sends: this is one line, an answer and not a piece of
+          // writing. An answer with a caveat under it is a comment, and the
+          // Comments box under the thread is where a composed reply goes. Not
+          // while an input method is composing - there Enter commits the
+          // candidate, and is not the operator's to send.
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && body.trim() && !saving) void submit();
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && body.trim() && !saving) void submit();
           }}
         />
         <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
@@ -1280,7 +1283,6 @@ function Comments({
 }) {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
-  const box = useAutoGrow(body);
 
   async function submit() {
     setSaving(true);
@@ -1323,13 +1325,14 @@ function Comments({
       </ul>
 
       <div className="hatch-comment-box">
-        <textarea
-          ref={box}
-          className="hatch-grows"
-          rows={3}
+        <MarkdownEditor
           value={body}
+          onChange={setBody}
+          rows={3}
+          className="hatch-grows"
+          deferred
+          ariaLabel="Comment"
           placeholder="Markdown, like everything else."
-          onChange={(e) => setBody(e.target.value)}
         />
         <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
           Comment
