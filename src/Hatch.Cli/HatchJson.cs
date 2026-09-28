@@ -33,6 +33,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(WorkLogEntryDto))]
 [JsonSerializable(typeof(ClaimTakenDto))]
 [JsonSerializable(typeof(RunnerInstructionDto))]
+[JsonSerializable(typeof(List<RunnerDto>))]
 [JsonSerializable(typeof(ClaudeTokenDto))]
 [JsonSerializable(typeof(List<StatusDto>))]
 [JsonSerializable(typeof(List<CommentDto>))]

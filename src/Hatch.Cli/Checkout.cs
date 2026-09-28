@@ -125,21 +125,71 @@ public static class Checkout
     }
 
     /// <summary>
-    /// Who the board says is holding a claim: the short hostname and the
-    /// checkout, because it is read by a person deciding which box to go and
-    /// look at. <c>HATCH_RUNNER</c> overrides it for a checkout whose path says
-    /// nothing useful.
+    /// Who the board says is holding a claim: <c>HATCH_RUNNER</c>'s override,
+    /// the name this checkout already chose, or a fresh one off the cast list.
+    /// </summary>
+    /// <remarks>
+    /// <para>The one method every caller goes through -
+    /// <see cref="Program"/>, <see cref="GoToWorkCommand"/>,
+    /// <see cref="WorkCommand"/> and <c>hatch config</c>'s own default - so a
+    /// checkout cannot be named one thing by one command and another by a
+    /// second. A fresh choice is recorded before it is returned, which is what
+    /// makes the second call in one process, and every call in the next one,
+    /// find the same name here rather than reaching <see cref="RunnerNames.Choose"/>
+    /// again.</para>
+    ///
+    /// <para><paramref name="board"/> is null wherever there is nothing to ask
+    /// yet - <c>hatch config</c>'s own bootstrap, before an origin is even on
+    /// disk - and a board that cannot be reached (too old to have the route, or
+    /// simply down) is read the same way <see cref="RunnersController.Heartbeat"/>'s
+    /// own <c>409</c> is: the local record is the backstop for a fresh choice,
+    /// and the server's refusal on the first heartbeat is the one a bad guess
+    /// cannot get past.</para>
+    /// </remarks>
+    public static async Task<string> RunnerAsync(
+        string? configured, string host, string root, Board? board, CancellationToken ct, string? runnersPath = null)
+    {
+        if (!string.IsNullOrWhiteSpace(configured)) return Cap(configured.Trim());
+
+        var canonical = Canonical(root);
+        var recordPath = runnersPath ?? RunnerNames.Record.DefaultPath();
+        var recorded = RunnerNames.Record.Read(recordPath);
+        if (recorded.TryGetValue(canonical, out var already)) return Cap(already);
+
+        var taken = new HashSet<string>(recorded.Values, StringComparer.OrdinalIgnoreCase);
+
+        if (board is not null)
+        {
+            try
+            {
+                var where = Where(host, root);
+                foreach (var runner in await board.RunnersAsync(ct))
+                    if (!string.Equals(runner.Where, where, StringComparison.Ordinal)) taken.Add(runner.Name);
+            }
+            catch (HatchException)
+            {
+                // Unreachable, or too old to have the route. Nothing here can
+                // end a night over a name.
+            }
+        }
+
+        var chosen = RunnerNames.Choose(host, canonical, taken);
+        RunnerNames.Record.Set(recordPath, canonical, chosen);
+        return Cap(chosen);
+    }
+
+    /// <summary>
+    /// The machine and checkout a runner runs from: the short hostname and the
+    /// path, because it is read by a person deciding which box to go and look
+    /// at. Kept apart from <see cref="Runner"/> now that the runner's name is a
+    /// character and this is a fact drawn beside it.
     /// </summary>
     /// <remarks>
     /// The path here is the one that was typed, not <see cref="Canonical"/>'s -
-    /// a lock is a machine's identity and a runner is a sentence, and the
-    /// sentence should say where somebody would go looking.
+    /// this is a sentence for a person, and the sentence should say where
+    /// somebody would go looking.
     /// </remarks>
-    public static string Runner(string? configured, string host, string root)
-    {
-        if (!string.IsNullOrWhiteSpace(configured)) return Cap(configured.Trim());
-        return Cap($"{host}:{root}");
-    }
+    public static string Where(string host, string root) => Cap($"{host}:{root}");
 
     /// <summary>
     /// The server refuses a runner over

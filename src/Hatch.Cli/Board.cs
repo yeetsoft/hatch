@@ -48,6 +48,15 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Every runner that has spoken to this Hatch lately - what
+    /// <see cref="Checkout.RunnerAsync"/> reads to skip a name a live runner
+    /// elsewhere already holds. Throws on a Hatch too old to have the route,
+    /// the same as every other read here; the caller decides what that means.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
+        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners", ct) ?? [];
+
+    /// <summary>
     /// A verdict on one issue's branch in one repository - see
     /// <see cref="MergeCheckRequest"/>. The remote is spelled the way this
     /// runner has it; the board canonicalises it.
@@ -80,6 +89,27 @@ public sealed class Board(HatchClient client)
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
+    }
+
+    /// <summary>
+    /// Carries an express issue one column right, with no session - see
+    /// docs/hatch.md, "The hop". A <c>409</c> is not a fault: the row changed
+    /// between the scan and this call, the same as a lost claim race, and the
+    /// caller walks on to the next clear row rather than treating it as a
+    /// refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> HopAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string key, CancellationToken ct, bool clones = false)
+    {
+        var parts = DeclareParts(checkouts, clones);
+        var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/hop{query}", null, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/hop"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
     }
 
     /// <summary>

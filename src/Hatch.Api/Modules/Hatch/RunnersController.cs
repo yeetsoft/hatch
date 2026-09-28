@@ -110,6 +110,18 @@ public class RunnersController(
         var line = Runners.Normalise(request.Line);
 
         var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+
+        if (row is not null && request.Where is { Length: > 0 } where && row.Where is { Length: > 0 } existing &&
+            !string.Equals(existing, where, StringComparison.Ordinal) && runners.IsHere(row.LastSeenAt, now))
+        {
+            // The one heartbeat answer allowed to end a run: two live runners
+            // sharing a name would merge into one row, and the operator's
+            // Pause would pause both. A gone row falls through instead and is
+            // taken over below, which is how a checkout that moved keeps its
+            // name.
+            return Conflict($"{runner} is already the runner on {existing} - hatch config gives this checkout another name");
+        }
+
         if (row is null)
         {
             db.Runners.Add(row = Seed(runner, kind, line, request, now));
@@ -284,6 +296,7 @@ public class RunnersController(
         // whatever the first beat carried, the same as every later one.
         Remotes = Canonicalised(request.Remotes),
         Clones = request.Clones,
+        Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
     };
 
     /// <summary>
@@ -315,6 +328,7 @@ public class RunnersController(
         // every other fact-vs-absent field on this contract already uses.
         if (request.Remotes is not null) row.Remotes = Canonicalised(request.Remotes);
         if (request.Clones is not null) row.Clones = request.Clones;
+        if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
     }
 
     /// <summary>

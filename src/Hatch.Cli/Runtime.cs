@@ -16,12 +16,20 @@ public sealed record Runtime(
     Terminal Say,
     string Root,
     string RunnerName,
+    string Where,
     string TempDirectory,
     IReadOnlyList<CheckoutEntry> Checkouts,
     TimeSpan? Heartbeat = null)
 {
     /// <summary>The clock, so a test can put the loop at a particular hour.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
+
+    /// <summary>
+    /// Where a checkout's chosen name is recorded - <see cref="RunnerNames.Record"/>'s
+    /// file, beside <see cref="Settings.UserConfigPath"/>. Replaceable so a test
+    /// reads and writes its own temp file rather than the machine's.
+    /// </summary>
+    public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
 
     /// <summary>
     /// Where the night's running totals are handed from one incarnation of the

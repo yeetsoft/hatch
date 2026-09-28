@@ -2,6 +2,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1282,6 +1283,287 @@ public class WorkControllerTests
                 queue.Where(e => e.FromStatus.Id == column).Select(e => e.Issue.Key));
     }
 
+    // ---- Express, the hop ----
+    //
+    // An express issue standing in a column marked ExpressSkips is carried on
+    // with no session, as long as it has no unanswered question. Every other
+    // fold still holds it exactly as it holds any other issue - these tests
+    // reuse each fold's own setup from above and assert its own sentence.
+
+    [Fact]
+    public async Task Queue_ListsAnExpressIssueInATickedColumnAsClearAndAHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default));
+        Assert.Equal(Key(issue), work.Issue.Key);
+        Assert.True(work.Hop);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByALiveClaimSomebodyElseHolds()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "somebody's already on this", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default)).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.False(Only(await h.Work.GetQueue(0, null, default)).Hop);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByAReadyDateThatHasNotArrived()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting on a renewal", h.Todo, readyAt: Now.AddDays(3));
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        Assert.Contains("not workable until", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByAPersonAssignee()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        var issue = await h.FileAsync("story", "Ada is on this", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.AssignAsync(issue, personId: ada.Id);
+
+        Assert.Contains("assigned to Ada", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByAnUnansweredQuestion()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting on a person", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.AskAsync(issue, "per-node or global?");
+
+        Assert.Contains("unanswered question", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByAnUnmetDependencyOnTheMoveIntoInProgress()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("story", "phase one", h.Review);
+        var second = await h.FileAsync("story", "phase two", h.Todo);
+        await h.DependsAsync(second, first);
+        await h.ExpressAsync(second);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var blocked = Value(await h.Work.GetQueue(0, null, default))
+            .Single(e => e.Issue.Key == Key(second)).Blocked;
+
+        Assert.Equal($"{Key(first)} is not done, and this cannot be implemented until it is", blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsFoldedByARepositoryTheRunnerLacks()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "bound elsewhere", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Only(await h.Work.GetQueue(0, null, standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsRefusedWhereTheNextColumnIsTerminal()
+    {
+        var h = await NewAsync();
+        h.Db.AddRange(
+            new EfHatchStatus { Name = "between", SortOrder = 45 },
+            new EfHatchStatus { Name = "shipped", SortOrder = 50, IsTerminal = true });
+        await h.Db.SaveChangesAsync();
+        var between = await h.Db.Statuses.SingleAsync(s => s.Name == "between");
+        var issue = await h.FileAsync("story", "the last mile", between.Id);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(between.Id);
+
+        Assert.Equal(
+            "the next column is \"shipped\", and only the operator moves work there",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task ATickedColumnWithAPlaybook_IsAHopAndNotASession()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "would otherwise dispatch normally", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        // Todo -> InProgress has a playbook seeded in NewAsync - the point is
+        // that the hop takes it anyway, and hands out no playbook.
+        var work = Value(await h.Work.GetNextWork(0, null, null, default));
+
+        Assert.True(work.Hop);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task AnIssueThatIsNotExpress_InATickedColumn_IsUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "an ordinary story", h.Todo);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default));
+
+        Assert.False(work.Hop);
+        Assert.NotNull(work.Playbook);
+    }
+
+    [Fact]
+    public async Task AnExpressIssue_InAnUntickedColumn_IsUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "express, but nothing skips todo", h.Todo);
+        await h.ExpressAsync(issue);
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default));
+
+        Assert.False(work.Hop);
+        Assert.NotNull(work.Playbook);
+    }
+
+    [Fact]
+    public async Task ATickedDeferredColumn_HopsNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "shelved and express", h.Shelved);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Shelved);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).SingleOrDefault(e => e.Issue.Key == Key(issue));
+        if (entry is not null) Assert.False(entry.Hop);
+
+        Assert.DoesNotContain(
+            Key(issue),
+            Value(await h.Work.GetQueue(0, null, default)).Where(e => e.Hop).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
+    public async Task Express_ChangesNoOrderInTheQueue()
+    {
+        var h = await NewAsync();
+        var judged = await h.FileAsync("story", "awaiting the operator", h.Review);
+        var top = await h.FileAsync("story", "top of todo", h.Todo, rank: 1024);
+        var hop = await h.FileAsync("story", "carried across", h.Todo, rank: 2048);
+        await h.ExpressAsync(hop);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        // Express is not expedite: it floats nothing, so the row still sits
+        // exactly where its rank puts it.
+        Assert.Equal(
+            new[] { judged, top, hop }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
+    public async Task Hop_MovesTheIssueExactlyOneColumn_ToTheBottom()
+    {
+        var h = await NewAsync();
+        var already = await h.FileAsync("story", "already in the target column", h.InProgress, rank: 1024);
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.InProgress, moved.StatusId);
+        Assert.Equal(h.InProgress, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task Hop_WritesOneStatusChangedEventNamingTheCallerAndCarryingExpress()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+        Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("express").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Hop_OnAnIssueThatIsNotAHop_Is409AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "an ordinary story", h.Todo);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_OnABlockedIssue_Is409CarryingTheFoldsSentenceAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting on a person", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.AskAsync(issue, "per-node or global?");
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains("unanswered question", response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_ThroughAKey_IsAllowed()
+    {
+        // WorkController's own harness authenticates every call as a key
+        // (StubCallerIdentity.Key) - the same caller every other test in this
+        // file already uses. This test exists to say so out loud: a hop
+        // inherits the class's Hatch scope rather than a person-only route,
+        // because the loop is exactly who calls one.
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
     // ---- An issue in review ----
 
     [Fact]
@@ -2350,6 +2632,7 @@ public class WorkControllerTests
         public required StubActorDirectory Actors { get; init; }
         public required WorkController Work { get; init; }
         public required PlaybooksController Playbooks { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -2430,6 +2713,32 @@ public class WorkControllerTests
         public async Task ExpediteAsync(EfHatchIssue issue)
         {
             issue.Expedited = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Express, written straight onto the row - what the route that writes
+        /// it accepts and refuses is <see cref="IssueExpressControllerTests"/>'s
+        /// business; these tests are about what the dispatcher does with the
+        /// flag once it is set.
+        /// </summary>
+        public async Task ExpressAsync(EfHatchIssue issue)
+        {
+            issue.Express = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// <em>Express skips</em>, written straight onto the column - what the
+        /// route that writes it accepts and refuses is
+        /// <c>StatusesController.PutExpressSkips</c>'s own tests; these tests
+        /// are about what the dispatcher does with a ticked column once it is
+        /// there.
+        /// </summary>
+        public async Task TickExpressSkipsAsync(int statusId)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.ExpressSkips = true;
             await Db.SaveChangesAsync();
         }
 
@@ -2659,13 +2968,21 @@ public class WorkControllerTests
         // this is the only way a claim dies.
         var time = new FakeTimeProvider(Now);
 
+        var caller = new StubCallerIdentity
+        {
+            Key = new EfApiKey { Name = "hatch-loop", Prefix = "hatch_ak_", Hash = [], CreatedAt = Now },
+        };
+
         return new Harness
         {
             Db = db,
             Time = time,
             Actors = actors,
-            Work = new WorkController(db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl })),
+            Work = new WorkController(
+                db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
+                new RankService(db), caller),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
+            Caller = caller,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -2674,6 +2991,32 @@ public class WorkControllerTests
             Done = done.Id,
             Shelved = shelved.Id,
         };
+    }
+
+    /// <summary>Whoever the test says is holding the phone - a key, ordinarily, because the loop is what calls a hop.</summary>
+    public sealed class StubCallerIdentity : ICallerIdentity
+    {
+        public EfPerson? Person { get; set; }
+
+        public EfApiKey? Key { get; set; }
+
+        public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
+
+        public Task<Guid?> PersonIdAsync(CancellationToken ct) => Task.FromResult(Person?.Id);
+
+        public Task<EfPerson?> PersonAsync(CancellationToken ct) => Task.FromResult(Person);
+
+        public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(Key);
+
+        public Actor? Local { get; set; }
+
+        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult(Local);
+
+        public Task<bool> IsProgramAsync(CancellationToken ct) =>
+            Task.FromResult(Key is not null || Local is { Kind: ActorKind.Key });
+
+        public Task<string> ActorNameAsync(CancellationToken ct) =>
+            Task.FromResult(Person?.Name ?? Key?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
     }
 
     /// <summary>

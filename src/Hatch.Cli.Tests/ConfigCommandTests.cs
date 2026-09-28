@@ -11,16 +11,23 @@ public sealed class ConfigCommandTests : IDisposable
 
     private string ConfigPath => Path.Combine(_temp, "hatch", "config");
 
+    private string RunnersPath => Path.Combine(_temp, "hatch", "runners");
+
     private ConfigCommand Command(
         Replies input,
         IDictionary<string, string?>? environment = null,
         string? checkoutEnv = null,
-        Func<Settings, string, CancellationToken, Task<string?>>? probe = null) =>
+        Func<Settings, string, CancellationToken, Task<string?>>? probe = null,
+        string? root = null,
+        string runnerName = "test:/checkout",
+        Func<Settings, CancellationToken, Task<IReadOnlyList<RunnerDto>>>? liveRunners = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
-            checkoutEnv, "test:/checkout")
+            checkoutEnv, runnerName, root)
         {
             ConfigPath = ConfigPath,
+            RunnersPath = RunnersPath,
             Probe = probe ?? ((_, _, _) => Task.FromResult<string?>("To Do, In Progress, Done")),
+            LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>([])),
         };
 
     private string Said => string.Join("\n", _say.Said);
@@ -194,6 +201,147 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("config asks questions and needs a terminal", Complained);
         Assert.Empty(input.Asked);
         Assert.False(File.Exists(ConfigPath));
+    }
+
+    // ---- the runner name prompt ----
+
+    [Fact]
+    public async Task Outside_a_checkout_the_runner_is_never_asked_about()
+    {
+        var input = new Replies("https://hatch.example", "", "");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+
+        Assert.DoesNotContain(input.Asked, l => l.Contains("board call this runner", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task In_a_checkout_it_offers_the_runner_already_named_and_Enter_keeps_it()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "", "", "");
+
+        Assert.Equal(
+            0, await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default));
+
+        Assert.Contains("What should the board call this runner? [Buster Bluth]:", input.Asked[3]);
+        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    [Fact]
+    public async Task A_typed_name_is_recorded()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "", "", "Liz Lemon");
+
+        Assert.Equal(
+            0, await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default));
+
+        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
+    }
+
+    [Fact]
+    public async Task An_empty_typed_name_is_refused_with_nothing_written()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "", "", new string(' ', 3));
+
+        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("a name is required", Complained);
+        Assert.False(File.Exists(ConfigPath));
+        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    [Fact]
+    public async Task A_name_that_is_not_plain_ASCII_is_refused_with_nothing_written()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "", "", "Tobias Fünke");
+
+        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("a name is plain ASCII", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_name_over_the_limit_is_refused_with_nothing_written()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
+
+        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains($"a name is at most {ClaimRequest.MaxRunnerLength} characters", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_name_held_by_a_live_runner_elsewhere_is_refused_with_nothing_written()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "Liz Lemon");
+
+        var code = await Command(
+                input, root: root, runnerName: "Buster Bluth",
+                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>(
+                [
+                    new RunnerDto(
+                        "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
+                        "running", null, null, null, null, 90, [], null, "elsewhere:/some/tree"),
+                ]))
+            .RunAsync([], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("Liz Lemon is already the runner on elsewhere:/some/tree", Complained);
+        Assert.False(File.Exists(ConfigPath));
+        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    // ---- --runner ----
+
+    [Fact]
+    public async Task Runner_flag_writes_the_name_without_asking_anything()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+
+        Assert.Equal(0, await Command(new Replies(), root: root).RunAsync(["--runner", "Liz Lemon"], default));
+
+        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
+    }
+
+    [Fact]
+    public async Task Runner_flag_outside_a_checkout_is_refused()
+    {
+        var code = await Command(new Replies()).RunAsync(["--runner", "Liz Lemon"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("--runner names this checkout - run it inside one", Complained);
+    }
+
+    [Fact]
+    public async Task Runner_flag_held_elsewhere_is_refused_with_nothing_written()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+
+        var code = await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
+                root: root,
+                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>(
+                [
+                    new RunnerDto(
+                        "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
+                        "running", null, null, null, null, 90, [], null, "elsewhere:/some/tree"),
+                ]))
+            .RunAsync(["--runner", "Liz Lemon"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("Liz Lemon is already the runner on elsewhere:/some/tree", Complained);
+        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
     }
 
     // ---- --origin ----
@@ -371,6 +519,49 @@ public sealed class ConfigCommandTests : IDisposable
     {
         await Command(new Replies()).RunAsync(["--show"], default);
         Assert.Contains("checkout:         <not in one>", Said);
+    }
+
+    [Fact]
+    public async Task Show_outside_a_checkout_says_so_for_the_runner_too()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+        Assert.Contains("runner:           <not in a checkout>", Said);
+    }
+
+    [Fact]
+    public async Task Show_in_a_checkout_with_no_recorded_name_says_so()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        await Command(new Replies(), root: root).RunAsync(["--show"], default);
+
+        Assert.Contains(
+            _say.Said, l => l.StartsWith("runner:", StringComparison.Ordinal) && l.Contains("none yet", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Show_in_a_checkout_prints_the_recorded_name_and_the_runners_file()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Buster Bluth");
+
+        await Command(new Replies(), root: root).RunAsync(["--show"], default);
+
+        Assert.Contains($"runner:           Buster Bluth  ({RunnersPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_HATCH_RUNNER_wins_when_it_is_set()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Buster Bluth");
+
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_RUNNER"] = "the-box" },
+                root: root)
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("runner:           the-box  (HATCH_RUNNER, exported)", Said);
     }
 
     // ---- --key ----

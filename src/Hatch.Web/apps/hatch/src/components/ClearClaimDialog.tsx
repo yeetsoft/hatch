@@ -1,5 +1,5 @@
 import { Button, Modal } from '@hatch/ui';
-import { agoPhrase } from '../lib/claim';
+import { agoPhrase, claimedBySuffix } from '../lib/claim';
 import type { IssueClaim } from '../types';
 
 /**
@@ -39,8 +39,8 @@ export function ClearClaimDialog({
     <Modal open onClose={onClose} title={`Clear the claim on ${issueKey}?`}>
       <div className="hatch-claim-clear">
         <p>
-          <strong>{claim.claimedBy}</strong> is holding it from <code>{claim.runner}</code>, last heard from{' '}
-          {agoPhrase(claim.heartbeatAt, new Date())}.
+          <strong>{claim.runner}</strong> is working {issueKey}
+          {claimedBySuffix(claim)}, last heard from {agoPhrase(claim.heartbeatAt, new Date())}.
         </p>
 
         <p>

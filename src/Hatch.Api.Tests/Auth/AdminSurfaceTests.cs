@@ -186,6 +186,14 @@ public class AdminSurfaceTests
         "WorkController.GetNextWork",
         "WorkController.GetWork",
 
+        // The loop's own write, on the loop's own say-so: it carries an
+        // express issue past a column marked ExpressSkips with no session. It
+        // inherits the class's Hatch scope rather than a person-only route,
+        // because a key is exactly who calls a hop - see
+        // IssueExpressController and StatusesController.PutExpressSkips for
+        // the person-only edge that decides whether a hop exists at all.
+        "WorkController.HopWork",
+
         // The same walk as GetNextWork, reported instead of acted on. A read,
         // and one a key already holds every part of: it says nothing about the
         // board that `next` and `/issues` do not already say, only in one
@@ -314,6 +322,18 @@ public class AdminSurfaceTests
         // IssueExpediteController.
         "IssueExpediteController.PutIssueExpedite",
 
+        // The night train's own edge. Express decides which gates the loop may
+        // pass unattended, so a key that could set it could carry its own
+        // ticket through the night with nobody reading it first. Reading it is
+        // open, the same as expedite. See IssueExpressController.
+        "IssueExpressController.PutIssueExpress",
+
+        // The column half of the same edge: which columns an express issue is
+        // carried past with no session. Reading it is open - it rides
+        // StatusDto, which is Hatch-scoped - and only the write is here. See
+        // StatusesController.PutExpressSkips.
+        "StatusesController.PutExpressSkips",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -422,6 +442,8 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssueExpedite",
+        "IssueExpressController.PutIssueExpress",
+        "StatusesController.PutExpressSkips",
         "ProjectsController.PutRepositories",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

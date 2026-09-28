@@ -197,6 +197,23 @@ public class EfHatchStatus
     public bool IsDeferred { get; set; }
 
     /// <summary>
+    /// Whether an express issue standing here is carried on to the next column
+    /// with no session, as long as it has no unanswered question - see
+    /// <see cref="EfHatchIssue.Express"/>.
+    ///
+    /// <para>Not a "whose column is this" flag: that stays derived from the
+    /// playbook matrix, for the reasons <c>docs/hatch.md</c> (<em>Status</em>)
+    /// argues. This box only says which columns an express issue is carried
+    /// past; who works the columns it lands in is unaffected.</para>
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutExpressSkips"/>) for the same reason
+    /// as <see cref="EfHatchIssue.Express"/>: it decides which gates the loop
+    /// may pass unattended, and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool ExpressSkips { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave
@@ -454,6 +471,30 @@ public class EfHatchIssue
     /// an agent is entitled to know why it was sent where it was sent.</para>
     /// </remarks>
     public bool Expedited { get; set; }
+
+    /// <summary>
+    /// A gate-passer, not a sort key - the opposite shape from
+    /// <see cref="Expedited"/>. An issue marked express is carried past a
+    /// column marked <see cref="EfHatchStatus.ExpressSkips"/> with no session,
+    /// as long as it has no unanswered question; every other fold still holds
+    /// it exactly as it holds any other issue (<see cref="WorkController"/>).
+    /// It changes no order, on the board or in the queue.
+    /// </summary>
+    /// <remarks>
+    /// <para>Set by a person
+    /// (<see cref="IssueExpressController"/>), for the same reason as
+    /// <see cref="Expedited"/>: it decides which gates the loop may pass
+    /// unattended, and a key that could set it could carry its own ticket
+    /// through the night unattended.</para>
+    ///
+    /// <para>Taken from the parent at filing, and at no other time: an issue
+    /// created under an express parent is born express, whoever files it and
+    /// however. Reparenting an issue under an express parent does not mark it,
+    /// and reparenting one away does not unmark it - the flag is a fact about
+    /// how an issue came to exist, not a fact that follows its parent
+    /// around.</para>
+    /// </remarks>
+    public bool Express { get; set; }
 
     // ---- The claim ----
     //
@@ -968,6 +1009,13 @@ public class EfHatchIssueEvent
     /// flag that reorders a whole board has to be able to answer.
     /// </summary>
     public const string ExpeditedChanged = "expedited_changed";
+
+    /// <summary>
+    /// The issue was marked express, or unmarked - see
+    /// <see cref="EfHatchIssue.Express"/>. The payload carries both sides, the
+    /// same as <see cref="ExpeditedChanged"/>.
+    /// </summary>
+    public const string ExpressChanged = "express_changed";
 
     /// <summary>
     /// The issue was made to wait on another, or freed from one. Written on the
@@ -1525,4 +1573,14 @@ public class EfHatchRunner
 
     /// <summary>Whether this runner makes a clone for itself when it lacks one.</summary>
     public bool? Clones { get; set; }
+
+    /// <summary>
+    /// The machine and checkout this runner runs from, <c>host:/path</c> - a
+    /// fact about the running process, overwritten on every heartbeat that
+    /// names one, the same as <see cref="Remotes"/>. It used to be
+    /// <see cref="Name"/> itself; now the name is a character, and this is
+    /// where a person goes to find the box that character is running on.
+    /// </summary>
+    [MaxLength(MaxNameLength)]
+    public string? Where { get; set; }
 }

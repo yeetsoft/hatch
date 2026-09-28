@@ -22,8 +22,8 @@ public sealed class BoardCommandsTests
 
     private static IssueCardDto Card(
         string key, int statusId, string type = "task", string? readyAt = null, string? dueAt = null,
-        bool expedited = false) =>
-        new(key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt, Expedited: expedited);
+        bool expedited = false, bool express = false) =>
+        new(key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt, Expedited: expedited, Express: express);
 
     [Fact]
     public async Task The_board_is_every_column_and_what_is_on_it_with_the_terminal_one_marked()
@@ -353,6 +353,48 @@ public sealed class BoardCommandsTests
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
         Assert.StartsWith("AER-1", h.Said);
+    }
+
+    // ---- Express, the hop ----
+
+    [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_express()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, express: true), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 express)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Next_marks_the_card_it_prints_when_it_is_express()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, express: true)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-1  [task]  AER-1's title  (express)", h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_a_hop_row_with_no_session()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true) });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (express, no session)", h.Said);
     }
 
     /// <summary>

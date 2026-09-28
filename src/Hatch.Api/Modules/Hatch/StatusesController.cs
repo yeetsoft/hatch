@@ -10,24 +10,34 @@ namespace Hatch.Api.Modules.Hatch;
 /// reorders them from a page, and an enum would make "add a review column" a
 /// deploy.
 /// </summary>
+/// <remarks>
+/// No class-level attribute, the same split <see cref="ProjectsController"/>
+/// draws: <see cref="RequireRoleAttribute"/> is <c>AllowMultiple = false</c>,
+/// so a method-level attribute silently *replaces* a class-level one rather
+/// than tightening it. Decorating every action explicitly is what keeps
+/// <see cref="PutExpressSkips"/> closed to a key whatever else is added
+/// beside it - it decides which gates the loop may pass unattended, the same
+/// kind of power <see cref="PutRepositories"/> guards over there.
+/// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class StatusesController(HatchContext db) : ControllerBase
 {
     [HttpGet]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<IReadOnlyList<StatusDto>>> GetStatuses(CancellationToken ct)
     {
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
-            .Select(s => new StatusDto(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.Color))
+            .Select(s => new StatusDto(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.Color, s.ExpressSkips))
             .ToListAsync(ct);
 
         return statuses;
     }
 
     [HttpPost]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<StatusDto>> CreateStatus(StatusCreateRequest request, CancellationToken ct)
     {
         var name = request.Name?.Trim();
@@ -51,10 +61,13 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return CreatedAtAction(
             nameof(GetStatuses),
-            new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color));
+            new StatusDto(
+                status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color,
+                status.ExpressSkips));
     }
 
     [HttpPatch("{id:int}")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<StatusDto>> PatchStatus(int id, StatusPatchRequest request, CancellationToken ct)
     {
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -80,7 +93,30 @@ public class StatusesController(HatchContext db) : ControllerBase
         if (request.IsDeferred is { } deferred) status.IsDeferred = deferred;
 
         await db.SaveChangesAsync(ct);
-        return new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color);
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color,
+            status.ExpressSkips);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Express skips</em>. Its own action rather than one
+    /// more field on <see cref="PatchStatus"/>, because that route is open to a
+    /// key: this one decides which columns the loop may carry an express issue
+    /// past with nobody reading it first, the same kind of power
+    /// <see cref="IssueExpressController"/> guards on the issue itself.
+    /// </summary>
+    [HttpPut("{id:int}/express-skips")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutExpressSkips(int id, ExpressSkipsRequest request, CancellationToken ct)
+    {
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        status.ExpressSkips = request.ExpressSkips;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color, status.ExpressSkips);
     }
 
     /// <summary>
@@ -89,6 +125,7 @@ public class StatusesController(HatchContext db) : ControllerBase
     /// be this endpoint deciding that a dozen tickets are now "todo".
     /// </summary>
     [HttpDelete("{id:int}")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<IActionResult> DeleteStatus(int id, CancellationToken ct)
     {
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);

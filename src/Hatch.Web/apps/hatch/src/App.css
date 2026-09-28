@@ -2270,6 +2270,70 @@ input.hatch-inline-title-input {
   flex-wrap: wrap;
 }
 
+/* Carried past a column marked Express skips, with no session.
+ *
+ * No stripe on the card - that is expedite's, and a card marked both would
+ * otherwise wear two stripes arguing about which one the eye should trust.
+ * The badge alone is enough: express changes no order, so there is nothing
+ * about *where* the card sits for a stripe to explain.
+ *
+ * --success rather than --primary (expedite's) or --warn (a question's owed
+ * answer): a third fact about a card needs a colour neither of the other two
+ * already speaks for. */
+.hatch-card-express {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+/* The control itself, on the issue page and in the summary - the same shape
+   as .hatch-expedite, in --success instead of --primary. */
+.hatch-express {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-express:hover:not(:disabled) {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.hatch-express:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-express.on {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--on-accent);
+}
+
+/* What a reader who may not press it sees instead: the state as a word. An
+   agent holding this page is refused the write and is still entitled to know
+   why it was carried on with no session - see IssueExpressController. */
+.hatch-express-said {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-express-said.on {
+  color: var(--success-ink);
+  font-weight: 600;
+}
+
 /* A column says in its header that it is holding a question, because the card
    that is owed an answer may be folded behind `+N waiting` or ten cards down,
    and the header is the part of a column that is always on screen. The pill

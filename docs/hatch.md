@@ -182,7 +182,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`Color` (`#rrggbb`).
+`ExpressSkips`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -221,6 +221,19 @@ refuses to start anything sitting in one — *a person puts it back on the board
 not a pass* — and the rollup leaves deferred leaves out of every total, so an
 epic finished except for work nobody is going to do reads finished without
 claiming the shelved half shipped.
+
+`ExpressSkips` marks the columns an [express](#express) issue is carried past
+with no session — see [the hop](#the-hop). It is **not** a "whose column is
+this" flag: who works a column is still derived from the playbook matrix, for
+the reason [above](#status) — this box only says which columns an express
+issue is carried past, and says nothing about who works the columns on either
+side of it. Set only by a person, through its own route
+(`PUT /api/hatch/statuses/{id}/express-skips`), for the reason given under
+["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
+it decides which gates the loop may pass unattended, and a key that could tick
+it could carry its own ticket through the night with nobody reading it first.
+Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set
+it.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
@@ -445,6 +458,44 @@ the flag and sets it nowhere.
 read the same after a person row is deleted, and an API key's name goes in this
 column beside a human one — neither of which a `People` FK from a module schema
 could express.
+
+#### Express
+
+**One flag meaning *carry this past a column marked for it, with nobody reading
+it first*.** `Express` is a boolean on the issue, set by a person, and read by
+the dispatcher alone — see [the hop](#the-hop). Take an express issue standing
+in a column marked [`ExpressSkips`](#status), with no unanswered question, and
+the loop moves it one column right itself: no session, no model, nothing spent.
+
+**It is a gate-passer, not a sort key — the opposite shape from
+[expedite](#expedite).** Every fold an issue already meets still folds it: a
+live claim, a ready date in the future, a person's name on the ticket, an
+unanswered question, a missing repository or an unmet dependency all hold an
+express issue exactly as they hold any other. Express answers one question
+only — does this column still need a session — and changes nothing about
+order, on the board or in `hatch queue`.
+
+**It is taken from the parent at filing, and at no other time.** An issue
+created under an express parent is born express, whoever files it — a person
+or a key — and however: the New issue dialog, the child composer, or the API
+directly. Its `created` event names the parent it took the flag from. Filed
+under a parent that is not express, or under no parent, it is not express.
+**Reparenting never touches it**: moving an issue under an express parent does
+not mark it, and moving it away does not unmark it — the flag is a fact about
+how an issue came to exist, not one that follows a parent around. This is also
+why unmarking a parent leaves every child exactly as it was: the flag was
+copied once, at filing, and the two are unlinked from that moment on.
+
+Filed issues land in the leftmost column, Draft, which does not ship marked
+`ExpressSkips` — so an express epic's freshly filed stories wait there until
+the operator ticks Draft or moves them on by hand. That is deliberate: Draft is
+where ideas are written, and leaving it unticked is the safe default.
+
+Setting it is closed to an API key, the same cut as expedite; see [The one edge
+that is deliberately cut](#the-one-edge-that-is-deliberately-cut). It follows
+that there is no `hatch express` verb — the CLI authenticates with a key, so
+the terminal shows the flag (`board`, `queue`, `show`, `next`) and sets it
+nowhere.
 
 #### Issue numbering
 
@@ -798,11 +849,12 @@ claim.
 
 **A claim is drawn where the work is looked at.** A claimed card carries a dot
 in its head row, green while the holder is being heard from and amber once it
-has gone quiet, with who holds it, from where and how long since a word on the
-hover. The issue page draws a **Claim** section saying the same things at
-length: the holder, the `host:/path/to/checkout` they hold it from, when it was
-taken, when it was last heard from, and the last line the runner printed with
-how long ago it printed it. *Quiet* is half the lease without a word — a
+has gone quiet, with who is working it and how long since a word on the hover.
+The issue page draws a **Claim** section saying the same things at length,
+leading with the runner rather than who it runs for — "Buster Bluth is working
+AER-12", with ", for Nathan" appended only when the two differ — plus when it
+was taken, when it was last heard from, and the last line the runner printed
+with how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
 moves the warning with it — and it is not expiry: a claim past its lease is
 drawn as no claim at all, on the card and on the page, because the server has
@@ -1273,6 +1325,25 @@ sent where it was sent. It follows that there is no `hatch expedite` verb — th
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
 
+**And so is express, both the issue's flag and the column's.** Express decides
+which gates the loop may pass *unattended* — a key that could set either could
+carry its own ticket through the night with nobody reading it first, the same
+kind of widening a playbook or an assignee would be. `PUT
+/api/hatch/issues/{key}/express` lives on its own controller
+(`IssueExpressController`) carrying no class-level scope, cut by the same
+means as expedite. The column half cannot ride `PATCH /api/hatch/statuses/{id}`
+— that route accepts the `hatch` scope on every action, so one more field on
+the ordinary status patch would have been a key ticking its own gate — so it
+gets its own action, `PUT /api/hatch/statuses/{id}/express-skips`, carrying a
+plain `[RequireRole(PersonRole.User)]` the way `ProjectsController.PutRepositories`
+does; the rest of `StatusesController`'s actions each carry the class-level
+attribute explicitly instead, because `RequireRoleAttribute` is
+`AllowMultiple = false` and a method-level attribute silently *replaces* a
+class-level one rather than tightening it. Reading both is open like the rest:
+`express` rides `IssueDto` and `IssueCardDto`, and `expressSkips` rides
+`StatusDto`. It follows that there is no `hatch express` verb, the same as
+expedite.
+
 One related edge is **not** cut, and is stated rather than papered over:
 **nothing stops a key answering its own question.** A key is what
 `hatch answer` types with and it is also what a spawned agent inherits; the
@@ -1295,6 +1366,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
+| `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
@@ -1308,6 +1380,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expedited }` — *this one first*, floated on the board and taken first by the dispatcher. Setting what it already holds writes nothing |
+| `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
@@ -1316,6 +1389,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
@@ -1329,7 +1403,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
-| `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is `host:/path/to/checkout`, escaped — a slash in it stays `%2F` |
+| `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
 
 Two of the filters are worth knowing: `ancestorKey` returns everything below an
@@ -1740,8 +1814,17 @@ missing configuration:
    for it, or because no runner has checked yet. See [the review
    dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
-…and then, if none of those, the ordinary one: no playbook covers this
-transition for this type.
+…and then, if none of those, one last check before the ordinary refusal: is
+this a [hop](#the-hop)? An issue that is [express](#express) and stands in a
+column marked [`ExpressSkips`](#status) needs no playbook at all — the pass
+calls the row clear, and the caller carries it across itself with
+`POST /api/hatch/work/{key}/hop` rather than spawning a session. Every refusal
+above this one still applies to an express issue exactly as it applies to any
+other: the hop answers only "does this column still need a session", and
+nothing about a live claim, a ready date, an assignee, a question, a
+repository or a dependency is any different for it. Only where none of those
+folds it either, and it is not a hop, does the pass fall through to the
+ordinary refusal: no playbook covers this transition for this type.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -1758,6 +1841,51 @@ it again.
 useful answer and a list of reasons is not — while `work/{key}`, which somebody
 asked for by name, returns the refusal rather than a 404, because a person who
 named a ticket is owed the sentence saying why it cannot move.
+
+### The hop
+
+**The loop's own write, on the loop's own say-so.** Take an issue that is
+[express](#express) and stands in a column marked
+[`ExpressSkips`](#status), with no unanswered question, and
+`POST /api/hatch/work/{key}/hop` carries it one column right — the same
+column `Columns.Advance` would send a session to — and spawns nothing. No
+model runs, nothing is spent, and no work-log row is written, because a hop is
+not an increment.
+
+It takes the same query parameters `GET /api/hatch/work/{key}` takes, and no
+`heldToken`: **a hop takes no claim.** A claim protects a session that runs for
+minutes; a hop is one write, and the server re-judges the issue as the write is
+made, with the same `Blocked` a named dispatch is judged by — so a stale runner
+cannot carry an issue the server would no longer carry, and claiming would add
+two history lines to protect nothing.
+
+Two answers, both `409`, and each carries the sentence a reader would see on
+`hatch queue`:
+
+- The issue is blocked by some other fold — a claim, a ready date, an
+  assignee, a question, a repository, a dependency, a terminal next column.
+  The sentence is exactly the one `Blocked` already gives for that fold.
+- The issue is clear, but is not a hop — not express, or standing in a column
+  nothing has ticked. A session moves this issue, and a hop does not.
+
+Otherwise the move is made: the issue's rank is set with
+`RankService.BottomAsync`, the same as any other move, and the history gets one
+`status_changed` event naming the caller as the actor and carrying
+`{ from, to, express: true }` — the same shape `IssuesController.MoveIssue`
+writes, with one more field, so a card that passed a gate with nobody present
+says so on its own trail.
+
+**Why the server performs the hop, on its own route, rather than the CLI
+calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
+anything a key asks it to, with no judgement of its own — a client that called
+it for a hop would be the client deciding whether the move was safe, and the
+trail could not say *express*. Judging *and* moving in the one write is what
+keeps the rule that calls a row a hop and the write that performs it in one
+place; see [where the loop's rules live](#where-the-loops-rules-live).
+
+`WorkDto.Hop` and `QueueEntryDto.Hop` say which rows are hops — on `WorkDto`,
+`Playbook` is always null where `Hop` is true, even where one covers the move,
+so no client can spawn a session for a hop by accident.
 
 ### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 
@@ -1913,10 +2041,17 @@ the order of the board is precisely the bug this endpoint exists to expose.
 Every fold therefore lives in one place and in one order, most fundamental
 first: a next column that is terminal, then a ready date, then an unanswered
 question, then a repository this runner lacks, an unmet dependency, and — for an
-issue in review — the verdict on its branch, and last the missing playbook — last
-because it is only worth saying about an issue that is otherwise a candidate. The one
-that is the *loop's* policy rather than a fact about an issue is asked only when
-the pass is asking, so `work/{key}` still ignores it.
+issue in review — the verdict on its branch, then [the hop](#the-hop), and last
+the missing playbook — last because it is only worth saying about an issue that
+is otherwise a candidate. The one that is the *loop's* policy rather than a
+fact about an issue is asked only when the pass is asking, so `work/{key}`
+still ignores it.
+
+**A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
+that is express, stands in a column marked `ExpressSkips`, and clears every
+fold above it — so a reader of the queue, and `hatch queue` at a terminal, can
+tell a row that will be carried across with no session from one that will
+spawn an ordinary one, even though both print no `Blocked` sentence.
 
 The columns with nowhere to go — a terminal one, a deferred one, and a rightmost
 one that is not terminal — are absent rather than listed as blocked. An issue the dispatcher
@@ -2044,8 +2179,9 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Nine conditions. An issue is the loop's to pick up when it meets every one, and
-the sentence saying which one it failed is what `work/queue` reports:
+Ten conditions, the last one a way out of the ninth rather than one more gate.
+An issue is the loop's to pick up when it meets every one before it, and the
+sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
@@ -2089,17 +2225,27 @@ the sentence saying which one it failed is what `work/queue` reports:
    on this tip, no checks, no branch, more than one branch and an unchecked one
    are what `hatch queue` prints. A clean branch that has merely fallen behind
    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-9. **A playbook covers that transition for that type.** Without one there is
-   nothing to say to the session — and a column no playbook leads out of is
-   exactly [how a column becomes the operator's](#status), which is why the
-   absence is a fold rather than an error. **This is also where the issue's
-   type is decided**, and the only place: a type an unattended run does not
-   pick up is a type no row names for that move, said in the words that name
-   the fix.
+9. **A playbook covers that transition for that type — or it does not need
+   one.** Without one there is nothing to say to the session — and a column no
+   playbook leads out of is exactly [how a column becomes the
+   operator's](#status), which is why the absence is a fold rather than an
+   error. **This is also where the issue's type is decided**, and the only
+   place: a type an unattended run does not pick up is a type no row names for
+   that move, said in the words that name the fix.
+10. **Unless it does not need a session at all.** An issue that is
+    [express](#express) and stands in a column marked
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the ninth condition's
+    absence is answered not by a playbook but by the pass carrying the issue on
+    itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
+    one still has to hold — a hop is not an escape from a live claim, a ready
+    date, an assignee, a question, a repository or a dependency, only from
+    needing a playbook.
 
 Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and `work/{key}`
-asks them too. The other two are the loop's policy and are asked only when the
-pass is asking; see [one more, on `next` alone](#one-more-on-next-alone).
+asks them too. The tenth is as well, and `work/{key}` answers it the same way
+`work/queue` does: `WorkDto.Hop`. The other two are the loop's policy and are
+asked only when the pass is asking; see [one more, on `next`
+alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
 overnight it is the difference between a shape and a mess: a loop working left
@@ -2205,21 +2351,28 @@ One pass, from the board to the release:
    the person-assignee fold — and answers with every row and the reason it was
    folded. It has already folded past everything under somebody else's live
    claim, so what comes back clear is a shortlist.
-2. **Claim the first clear row.** A `409` is an answer and not a fault: somebody
-   took it between the scan and the take, and the pass moves on to the next clear
-   row. Up to **five** attempts, because a board whose first five are all being
-   worked is a board where waiting an interval is the honest thing to do — and an
-   unbounded walk would take and release leases down a thousand-card column.
-   Five refusals is a **busy** board, reported in its own sentence, naming the
-   keys and who holds them. That is deliberately not the sentence an empty board
-   gets: one means wait a minute, and the other means the night is over.
-3. **Read the dispatch, by name.** `work/{key}?heldToken=…` and never
+2. **A clear row marked `Hop` is carried across, not claimed.** See [the
+   hop](#the-hop): `POST work/{key}/hop`, no claim, no workspace reset, no
+   spawn. One line is printed naming the issue and both columns, and the loop
+   reads the queue again straight away rather than going on to the next step of
+   this pass. A `409` here is an answer and not a fault, the same as the
+   claim's below, and the walk moves to the next clear row.
+3. **Claim the first clear row that is not a hop.** A `409` is an answer and not
+   a fault: somebody took it between the scan and the take, and the pass moves
+   on to the next clear row. Up to **five** attempts, because a board whose
+   first five are all being worked is a board where waiting an interval is the
+   honest thing to do — and an unbounded walk would take and release leases
+   down a thousand-card column. Five refusals is a **busy** board, reported in
+   its own sentence, naming the keys and who holds them. That is deliberately
+   not the sentence an empty board gets: one means wait a minute, and the other
+   means the night is over.
+4. **Read the dispatch, by name.** `work/{key}?heldToken=…` and never
    `work/next`, which would answer with the first clear row *as it stands now* —
    a different ticket from the one just claimed, once another runner's lease has
    folded the row. The token is what stops the runner's own lease folding its own
    dispatch. A dispatch that comes back blocked is a ticket that changed under
    us: the lease goes straight back, and the walk goes on.
-4. **Reset the workspace**, then spawn. In that order, and after the claim: a
+5. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
    would be a fetch spent on an increment that never happens. Two things are
    done at the spawn so that a message to the agent is heard:
@@ -2242,11 +2395,11 @@ One pass, from the board to the release:
      before it spawns. `work --dry-run` prints the heading and marks nothing.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
-5. **Heartbeat**, carrying the last line the runner printed — and only when it
+6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
    so carries nothing, which is what `--quiet` is.
-6. **Release**, however the increment ended.
+7. **Release**, however the increment ended.
 
 **A refused heartbeat ends the increment.** The lease expired underneath the run,
 was taken over, or was cleared by the operator; the session is stopped rather
@@ -2542,6 +2695,11 @@ the transition it was trying to make — with the `claude --resume` command, sin
 resuming the conversation is most of why a stall is worth recording rather than
 merely counting — and, if nothing is already open there, **a question**.
 
+**A hop is never a stall.** No session ran, so there is no session to name and
+nothing was spent on a ticket that did not move - the ticket did move, one
+column, and the runner never held a claim to have written anything on it. See
+[the hop](#the-hop).
+
 A question rather than a **flag field**, which was the obvious alternative and
 would have had to be taught three things a question already does: it blocks the
 issue from being dispatched again, it badges the card on the board, and it is
@@ -2684,6 +2842,17 @@ That is also why the loop passes no `--model` or `--effort` of its own, though
 `work` accepts both. An override typed for one increment is one operator's
 opinion about one ticket, and a loop that carried it across a night would be
 applying it to tickets nobody looked at.
+
+**And it is why the hop is a write the server makes, on its own route,
+[`POST work/{key}/hop`](#the-hop), rather than the CLI calling the ordinary
+move endpoint.** `IssuesController.MoveIssue` moves anything a key asks it to
+— it judges nothing, because a person dragging a card has already judged. A
+runner asking it to perform a hop would be the runner deciding the move was
+safe, which is exactly the rule this section argues against: the caller spends
+and reports, and decides nothing about which. Judging and moving in the one
+write also means a stale runner cannot carry an issue the server would no
+longer carry, and the history can say *express* in the same event the move
+itself writes, rather than a second write racing the first.
 
 ### Where the loop lives
 
@@ -2925,9 +3094,26 @@ for a runner in a container and for one on a laptop behind a router nothing can
 reach. The cost is honest and is stated on the page: a press takes effect at the
 top of the next pass, *after* whatever increment is in flight has finished.
 
-**The runner is named as its claim names it** — `host:/path/to/checkout`, or
-`HATCH_RUNNER`'s override, the same string every [claim](#claim) already
-carries. A runner has one identity and this is it; the table is keyed on it.
+**The runner is named as its claim names it** — a character off the cast list
+in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from five
+TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
+string every [claim](#claim) already carries. A runner has one identity and
+this is it; the table is keyed on it. The choice is made once per checkout —
+a SHA-256 over the host and the canonical checkout path picks a starting slot
+in the list, and the walk forward from there skips any name another checkout
+on this machine already recorded, or a live runner elsewhere on the board
+already holds — and then recorded in a per-user `runners` file beside
+`config`, so every later run repeats it rather than choosing again. Editing
+the list renames nobody who already has a name. `hatch config` offers the
+chosen or recorded name as its default and accepts another with the same four
+checks; `hatch config --runner <name>` sets it without asking.
+
+Every heartbeat also carries `where` — the machine and checkout the process is
+actually running from — drawn on the Runners page under the name. A heartbeat
+whose name is already the *live* runner at a different `where` is refused with
+`409`: two live runners never share one row, and a gone row can still be taken
+over, which is how a checkout that moved keeps its name. That refusal is the
+backstop; the first choice already tries to dodge it by reading the board.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,
@@ -3147,7 +3333,10 @@ column, and either the reason the pass would fold past it or the transition it
 is clear for, in the dispatcher's order: every [expedited](#expedite) row first
 whatever column it sits in, then the rest, and inside each half the rightmost
 column first and the order the board itself draws that column in. An expedited
-row is marked, so a queue reordered by one says why. `hatch queue AER-1`
+row is marked, so a queue reordered by one says why. A clear row that is a
+[hop](#the-hop) reads `-> <column>  (express, no session)` in place of the bare
+arrow, so it reads differently from a row `go-to-work` would spawn a session
+for even though both print no reason to fold past. `hatch queue AER-1`
 scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical

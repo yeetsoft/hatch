@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal } from '@hatch/ui';
-import { getIssue, patchIssue, setExpedited } from '../api/client';
+import { getIssue, patchIssue, setExpedited, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { ExpediteControl } from './ExpediteControl';
+import { ExpressControl } from './ExpressControl';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
@@ -30,6 +31,10 @@ interface Asked {
       until it answers. */
   moving?: boolean;
   moveError?: string;
+  /** The same, for express. */
+  express?: boolean;
+  expressError?: string;
+  expressing?: boolean;
 }
 
 /**
@@ -195,6 +200,24 @@ export function IssuePeek({
     [key, apply, onMove],
   );
 
+  /* Carried past a column marked Express skips, with no session, or no
+     longer. Its own endpoint - the write is closed to an API key - and
+     otherwise exactly `expedite`. */
+  const express = useCallback(
+    async (next: boolean) => {
+      if (!key) return;
+      apply(key, { expressing: true, expressError: undefined });
+      try {
+        const issue = await setExpress(key, next);
+        apply(key, { express: issue.express, expressing: false });
+        onExpedited();
+      } catch (err) {
+        apply(key, { expressing: false, expressError: message(err) });
+      }
+    },
+    [key, apply, onExpedited],
+  );
+
   // Rendered unconditionally so the dialog's own open/closed handling - focus,
   // escape, the scrim - is the one that runs. Its title needs a card, though,
   // so a closed peek has nothing to say. Below every hook: the rules of hooks
@@ -265,6 +288,13 @@ export function IssuePeek({
             onChange={(next) => void expedite(next)}
           />
           {asked.expediteError && <span className="text-danger">{asked.expediteError}</span>}
+          <ExpressControl
+            express={asked.express ?? card.express}
+            directory={directory}
+            busy={asked.expressing ?? false}
+            onChange={(next) => void express(next)}
+          />
+          {asked.expressError && <span className="text-danger">{asked.expressError}</span>}
         </div>
 
         {(card.readyAt || card.dueAt) && (

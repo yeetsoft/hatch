@@ -363,7 +363,8 @@ public sealed class GoToWorkTests
 
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
-        var runnerName = Checkout.Runner(null, Checkout.Host(), elsewhere);
+        var runnerName = await Checkout.RunnerAsync(
+            null, Checkout.Host(), elsewhere, null, default, h.Runtime.RunnersPath);
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", elsewhere], default));
 
@@ -469,6 +470,50 @@ public sealed class GoToWorkTests
         Assert.Equal(2, h.Sessions.Spawned.Count);
         Assert.Equal(2, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
         Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 2 reached", StringComparison.Ordinal));
+    }
+
+    // ---- The hop ----
+
+    [Fact]
+    public async Task A_hop_spawns_nothing_and_the_loop_reads_the_board_again()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        // `--once` waits for the pass that actually is one: a hop is not a
+        // session, so the loop reads the board again rather than stopping on
+        // it, and stops on the idle pass that follows instead.
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Workspace.Calls);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Equal(2, h.Wire.Count("GET", Queue));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Max_runs_1_with_a_hop_then_a_session_runs_exactly_one_session()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        OneTicket(h, "AER-2");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default);
+
+        // The hop did not advance --max-runs, so the cap is spent on the one
+        // pass that actually spawned something.
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 1 reached", StringComparison.Ordinal));
     }
 
     // ---- Coming back as a newer version of itself ----
