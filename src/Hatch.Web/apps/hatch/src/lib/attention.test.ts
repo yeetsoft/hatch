@@ -49,6 +49,7 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   inReviewWithoutPullRequest: 0,
   questions: [],
   conflicts: [],
+  reviewsHeldBack: 0,
   ...over,
 });
 
@@ -82,6 +83,13 @@ describe('attentionCount', () => {
     expect(attentionCount(failing)).toBe(0);
     expect(attentionTone(failing)).toBe('rest');
     expect(attentionLabel(failing)).toBe('Nothing is waiting on you');
+  });
+
+  it('ignores a held-back pull request even alongside reviews that are not', () => {
+    // reviewsHeldBack is not a second source for this count - only
+    // `reviews.length` is, however inconsistent a caller's data might be.
+    expect(attentionCount(attention({ reviews: [], reviewsHeldBack: 3 }))).toBe(0);
+    expect(attentionCount(attention({ reviews: [review()], reviewsHeldBack: 3 }))).toBe(1);
   });
 });
 
@@ -158,6 +166,22 @@ describe('reviewEmptyWords', () => {
   it('says one of them in the singular', () => {
     expect(reviewEmptyWords(attention({ inReviewWithoutPullRequest: 1 }))).toBe(
       '1 issue is in review with no pull request recorded.',
+    );
+  });
+
+  it('says how many pull requests are waiting on the loop', () => {
+    // The third emptiness: every pull request in review is held back by a
+    // conflict or a failed build, so none of them is this section's to show.
+    expect(reviewEmptyWords(attention({ reviewsHeldBack: 2 }))).toBe('2 pull requests are waiting on the loop.');
+  });
+
+  it('says one held-back pull request in the singular', () => {
+    expect(reviewEmptyWords(attention({ reviewsHeldBack: 1 }))).toBe('1 pull request is waiting on the loop.');
+  });
+
+  it('combines with the no-pull-request wording when both are nonzero', () => {
+    expect(reviewEmptyWords(attention({ inReviewWithoutPullRequest: 2, reviewsHeldBack: 1 }))).toBe(
+      '2 issues are in review with no pull request recorded. 1 pull request is waiting on the loop.',
     );
   });
 });

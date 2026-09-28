@@ -66,16 +66,6 @@ public class AttentionController(HatchContext db) : ControllerBase
             })
             .ToListAsync(ct);
 
-        // Split rather than filtered twice: the ones without a link are not
-        // dropped, they are counted, and the empty state says how many. An
-        // issue that has sat in review for a month with nowhere to review it is
-        // worth saying out loud without being worth lighting the strip up for.
-        var reviews = inReview
-            .Where(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl))
-            .Select(i => new ReviewDto(
-                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!))
-            .ToList();
-
         // The verdicts of the column's issues, one query for all of them. An
         // issue conflicts if any repository's verdict says so, and it is listed
         // with only those - a clean repository beside a conflicted one is not
@@ -110,6 +100,26 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, failed[i.Id]))
             .ToList();
 
-        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions, conflicts, failingBuilds);
+        // Split rather than filtered twice: the ones without a link are not
+        // dropped, they are counted, and the empty state says how many. An
+        // issue that has sat in review for a month with nowhere to review it is
+        // worth saying out loud without being worth lighting the strip up for.
+        // One held back by a conflict or a failed build is not a row here
+        // either - it is the loop's to clear, not a person's - so it is
+        // counted towards ReviewsHeldBack instead, never both.
+        var reviews = inReview
+            .Where(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
+                && !conflicted.ContainsKey(i.Id)
+                && !failed.ContainsKey(i.Id))
+            .Select(i => new ReviewDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!))
+            .ToList();
+
+        var withoutPr = inReview.Count(i => string.IsNullOrWhiteSpace(i.PullRequestUrl));
+
+        var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
+
+        return new AttentionDto(reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack);
     }
 }
