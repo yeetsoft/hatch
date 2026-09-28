@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
@@ -24,6 +25,7 @@ export function BoardFilters({
   projects,
   showing,
   total,
+  trailing,
 }: {
   filter: CardFilter;
   onChange: (next: CardFilter) => void;
@@ -34,6 +36,8 @@ export function BoardFilters({
   /** How many cards survive the filter, and how many there are - the count is the only feedback a search box gives. */
   showing: number;
   total: number;
+  /** Placed at the right end of the row, on whichever line it wraps to; the row does not learn what it is. */
+  trailing?: ReactNode;
 }) {
   const filtering = isFiltering(filter);
 
@@ -131,6 +135,8 @@ export function BoardFilters({
           </button>
         </>
       )}
+
+      {trailing && <div className="hatch-filter-trailing">{trailing}</div>}
     </div>
   );
 }

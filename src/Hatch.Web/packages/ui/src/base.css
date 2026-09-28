@@ -1,7 +1,8 @@
 /* @hatch/ui — the document layer.
    ---------------------------------------------------------------------------
    The rules an app needs before it renders anything of its own: the box model,
-   the body's face and ground, the heading scale, and the native form controls.
+   the body's face and ground, the heading scale, the native form controls, and
+   one utility.
 
    This is a separate entry point from tokens.css because it is a different
    kind of thing. tokens.css states values and paints nothing; base.css paints,
@@ -24,7 +25,9 @@
    - `html, body, #root { height: 100% }`. That is an app-shell decision — a
      full-height flex column — not a property of the vocabulary.
 
-   Every value comes from tokens.css. A literal here is a bug. */
+   Every value comes from tokens.css. A literal here is a bug - except the
+   hairline clip of the visually-hidden utility at the end, which tokens.css §4
+   leaves free: below the base, hairlines and 1-3px nudges are not tokens. */
 
 * {
   box-sizing: border-box;
@@ -113,4 +116,25 @@ textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+/* ---------------------------------------------------------------------------
+   Utility.
+
+   A name that must be in the outline but not on the screen: a page title the
+   design drops, a label a control does not draw. Visually hidden, not
+   display:none - the name is still announced. Clip rather than a zero-size box
+   so it is never read as an empty label. It restates
+   .hatch-theme-switch__legend rather than replacing it: a component keeps its
+   own appearance, and the standalone top bar loads without this file. */
+.hatch-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
