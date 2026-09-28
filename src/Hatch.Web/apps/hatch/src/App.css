@@ -742,6 +742,31 @@
   text-decoration: underline;
 }
 
+/* The branch has stopped merging. The one chip that is drawn for a fault, so it
+   wears the warning ladder's colours rather than the muted grey of a date - but
+   not the filled overdue treatment, which nothing here is urgent enough to
+   borrow. The files ride beside it in the page's own type. */
+.hatch-conflict {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  max-width: 100%;
+}
+
+.hatch-chip-conflict {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.hatch-conflict-files {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 /* A card only visible because its column's fold was opened. Held back rather
    than hidden, and drawn as such. */
 .hatch-card.waiting {

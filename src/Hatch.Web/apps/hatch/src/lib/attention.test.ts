@@ -3,6 +3,7 @@ import {
   attentionCount,
   attentionLabel,
   attentionTone,
+  conflictEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
   waitedWords,
@@ -43,6 +44,19 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
 describe('attentionCount', () => {
   it('counts the rows the panel would draw', () => {
     expect(attentionCount(attention({ reviews: [review(), review()], questions: [question()] }))).toBe(3);
+  });
+
+  /* A conflict is the loop's to fix, and one it cannot fix becomes a stall,
+     which is a question - already counted. Counting it here as well would light
+     the control for work nobody has been asked to do. */
+  it('does not count an issue in review whose branch conflicts', () => {
+    const conflicts = [
+      { key: 'AER-14', title: 'A story that stopped merging', type: 'story', pullRequestUrl: null, trunk: 'main', files: ['a'] },
+    ];
+
+    expect(attentionCount(attention({ conflicts }))).toBe(0);
+    expect(attentionTone(attention({ conflicts }))).toBe('rest');
+    expect(attentionLabel(attention({ conflicts }))).toBe('Nothing is waiting on you');
   });
 
   it('does not count an issue in review with no pull request', () => {
@@ -158,5 +172,11 @@ describe('waitedWords', () => {
 
   it('falls back to a word rather than NaN on an unparseable instant', () => {
     expect(waitedWords('not a date', NOW)).toBe('waiting');
+  });
+});
+
+describe('conflictEmptyWords', () => {
+  it('says the loop has nothing of this kind to fix', () => {
+    expect(conflictEmptyWords()).toBe('No branch in review conflicts with the trunk.');
   });
 });

@@ -166,6 +166,73 @@ public class AttentionControllerTests
         Assert.Equal(0, attention.InReviewWithoutPullRequest);
     }
 
+    // ---- The conflict half ----
+
+    [Fact]
+    public async Task Attention_ListsAnIssueInReviewWhoseBranchConflicts_WithItsFiles()
+    {
+        var h = await NewAsync();
+        var conflicted = await h.FileAsync("story", "stopped merging", h.Review);
+        var clean = await h.FileAsync("story", "still merges", h.Review);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, "a.txt", "b.txt");
+        await h.VerdictAsync(clean, MergeVerdicts.Clean);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Conflicts!);
+
+        Assert.Equal(Key(conflicted), row.Key);
+        Assert.Equal("stopped merging", row.Title);
+        Assert.Equal("main", row.Trunk);
+        Assert.Equal(["a.txt", "b.txt"], row.Files);
+    }
+
+    [Fact]
+    public async Task Attention_KeepsTheColumnsOwnOrderForConflicts()
+    {
+        var h = await NewAsync();
+        var second = await h.FileAsync("story", "below", h.Review, rank: 2048);
+        var first = await h.FileAsync("story", "top", h.Review, rank: 1024);
+        await h.VerdictAsync(second, MergeVerdicts.Conflicted, "x");
+        await h.VerdictAsync(first, MergeVerdicts.Conflicted, "y");
+
+        Assert.Equal(
+            [Key(first), Key(second)],
+            Value(await h.Attention.GetAttention(default)).Conflicts!.Select(c => c.Key));
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAConflictOnAnIssueThatIsNotInReview()
+    {
+        var h = await NewAsync();
+        var underway = await h.FileAsync("story", "being fixed", h.InProgress);
+        await h.VerdictAsync(underway, MergeVerdicts.Conflicted, "x");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts!);
+    }
+
+    /// <summary>
+    /// The dispatcher counts only what a project still binds, so this list
+    /// must: a conflict the loop will not work is not one to list as its work.
+    /// </summary>
+    [Fact]
+    public async Task Attention_IgnoresAConflictInARepositoryTheProjectNoLongerBinds()
+    {
+        var h = await NewAsync();
+        h.Db.ProjectRepositories.Add(new EfHatchProjectRepository
+        {
+            ProjectId = h.ProjectId, Remote = "git@forge.example:acme/kept.git", Canonical = "forge.example/acme/kept", CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("story", "conflicts elsewhere", h.Review);
+        await h.VerdictInAsync(issue, MergeVerdicts.Conflicted, "x", canonical: "forge.example/acme/let-go");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts!);
+
+        await h.VerdictInAsync(issue, MergeVerdicts.Conflicted, "y", canonical: "forge.example/acme/kept");
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).Conflicts!);
+    }
+
     // ---- The question half ----
 
     [Fact]
@@ -280,6 +347,33 @@ public class AttentionControllerTests
             Db.Statuses.Add(shelf);
             await Db.SaveChangesAsync();
             return shelf.Id;
+        }
+
+        /// <summary>A runner's verdict, written straight to the row.</summary>
+        public async Task VerdictAsync(
+            EfHatchIssue issue, string verdict, params string[] files) =>
+            await VerdictAsync(issue, verdict, files, "forge.example/acme/hatch");
+
+        public async Task VerdictInAsync(
+            EfHatchIssue issue, string verdict, string file, string canonical) =>
+            await VerdictAsync(issue, verdict, [file], canonical);
+
+        private async Task VerdictAsync(EfHatchIssue issue, string verdict, string[] files, string canonical)
+        {
+            var row = await Db.MergeChecks.FirstOrDefaultAsync(m => m.IssueId == issue.Id && m.Canonical == canonical);
+            if (row is null)
+            {
+                row = new EfHatchMergeCheck
+                {
+                    IssueId = issue.Id, Remote = canonical, Canonical = canonical, Trunk = "main",
+                    TrunkSha = new string('a', 40), Verdict = verdict, CheckedAt = Now, CheckedBy = "runner",
+                };
+                Db.MergeChecks.Add(row);
+            }
+
+            row.Verdict = verdict;
+            row.Files = files.Length == 0 ? null : string.Join('\n', files);
+            await Db.SaveChangesAsync();
         }
 
         public async Task<EfHatchComment> AskAsync(EfHatchIssue issue, string body, DateTimeOffset? at = null)

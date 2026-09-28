@@ -16,7 +16,12 @@ export type AttentionTone = 'rest' | 'asking';
 /**
  * How many rows the panel would draw.
  *
- * Reviews plus questions, and deliberately not `inReviewWithoutPullRequest`.
+ * Reviews plus questions, and deliberately not `conflicts` and not
+ * `inReviewWithoutPullRequest`. A conflict is the loop's to fix, and one it
+ * cannot fix becomes a stall, which is a question, which is already counted
+ * here.
+ *
+ * `inReviewWithoutPullRequest` is left out too.
  * An issue standing in review with nowhere to review it is something a person
  * cannot act on from here, and a control that stayed lit for one would be a
  * control nobody reads after a week. It is said out loud in the section's empty
@@ -68,6 +73,10 @@ export function reviewEmptyWords(attention: Attention | null): string {
     ? '1 issue is in review with no pull request recorded.'
     : `${without} issues are in review with no pull request recorded.`;
 }
+
+/** The conflicts section's empty state. It is not counted towards anything, so
+    it is the only place that says the loop has nothing of this kind to fix. */
+export const conflictEmptyWords = (): string => 'No branch in review conflicts with the trunk.';
 
 /** The other section's empty state. One wording: a question either exists or it
     does not, and there is no second kind of nothing to tell apart. */

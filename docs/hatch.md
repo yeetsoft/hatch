@@ -765,6 +765,54 @@ would be green while the SQL was wrong, which is the one failure mode the lane
 exists to prevent — the same argument the trading silo's queue makes about its
 own. CI runs it on every pull request.
 
+### Merge check
+
+`EfHatchMergeCheck` — `IssueId`, `Remote`, `Canonical`, `Trunk`, `TrunkSha`,
+`Verdict`, `Branch`, `BranchSha`, `Files`, `CheckedAt`, `Runner`, `CheckedBy`.
+What a runner last found when it asked git whether an issue's branch still
+merges with the trunk. A verdict is one of four: `clean`, `conflicted`, `none`
+(no unmerged branch on origin is named for the key) and `ambiguous` (two or more
+are). The last two exist so that the queue can say *why* it will not act, rather
+than claiming nobody looked.
+
+**One per issue per repository.** A project may bind several repositories, and
+the runner enters an issue's branch in every checkout that has one, so a branch
+can conflict in one of two repositories and be clean in the other. A verdict for
+the pair could not say which. The table is unique on `(IssueId, Canonical)`,
+keyed like a [repository](#repository) is — the server canonicalises the
+remote a runner spelled, and nothing on the client does — and a second `PUT` for
+the same pair replaces the first. An issue conflicts if any of its verdicts does.
+
+**The verdict is a fact about two shas.** It is taken with `git merge-tree
+--write-tree`, which needs no token and reads the same on every forge, so any
+two runners agree. Both shas are stored in full, because the runner's poll
+compares them with what `git ls-remote` prints. `none` and `ambiguous` carry no
+branch sha — they are not about one branch — which is deliberate: the poll keeps
+what it saw for those two in memory rather than asking the board for a
+fingerprint.
+
+**A repeat writes no event.** A runner asks every interval, and a trail that
+recorded every answer would bury the two lines it exists for: when a branch
+started conflicting and when it stopped. A verdict that differs from the stored
+one — a different verdict, or different files — writes `merge_check_changed`,
+carrying the remote and both sides. One that repeats it moves the shas, the time
+and the runner and writes nothing.
+
+`PUT /api/hatch/issues/{key}/merge-check` is a **key's write** — the caller is a
+runner reporting what git said, and a fact only a person could enter would be
+one nobody enters. It names no budget and reserves no work. Whether an issue in
+review is *dispatched* on a verdict is the server's rule (see [the
+dispatcher](#the-dispatcher)), not the runner's: the runner says what git said,
+and the board decides what it means. The route does not look at the issue's
+column, because a verdict taken at the end of an implementation increment
+arrives before anybody has moved the ticket. It refuses, each in a sentence, a
+remote that does not canonicalise, a verdict that is not one of the four,
+`conflicted` with no files, and `clean` or `conflicted` with no full branch sha.
+
+Every `IssueDto` carries its verdicts, read in one query for a batch. The issue
+page shows a conflicted one beside the pull request chip and names the files;
+a clean verdict, no branch, or no verdict draws nothing.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -1063,6 +1111,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/merge-check` | PUT | Takes a runner's verdict on whether the issue's branch still merges with the trunk, one per repository — see [Merge check](#merge-check). A key may write it. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner? }`; `404` on an unknown key, `400` naming what is wrong otherwise. A verdict that repeats the stored one writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
@@ -1070,7 +1119,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, and every open question in the house. One read for both halves — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, the issues in review whose branch conflicts with the trunk, and every open question in the house. One read for every half — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -1218,7 +1267,11 @@ answer worth having, and it is the one it gives most of the time.
       "pullRequestUrl": "https://forge.example/pulls/12" }
   ],
   "inReviewWithoutPullRequest": 3,
-  "questions": [ ... ]
+  "questions": [ ... ],
+  "conflicts": [
+    { "key": "AER-14", "title": "A story that stopped merging", "type": "story",
+      "pullRequestUrl": null, "trunk": "main", "files": ["src/a.cs"] }
+  ]
 }
 ```
 
@@ -1240,6 +1293,23 @@ Neither half restates a rule that already lives somewhere:
   `/questions` answers with — `Questions.Open`, a question with nothing pointing
   at it — so the count on the bar and the badge on a board card cannot
   disagree.
+
+### The issue in review whose branch conflicts
+
+`conflicts` is the third half, and it is the one that is **listed and never
+counted**. An issue in review whose stored [merge check](#merge-check) says
+`conflicted` is drawn as its own section, in the column's order, naming the
+trunk and the files. It does not light the control, and does not add to its
+count.
+
+The reason is who the work belongs to. A conflict is the loop's to fix: a runner
+resolves it on the branch and pushes, and nobody was asked for anything. One the
+loop *cannot* fix becomes a stall, a stall becomes a question, and a question
+already lights the control — so counting the conflict here as well would light
+it twice, and for work nobody has been asked to do. It is shown because a person
+looking at the panel would otherwise not know why a pull request in the list has
+stopped being mergeable. Where a project binds repositories, only a verdict for
+one it still binds is listed, the same rule the dispatcher applies.
 
 ### The issue in review with no pull request
 

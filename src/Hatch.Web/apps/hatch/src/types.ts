@@ -193,6 +193,31 @@ export interface Issue {
       reaches and writable only by a person, through its own route - see
       IssueExpediteController. */
   expedited: boolean;
+  /** What each runner last found when it asked git whether this issue's branch
+      still merges with the trunk - one per repository, empty for an issue no
+      runner has looked at. Mirrors MergeCheckDto. */
+  mergeChecks?: MergeCheck[];
+}
+
+/** What a runner's `git merge-tree` said about a branch, and about which
+    repository. `clean` and `conflicted` are about one branch; `none` and
+    `ambiguous` say why there is no branch to judge. */
+export type MergeVerdict = 'clean' | 'conflicted' | 'none' | 'ambiguous';
+
+/** One repository's verdict on an issue's branch. Mirrors MergeCheckDto. */
+export interface MergeCheck {
+  remote: string;
+  canonical: string;
+  trunk: string;
+  trunkSha: string;
+  verdict: MergeVerdict;
+  branch: string | null;
+  branchSha: string | null;
+  /** The conflicted files; empty for every verdict but `conflicted`. */
+  files: string[];
+  checkedAt: string;
+  runner: string | null;
+  checkedBy: string;
 }
 
 /** An ordinary note, a question that needs deciding, or the answer to one.
@@ -244,6 +269,7 @@ export type IssueEventKind =
   | 'ready_changed'
   | 'due_changed'
   | 'pull_request_changed'
+  | 'merge_check_changed'
   | 'model_override_changed'
   | 'effort_override_changed'
   | 'dependency_added'
@@ -682,6 +708,22 @@ export interface Attention {
   /** Every open question in the house, oldest first - the same list, order and
       definition of open the rest of Hatch uses. */
   questions: Question[];
+  /** The issues in that column whose branch no longer merges with the trunk, in
+      the column's order. Drawn as their own section and never counted towards
+      the badge - a conflict is the loop's to fix, and one it cannot fix becomes
+      a stall, which is a question, which already lights the control. Mirrors
+      ConflictDto. */
+  conflicts?: Conflict[];
+}
+
+/** One issue in review whose branch conflicts with the trunk. */
+export interface Conflict {
+  key: string;
+  title: string;
+  type: string;
+  pullRequestUrl: string | null;
+  trunk: string;
+  files: string[];
 }
 
 // ---- Who is sitting here ----

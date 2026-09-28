@@ -34,6 +34,7 @@ import { MomentChip } from '../components/MomentChip';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { MomentField } from '../components/MomentField';
+import { MergeCheckChip } from '../components/MergeCheckChip';
 import { PullRequestLink } from '../components/PullRequestLink';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
@@ -44,6 +45,7 @@ import { closeOffer } from '../lib/closeSubtree';
 import { boardColumns, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { message } from '../lib/errors';
+import { mergeCheckEventWords } from '../lib/mergeCheck';
 import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { openQuestions } from '../lib/questions';
@@ -333,6 +335,7 @@ export function IssuePage() {
             <MomentChip kind="ready" value={issue.readyAt} />
             <MomentChip kind="due" value={issue.dueAt} muted={stopped} />
             <PullRequestLink url={issue.pullRequestUrl} />
+            <MergeCheckChip checks={issue.mergeChecks} />
             <span className="text-muted">
               filed by {issue.createdBy} on {new Date(issue.createdAt).toLocaleDateString()}
             </span>
@@ -1366,6 +1369,10 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
  * a list of what happened, not a diff viewer.
  */
 function describe(event: IssueEvent): string {
+  // Both sides are objects here - a verdict and the files it named - which
+  // `short` would print as [object Object].
+  if (event.kind === 'merge_check_changed') return mergeCheckEventWords(event.payload);
+
   const { from, to } = event.payload ?? {};
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;

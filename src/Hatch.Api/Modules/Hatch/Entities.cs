@@ -726,6 +726,15 @@ public class EfHatchIssueEvent
     public const string PullRequestChanged = "pull_request_changed";
 
     /// <summary>
+    /// A runner's verdict on whether the issue's branch merges with the trunk
+    /// changed, in one repository: it started or stopped conflicting, or the
+    /// files that conflict are different. The payload carries the
+    /// <c>remote</c> and both sides. A verdict that repeats the stored one
+    /// writes nothing - see <see cref="EfHatchMergeCheck"/>.
+    /// </summary>
+    public const string MergeCheckChanged = "merge_check_changed";
+
+    /// <summary>
     /// The issue was given to somebody, handed to somebody else, or taken off
     /// everybody. The payload's <c>from</c> and <c>to</c> each carry a
     /// <c>name</c> beside the kind and the id, and that is load-bearing: an
@@ -1006,6 +1015,85 @@ public class EfHatchIssueDependency
     public required string CreatedBy { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// What a runner last found when it asked git whether an issue's branch still
+/// merges with the trunk - one row per issue per repository.
+///
+/// A row per repository because a project may bind several, and the runner
+/// enters the issue's branch in every checkout that has one: a branch that
+/// conflicts in one of two repositories is a conflicted issue, and a verdict
+/// that said so for the pair would have to say which. An unbound project's
+/// verdict is keyed on the canonical of the remote the runner spelled, like any
+/// other.
+/// </summary>
+/// <remarks>
+/// <para>The verdict is a fact about two shas and nothing else, which is what
+/// lets any two runners agree: it is taken with <c>git merge-tree</c>, needs no
+/// token, and reads the same on every forge. The shas are full, because the
+/// runner's poll compares them with what <c>git ls-remote</c> prints.</para>
+///
+/// <para><c>none</c> and <c>ambiguous</c> carry no branch sha. That is
+/// deliberate - they are not about one branch - and the poll keeps what it saw
+/// for those two in memory instead of asking the board for a fingerprint.</para>
+///
+/// <para>A verdict that says what the stored one said writes no event and moves
+/// only the shas, the time and the runner; one that changes writes
+/// <see cref="EfHatchIssueEvent.MergeCheckChanged"/>, so the trail says when a
+/// branch started and stopped conflicting without recording every poll.</para>
+/// </remarks>
+[Table("MergeChecks")]
+[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
+public class EfHatchMergeCheck
+{
+    public const int MaxRemoteLength = EfHatchProjectRepository.MaxRemoteLength;
+    public const int MaxRefLength = 255;
+    public const int ShaLength = 40;
+    public const int MaxVerdictLength = 16;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>The remote as the runner spelled it.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the matching identity, and the unique index's other half.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    [MaxLength(MaxRefLength)]
+    public required string Trunk { get; set; }
+
+    [MaxLength(ShaLength)]
+    public required string TrunkSha { get; set; }
+
+    /// <summary>One of <see cref="MergeVerdicts"/>.</summary>
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    [MaxLength(MaxRefLength)]
+    public string? Branch { get; set; }
+
+    [MaxLength(ShaLength)]
+    public string? BranchSha { get; set; }
+
+    /// <summary>The conflicted files, newline-joined - stored the way <see cref="EfHatchRunner.Remotes"/> is. Null when there are none.</summary>
+    public string? Files { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+
+    /// <summary>The runner that took it, as it names itself on a claim.</summary>
+    [MaxLength(ClaimRequest.MaxRunnerLength)]
+    public string? Runner { get; set; }
+
+    /// <summary>The actor - the name of the key - that put it.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CheckedBy { get; set; }
 }
 
 /// <summary>

@@ -253,6 +253,14 @@ public class AdminSurfaceTests
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
 
+        // What a runner found when it asked git whether an issue's branch
+        // still merges with the trunk. A machine's write, like the lease
+        // above, and for the same reason: a fact only a person could enter
+        // would be one nobody enters. It names no budget and reserves no
+        // work; whether an issue in review is dispatched on it is the
+        // server's rule, not the runner's. See IssueMergeCheckController.
+        "IssueMergeCheckController.PutMergeCheck",
+
         // A playbook's power routed through a different table, and cut the
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its

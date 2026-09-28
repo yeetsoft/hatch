@@ -226,6 +226,11 @@ public record IssueClaimDto(
 /// <see cref="IssueExpediteController"/>: a key that could set one could put
 /// its own ticket at the front of every night.
 /// </param>
+/// <param name="MergeChecks">
+/// What each runner last found when it asked git whether this issue's branch
+/// still merges with the trunk - one per repository, and empty for an issue no
+/// runner has looked at. See <see cref="MergeCheckDto"/>.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -249,7 +254,8 @@ public record IssueDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IssueClaimDto? Claim = null,
-    bool Expedited = false);
+    bool Expedited = false,
+    IReadOnlyList<MergeCheckDto>? MergeChecks = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -522,10 +528,27 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// order and the same definition of open that <c>/api/hatch/questions</c>
 /// answers with, because it is the same call.
 /// </param>
+/// <param name="Conflicts">
+/// The issues in that column whose branch no longer merges with the trunk, in
+/// the column's order. Listed and never counted towards the badge: a conflict
+/// is the loop's to fix, and one it cannot fix becomes a stall, which is a
+/// question, which already lights the control.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
-    IReadOnlyList<QuestionDto> Questions);
+    IReadOnlyList<QuestionDto> Questions,
+    IReadOnlyList<ConflictDto>? Conflicts = null);
+
+/// <summary>One issue in review whose branch conflicts with the trunk, and what conflicts.</summary>
+/// <param name="Key">The issue's key.</param>
+/// <param name="Title">The issue's title.</param>
+/// <param name="Type">The issue's type.</param>
+/// <param name="PullRequestUrl">Where it is being reviewed, if a pull request is recorded.</param>
+/// <param name="Trunk">The trunk it conflicts with, by name.</param>
+/// <param name="Files">The files that conflict, across the repositories that do.</param>
+public record ConflictDto(
+    string Key, string Title, string Type, string? PullRequestUrl, string Trunk, IReadOnlyList<string> Files);
 
 // ---- The board ----
 
@@ -1091,6 +1114,72 @@ public record WorkLogSessionsDto(
     DateTimeOffset? FirstSessionAt,
     DateTimeOffset? LastSessionAt,
     IReadOnlyList<WorkLogSessionDto> Sessions);
+
+// ---- Merge checks ----
+
+/// <summary>
+/// What a runner found when it asked git whether a branch still merges with the
+/// trunk. Four and no more: the two that say something about the merge, and the
+/// two that say why there is no merge to judge.
+/// </summary>
+public static class MergeVerdicts
+{
+    /// <summary>The branch merges with the trunk without a conflict - including where the trunk is already in it.</summary>
+    public const string Clean = "clean";
+
+    /// <summary>The branch and the trunk do not merge; the files are named.</summary>
+    public const string Conflicted = "conflicted";
+
+    /// <summary>No unmerged branch on origin is named for the issue. A branch already merged into the trunk counts as none.</summary>
+    public const string None = "none";
+
+    /// <summary>Two or more unmerged branches on origin are named for the issue, and nothing here will guess which is its own.</summary>
+    public const string Ambiguous = "ambiguous";
+
+    public static readonly IReadOnlyList<string> All = [Clean, Conflicted, None, Ambiguous];
+}
+
+/// <summary>
+/// A verdict on one issue's branch in one repository, as a runner reports it.
+/// </summary>
+/// <param name="Remote">The repository, as the runner spells it. The server canonicalises it; nothing on the client does.</param>
+/// <param name="Trunk">The trunk's name.</param>
+/// <param name="TrunkSha">The trunk's full sha on origin when the verdict was taken.</param>
+/// <param name="Verdict">One of <see cref="MergeVerdicts"/>.</param>
+/// <param name="Branch">The branch's name, or null where there is none to name.</param>
+/// <param name="BranchSha">
+/// The branch's full sha on origin. Required for <c>clean</c> and
+/// <c>conflicted</c>; null for <c>none</c> and <c>ambiguous</c>, which are not
+/// about one branch.
+/// </param>
+/// <param name="Files">The conflicted files. Required for <c>conflicted</c>, and empty otherwise.</param>
+/// <param name="Runner">The runner taking the verdict, as it names itself on a claim.</param>
+public record MergeCheckRequest(
+    string Remote,
+    string Trunk,
+    string TrunkSha,
+    string Verdict,
+    string? Branch,
+    string? BranchSha,
+    IReadOnlyList<string>? Files,
+    string? Runner);
+
+/// <summary>One repository's verdict on an issue's branch.</summary>
+/// <param name="Remote">The repository as the runner spelled it.</param>
+/// <param name="Canonical">The repository's matching identity.</param>
+/// <param name="CheckedBy">Who the taking key belongs to.</param>
+public record MergeCheckDto(
+    string Remote,
+    string Canonical,
+    string Trunk,
+    string TrunkSha,
+    string Verdict,
+    string? Branch,
+    string? BranchSha,
+    IReadOnlyList<string> Files,
+    DateTimeOffset CheckedAt,
+    string? Runner,
+    string CheckedBy);
 
 // ---- Runners ----
 

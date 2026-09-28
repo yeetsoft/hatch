@@ -19,6 +19,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
+    public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -142,6 +143,17 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(d => d.DependsOn)
                 .WithMany()
                 .HasForeignKey(d => d.DependsOnId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cascade with the issue: a verdict about the branch of a ticket nobody
+        // kept is a row about nothing. No navigation on the issue - the
+        // projection reads the whole batch in one query and groups it.
+        modelBuilder.Entity<EfHatchMergeCheck>(e =>
+        {
+            e.HasOne(m => m.Issue)
+                .WithMany()
+                .HasForeignKey(m => m.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
