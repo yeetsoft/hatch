@@ -797,9 +797,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="Kind">
 /// One of <see cref="WorkKinds"/>: whether this dispatch moves the issue on
-/// (<c>advance</c>) or resolves the conflict its branch has with the trunk
-/// (<c>conflicts</c>). Derived from the move and stored nowhere - a conflict
-/// dispatch is exactly the one whose two ends are the same column.
+/// (<c>advance</c>), resolves the conflict its branch has with the trunk
+/// (<c>conflicts</c>), or fixes the build that fails on its branch's tip
+/// (<c>build</c>). Derived and stored nowhere - the last two are exactly the
+/// dispatches whose two ends are the same column, and which of them it is comes
+/// from what the board holds about the branch.
 /// </param>
 public record WorkDto(
     IssueDto Issue,
@@ -815,8 +817,10 @@ public record WorkDto(
     IReadOnlyList<CommentDto>? Messages = null);
 
 /// <summary>
-/// What a dispatch is for. Two, and the second is the only dispatch that does
-/// not end in a different column.
+/// What a dispatch is for. Three, and the second and third are the only
+/// dispatches that do not end in a different column: both are an issue in
+/// review, and an agent's work on it is judged by the branch and not by the
+/// column.
 /// </summary>
 public static class WorkKinds
 {
@@ -829,6 +833,13 @@ public static class WorkKinds
     /// the branch and not by the column.
     /// </summary>
     public const string Conflicts = "conflicts";
+
+    /// <summary>
+    /// Fix the build that fails on the tip of the branch of an issue in review,
+    /// whose branch merges cleanly with the trunk. Judged by whether the session
+    /// pushed a new tip, and the build on that tip is judged later, by the board.
+    /// </summary>
+    public const string Build = "build";
 }
 
 /// <summary>

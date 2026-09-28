@@ -68,7 +68,7 @@ public static class Fixtures
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
-            ToStatus: to is null ? null : Status(kind == WorkKinds.Conflicts ? 3 : 4, to),
+            ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
             Playbook: Playbook(),
             Children: children ?? [],
             Repositories: repositories ?? [],
@@ -86,6 +86,20 @@ public static class Fixtures
             key, from: "In Review", to: "In Review", repositories: repositories,
             issue: Issue(key) with { MergeChecks = checks ?? [MergeCheck(MergeVerdicts.Conflicted, trunk, files: "a.txt")] },
             kind: WorkKinds.Conflicts);
+
+    /// <summary>The dispatch of an issue in review whose build failed: review to itself, with the board's build verdict on it.</summary>
+    public static WorkDto BuildWork(
+        string key, IReadOnlyList<BuildCheckDto>? builds = null, IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        Work(
+            key, from: "In Review", to: "In Review", repositories: repositories,
+            issue: Issue(key) with { BuildChecks = builds ?? [Build(BuildVerdicts.Failed, "example.test/repo", failing: ["api", "CI"])] },
+            kind: WorkKinds.Build);
+
+    /// <summary>An issue in review whose build failed, and the queue row that says to fix it.</summary>
+    public static QueueEntryDto BuildRow(string key, params string[] failing) =>
+        new(
+            Issue(key) with { BuildChecks = [Build(BuildVerdicts.Failed, "example.test/repo", failing: failing)] },
+            Status(4, "In Review"), Status(4, "In Review"), null, WorkKinds.Build);
 
     public static WorkRepositoryDto Repository(
         string remote, string? canonical = null, string? baseBranch = null, bool primary = false,

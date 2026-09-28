@@ -2467,6 +2467,62 @@ origin — and it is the runner that asks, in the same code for the loop and for
 None of it runs when the lease was lost: the ticket is somebody else's by then,
 and what the board is told about its branch is theirs to say.
 
+#### A build increment is judged first by the push, then by the build
+
+An increment on an issue in review whose build failed starts and ends in the
+same column too, so it is judged by the **branch** as a conflict increment is —
+in the same code for the loop and for `hatch work` — but what it is asked is
+different, because **CI will not have run by the time the session ends**. The
+session is judged first by whether it pushed, and the build on what it pushed is
+judged later, by the board:
+
+- **Before anything is spawned**, after the claim and the reset, the runner reads
+  the build on the branch's tip again: for each checkout that holds a failed
+  verdict it takes the tip from `ls-remote` (no fetch, no tree touched), asks
+  `gh`, and reports what it finds, whether or not the tip moved. If the tip has
+  moved, or the build is no longer `failed`, nothing is spawned, no increment is
+  counted, the claim goes back and the loop reads the board again at once —
+  unless the board refused the verdict. A moved tip whose new build fails is
+  picked up as fresh build work by the next pass, which is right. **A forge that
+  cannot answer is unknown, not clear**: nothing is spawned and the pass waits.
+- **Only then are the logs read.** For each check still failing on the dispatched
+  tip the runner asks `gh run view --job <id> --log-failed`, and the excerpt is
+  the lines *before* the failure and not the cleanup after it: up to 150 lines
+  ending at the log's last `##[error]` line (or its end where there is none),
+  each line's job, step and timestamp prefix stripped, at most 12 KB a check. A
+  check that is not a job, or has no log, is *no log*. The prompt is composed
+  from what was just read.
+- **The session starts on the issue's branch with the trunk merged in**, as every
+  increment does, and no merge in progress. Its prompt is the review playbook,
+  then the ticket — whose header reads `In Review (fixing its failing build)` —
+  then a `## The failing build` section: for each repository the branch and the
+  sha, for each failing check its name and link and its excerpt in a fenced
+  block, and the command that prints the whole log. The section is capped at
+  40 KB; past it a log is left out and the command that prints it is named.
+  Failures that only reproduce under the database tests are the reason the
+  excerpt is there: the session's own machine will skip those tests, and the log
+  as CI reported it is the only account of the failure there is.
+- **After the session and its work log**, the runner reads origin's tip again,
+  before it leaves the tree, so that a trunk merge it pushes on the way out is
+  never taken for the session's fix. **A new tip is a fix pushed**, and not a
+  stall: the terminal, the tally and the runner's row say `fix pushed, build
+  pending`, and the runner puts a `pending` [build verdict](#build-check) on the
+  new tip *marked as a build increment's*, which is what lets the board open the
+  failed-again question if that build fails. One repository moved of two is
+  progress. **A tip that did not move is a stall**, flagged like any other with
+  the same question, and the comment says the build still fails and names the
+  checks. A tip that could not be read is *not known*, and flagged as such.
+- **A build that fails on the tip an increment pushed is not sent to another
+  agent.** The board opens a question naming the checks that still fail, with the
+  stall guard's `leave it` and `try again` — so a build nobody can fix costs one
+  increment and then a question, not a night. A failure on a tip somebody else
+  pushed is new work, as it is today. A `leave it` answer does not stop the loop:
+  once it is answered the issue is dispatchable again while its build still
+  fails on that sha, exactly as after the stall guard's question — the option's
+  own text says the answer is how to make the loop stop.
+
+None of it runs when the lease was lost, for the reason the conflict's does not.
+
 ### Where the loop's rules live
 
 On the server. `work/queue` is the same walk `work/next` takes, reported rather

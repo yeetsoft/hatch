@@ -148,6 +148,122 @@ public sealed class Lifecycle(Runtime runtime)
     public Task<Rechecked> JudgeAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct) =>
         CheckAllAsync(work, chosen, fetch: true, ct);
 
+    /// <summary>
+    /// Whether the build that made this a build dispatch is still failing on the
+    /// sha it was about, read off origin's tip as it stands now - and told to the
+    /// board.
+    /// </summary>
+    /// <remarks>
+    /// <para>Called after the reset, before anything is spawned: the board's
+    /// verdict was read before the claim and may be minutes old, and a push may
+    /// have landed since. For each checkout that holds a failed verdict it takes
+    /// the branch's tip from <c>ls-remote</c> - which touches no tree - reads the
+    /// build on it, and reports what it found, whether or not the tip moved. A
+    /// moved tip whose new build fails is picked up as fresh build work by the
+    /// next pass, which is right.</para>
+    ///
+    /// <para>Only where something is still red on the dispatched sha is each
+    /// failing check's log fetched, so the prompt is composed from what was just
+    /// read and nothing is spent on a log nobody will use. A forge that cannot
+    /// answer is unknown, and not clear. It is one call here so that the loop and
+    /// <c>hatch work</c> cannot decide differently.</para>
+    /// </remarks>
+    public async Task<BuildFound> RecheckBuildAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct)
+    {
+        var key = work.Issue.Key;
+        var repos = new List<BuiltRepo>();
+        var unknown = false;
+        var reported = true;
+
+        foreach (var (path, baseBranch) in chosen.Resets)
+        {
+            var name = Path.GetFileName(path.TrimEnd('/', '\\'));
+            var remote = RemoteFor(chosen, path);
+            var canonical = CanonicalFor(work, chosen, path);
+
+            // Only a repository that holds a failed verdict: another repository's
+            // build is not this dispatch's to read.
+            var failed = Builds.Of(work.Issue).FirstOrDefault(b =>
+                canonical is not null ? b.Canonical == canonical : b.Remote == remote);
+            if (failed is null) continue;
+
+            var heads = runtime.Workspace(path, baseBranch).Heads();
+
+            // The merge check that made this build work said one branch, and
+            // origin may have changed since.
+            if (heads is null || heads.Candidates(key) is not [var branch])
+            {
+                runtime.Say.Complain($"hatch: {key} - origin's branch for it could not be read in {name}, so its build was not checked");
+                unknown = true;
+                continue;
+            }
+
+            var tip = heads.Shas[branch];
+
+            var forge = runtime.Forge(path, canonical);
+            var answer = await forge.ReadAsync(tip, ct);
+            if (answer.Read is not { } read)
+            {
+                runtime.Say.Complain($"hatch: {key} - could not read its build in {name}{(answer.Why is { } why ? $" - {why}" : "")}");
+                unknown = true;
+                continue;
+            }
+
+            if (!await ReportBuildAsync(key, remote, branch, tip, read, pushedByIncrement: false, ct)) reported = false;
+
+            var failing = new List<FailingBuild>();
+            if (tip == failed.Sha && read.Verdict == BuildVerdicts.Failed)
+            {
+                foreach (var check in read.Failing)
+                    failing.Add(new FailingBuild(check.Name, check.Url, await forge.LogAsync(check, ct), check.JobId));
+            }
+
+            repos.Add(new BuiltRepo(path, remote, branch, failed.Sha, tip, read.Verdict, failing));
+        }
+
+        return new BuildFound(repos, unknown, reported);
+    }
+
+    /// <summary>
+    /// What the session did to the branch, asked of origin after it ended: is the
+    /// tip still the one the dispatch was about? Reads the tip with
+    /// <c>ls-remote</c> and fetches nothing.
+    /// </summary>
+    /// <remarks>
+    /// Any checkout whose tip moved is a fix pushed, and the new tip is told to
+    /// the board as <c>pending</c> and marked as a build increment's - which is
+    /// what lets the board open the failed-again question if the build on it
+    /// fails. It is done here and not in <see cref="Increment"/> because the
+    /// remote is <see cref="Lifecycle"/>'s to name, and <see cref="Increment"/>
+    /// stays free of git. Judged before <see cref="LeaveAsync"/>, so a trunk merge
+    /// the loop pushes on the way out is never taken for the session's fix.
+    /// </remarks>
+    public async Task<BuildJudged> JudgeBuildAsync(string key, BuildFound found, Checkouts.Choice chosen, CancellationToken ct)
+    {
+        var pushed = false;
+        var unknown = false;
+
+        foreach (var repo in found.StillFailing)
+        {
+            var baseBranch = chosen.Resets.FirstOrDefault(r => r.Path == repo.Path).BaseBranch;
+
+            if (runtime.Workspace(repo.Path, baseBranch).Heads() is not { } heads
+                || !heads.Shas.TryGetValue(repo.Branch, out var now))
+            {
+                unknown = true;
+                continue;
+            }
+
+            if (now == repo.TipSha) continue;
+
+            pushed = true;
+            var read = new BuildRead(BuildVerdicts.Pending, []);
+            await ReportBuildAsync(key, repo.Remote, repo.Branch, now, read, pushedByIncrement: true, ct);
+        }
+
+        return new BuildJudged(pushed, unknown && !pushed);
+    }
+
     private async Task<Rechecked> CheckAllAsync(WorkDto work, Checkouts.Choice chosen, bool fetch, CancellationToken ct)
     {
         var key = work.Issue.Key;
@@ -205,6 +321,46 @@ public sealed class Lifecycle(Runtime runtime)
             runtime.Say.Complain($"hatch: {key} - the board would not take the verdict on its branch - {e.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// What a build read came to, told to the board under the remote this
+    /// checkout is for. Its own failure and no more: a verdict the board refused
+    /// is a line.
+    /// </summary>
+    /// <returns>Whether the board took it.</returns>
+    private async Task<bool> ReportBuildAsync(
+        string key, string? remote, string branch, string sha, BuildRead read, bool pushedByIncrement, CancellationToken ct)
+    {
+        if (remote is null) return false;
+
+        try
+        {
+            await runtime.Board.BuildCheckAsync(
+                key,
+                new BuildCheckRequest(
+                    remote, branch, sha, read.Verdict,
+                    read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),
+                    runtime.RunnerName, pushedByIncrement),
+                ct);
+            return true;
+        }
+        catch (HatchException e)
+        {
+            runtime.Say.Complain($"hatch: {key} - the board would not take the build on its branch - {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The board's own identity for the repository a checkout is, where the
+    /// project binds one - matched from the binding's remote, as
+    /// <see cref="RemoteFor"/> does. Null for a project that binds nothing.
+    /// </summary>
+    private string? CanonicalFor(WorkDto work, Checkouts.Choice chosen, string path)
+    {
+        if (chosen.Repositories.FirstOrDefault(r => r.Path == path)?.Remote is not { } bound) return null;
+        return work.Repositories.FirstOrDefault(r => r.Remote == bound)?.Canonical;
     }
 
     /// <summary>
