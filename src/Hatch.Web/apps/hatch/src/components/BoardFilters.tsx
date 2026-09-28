@@ -1,9 +1,8 @@
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
-import { isFiltering, toggleType, toggleWaiting } from '../lib/filter';
+import { DEFAULT_FILTER, isDefault, isFiltering, toggleType, toggleWaiting } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
-import { NO_FILTER } from '../lib/filter';
 
 /**
  * What the board is showing: a toggle per type, and a search box.
@@ -14,8 +13,8 @@ import { NO_FILTER } from '../lib/filter';
  * would drop the drag in progress and would make typing into the box a
  * conversation with the server.
  *
- * No types chosen means every type, which is the reading that keeps the board
- * from going blank when the last chip is switched off.
+ * The board opens on epics, stories and bugs (DEFAULT_FILTER). The last type
+ * drawn cannot be switched off, so the board never goes blank from a chip.
  */
 export function BoardFilters({
   filter,
@@ -71,10 +70,13 @@ export function BoardFilters({
       <div className="hatch-type-toggles" role="group" aria-label="Issue types">
         {ISSUE_TYPES.map((type) => {
           const on = filter.types.includes(type);
+          const last = on && filter.types.length === 1;
           return (
             <button
               key={type}
               type="button"
+              disabled={last}
+              title={last ? 'Keep at least one type' : undefined}
               className={`hatch-type-toggle${on ? ' on' : ''}`}
               aria-pressed={on}
               onClick={() => onChange(toggleType(filter, type))}
@@ -122,14 +124,14 @@ export function BoardFilters({
       </select>
 
       {filtering && (
-        <>
-          <span className="hatch-filter-count">
-            {showing} of {total}
-          </span>
-          <button type="button" className="hatch-filter-clear" onClick={() => onChange(NO_FILTER)}>
-            Clear
-          </button>
-        </>
+        <span className="hatch-filter-count">
+          {showing} of {total}
+        </span>
+      )}
+      {!isDefault(filter) && (
+        <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
+          Clear
+        </button>
       )}
     </div>
   );

@@ -26,7 +26,7 @@ import { cascadeEntries, dropConfirmation } from '../lib/confirmations';
 import type { CascadeEntry } from '../lib/confirmations';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
-import { NO_FILTER, assigneeFacets, filterCards, isFiltering } from '../lib/filter';
+import { DEFAULT_FILTER, assigneeFacets, filterCards, isFiltering, revealType } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
 import { columnDroppableId, place, targetStatusId } from '../lib/place';
@@ -56,7 +56,7 @@ export function BoardPage() {
   /* Only the project half of the filter lives in the URL - see setFilter
      below - so it is read once here, on the way into local state, rather than
      off `params` on every render. */
-  const [filter, setFilter] = useState<CardFilter>(() => ({ ...NO_FILTER, project: params.get(PROJECT) ?? '' }));
+  const [filter, setFilter] = useState<CardFilter>(() => ({ ...DEFAULT_FILTER, project: params.get(PROJECT) ?? '' }));
 
   /* Wraps the plain setter so a change to the project also writes (or drops)
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
@@ -305,7 +305,12 @@ export function BoardPage() {
         projects={projects}
         defaultProjectKey={filter.project}
         onClose={() => setFiling(false)}
-        onCreated={() => void reload()}
+        onCreated={(created) => {
+          // A card filed under a type the board is hiding would vanish from the
+          // board it was filed on. `filter` is current: the dialog is modal.
+          changeFilter(revealType(filter, created.type));
+          void reload();
+        }}
       />
 
       <IssuePeek

@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { UNASSIGNED, assigneeToken } from './assignee';
-import { NO_FILTER, assigneeFacets, filterCards, isFiltering, matchesQuery, toggleType, toggleWaiting } from './filter';
-import type { Assignee, IssueCard, IssueType } from '../types';
+import {
+  DEFAULT_FILTER,
+  assigneeFacets,
+  filterCards,
+  isDefault,
+  isFiltering,
+  matchesQuery,
+  revealType,
+  toggleType,
+  toggleWaiting,
+} from './filter';
+import { ISSUE_TYPES } from '../types';
+import type { Assignee, IssueCard } from '../types';
 
 const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   key: 'AER-1',
@@ -23,9 +34,13 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
 const person = (name: string, id = `p-${name}`): Assignee => ({ kind: 'person', id, name });
 const key = (name: string, id = `k-${name}`): Assignee => ({ kind: 'key', id, name });
 
+/* The default draws no tasks, so the cases below that mean "a filter that hides
+   nothing" start from this instead. */
+const SHOW_EVERYTHING = { ...DEFAULT_FILTER, types: [...ISSUE_TYPES] };
+
 /* Every literal filter below is spread onto this rather than written whole, so
    that adding a switch to CardFilter is one edit here and not one per case. */
-const filter = (over: Partial<typeof NO_FILTER> = {}) => ({ ...NO_FILTER, ...over });
+const filter = (over: Partial<typeof DEFAULT_FILTER> = {}) => ({ ...SHOW_EVERYTHING, ...over });
 
 describe('matchesQuery', () => {
   it('matches nothing in particular when nothing was typed', () => {
@@ -67,7 +82,7 @@ describe('filterCards', () => {
   ];
 
   it('draws the whole board when nothing is filtered', () => {
-    expect(filterCards(cards, NO_FILTER)).toHaveLength(3);
+    expect(filterCards(cards, SHOW_EVERYTHING)).toHaveLength(3);
   });
 
   it('keeps only the chosen types', () => {
@@ -78,10 +93,9 @@ describe('filterCards', () => {
     expect(filterCards(cards, filter({ types: ['bug', 'epic'] })).map((c) => c.key)).toEqual(['AER-1', 'AER-2']);
   });
 
-  /* An empty type list is "every type", not "no types". A board that goes blank
-     when the last chip is switched off reads as broken. */
-  it('treats no chosen types as every type', () => {
-    expect(filterCards(cards, filter())).toHaveLength(3);
+  it('opens on epics, stories and bugs, and draws a task once it is asked for', () => {
+    expect(filterCards(cards, DEFAULT_FILTER).map((c) => c.key)).toEqual(['AER-1', 'AER-2']);
+    expect(filterCards(cards, toggleType(DEFAULT_FILTER, 'task'))).toHaveLength(3);
   });
 
   it('applies the type filter and the search together', () => {
@@ -108,7 +122,7 @@ describe('filterCards', () => {
 
 describe('isFiltering', () => {
   it('is false only when the board is showing everything', () => {
-    expect(isFiltering(NO_FILTER)).toBe(false);
+    expect(isFiltering(SHOW_EVERYTHING)).toBe(false);
     expect(isFiltering(filter({ query: '  ' }))).toBe(false);
     expect(isFiltering(filter({ types: ['bug'] }))).toBe(true);
     expect(isFiltering(filter({ query: 'cert' }))).toBe(true);
@@ -116,6 +130,29 @@ describe('isFiltering', () => {
     expect(isFiltering(filter({ assignee: UNASSIGNED }))).toBe(true);
     expect(isFiltering(filter({ assignee: assigneeToken(person('Ada')) }))).toBe(true);
     expect(isFiltering(filter({ project: 'AER' }))).toBe(true);
+  });
+});
+
+describe('isFiltering at the default', () => {
+  it('counts hiding tasks, so the board says how many it is holding back', () => {
+    expect(isFiltering(DEFAULT_FILTER)).toBe(true);
+  });
+});
+
+describe('isDefault', () => {
+  it('is true for the default and false for anything else', () => {
+    const over = (extra: Partial<typeof DEFAULT_FILTER>) => ({ ...DEFAULT_FILTER, ...extra });
+    expect(isDefault(DEFAULT_FILTER)).toBe(true);
+    expect(isDefault(over({ types: ['epic', 'story', 'task', 'bug'] }))).toBe(false);
+    expect(isDefault(over({ types: ['epic', 'story'] }))).toBe(false);
+    expect(isDefault(over({ query: 'cert' }))).toBe(false);
+    expect(isDefault(over({ waiting: true }))).toBe(false);
+    expect(isDefault(over({ assignee: UNASSIGNED }))).toBe(false);
+    expect(isDefault(over({ project: 'AER' }))).toBe(false);
+  });
+
+  it('does not count a whitespace-only query', () => {
+    expect(isDefault({ ...DEFAULT_FILTER, query: '   ' })).toBe(true);
   });
 });
 
@@ -152,7 +189,7 @@ describe('the assignee facet', () => {
   ];
 
   it('shows the whole board when nobody was chosen', () => {
-    expect(filterCards(board, NO_FILTER)).toHaveLength(4);
+    expect(filterCards(board, SHOW_EVERYTHING)).toHaveLength(4);
   });
 
   it('draws one identity\'s cards, whatever name they were drawn under', () => {
@@ -201,7 +238,7 @@ describe('assigneeFacets', () => {
 
 describe('toggleWaiting', () => {
   it('turns the switch on and off again', () => {
-    const on = toggleWaiting(NO_FILTER);
+    const on = toggleWaiting(SHOW_EVERYTHING);
     expect(on.waiting).toBe(true);
     expect(toggleWaiting(on).waiting).toBe(false);
   });
@@ -215,12 +252,42 @@ describe('toggleWaiting', () => {
 
 describe('toggleType', () => {
   it('adds a type that is off and removes one that is on', () => {
-    const once = toggleType(NO_FILTER, 'bug');
-    expect(once.types).toEqual(['bug']);
-    expect(toggleType(once, 'bug').types).toEqual([]);
+    const once = toggleType(filter({ types: ['epic'] }), 'bug');
+    expect(once.types).toEqual(['epic', 'bug']);
+    expect(toggleType(once, 'bug').types).toEqual(['epic']);
   });
 
-  it('leaves the query alone', () => {
-    expect(toggleType(filter({ query: 'cert' }), 'epic' as IssueType).query).toBe('cert');
+  it('keeps the types in canonical order whatever order they were ticked in', () => {
+    expect(toggleType(DEFAULT_FILTER, 'task').types).toEqual(['epic', 'story', 'task', 'bug']);
+    expect(toggleType(filter({ types: ['bug'] }), 'epic').types).toEqual(['epic', 'bug']);
+  });
+
+  it('removes one of four and leaves three', () => {
+    expect(toggleType(SHOW_EVERYTHING, 'bug').types).toEqual(['epic', 'story', 'task']);
+  });
+
+  it('will not remove the only type left, and hands back the same filter', () => {
+    const one = filter({ types: ['bug'] });
+    expect(toggleType(one, 'bug')).toBe(one);
+  });
+
+  it('leaves the rest of the filter alone', () => {
+    const next = toggleType(filter({ types: ['bug'], query: 'cert', waiting: true }), 'epic');
+    expect(next.query).toBe('cert');
+    expect(next.waiting).toBe(true);
+  });
+});
+
+describe('revealType', () => {
+  it('adds a type that is missing, in canonical order', () => {
+    expect(revealType(DEFAULT_FILTER, 'task').types).toEqual(['epic', 'story', 'task', 'bug']);
+  });
+
+  it('hands back the same filter when the type is already drawn', () => {
+    expect(revealType(DEFAULT_FILTER, 'epic')).toBe(DEFAULT_FILTER);
+  });
+
+  it('leaves the rest of the filter alone', () => {
+    expect(revealType({ ...DEFAULT_FILTER, query: 'cert' }, 'task').query).toBe('cert');
   });
 });

@@ -11,10 +11,14 @@
    the drag it was in the middle of. */
 
 import { UNASSIGNED, assigneeToken, compareAssignees } from './assignee';
+import { ISSUE_TYPES } from '../types';
 import type { Assignee, IssueCard, IssueType } from '../types';
 
 export interface CardFilter {
-  /** The types to draw. Empty means every type - an empty filter shows the board, not nothing. */
+  /** The types to draw, in `ISSUE_TYPES` order. Never empty: the last one
+      drawn cannot be switched off (`toggleType`), so a board never goes blank
+      from ticking boxes, and there is no "empty means all" to tell apart from
+      "empty means none". */
   types: IssueType[];
   /** What was typed in the search box, raw. */
   query: string;
@@ -36,15 +40,38 @@ export interface CardFilter {
   project: string;
 }
 
-export const NO_FILTER: CardFilter = { types: [], query: '', waiting: false, assignee: '', project: '' };
+/** The types the board opens on: the levels a person plans at. Tasks are the
+    leaf work and bury them, and are one press away. */
+export const DEFAULT_TYPES: IssueType[] = ['epic', 'story', 'bug'];
 
-/** Whether this filter is hiding anything, which is what decides if the board says so out loud. */
+/** What the board opens on, and what Reset returns to. Not "no filter": it
+    hides tasks, and `isFiltering` says so. */
+export const DEFAULT_FILTER: CardFilter = { types: DEFAULT_TYPES, query: '', waiting: false, assignee: '', project: '' };
+
+/** Whether this filter is hiding anything, which is what decides if the board
+    says so out loud - and it does at the default, because a filtered column and
+    a short one must not look alike. */
 export const isFiltering = (filter: CardFilter): boolean =>
-  filter.types.length > 0 ||
+  filter.types.length < ISSUE_TYPES.length ||
   filter.query.trim() !== '' ||
   filter.waiting ||
   filter.assignee !== '' ||
   filter.project !== '';
+
+/** Whether the types drawn are exactly the default ones. `types` is always in
+    `ISSUE_TYPES` order, so a length check and `every` need no sorting. */
+export const hasDefaultTypes = (filter: CardFilter): boolean =>
+  filter.types.length === DEFAULT_TYPES.length && filter.types.every((type, i) => type === DEFAULT_TYPES[i]);
+
+/** Whether every control is where the board opened it, which is what decides
+    if Reset is drawn. Not the same question as `isFiltering`: the default hides
+    tasks and is not a change anybody made. */
+export const isDefault = (filter: CardFilter): boolean =>
+  hasDefaultTypes(filter) &&
+  filter.query.trim() === '' &&
+  !filter.waiting &&
+  filter.assignee === '' &&
+  filter.project === '';
 
 /**
  * Everything about a card that a search box can see: its key, its title, its
@@ -69,8 +96,8 @@ export function matchesQuery(card: IssueCard, query: string): boolean {
 }
 
 /**
- * Whether a card belongs to whoever was chosen. Off matches everything, as an
- * unticked type toggle does; `UNASSIGNED` is the cards with no assignee at all,
+ * Whether a card belongs to whoever was chosen. Off matches everything;
+ * `UNASSIGNED` is the cards with no assignee at all,
  * which includes the ones whose person has been deleted or whose key has been
  * revoked - the server has already resolved those to null, so there is nothing
  * for the browser to know about it.
@@ -82,7 +109,7 @@ export const matchesAssignee = (card: IssueCard, assignee: string): boolean => {
 };
 
 export const matchesFilter = (card: IssueCard, filter: CardFilter): boolean =>
-  (filter.types.length === 0 || filter.types.includes(card.type)) &&
+  filter.types.includes(card.type) &&
   (!filter.waiting || card.openQuestions > 0) &&
   matchesAssignee(card, filter.assignee) &&
   (filter.project === '' || card.projectKey === filter.project) &&
@@ -113,8 +140,18 @@ export function assigneeFacets(cards: IssueCard[]): Assignee[] {
 /** Flips the waiting switch. */
 export const toggleWaiting = (filter: CardFilter): CardFilter => ({ ...filter, waiting: !filter.waiting });
 
-/** Adds or removes one type, which is what a row of toggles does to a filter. */
-export const toggleType = (filter: CardFilter, type: IssueType): CardFilter => ({
-  ...filter,
-  types: filter.types.includes(type) ? filter.types.filter((t) => t !== type) : [...filter.types, type],
-});
+/** Adds or removes one type, which is what a list of checkboxes does to a
+    filter. Unticking the only one left returns the filter itself, unchanged. */
+export function toggleType(filter: CardFilter, type: IssueType): CardFilter {
+  const next = filter.types.includes(type) ? filter.types.filter((t) => t !== type) : [...filter.types, type];
+  if (next.length === 0) return filter;
+  return { ...filter, types: ISSUE_TYPES.filter((t) => next.includes(t)) };
+}
+
+/** Draws a type if it is not drawn already. Filing an issue of a hidden type
+    uses it, so the card is on the board it was filed from. Returns the same
+    object when there is nothing to do, so a caller can skip a re-render. */
+export const revealType = (filter: CardFilter, type: IssueType): CardFilter =>
+  filter.types.includes(type)
+    ? filter
+    : { ...filter, types: ISSUE_TYPES.filter((t) => t === type || filter.types.includes(t)) };
