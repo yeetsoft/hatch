@@ -20,6 +20,18 @@ export function isUndoShortcut(e: KeyChord): boolean {
   return (e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
 }
 
+/**
+ * Whether this keystroke opens the console: `/`, with none of Meta, Ctrl or Alt
+ * held - those are the browser's and the platform's, and Ctrl+/ in particular is
+ * somebody else's shortcut in most editors.
+ *
+ * Shift is allowed, because some layouts need it to type a slash. `?` arrives
+ * as its own key and is not this.
+ */
+export function isGoToShortcut(e: KeyChord): boolean {
+  return e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
 /** The input types that are a control rather than somewhere to type. */
 const NOT_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
 

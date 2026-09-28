@@ -97,11 +97,23 @@ const haystack = (card: IssueCard): string => `${card.key} ${card.title}`.toLowe
  * typing `745` found nothing because every option starts with the project key.
  */
 export function matchesPickerQuery(card: IssueCard, query: string): boolean {
+  return matchesText(haystack(card), query);
+}
+
+/**
+ * The rule itself, over any text: every whitespace-separated term appears
+ * somewhere in it, in any order, ignoring case. An empty or whitespace-only
+ * query matches everything.
+ *
+ * Pulled out of `matchesPickerQuery` so the console can run the same rule over
+ * a title alone, rather than over a haystack with the key blanked out.
+ */
+export function matchesText(text: string, query: string): boolean {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return true;
 
-  const text = haystack(card);
-  return terms.every((term) => text.includes(term));
+  const lower = text.toLowerCase();
+  return terms.every((term) => lower.includes(term));
 }
 
 /**
