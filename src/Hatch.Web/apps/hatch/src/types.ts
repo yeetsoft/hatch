@@ -144,6 +144,36 @@ export interface IssueClaim {
   ttlSeconds: number;
 }
 
+/** One check that failed, and a link to it where the forge gave one. Mirrors FailingCheckDto. */
+export interface FailingCheck {
+  name: string;
+  /** An absolute http(s) address, or null. The board stores anything else as null. */
+  url: string | null;
+}
+
+/** What the build on one sha of the issue's branch came to in one repository.
+    Mirrors BuildCheckDto. */
+export interface BuildCheck {
+  /** The remote as the runner spelled it. */
+  remote: string;
+  /** The remote's canonical form - the verdict's identity within its issue. */
+  canonical: string;
+  branch: string;
+  /** The tip of the branch that the verdict is about. */
+  sha: string;
+  /** When the board first heard about `sha`. */
+  shaSince: string;
+  /** `passed`, `failed`, `pending` or `none`. */
+  verdict: string;
+  /** The checks that failed; empty unless the verdict is `failed`. */
+  failing: FailingCheck[];
+  /** Whether a build increment pushed `sha`. */
+  pushedByIncrement: boolean;
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
@@ -164,37 +194,6 @@ export interface MergeCheck {
   checkedAt: string;
   runner: string;
   checkedBy: string;
-}
-
-/** One check that failed. Mirrors FailingCheckDto. */
-export interface FailingCheck {
-  name: string;
-  /** Where its output is; null when the board was given no web address. */
-  url: string | null;
-}
-
-/** What the build on the issue's branch says in one repository. Mirrors
-    BuildCheckDto. */
-export interface BuildCheck {
-  /** The remote as the runner spelled it. */
-  remote: string;
-  /** The remote's canonical form - the verdict's identity within its issue. */
-  canonical: string;
-  branch: string;
-  /** Where the branch stood when the build was read. */
-  sha: string;
-  /** `passed`, `failed`, `pending` (checks are running, none has failed) or
-      `none` (the repository runs no checks on the sha). */
-  verdict: string;
-  /** The failed checks, sorted by name. Empty unless the verdict is `failed`. */
-  failing: FailingCheck[];
-  runner: string;
-  /** True once the runner that pushed this sha at the end of a build increment
-      has said so. */
-  pushedByIncrement: boolean;
-  /** When the board first saw this sha. */
-  shaSince: string;
-  checkedAt: string;
 }
 
 export interface Issue {
@@ -250,10 +249,11 @@ export interface Issue {
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */
   mergeChecks: MergeCheck[];
-  /** What a runner last read of the build on this issue's branch, one verdict
-      per repository. Empty until somebody has looked. Read through
-      `failedBuilds` - only a failed one is drawn. */
-  buildChecks: BuildCheck[];
+  /** What the build on the tip of this issue's branch came to, one verdict per
+      repository. Empty until a runner has read one. Read through
+      `failedBuilds` - only a failed one is drawn. Absent from a board that
+      predates them. */
+  buildChecks?: BuildCheck[];
 }
 
 /** An ordinary note, a question that needs deciding, the answer to one, or a
@@ -319,13 +319,14 @@ export type IssueEventKind =
   | 'claim_taken'
   | 'claim_released'
   | 'claim_cleared'
+  | 'merge_check_changed'
+  | 'build_check_changed'
   | 'commented'
   | 'messaged'
   | 'message_delivered'
   | 'asked'
   | 'answered'
-  | 'imported'
-  | 'build_check_changed';
+  | 'imported';
 
 export interface IssueEvent {
   id: number;
@@ -737,17 +738,6 @@ export interface Review {
   pullRequestUrl: string;
 }
 
-/** An issue in review whose build fails. Mirrors FailingBuildDto. */
-export interface FailingBuild {
-  key: string;
-  title: string;
-  type: string;
-  /** Null when the issue has a branch and no pull request recorded. */
-  pullRequestUrl: string | null;
-  /** Only the repositories whose build failed. */
-  checks: BuildCheck[];
-}
-
 /** An issue in review whose branch has stopped merging. Mirrors ConflictDto. */
 export interface Conflict {
   key: string;
@@ -756,6 +746,16 @@ export interface Conflict {
   /** Null when the issue has a branch and no pull request recorded. */
   pullRequestUrl: string | null;
   checks: MergeCheck[];
+}
+
+/** An issue in review whose build has failed. Mirrors FailingBuildDto. */
+export interface FailingBuild {
+  key: string;
+  title: string;
+  type: string;
+  /** Null when the issue has a branch and no pull request recorded. */
+  pullRequestUrl: string | null;
+  checks: BuildCheck[];
 }
 
 /** The two things that stop a night, read at one instant. Mirrors AttentionDto.
@@ -778,10 +778,11 @@ export interface Attention {
       column's board order, each with only the repositories that conflict. The
       loop's to fix, so never counted towards the badge - see `attentionCount`. */
   conflicts: Conflict[];
-  /** The review column's issues whose build fails, in that column's board
-      order, each with only the repositories that fail. The loop's to fix, so
-      never counted towards the badge - see `attentionCount`. */
-  failingBuilds: FailingBuild[];
+  /** The review column's issues whose build on the branch's tip failed, in that
+      column's board order, each with only the repositories that failed. The
+      loop's to fix, so never counted towards the badge - see `attentionCount`.
+      Absent from a board that predates them. */
+  failingBuilds?: FailingBuild[];
 }
 
 // ---- Who is sitting here ----

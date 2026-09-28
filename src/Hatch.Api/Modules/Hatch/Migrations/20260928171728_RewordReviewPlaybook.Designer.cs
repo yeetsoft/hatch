@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hatch.Api.Modules.Hatch.Migrations
 {
     [DbContext(typeof(HatchContext))]
-    [Migration("20260928170644_BuildChecks")]
-    partial class BuildChecks
+    [Migration("20260928171728_RewordReviewPlaybook")]
+    partial class RewordReviewPlaybook
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -47,8 +47,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("CheckedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Failing")
+                    b.Property<string>("CheckedBy")
                         .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Failing")
                         .HasColumnType("jsonb");
 
                     b.Property<long>("IssueId")

@@ -46,7 +46,7 @@ public class AttentionController(HatchContext db) : ControllerBase
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], []);
+            return new AttentionDto([], 0, questions, []);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -95,8 +95,8 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
             .ToList();
 
-        // The same for the build: listed with only the repositories whose
-        // build failed, whether or not there is a pull request to link.
+        // The same for the build: listed with only its failed verdicts. Not
+        // counted towards the badge, as the conflicts are not.
         var failed = (await db.BuildChecks.AsNoTracking()
                 .Where(b => reviewIds.Contains(b.IssueId) && b.Verdict == BuildVerdicts.Failed)
                 .OrderBy(b => b.Canonical)

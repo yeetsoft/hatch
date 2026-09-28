@@ -123,8 +123,9 @@ public sealed class Tally
         // Two lists rather than one, because they are two different mornings:
         // the moved ones are what the night got done, and the stalled ones are
         // what is waiting on somebody. A conflict that was resolved is something
-        // the night got done, though the ticket did not move.
-        if (report.Moved || report.Resolved) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
+        // the night got done, though the ticket did not move, and so is a fix
+        // pushed to a failing build.
+        if (report.Moved || report.Resolved || report.FixPushed) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
         // A lost lease is not a failure. It is the loop working correctly on a
@@ -998,6 +999,31 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
+            // A failing build is read again for the same reason, and by the same
+            // call `hatch work` makes: the tip may have moved and the build may
+            // have gone green since the board was read. Nothing is spawned and no
+            // increment is counted for a build there is nothing to fix in.
+            BuildFound? built = null;
+            if (work.Kind == WorkKinds.Build)
+            {
+                built = await lifecycle.RecheckBuildAsync(work, picked.Chosen!, ct);
+
+                if (built.StillFailing.Count == 0)
+                {
+                    if (built.Unknown)
+                    {
+                        line.Line = $"{work.Issue.Key} could not have its build read";
+                        runtime.Say.Complain(
+                            $"hatch: {work.Issue.Key} - its build could not be read, so nothing was spawned - trying again in {interval}s");
+                        return Pass.Waited;
+                    }
+
+                    line.Line = $"{work.Issue.Key} {built.Nothing()}";
+                    runtime.Say.Line($"hatch: {work.Issue.Key} {built.Nothing()} - nothing to do");
+                    return built.Reported ? Pass.Cleared : Pass.Waited;
+                }
+            }
+
             var entering = await lifecycle.EnterAsync(work, picked.Chosen!, ct);
             if (entering.Asked)
             {
@@ -1018,7 +1044,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             var report = await runtime.Increment().RunAsync(
                 work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
                 quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries,
-                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)));
+                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)),
+                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)));
 
             tally.Record(report);
 
@@ -1031,7 +1058,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // A conflict that was resolved did not move the ticket, and did not
             // fail to: it stays in review, which is where it belongs.
             var said = report.Moved ? $"{report.Key} moved, {report.Outcome}"
-                : report.Resolved ? $"{report.Key} {report.Outcome}"
+                : report.Resolved || report.FixPushed ? $"{report.Key} {report.Outcome}"
                 : $"{report.Key} did not move - {report.Outcome}";
 
             runtime.Say.Line("");

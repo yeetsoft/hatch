@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTitle, buildWords, checkLink, failedBuilds } from './buildCheck';
+import { buildTitle, buildWords, failedBuilds } from './buildCheck';
 import type { BuildCheck } from '../types';
 
 const check = (over: Partial<BuildCheck> = {}): BuildCheck => ({
@@ -7,15 +7,16 @@ const check = (over: Partial<BuildCheck> = {}): BuildCheck => ({
   canonical: 'forge.example/owner/repo',
   branch: 'aer-12-thing',
   sha: '2'.repeat(40),
+  shaSince: '2026-09-09T12:00:00Z',
   verdict: 'failed',
   failing: [
-    { name: 'build', url: 'https://ci.example/1' },
-    { name: 'test', url: null },
+    { name: 'api', url: 'https://forge.example/checks/1' },
+    { name: 'CI', url: null },
   ],
-  runner: 'box:/work/repo',
   pushedByIncrement: false,
-  shaSince: '2026-09-09T12:00:00Z',
   checkedAt: '2026-09-09T12:00:00Z',
+  runner: 'box:/work/repo',
+  checkedBy: 'runner',
   ...over,
 });
 
@@ -24,7 +25,7 @@ describe('failedBuilds', () => {
     expect(failedBuilds([check()])).toHaveLength(1);
   });
 
-  /* A passing build, one still running, or none shows nothing - and so does a
+  /* A build that passed, is running or never ran shows nothing - and so does a
      board that has never heard of any of this. */
   it.each(['passed', 'pending', 'none'])('drops a %s verdict', (verdict) => {
     expect(failedBuilds([check({ verdict, failing: [] })])).toEqual([]);
@@ -47,33 +48,17 @@ describe('failedBuilds', () => {
 });
 
 describe('buildWords', () => {
-  it('names the checks that failed', () => {
-    expect(buildWords(check())).toBe('Build fails: build, test');
+  it('names the failing checks', () => {
+    expect(buildWords(check())).toBe('Build failing: api, CI');
   });
 
-  it('says which repository only when more than one fails', () => {
-    expect(buildWords(check(), true)).toBe('Build fails: build, test in forge.example/owner/repo');
+  it('names the repository only when more than one fails', () => {
+    expect(buildWords(check(), true)).toBe('Build failing: api, CI in forge.example/owner/repo');
   });
 });
 
 describe('buildTitle', () => {
-  it('names every check, one to a line, under the sentence', () => {
-    expect(buildTitle(check())).toBe('Build fails: build, test\nbuild\ntest');
-  });
-});
-
-describe('checkLink', () => {
-  it('links an http or https address', () => {
-    expect(checkLink({ name: 'a', url: 'https://ci.example/1' })).toBe('https://ci.example/1');
-    expect(checkLink({ name: 'a', url: 'http://ci.example/1' })).toBe('http://ci.example/1');
-  });
-
-  it('links nothing without an address', () => {
-    expect(checkLink({ name: 'a', url: null })).toBeNull();
-  });
-
-  /* A key writes these, and the page turns them into anchors. */
-  it.each(['javascript:alert(1)', 'data:text/html,x', '/relative', 'not a url'])('refuses %s', (url) => {
-    expect(checkLink({ name: 'a', url })).toBeNull();
+  it('says which sha the build is about', () => {
+    expect(buildTitle(check())).toBe('Build failing: api, CI\non 2222222222');
   });
 });

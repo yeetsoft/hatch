@@ -17,7 +17,8 @@ public static class Prompt
         WorkDto work,
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
         IReadOnlyList<BranchEntry>? branches = null,
-        Rechecked? conflict = null)
+        Rechecked? conflict = null,
+        BuildFound? build = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
@@ -27,6 +28,7 @@ public static class Prompt
         // would read "In Review -> In Review". Its trunk is the fresh verdict's
         // where the runner took one, and the board's where it did not.
         var isConflict = work.Kind == WorkKinds.Conflicts;
+        var isBuild = work.Kind == WorkKinds.Build;
         var trunk = conflict?.Trunk ?? Conflicts.Trunk(issue);
         var lines = new List<string>
         {
@@ -37,9 +39,9 @@ public static class Prompt
             "## The ticket",
             "",
             $"{key}  [{issue.Type}]  {issue.Title}",
-            isConflict
-                ? $"moving:   {work.FromStatus.Name} (resolving conflicts with {trunk})"
-                : $"moving:   {work.FromStatus.Name} -> {to}",
+            isConflict ? $"moving:   {work.FromStatus.Name} (resolving conflicts with {trunk})"
+            : isBuild ? $"moving:   {work.FromStatus.Name} (fixing its failing build)"
+            : $"moving:   {work.FromStatus.Name} -> {to}",
         };
 
         if (issue.ParentKey is { Length: > 0 }) lines.Add($"parent:   {issue.ParentKey}");
@@ -65,6 +67,7 @@ public static class Prompt
         // After the repositories, which it refers to, and before the branch,
         // which says what state the tree is in and does not repeat this.
         if (isConflict) lines.AddRange(Conflict(Conflicts.Facts(work, conflict), trunk));
+        if (isBuild) lines.AddRange(FailingBuilds(Builds.Facts(work, build)));
 
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches));
 
@@ -189,6 +192,94 @@ public static class Prompt
         }
 
         yield return "";
+    }
+
+    /// <summary>The most bytes the whole failing-build section spends on log excerpts.</summary>
+    public const int MaxBuildSectionBytes = 40 * 1024;
+
+    /// <summary>
+    /// The facts of the failing build the playbook is about: for each repository,
+    /// the branch and the sha; for each failing check, its name and link, and the
+    /// lines of its log that lead up to the failure. The playbook says what to do
+    /// with them; this only says what they are.
+    /// </summary>
+    /// <remarks>
+    /// The excerpts are what makes a failure fixable that does not reproduce
+    /// locally - tests that only run against a database are skipped on a machine
+    /// without one, and the log as CI reported it is then the only account of the
+    /// failure there is. The section is capped, and past the cap a check's log is
+    /// left out and says the command that prints it.
+    /// </remarks>
+    private static IEnumerable<string> FailingBuilds(IReadOnlyList<BuildFacts> builds)
+    {
+        yield return "## The failing build";
+        yield return "";
+
+        if (builds.Count == 0)
+        {
+            yield return "The board says the build on this issue's branch failed, and holds no verdict that";
+            yield return "names the checks.";
+            yield return "";
+            yield break;
+        }
+
+        yield return "The build on this issue's branch on origin failed:";
+        yield return "";
+
+        var spent = 0;
+        foreach (var b in builds)
+        {
+            var where = builds.Count > 1 ? $"{b.Where}: " : "";
+            yield return $"- {where}`{b.Branch}` at {b.Sha}. Failing checks:";
+
+            foreach (var check in b.Failing)
+            {
+                yield return check.Url is { Length: > 0 } url ? $"  - {check.Name}: {url}" : $"  - {check.Name}";
+
+                var command = check.JobId is { } job ? $"gh run view --job {job} --log-failed" : null;
+
+                if (check.Excerpt is not { Length: > 0 } excerpt)
+                {
+                    yield return "    _no log_";
+                    continue;
+                }
+
+                var size = System.Text.Encoding.UTF8.GetByteCount(excerpt);
+                if (spent + size > MaxBuildSectionBytes)
+                {
+                    yield return command is null
+                        ? "    _log left out: this section is at its size cap_"
+                        : $"    _log left out: this section is at its size cap - `{command}` prints it_";
+                    continue;
+                }
+
+                spent += size;
+
+                // A fence longer than any run of backticks in the excerpt, so a
+                // log that contains a fence cannot end the block early.
+                var fence = new string('`', Math.Max(3, LongestBackticks(excerpt) + 1));
+                yield return $"    {fence}";
+                foreach (var line in excerpt.ReplaceLineEndings("\n").Split('\n')) yield return $"    {line}";
+                yield return $"    {fence}";
+
+                if (command is not null)
+                    yield return $"    This is the lines before its last error. The whole log: `{command}`";
+            }
+        }
+
+        yield return "";
+    }
+
+    private static int LongestBackticks(string text)
+    {
+        int longest = 0, run = 0;
+        foreach (var c in text)
+        {
+            run = c == '`' ? run + 1 : 0;
+            if (run > longest) longest = run;
+        }
+
+        return longest;
     }
 
     /// <summary>

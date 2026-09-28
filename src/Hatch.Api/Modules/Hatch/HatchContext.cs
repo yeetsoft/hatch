@@ -192,8 +192,8 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // The same, for the build: the failed checks are jsonb for the reason
-        // a question's options are.
+        // The same for the build's verdict. jsonb for the failing checks, for
+        // the reason EfHatchComment.Options is.
         modelBuilder.Entity<EfHatchBuildCheck>(e =>
         {
             e.HasOne(b => b.Issue)

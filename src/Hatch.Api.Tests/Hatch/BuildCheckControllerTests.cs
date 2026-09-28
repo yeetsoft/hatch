@@ -10,83 +10,53 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// What a runner may write about whether a build passed, what the board
-/// refuses to keep, the rules a verdict is kept by - one per repository, and a
-/// repeat is not news - and when a failed build becomes a question.
+/// What a runner may write about the build on a branch's tip, what the board
+/// refuses to keep, and the rules a verdict is kept by: one per repository, a
+/// repeat is not news, and a build that fails again on an agent's own fix
+/// arrives with a question.
 /// </summary>
 public class BuildCheckControllerTests
 {
     private const string Remote = "git@forge.example:owner/repo.git";
     private const string Sha = "2222222222222222222222222222222222222222";
-    private const string OtherSha = "3333333333333333333333333333333333333333";
+    private const string NextSha = "3333333333333333333333333333333333333333";
 
     // ---- The four verdicts ----
 
     [Fact]
-    public async Task APassedVerdict_IsKept()
+    public async Task AFailedVerdict_IsKept_NamingItsChecksInOrder()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var kept = Value(await h.PutAsync(issue, Passed()));
+        var kept = Value(await h.PutAsync(issue, Failed("b", "a")));
 
-        Assert.Equal(BuildVerdicts.Passed, kept.Verdict);
+        Assert.Equal(BuildVerdicts.Failed, kept.Verdict);
         Assert.Equal("ha-1-thing", kept.Branch);
         Assert.Equal(Sha, kept.Sha);
-        Assert.Empty(kept.Failing);
-        Assert.Equal("box:/work/repo", kept.Runner);
-        Assert.Equal(Now, kept.CheckedAt);
         Assert.Equal(Now, kept.ShaSince);
+        Assert.Equal(["a", "b"], kept.Failing.Select(f => f.Name));
+        Assert.Equal("https://forge.example/checks/a", kept.Failing[0].Url);
         Assert.False(kept.PushedByIncrement);
-        Assert.Equal(Remote, kept.Remote);
+        Assert.Equal("box:/work/repo", kept.Runner);
+        Assert.Equal("Nathan", kept.CheckedBy);
+        Assert.Equal(Now, kept.CheckedAt);
         Assert.Equal("forge.example/owner/repo", kept.Canonical);
     }
 
-    [Fact]
-    public async Task AFailedVerdict_NamesItsChecks_SortedAndWithoutRepeats()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-
-        var kept = Value(await h.PutAsync(issue, Failed(
-            new FailingCheckDto("test", "https://ci.example/2"),
-            new FailingCheckDto("build", "https://ci.example/1"),
-            new FailingCheckDto("test", null))));
-
-        Assert.Equal(["build", "test"], kept.Failing.Select(f => f.Name));
-        Assert.Equal("https://ci.example/2", kept.Failing[1].Url);
-    }
-
     [Theory]
+    [InlineData(BuildVerdicts.Passed)]
     [InlineData(BuildVerdicts.Pending)]
     [InlineData(BuildVerdicts.None)]
-    [InlineData(BuildVerdicts.Passed)]
-    public async Task FailingChecksOnAVerdictThatIsNotFailed_AreIgnored(string verdict)
+    public async Task TheOtherThree_KeepNoFailingChecks_EvenWhenTheRunnerSendsThem(string verdict)
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var kept = Value(await h.PutAsync(issue, Failed(Check("build")) with { Verdict = verdict }));
+        var kept = Value(await h.PutAsync(issue, Failed("a") with { Verdict = verdict }));
 
         Assert.Equal(verdict, kept.Verdict);
         Assert.Empty(kept.Failing);
-    }
-
-    [Fact]
-    public async Task AFailingChecksUrlThatIsNotAWebAddress_IsStoredAsNothing_AndTheVerdictStands()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-
-        var kept = Value(await h.PutAsync(issue, Failed(
-            new FailingCheckDto("a", "javascript:alert(1)"),
-            new FailingCheckDto("b", "/relative/path"),
-            new FailingCheckDto("c", "  https://ci.example/c  "),
-            new FailingCheckDto("d", "http://ci.example/d"))));
-
-        Assert.Equal(
-            [null, null, "https://ci.example/c", "http://ci.example/d"],
-            kept.Failing.Select(f => f.Url));
     }
 
     // ---- Every refusal ----
@@ -111,28 +81,21 @@ public class BuildCheckControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var reason = Reason(await h.PutAsync(issue, Passed() with { Verdict = verdict }));
-
-        Assert.Equal("a verdict is one of passed, failed, pending, none", reason);
+        Assert.Equal(
+            "a verdict is one of passed, failed, pending, none",
+            Reason(await h.PutAsync(issue, Passed() with { Verdict = verdict })));
     }
 
-    [Theory]
-    [MemberData(nameof(NoChecks))]
-    public async Task AFailedVerdictWithNoChecks_IsRefused(IReadOnlyList<FailingCheckDto>? failing)
+    [Fact]
+    public async Task AFailedVerdictWithNoChecks_IsRefused()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var reason = Reason(await h.PutAsync(issue, Failed() with { Failing = failing }));
-
-        Assert.Equal("a failed verdict names the checks that failed", reason);
+        Assert.Equal("a failed verdict names the checks that failed", Reason(await h.PutAsync(issue, Failed())));
+        Assert.Equal("a failed verdict names the checks that failed",
+            Reason(await h.PutAsync(issue, Failed() with { Failing = null })));
     }
-
-    public static TheoryData<IReadOnlyList<FailingCheckDto>?> NoChecks => new()
-    {
-        null,
-        Array.Empty<FailingCheckDto>(),
-    };
 
     [Fact]
     public async Task AVerdictWithNoSha_NoBranch_OrNoRunner_IsRefused()
@@ -142,31 +105,29 @@ public class BuildCheckControllerTests
 
         Assert.Contains("sha", Reason(await h.PutAsync(issue, Passed() with { Sha = " " })));
         Assert.Contains("branch", Reason(await h.PutAsync(issue, Passed() with { Branch = "" })));
-        Assert.Contains("branch", Reason(await h.PutAsync(issue, Passed() with { Branch = null! })));
         Assert.Contains("runner", Reason(await h.PutAsync(issue, Passed() with { Runner = " " })));
         Assert.Contains("at most", Reason(await h.PutAsync(
             issue, Passed() with { Runner = new string('r', ClaimRequest.MaxRunnerLength + 1) })));
         Assert.Contains("at most", Reason(await h.PutAsync(
-            issue, Passed() with { Sha = new string('a', EfHatchMergeCheck.MaxShaLength + 1) })));
+            issue, Passed() with { Sha = new string('a', EfHatchBuildCheck.MaxShaLength + 1) })));
         Assert.Empty(await h.Db.BuildChecks.ToListAsync());
     }
 
     [Fact]
-    public async Task TooManyChecks_AnOverlongName_AndABreakInAName_AreEachRefusedInASentence()
+    public async Task TooManyFailingChecks_AnOverlongName_AndANameWithALineBreak_AreRefused()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var many = Enumerable.Range(0, EfHatchBuildCheck.MaxFailing + 1).Select(n => Check($"check-{n}")).ToArray();
-        Assert.Equal("a verdict names at most 100 failing checks", Reason(await h.PutAsync(issue, Failed(many))));
+        var many = Enumerable.Range(0, EfHatchBuildCheck.MaxFailing + 1).Select(i => $"check {i}").ToArray();
+        Assert.Equal(
+            $"a verdict names at most {EfHatchBuildCheck.MaxFailing} failing checks",
+            Reason(await h.PutAsync(issue, Failed(many))));
 
-        Assert.Contains("at most 200", Reason(await h.PutAsync(
-            issue, Failed(Check(new string('n', EfHatchBuildCheck.MaxNameLength + 1))))));
-        Assert.Contains("line break", Reason(await h.PutAsync(issue, Failed(Check("a\nb")))));
-        Assert.Contains("name", Reason(await h.PutAsync(issue, Failed(Check(" ")))));
-        Assert.Contains("url is at most", Reason(await h.PutAsync(
-            issue, Failed(new FailingCheckDto("a", "https://ci.example/" + new string('x', EfHatchBuildCheck.MaxUrlLength))))));
-        Assert.Empty(await h.Db.BuildChecks.ToListAsync());
+        Assert.Contains("name", Reason(await h.PutAsync(
+            issue, Failed(new string('n', EfHatchBuildCheck.MaxCheckNameLength + 1)))));
+        Assert.Contains("name", Reason(await h.PutAsync(issue, Failed("two\nlines"))));
+        Assert.Contains("name", Reason(await h.PutAsync(issue, Failed(" "))));
     }
 
     [Fact]
@@ -182,9 +143,28 @@ public class BuildCheckControllerTests
     public async Task TheIssuesColumn_IsNotChecked()
     {
         var h = await NewAsync();
+
+        // Filed in the inbox and never moved: an increment reports the tip it
+        // pushed before anybody has moved the ticket.
         var issue = await h.FileAsync();
 
         Assert.Equal(BuildVerdicts.Passed, Value(await h.PutAsync(issue, Passed())).Verdict);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("/relative/path")]
+    [InlineData("ftp://forge.example/x")]
+    [InlineData("not a url")]
+    public async Task ACheckLinkThatIsNotAWebAddress_IsStoredAsNull_AndTheVerdictIsNotRefused(string url)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(issue, Failed() with { Failing = [new FailingCheckDto("a", url)] }));
+
+        Assert.Equal(BuildVerdicts.Failed, kept.Verdict);
+        Assert.Null(Assert.Single(kept.Failing).Url);
     }
 
     // ---- One verdict per issue per repository ----
@@ -194,14 +174,13 @@ public class BuildCheckControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Passed());
+        await h.PutAsync(issue, Pending());
 
         h.Time.Advance(TimeSpan.FromMinutes(5));
-        await h.PutAsync(issue, Failed(Check("build")) with { Sha = OtherSha });
+        await h.PutAsync(issue, Failed("a"));
 
         var row = await h.Db.BuildChecks.SingleAsync();
         Assert.Equal(BuildVerdicts.Failed, row.Verdict);
-        Assert.Equal(OtherSha, row.Sha);
         Assert.Equal(Now.AddMinutes(5), row.CheckedAt);
     }
 
@@ -224,37 +203,46 @@ public class BuildCheckControllerTests
         var issue = await h.FileAsync();
 
         await h.PutAsync(issue, Passed());
-        await h.PutAsync(issue, Failed(Check("build")) with { Remote = "git@forge.example:owner/other.git" });
+        await h.PutAsync(issue, Failed("a") with { Remote = "git@forge.example:owner/other.git" });
 
         var checks = (await h.ReadAsync(issue.Key)).BuildChecks!;
         Assert.Equal(2, checks.Count);
         Assert.Equal(BuildVerdicts.Failed, checks.Single(c => c.Canonical == "forge.example/owner/other").Verdict);
         Assert.Equal(BuildVerdicts.Passed, checks.Single(c => c.Canonical == "forge.example/owner/repo").Verdict);
-        Assert.Equal(2, (await h.EventsAsync(issue.Key)).Count);
     }
 
-    // ---- The trail ----
+    // ---- The sha, and the mark ----
 
     [Fact]
-    public async Task AVerdictThatChangesTheStoredOne_WritesAnEventCarryingBothSides()
+    public async Task TheSameSha_KeepsWhenTheBoardFirstHeardOfIt_AndANewOneResetsIt()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Passed());
+        await h.PutAsync(issue, Pending());
 
-        await h.PutAsync(issue, Failed(Check("test"), Check("build")));
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        var same = Value(await h.PutAsync(issue, Pending()));
+        Assert.Equal(Now, same.ShaSince);
 
-        var events = await h.EventsAsync(issue.Key);
-        Assert.Equal(2, events.Count);
-
-        var payload = events[1].Payload!.Value;
-        Assert.Equal("Nathan", events[1].Actor);
-        Assert.Equal("forge.example/owner/repo", payload.GetProperty("remote").GetString());
-        Assert.Equal(Sha, payload.GetProperty("sha").GetString());
-        Assert.Equal("passed", payload.GetProperty("from").GetProperty("verdict").GetString());
-        Assert.Equal("failed", payload.GetProperty("to").GetProperty("verdict").GetString());
-        Assert.Equal(["build", "test"], payload.GetProperty("to").GetProperty("failing").EnumerateArray().Select(f => f.GetString()));
+        var moved = Value(await h.PutAsync(issue, Pending() with { Sha = NextSha }));
+        Assert.Equal(Now.AddMinutes(4), moved.ShaSince);
     }
+
+    [Fact]
+    public async Task ThePushedMark_StaysSetForTheSameSha_AndAnewShaTakesTheRequests()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
+
+        // A later poll on the same sha does not unmark it.
+        Assert.True(Value(await h.PutAsync(issue, Pending())).PushedByIncrement);
+
+        // Somebody else's push is not an increment's.
+        Assert.False(Value(await h.PutAsync(issue, Pending() with { Sha = NextSha })).PushedByIncrement);
+    }
+
+    // ---- The trail ----
 
     [Fact]
     public async Task TheFirstVerdictForARepository_IsAChangeFromNothing()
@@ -262,24 +250,34 @@ public class BuildCheckControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        await h.PutAsync(issue, Passed());
+        await h.PutAsync(issue, Failed("a"));
 
         var payload = Assert.Single(await h.EventsAsync(issue.Key)).Payload!.Value;
+        Assert.Equal("forge.example/owner/repo", payload.GetProperty("remote").GetString());
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("from").ValueKind);
+        Assert.Equal("failed", payload.GetProperty("to").GetProperty("verdict").GetString());
+        Assert.Equal(Sha, payload.GetProperty("to").GetProperty("sha").GetString());
+        Assert.Equal(["a"], payload.GetProperty("to").GetProperty("failing").EnumerateArray().Select(f => f.GetString()));
     }
 
     [Fact]
-    public async Task ADifferentShaOrSetOfNames_IsAChangeEvenWhenTheVerdictIsNot()
+    public async Task ADifferentVerdict_Sha_OrSetOfFailingNames_WritesAnEvent()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Failed(Check("a")));
+        await h.PutAsync(issue, Failed("a"));
 
-        await h.PutAsync(issue, Failed(Check("a"), Check("b")));
+        await h.PutAsync(issue, Failed("a", "b"));
         Assert.Equal(2, (await h.EventsAsync(issue.Key)).Count);
 
-        await h.PutAsync(issue, Failed(Check("a"), Check("b")) with { Sha = OtherSha });
+        await h.PutAsync(issue, Failed("a", "b") with { Sha = NextSha });
         Assert.Equal(3, (await h.EventsAsync(issue.Key)).Count);
+
+        await h.PutAsync(issue, Passed() with { Sha = NextSha });
+        var events = await h.EventsAsync(issue.Key);
+        Assert.Equal(4, events.Count);
+        Assert.Equal("failed", events[3].Payload!.Value.GetProperty("from").GetProperty("verdict").GetString());
+        Assert.Equal("passed", events[3].Payload!.Value.GetProperty("to").GetProperty("verdict").GetString());
     }
 
     [Fact]
@@ -287,18 +285,32 @@ public class BuildCheckControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Failed(Check("a"), Check("b")));
+        await h.PutAsync(issue, Failed("a", "b"));
 
         h.Time.Advance(TimeSpan.FromMinutes(10));
+        h.Caller.Person = new EfPerson { Name = "Other", CreatedAt = Now, UpdatedAt = Now };
 
-        // The same names in another order, from another runner.
-        await h.PutAsync(issue, Failed(Check("b"), Check("a")) with { Runner = "elsewhere:/work/repo" });
+        // The same checks in another order, from another runner.
+        await h.PutAsync(issue, Failed("b", "a") with { Runner = "elsewhere:/work/repo" });
 
         Assert.Single(await h.EventsAsync(issue.Key));
 
         var row = await h.Db.BuildChecks.SingleAsync();
         Assert.Equal(Now.AddMinutes(10), row.CheckedAt);
         Assert.Equal("elsewhere:/work/repo", row.Runner);
+        Assert.Equal("Other", row.CheckedBy);
+    }
+
+    [Fact]
+    public async Task TheMarkAlone_WritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Pending());
+
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
+
+        Assert.Single(await h.EventsAsync(issue.Key));
     }
 
     [Fact]
@@ -309,177 +321,125 @@ public class BuildCheckControllerTests
         var was = await h.ReadAsync(issue.Key);
 
         h.Time.Advance(TimeSpan.FromHours(1));
-        await h.PutAsync(issue, Failed(Check("a")));
+        await h.PutAsync(issue, Failed("a"));
 
         var now = await h.ReadAsync(issue.Key);
         Assert.Equal(was.UpdatedAt, now.UpdatedAt);
         Assert.Equal(was.StatusId, now.StatusId);
     }
 
-    // ---- The sha, and the mark ----
-
-    [Fact]
-    public async Task TheSameSha_KeepsShaSince_AndKeepsTheMarkWhenALaterPutSendsFalse()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.PutAsync(issue, Pending(pushed: true));
-
-        h.Time.Advance(TimeSpan.FromMinutes(5));
-        var kept = Value(await h.PutAsync(issue, Pending(pushed: false)));
-
-        Assert.Equal(Now, kept.ShaSince);
-        Assert.Equal(Now.AddMinutes(5), kept.CheckedAt);
-        Assert.True(kept.PushedByIncrement);
-    }
-
-    [Fact]
-    public async Task ANewSha_ResetsShaSince_AndTakesTheRequestsMark()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.PutAsync(issue, Pending(pushed: true));
-
-        h.Time.Advance(TimeSpan.FromMinutes(5));
-        var kept = Value(await h.PutAsync(issue, Pending(pushed: false) with { Sha = OtherSha }));
-
-        Assert.Equal(Now.AddMinutes(5), kept.ShaSince);
-        Assert.False(kept.PushedByIncrement);
-    }
-
-    [Fact]
-    public async Task TheMarkAlone_WritesNoEvent()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.PutAsync(issue, Pending());
-
-        await h.PutAsync(issue, Pending(pushed: true));
-
-        Assert.Single(await h.EventsAsync(issue.Key));
-    }
+    // ---- A mark never lowers a concluded verdict ----
 
     [Theory]
     [InlineData(BuildVerdicts.Passed)]
     [InlineData(BuildVerdicts.Failed)]
-    public async Task AMarkOfPending_NeverLowersAConcludedVerdictOnTheSameSha(string stored)
+    public async Task AMarkOfPending_OverAConcludedVerdictOnTheSameSha_KeepsTheVerdict_AndTakesTheFlag(string stored)
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Passed() with { Verdict = stored, Failing = [Check("build")] });
+        await h.PutAsync(issue, stored == BuildVerdicts.Failed ? Failed("a") : Passed());
 
-        var kept = Value(await h.PutAsync(issue, Pending(pushed: true)));
+        var kept = Value(await h.PutAsync(issue, Pending() with { PushedByIncrement = true }));
 
         Assert.Equal(stored, kept.Verdict);
         Assert.True(kept.PushedByIncrement);
-        Assert.Equal(stored == BuildVerdicts.Failed ? new[] { "build" } : Array.Empty<string>(), kept.Failing.Select(f => f.Name));
-        Assert.Single(await h.EventsAsync(issue.Key));
+        Assert.Equal(stored == BuildVerdicts.Failed ? ["a"] : [], kept.Failing.Select(f => f.Name));
     }
 
     [Fact]
-    public async Task APollsOwnPending_AfterAFailed_IsAReRunAndIsStored()
+    public async Task APollsOwnPending_OverAFailedVerdictOnTheSameSha_IsStored()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Failed(Check("build")));
+        await h.PutAsync(issue, Failed("a"));
 
+        // A re-run: the build is running again.
         var kept = Value(await h.PutAsync(issue, Pending()));
 
         Assert.Equal(BuildVerdicts.Pending, kept.Verdict);
         Assert.Empty(kept.Failing);
-        Assert.Equal(2, (await h.EventsAsync(issue.Key)).Count);
     }
 
     // ---- The failed-again question ----
 
     [Fact]
-    public async Task PendingPushedByAnIncrement_ThenFailedOnTheSameSha_AsksOnce()
+    public async Task AFailedVerdictOnAShaAnIncrementPushed_OpensOneQuestion_WithTheSharedOptions()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Pending(pushed: true));
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
         Assert.Empty(await h.QuestionsAsync());
 
-        await h.PutAsync(issue, Failed(Check("test"), Check("build")));
+        await h.PutAsync(issue, Failed("api", "CI"));
 
         var question = Assert.Single(await h.QuestionsAsync());
-        Assert.Equal(EfHatchComment.Question, question.Kind);
         Assert.Equal("Nathan", question.Author);
-        Assert.Contains(Sha, question.Body);
-        Assert.Contains("build, test", question.Body);
-        Assert.Contains("build increment pushed", question.Body);
+        Assert.Contains(Sha[..10], question.Body);
+        Assert.Contains("- api", question.Body);
+        Assert.Contains("- CI", question.Body);
+        Assert.Contains("build increment", question.Body);
         Assert.Equal(
-            StallQuestion.Options.Select(o => (o.Label, o.Detail, o.Recommended)),
+            StallAnswers.Options().Select(o => (o.Label, o.Detail, o.Recommended)),
             Questions.ReadOptions(question.Options)!.Select(o => (o.Label, o.Detail, o.Recommended)));
-        Assert.Equal(1, await h.Db.IssueEvents.CountAsync(e => e.Kind == EfHatchIssueEvent.Asked));
+        Assert.Single(await h.Db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.Asked).ToListAsync());
 
-        // Failed again: the row was already failed and marked.
-        await h.PutAsync(issue, Failed(Check("test"), Check("build")));
-        await h.PutAsync(issue, Failed(Check("test")));
+        // Again: no second one.
+        await h.PutAsync(issue, Failed("api", "CI"));
         Assert.Single(await h.QuestionsAsync());
     }
 
     [Fact]
-    public async Task AFailedVerdict_OnAShaNoIncrementPushed_AsksNothing()
+    public async Task AFailedVerdictOnAShaNoIncrementPushed_OpensNoQuestion()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        await h.PutAsync(issue, Pending());
-        await h.PutAsync(issue, Failed(Check("build")));
+        await h.PutAsync(issue, Failed("a"));
 
         Assert.Empty(await h.QuestionsAsync());
     }
 
     [Fact]
-    public async Task AFailedVerdict_OnANewShaAnIncrementPushed_AsksAgain()
+    public async Task TheMarkArrivingAfterTheFailure_OpensTheQuestionAllTheSame()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.PutAsync(issue, Failed(Check("build"), pushed: true));
-        await h.AnswerAllAsync();
 
-        await h.PutAsync(issue, Failed(Check("build"), pushed: true) with { Sha = OtherSha });
-
-        Assert.Equal(2, (await h.QuestionsAsync()).Count);
-    }
-
-    [Fact]
-    public async Task TheMarkArrivingAfterAPollsFailed_LeavesItFailed_AndAsksOnce()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.PutAsync(issue, Failed(Check("build")));
+        // Another runner's poll read the build between the push and the mark.
+        await h.PutAsync(issue, Failed("a"));
         Assert.Empty(await h.QuestionsAsync());
 
-        var kept = Value(await h.PutAsync(issue, Pending(pushed: true)));
+        var kept = Value(await h.PutAsync(issue, Pending() with { PushedByIncrement = true }));
 
         Assert.Equal(BuildVerdicts.Failed, kept.Verdict);
         Assert.True(kept.PushedByIncrement);
         Assert.Single(await h.QuestionsAsync());
+    }
 
-        await h.PutAsync(issue, Pending(pushed: true));
+    [Fact]
+    public async Task AQuestionAlreadyOpen_IsNotAskedAgain()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        Value(await h.Thread.AddComment(issue.Key, new CommentCreateRequest("Which way?", "question"), default));
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
+
+        await h.PutAsync(issue, Failed("a"));
+
         Assert.Single(await h.QuestionsAsync());
     }
 
     [Fact]
-    public async Task AnOpenQuestion_IsAlreadyTheFlag_SoNoSecondIsAsked()
+    public async Task AFailureOnANewShaThatSomebodyElsePushed_OpensNoQuestion()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        h.Db.Comments.Add(new EfHatchComment
-        {
-            IssueId = await h.Db.Issues.Select(i => i.Id).SingleAsync(),
-            Author = "someone",
-            Body = "already waiting",
-            Kind = EfHatchComment.Question,
-            CreatedAt = Now,
-        });
-        await h.Db.SaveChangesAsync();
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
 
-        await h.PutAsync(issue, Failed(Check("build"), pushed: true));
+        // The tip moved: the agent's fix is not what is failing now.
+        await h.PutAsync(issue, Failed("a") with { Sha = NextSha });
 
-        Assert.Single(await h.QuestionsAsync());
+        Assert.Empty(await h.QuestionsAsync());
     }
 
     // ---- What every issue carries ----
@@ -501,7 +461,7 @@ public class BuildCheckControllerTests
         var two = await h.FileAsync();
         var three = await h.FileAsync();
         await h.PutAsync(one, Passed());
-        await h.PutAsync(two, Failed(Check("build")));
+        await h.PutAsync(two, Failed("a"));
 
         var dtos = await IssueProjection.ToDtosAsync(
             h.Db, new StubActorDirectory(),
@@ -510,7 +470,7 @@ public class BuildCheckControllerTests
 
         var byKey = dtos.Values.ToDictionary(d => d.Key);
         Assert.Equal(BuildVerdicts.Passed, byKey[one.Key].BuildChecks!.Single().Verdict);
-        Assert.Equal("build", byKey[two.Key].BuildChecks!.Single().Failing.Single().Name);
+        Assert.Equal(BuildVerdicts.Failed, byKey[two.Key].BuildChecks!.Single().Verdict);
         Assert.Empty(byKey[three.Key].BuildChecks!);
     }
 
@@ -544,19 +504,17 @@ public class BuildCheckControllerTests
 
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
 
-    private static FailingCheckDto Check(string name) => new(name, null);
-
     private static BuildCheckRequest Passed() =>
         new(Remote, "ha-1-thing", Sha, BuildVerdicts.Passed, null, "box:/work/repo");
 
-    private static BuildCheckRequest Pending(bool pushed = false) =>
-        Passed() with { Verdict = BuildVerdicts.Pending, PushedByIncrement = pushed };
+    private static BuildCheckRequest Pending() => Passed() with { Verdict = BuildVerdicts.Pending };
 
-    private static BuildCheckRequest Failed(params FailingCheckDto[] failing) =>
-        Passed() with { Verdict = BuildVerdicts.Failed, Failing = failing };
-
-    private static BuildCheckRequest Failed(FailingCheckDto check, bool pushed) =>
-        Failed(check) with { PushedByIncrement = pushed };
+    private static BuildCheckRequest Failed(params string[] names) =>
+        Passed() with
+        {
+            Verdict = BuildVerdicts.Failed,
+            Failing = names.Select(n => new FailingCheckDto(n, $"https://forge.example/checks/{n}")).ToList(),
+        };
 
     private sealed class Harness
     {
@@ -564,6 +522,7 @@ public class BuildCheckControllerTests
         public required BuildCheckController Build { get; init; }
         public required IssuesController Issues { get; init; }
         public required IssueThreadController Thread { get; init; }
+        public required MergeCheckControllerTests.StubCallerIdentity Caller { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
 
@@ -582,22 +541,9 @@ public class BuildCheckControllerTests
                 .Reverse()
                 .ToList();
 
-        /// <summary>Every question on the board, oldest first.</summary>
+        /// <summary>Every question on the board.</summary>
         public Task<List<EfHatchComment>> QuestionsAsync() =>
-            Db.Comments.Where(c => c.Kind == EfHatchComment.Question).OrderBy(c => c.Id).ToListAsync();
-
-        /// <summary>Answers every question there is, so that none is open.</summary>
-        public async Task AnswerAllAsync()
-        {
-            foreach (var q in await QuestionsAsync())
-                Db.Comments.Add(new EfHatchComment
-                {
-                    IssueId = q.IssueId, Author = "operator", Body = "leave it",
-                    Kind = EfHatchComment.Answer, AnswersId = q.Id, CreatedAt = Now,
-                });
-
-            await Db.SaveChangesAsync();
-        }
+            Db.Comments.Where(c => c.Kind == EfHatchComment.Question).ToListAsync();
     }
 
     private static async Task<Harness> NewAsync()
@@ -612,10 +558,7 @@ public class BuildCheckControllerTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
-        var caller = new MergeCheckControllerTests.StubCallerIdentity
-        {
-            Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now },
-        };
+        var caller = new MergeCheckControllerTests.StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
         var actors = new StubActorDirectory();
 
         return new Harness
@@ -624,21 +567,24 @@ public class BuildCheckControllerTests
             Build = new BuildCheckController(db, caller, time),
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time),
             Thread = new IssueThreadController(db, caller, time),
+            Caller = caller,
             Time = time,
             ProjectId = hatch.Id,
         };
     }
 
     private static T Value<T>(ActionResult<T> result) =>
-        result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");
+        result.Value ?? throw new InvalidOperationException($"expected a value, got {ReasonOf(result.Result)}");
 
     private static T Created<T>(ActionResult<T> result) =>
         result.Result is CreatedAtActionResult created
             ? (T)created.Value!
-            : result.Value ?? throw new InvalidOperationException($"expected a created value, got {Reason(result.Result)}");
+            : result.Value ?? throw new InvalidOperationException($"expected a created value, got {ReasonOf(result.Result)}");
 
     /// <summary>The plain-text reason on a refusal, and a failure if it was not one.</summary>
-    private static string Reason(ActionResult<BuildCheckDto> result) => result.Result switch
+    private static string Reason(ActionResult<BuildCheckDto> result) => ReasonOf(result.Result);
+
+    private static string ReasonOf(IActionResult? result) => result switch
     {
         BadRequestObjectResult o => o.Value?.ToString() ?? "",
         var other => throw new InvalidOperationException($"expected a refusal, got {other?.GetType().Name ?? "a value"}"),

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { buildWords } from '../lib/buildCheck';
 import { conflictEmptyWords, failingBuildEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import { buildWords } from '../lib/buildCheck';
 import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import type { Attention } from '../types';
@@ -96,19 +96,16 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
           <ul className="hatch-attention-rows">
             {failingBuilds.map((b) => (
               <li key={b.key}>
-                {/* This tab, and to the issue, as the conflicts' rows go: the
-                    checks are linked there, one press from their output. */}
+                {/* This tab, and to the issue, as the conflicts are: the loop
+                    is already at work on it, and the issue page links each
+                    failing check. */}
                 <Link className="hatch-attention-row" to={`/issues/${b.key}`}>
                   <span className="hatch-attention-row-head">
                     <span className="hatch-attention-key">{b.key}</span>
                     <span className="hatch-attention-title">{b.title}</span>
                   </span>
                   {b.checks.map((check) => (
-                    <span
-                      key={check.canonical}
-                      className="hatch-attention-files"
-                      title={check.failing.map((f) => f.name).join('\n')}
-                    >
+                    <span key={check.canonical} className="hatch-attention-files">
                       {buildWords(check, b.checks.length > 1)}
                     </span>
                   ))}

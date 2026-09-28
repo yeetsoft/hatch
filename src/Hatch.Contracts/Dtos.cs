@@ -549,17 +549,18 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// which already lights the control.
 /// </param>
 /// <param name="FailingBuilds">
-/// The review column's issues whose build fails in at least one repository, in
-/// that column's board order. Not counted towards the badge, for the same
-/// reason: a failing build is the loop's to fix, and one it cannot fix becomes
-/// a question, which already lights the control.
+/// The review column's issues whose build on the branch's tip failed in at
+/// least one repository, in that column's board order. Not counted towards the
+/// badge, for the reason <paramref name="Conflicts"/> is not: the loop fixes a
+/// failing build, and one it cannot fix becomes a question, which already
+/// lights the control.
 /// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
     IReadOnlyList<ConflictDto> Conflicts,
-    IReadOnlyList<FailingBuildDto> FailingBuilds);
+    IReadOnlyList<FailingBuildDto>? FailingBuilds = null);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -574,10 +575,10 @@ public record ConflictDto(
     IReadOnlyList<MergeCheckDto> Checks);
 
 /// <summary>
-/// One issue in review whose build fails: what the panel draws, and the words
-/// that say which checks.
+/// One issue in review whose build failed: what the panel draws, and the checks
+/// that name where.
 /// </summary>
-/// <param name="Checks">Only the failed verdicts, one per repository, so a passing repository beside a failing one is not listed as a failure.</param>
+/// <param name="Checks">Only the failed verdicts, one per repository, so a passing repository beside a failing one is not listed.</param>
 public record FailingBuildDto(
     string Key,
     string Title,
@@ -796,9 +797,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="Kind">
 /// One of <see cref="WorkKinds"/>: whether this dispatch moves the issue on
-/// (<c>advance</c>) or resolves the conflict its branch has with the trunk
-/// (<c>conflicts</c>). Derived from the move and stored nowhere - a conflict
-/// dispatch is exactly the one whose two ends are the same column.
+/// (<c>advance</c>), resolves the conflict its branch has with the trunk
+/// (<c>conflicts</c>), or fixes the build that fails on its branch's tip
+/// (<c>build</c>). Derived and stored nowhere - the last two are exactly the
+/// dispatches whose two ends are the same column, and which of them it is comes
+/// from what the board holds about the branch.
 /// </param>
 public record WorkDto(
     IssueDto Issue,
@@ -814,8 +817,10 @@ public record WorkDto(
     IReadOnlyList<CommentDto>? Messages = null);
 
 /// <summary>
-/// What a dispatch is for. Two, and the second is the only dispatch that does
-/// not end in a different column.
+/// What a dispatch is for. Three, and the second and third are the only
+/// dispatches that do not end in a different column: both are an issue in
+/// review, and an agent's work on it is judged by the branch and not by the
+/// column.
 /// </summary>
 public static class WorkKinds
 {
@@ -828,6 +833,13 @@ public static class WorkKinds
     /// the branch and not by the column.
     /// </summary>
     public const string Conflicts = "conflicts";
+
+    /// <summary>
+    /// Fix the build that fails on the tip of the branch of an issue in review,
+    /// whose branch merges cleanly with the trunk. Judged by whether the session
+    /// pushed a new tip, and the build on that tip is judged later, by the board.
+    /// </summary>
+    public const string Build = "build";
 }
 
 /// <summary>
@@ -885,7 +897,7 @@ public record QueueEntryDto(
 /// standing checkout.
 /// </param>
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
-/// <param name="BuildChecks">Every build verdict it holds, one per repository. Absent from a board older than the runner reading it, which reads that as none.</param>
+/// <param name="BuildChecks">Every build verdict the board holds for the issue, one per repository. Absent from a board that predates them.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -1288,45 +1300,54 @@ public record MergeCheckDto(
     string CheckedBy);
 
 /// <summary>
-/// What the build on an issue's branch says in one repository - the four things
-/// a runner can report. Spelled on the contract because both sides act on them:
-/// the runner writes one, and the board and the dispatcher read it.
+/// What a build on one sha of an issue's branch came to - the four things a
+/// runner can say. Spelled on the contract because both sides act on them: the
+/// runner writes one, and the board and the dispatcher read it.
 /// </summary>
+/// <remarks>
+/// A verdict is about one sha, the branch's tip on origin. A build that has
+/// concluded on a sha does not change, short of a re-run, and a verdict about
+/// any other sha says nothing about the branch as it stands.
+/// </remarks>
 public static class BuildVerdicts
 {
-    /// <summary>Every check the repository runs on the branch's sha has finished, and none failed.</summary>
+    /// <summary>Every check on the sha has concluded and none of them failed. Nothing for an agent to do.</summary>
     public const string Passed = "passed";
 
-    /// <summary>At least one check has finished and failed. The verdict names them.</summary>
+    /// <summary>
+    /// Every check on the sha has concluded and at least one failed. A check run
+    /// fails on <c>failure</c>, <c>timed_out</c> or <c>startup_failure</c>; a
+    /// commit status on <c>failure</c> or <c>error</c>. Cancelled, skipped,
+    /// neutral, stale and action-required are not failures.
+    /// </summary>
     public const string Failed = "failed";
 
-    /// <summary>Checks are queued or running on the sha, and none has failed yet. Nothing to say until they finish.</summary>
+    /// <summary>Something on the sha is still queued or running. A runner waits for every check to conclude, so one increment sees every failure at once.</summary>
     public const string Pending = "pending";
 
-    /// <summary>The repository runs no checks on the sha, or nothing could be read about them. Not a failure and not a pass.</summary>
+    /// <summary>No check ran on the sha.</summary>
     public const string None = "none";
 
     public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
 }
 
-/// <summary>One check that failed: its name, and where to read why.</summary>
-/// <param name="Name">The check as the repository's CI names it.</param>
-/// <param name="Url">Where its output is, when there is an http or https address to give. The board stores anything else as null.</param>
-public record FailingCheckDto(string Name, string? Url);
+/// <summary>One check that failed: its name, and a link to it where the forge gave one.</summary>
+public record FailingCheckDto(string Name, string? Url = null);
 
 /// <summary>
-/// The verdict on the build, as the runner reports it. Who took it is the
-/// credential's to say, and when is the board's, so the body names neither.
+/// A build verdict, as the runner reports it. Who took it is the credential's to
+/// say, and when is the board's, so the body names neither.
 /// </summary>
 /// <param name="Remote">The repository as the runner spells it. The board keys the verdict on its canonical form.</param>
-/// <param name="Branch">The issue's branch, and <paramref name="Sha"/> where it stood when the build was read.</param>
+/// <param name="Branch">The issue's branch, and <paramref name="Sha"/> its tip on origin - what the verdict is about.</param>
 /// <param name="Verdict">One of <see cref="BuildVerdicts"/>.</param>
 /// <param name="Failing">The checks that failed. Required for <c>failed</c> and ignored otherwise.</param>
 /// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
 /// <param name="PushedByIncrement">
-/// True when this is the runner that pushed <paramref name="Sha"/> at the end of
-/// a build increment, saying so. Once the board holds it for a sha it stays: a
-/// later poll of the same sha cannot take it back.
+/// True when the runner is saying that a build increment pushed
+/// <paramref name="Sha"/>. A poll that only reads the build leaves it false, and
+/// the board never lowers it for the same sha: it is what decides whether a
+/// build that fails again is another increment's work or a question.
 /// </param>
 public record BuildCheckRequest(
     string Remote,
@@ -1337,34 +1358,42 @@ public record BuildCheckRequest(
     string Runner,
     bool PushedByIncrement = false);
 
-/// <summary>One stored verdict: the build on the issue's branch in one repository.</summary>
+/// <summary>One stored build verdict: the build on the tip of the issue's branch in one repository.</summary>
+/// <param name="Remote">The remote as the runner spelled it.</param>
 /// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
-/// <param name="ShaSince">When the board first saw <paramref name="Sha"/> - kept while the sha is the same, so it says how long a sha has been waiting on its build.</param>
-/// <param name="CheckedAt">When the board took the verdict.</param>
+/// <param name="ShaSince">When the board first heard about <paramref name="Sha"/>. What ten minutes of asking again about <c>none</c> is counted from.</param>
+/// <param name="PushedByIncrement">Whether a build increment pushed <paramref name="Sha"/>.</param>
+/// <param name="CheckedAt">When the board took it.</param>
+/// <param name="CheckedBy">The name of the credential it arrived under.</param>
 public record BuildCheckDto(
     string Remote,
     string Canonical,
     string Branch,
     string Sha,
+    DateTimeOffset ShaSince,
     string Verdict,
     IReadOnlyList<FailingCheckDto> Failing,
-    string Runner,
     bool PushedByIncrement,
-    DateTimeOffset ShaSince,
-    DateTimeOffset CheckedAt);
+    DateTimeOffset CheckedAt,
+    string Runner,
+    string CheckedBy);
 
 /// <summary>
-/// The two answers offered under a question the loop raises against a ticket it
-/// could not move on - a stall, or a build that failed again. One wording, so
-/// the CLI that asks and the board that asks say the same thing.
+/// The stall guard's two answers, in its words. A question the board opens for a
+/// build that failed again on the agent's own fix offers the same two, so they
+/// live here and neither side spells them.
 /// </summary>
-public static class StallQuestion
+public static class StallAnswers
 {
-    public static readonly IReadOnlyList<QuestionOptionDto> Options =
+    public const string LeaveIt = "leave it";
+    public const string TryAgain = "try again";
+
+    /// <summary>The two options, in the order they are offered. Neither is recommended: nothing here knows why it happened.</summary>
+    public static IReadOnlyList<QuestionOptionDto> Options() =>
     [
-        new("leave it",
+        new(LeaveIt,
             "It waits for you. Nothing is dispatched at it while this question is open, so answer once you have looked - or once you have moved it somewhere the loop does not reach."),
-        new("try again",
+        new(TryAgain,
             "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
     ];
 }

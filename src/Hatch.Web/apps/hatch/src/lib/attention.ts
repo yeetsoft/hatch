@@ -26,9 +26,8 @@ export type AttentionTone = 'rest' | 'asking';
  * one it cannot fix becomes a stall, which is a question, which is counted
  * here already. Listed beside the rest, and never lit for.
  *
- * Nor `failingBuilds`, for the same reason: a red build is the loop's to fix,
- * and one it fixes and pushes again to a build that fails again becomes a
- * question, which is counted here already.
+ * Nor `failingBuilds`, for the same reason: the loop fixes a failing build, and
+ * one it cannot fix becomes a question.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;

@@ -68,7 +68,7 @@ public static class Fixtures
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
-            ToStatus: to is null ? null : Status(kind == WorkKinds.Conflicts ? 3 : 4, to),
+            ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
             Playbook: Playbook(),
             Children: children ?? [],
             Repositories: repositories ?? [],
@@ -86,6 +86,20 @@ public static class Fixtures
             key, from: "In Review", to: "In Review", repositories: repositories,
             issue: Issue(key) with { MergeChecks = checks ?? [MergeCheck(MergeVerdicts.Conflicted, trunk, files: "a.txt")] },
             kind: WorkKinds.Conflicts);
+
+    /// <summary>The dispatch of an issue in review whose build failed: review to itself, with the board's build verdict on it.</summary>
+    public static WorkDto BuildWork(
+        string key, IReadOnlyList<BuildCheckDto>? builds = null, IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        Work(
+            key, from: "In Review", to: "In Review", repositories: repositories,
+            issue: Issue(key) with { BuildChecks = builds ?? [Build(BuildVerdicts.Failed, "example.test/repo", failing: ["api", "CI"])] },
+            kind: WorkKinds.Build);
+
+    /// <summary>An issue in review whose build failed, and the queue row that says to fix it.</summary>
+    public static QueueEntryDto BuildRow(string key, params string[] failing) =>
+        new(
+            Issue(key) with { BuildChecks = [Build(BuildVerdicts.Failed, "example.test/repo", failing: failing)] },
+            Status(4, "In Review"), Status(4, "In Review"), null, WorkKinds.Build);
 
     public static WorkRepositoryDto Repository(
         string remote, string? canonical = null, string? baseBranch = null, bool primary = false,
@@ -105,19 +119,28 @@ public static class Fixtures
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
             files, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
-    /// <summary>A build verdict as a runner would have put it, failed unless said otherwise.</summary>
+    /// <summary>A build verdict as a runner would have put it, failed unless said otherwise. A failed one names <c>api</c> unless it is told what failed.</summary>
     public static BuildCheckDto Build(
-        string verdict = BuildVerdicts.Failed, string canonical = "example.com/o/r", bool pushedByIncrement = false,
-        params string[] failing) =>
+        string verdict = BuildVerdicts.Failed, string canonical = "example.com/o/r", string? sha = null,
+        DateTimeOffset? shaSince = null, bool pushedByIncrement = false, params string[] failing) =>
         new(
-            $"https://{canonical}.git", canonical, "aer-1-a-thing", new string('b', 40), verdict,
-            verdict == BuildVerdicts.Failed ? failing.Select(n => new FailingCheckDto(n, null)).ToList() : [],
-            "runner", pushedByIncrement, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+            $"https://{canonical}.git", canonical, "aer-1-a-thing", sha ?? new string('b', 40),
+            shaSince ?? DateTimeOffset.UnixEpoch, verdict,
+            verdict == BuildVerdicts.Failed
+                ? (failing.Length == 0 ? ["api"] : failing).Select(n => new FailingCheckDto(n, $"https://{canonical}/checks/{n}")).ToList()
+                : [],
+            pushedByIncrement, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
         new(key, repositories ?? [], checks);
+
+    /// <summary>The same, with the build verdicts the board holds as well.</summary>
+    public static ReviewCheckDto Review(
+        string key, IReadOnlyList<WorkRepositoryDto> repositories, IReadOnlyList<MergeCheckDto> checks,
+        IReadOnlyList<BuildCheckDto> builds) =>
+        new(key, repositories, checks, builds);
 
     /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
     public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>

@@ -4,11 +4,12 @@ import {
   attentionLabel,
   attentionTone,
   conflictEmptyWords,
+  failingBuildEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, FailingBuild, Question, Review } from '../types';
+import type { Attention, Conflict, Question, Review } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -48,7 +49,6 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   inReviewWithoutPullRequest: 0,
   questions: [],
   conflicts: [],
-  failingBuilds: [],
   ...over,
 });
 
@@ -73,19 +73,15 @@ describe('attentionCount', () => {
     expect(attentionCount(attention({ conflicts: [conflict(), conflict({ key: 'AER-15' })] }))).toBe(0);
   });
 
-  it('does not count a build that fails', () => {
-    // The loop's to fix, and one it cannot fix becomes a question, which is
-    // counted already.
-    const failing: FailingBuild = {
-      key: 'AER-16',
-      title: 'A story whose build is red',
-      type: 'story',
-      pullRequestUrl: null,
-      checks: [],
-    };
+  it('does not count a build that is failing, and stays resting for it', () => {
+    // The loop fixes it, and one it cannot fix becomes a question.
+    const failing = attention({
+      failingBuilds: [{ key: 'AER-16', title: 'red', type: 'story', pullRequestUrl: null, checks: [] }],
+    });
 
-    expect(attentionCount(attention({ failingBuilds: [failing, { ...failing, key: 'AER-17' }] }))).toBe(0);
-    expect(attentionTone(attention({ failingBuilds: [failing] }))).toBe('rest');
+    expect(attentionCount(failing)).toBe(0);
+    expect(attentionTone(failing)).toBe('rest');
+    expect(attentionLabel(failing)).toBe('Nothing is waiting on you');
   });
 });
 
@@ -163,6 +159,12 @@ describe('reviewEmptyWords', () => {
     expect(reviewEmptyWords(attention({ inReviewWithoutPullRequest: 1 }))).toBe(
       '1 issue is in review with no pull request recorded.',
     );
+  });
+});
+
+describe('failingBuildEmptyWords', () => {
+  it('says no build is failing', () => {
+    expect(failingBuildEmptyWords()).toBe('No build in review is failing.');
   });
 });
 

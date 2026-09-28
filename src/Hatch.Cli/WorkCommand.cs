@@ -175,8 +175,9 @@ public sealed class WorkCommand(Runtime runtime)
         model ??= work.Playbook?.Model ?? "";
         effort ??= work.Playbook?.Effort ?? "";
 
-        runtime.Say.Line(work.Kind == WorkKinds.Conflicts
-            ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+        runtime.Say.Line(
+            work.Kind == WorkKinds.Conflicts ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+            : work.Kind == WorkKinds.Build ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
@@ -380,6 +381,26 @@ public sealed class WorkCommand(Runtime runtime)
                 }
             }
 
+            // And a failing build, through the same call as the loop's.
+            BuildFound? built = null;
+            if (work.Kind == WorkKinds.Build)
+            {
+                built = await lifecycle.RecheckBuildAsync(work, chosen, ct);
+
+                if (built.StillFailing.Count == 0)
+                {
+                    if (built.Unknown)
+                    {
+                        runtime.Say.Complain(
+                            $"hatch: {work.Issue.Key} - its build could not be read, so nothing was spawned");
+                        return 1;
+                    }
+
+                    runtime.Say.Line($"hatch: {work.Issue.Key} {built.Nothing()} - nothing to do");
+                    return 0;
+                }
+            }
+
             var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
@@ -390,7 +411,7 @@ public sealed class WorkCommand(Runtime runtime)
             var owned = true;
             try
             {
-                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, ct);
+                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
 
                 // Zero for an increment that happened, whatever the session exited
                 // with: the report is where "it went badly" is said, and a shell
@@ -398,7 +419,8 @@ public sealed class WorkCommand(Runtime runtime)
                 // thing an operator has to work around.
                 var report = await runtime.Increment().RunAsync(
                     work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
-                    found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)));
+                    found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
+                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)));
                 owned = !report.LostLease;
                 return 0;
             }
@@ -426,11 +448,12 @@ public sealed class WorkCommand(Runtime runtime)
     /// </remarks>
     private async Task<int> AttachAsync(
         WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen,
-        IReadOnlyList<BranchEntry> branches, Rechecked? conflict, CancellationToken ct)
+        IReadOnlyList<BranchEntry> branches, Rechecked? conflict, BuildFound? build, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
-        runtime.Say.Line(work.Kind == WorkKinds.Conflicts
-            ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+        runtime.Say.Line(
+            work.Kind == WorkKinds.Conflicts ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+            : work.Kind == WorkKinds.Build ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"hatch:   {chose}");
         runtime.Say.Line("");
@@ -441,7 +464,7 @@ public sealed class WorkCommand(Runtime runtime)
         await runtime.Increment().MarkSaidAsync(work, ct);
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict), Quiet: false, chosen.AddDirs),
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs),
             ct);
     }
 

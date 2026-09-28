@@ -832,18 +832,20 @@
   font-weight: 600;
 }
 
-/* The branch has stopped merging with the trunk. The `soon` ladder's colours
+/* The branch has stopped merging with the trunk - or its build has failed, which
+   is the loop's to fix in the same way. The `soon` ladder's colours
    rather than `today`'s: it is the loop's to fix and a person only needs to
    know it is happening, not to do something about it. */
-.hatch-chip-conflict {
+.hatch-chip-conflict,
+.hatch-chip-build {
   border-color: var(--warn);
   background: var(--warn-bg);
   color: var(--warn-ink);
 }
 
-/* A failing check named in the build chip and linked to its output keeps the
-   chip's ink, underlined so it still reads as a link. */
-.hatch-chip-conflict a {
+/* A failing check's own page, inside the chip: the chip's ink, underlined, so
+   it reads as part of the sentence and still as something to press. */
+.hatch-chip-build a {
   color: inherit;
   text-decoration: underline;
 }

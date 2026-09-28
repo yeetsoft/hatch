@@ -26,10 +26,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     Sha = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     ShaSince = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     Verdict = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
-                    Failing = table.Column<string>(type: "jsonb", nullable: false),
+                    Failing = table.Column<string>(type: "jsonb", nullable: true),
                     PushedByIncrement = table.Column<bool>(type: "boolean", nullable: false),
                     CheckedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    Runner = table.Column<string>(type: "character varying(240)", maxLength: 240, nullable: false)
+                    Runner = table.Column<string>(type: "character varying(240)", maxLength: 240, nullable: false),
+                    CheckedBy = table.Column<string>(type: "character varying(240)", maxLength: 240, nullable: false)
                 },
                 constraints: table =>
                 {

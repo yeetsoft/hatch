@@ -380,6 +380,39 @@ public sealed class BoardCommandsTests
             h.Said);
     }
 
+    /// <summary>The build row names the distinct failing checks across repositories, in the board's order.</summary>
+    [Fact]
+    public async Task A_build_row_says_what_it_is_and_names_the_failing_checks_and_draws_no_arrow()
+    {
+        using var h = new CliHarness();
+        var row = Fixtures.BuildRow("AER-15", "api", "CI");
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            row with
+            {
+                Issue = row.Issue with
+                {
+                    BuildChecks =
+                    [
+                        Fixtures.Build(BuildVerdicts.Failed, "example.test/one", failing: ["api", "CI"]),
+                        Fixtures.Build(BuildVerdicts.Passed, "example.test/two"),
+                        Fixtures.Build(BuildVerdicts.Failed, "example.test/three", failing: ["CI"]),
+                    ],
+                },
+            },
+            Fixtures.Row("AER-2"),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            AER-15  [task]  In Review    fixing its failing build (api, CI)
+            AER-2   [task]  In Progress  -> In Review
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
     [Fact]
     public async Task A_folded_row_in_review_prints_the_reason_and_not_the_conflict_words()
     {

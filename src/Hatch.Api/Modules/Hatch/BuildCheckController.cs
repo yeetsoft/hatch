@@ -8,21 +8,23 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Where a runner writes down whether the build on an issue's branch passed -
-/// see <see cref="EfHatchBuildCheck"/> for what a verdict is and why there is
-/// one per repository.
+/// Where a runner writes down what the build on the tip of an issue's branch
+/// came to - see <see cref="EfHatchBuildCheck"/> for what a verdict is and why
+/// there is one per repository.
 ///
-/// A key may write one, for the reason <see cref="MergeCheckController"/>
-/// gives: the caller is a runner, and a verdict only a person could enter would
-/// be one nobody ever entered. It is a fact about a sha on origin that any
-/// runner reads the same way, and a wrong one costs a question.
+/// A key may write one, for the reason it may write a merge check: the caller is
+/// a runner, and a verdict only a person could enter would be one nobody ever
+/// entered. It is a fact about a sha that any runner reads the same way, and a
+/// wrong one costs a stall, which is a question.
 /// </summary>
 /// <remarks>
 /// <para>There is no <c>GET</c>: the verdicts ride <see cref="IssueDto"/> and
-/// <see cref="ReviewCheckDto"/>, where every client needs them.</para>
+/// <see cref="ReviewCheckDto"/>, as the merge checks do.</para>
 ///
-/// <para>Nothing here looks at the issue's column. A build increment pushes,
-/// and says so, before anybody has moved the ticket.</para>
+/// <para>Nothing here looks at the issue's column. A build increment reports the
+/// tip it pushed before anybody has moved the ticket, and the rule that only an
+/// issue in review is <em>dispatched</em> on a verdict belongs to
+/// <see cref="WorkController"/>.</para>
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/build-check")]
@@ -35,30 +37,31 @@ public class BuildCheckController(
     /// holds.
     /// </summary>
     /// <remarks>
-    /// <para>An event is written when the verdict, the sha or the set of
-    /// failing names differs from what was stored; the first verdict for a
-    /// repository counts. A verdict that repeats the stored one refreshes the
-    /// time and the runner and writes nothing, so a poll that looks every
-    /// interval leaves one entry rather than a hundred. The mark alone writes
-    /// none either.</para>
+    /// <para>Four rules decide what is stored, and they hold whichever order two
+    /// runners' calls arrive in. Another runner's poll can read the build
+    /// between an increment's push and the increment marking it, so the mark can
+    /// arrive after <c>failed</c>.</para>
     ///
-    /// <para>The sha decides what carries over. On the same sha
-    /// <see cref="EfHatchBuildCheck.ShaSince"/> is kept and
-    /// <see cref="EfHatchBuildCheck.PushedByIncrement"/> is the stored value or
-    /// the request's - it never falls back to false. On a different sha both
-    /// start again, the flag from the request.</para>
+    /// <list type="number">
+    /// <item>The flag is <c>stored || request</c> for the same sha and the
+    /// request's for a new one: it never falls back to false on the same
+    /// sha.</item>
+    /// <item>A mark never lowers a concluded verdict. A request that says it was
+    /// pushed by an increment, on the sha the row holds, with <c>pending</c>
+    /// while the row holds <c>passed</c> or <c>failed</c>, takes the flag and
+    /// keeps the verdict. Every other request stores what it says: a poll's
+    /// <c>pending</c> after a <c>failed</c> is a re-run.</item>
+    /// <item><see cref="EfHatchBuildCheck.ShaSince"/> is kept for the same sha
+    /// and is now for a new one.</item>
+    /// <item>The question opens when a save moves the row into <em>failed and
+    /// flagged</em>. That covers <c>pending</c> to <c>failed</c> on a marked
+    /// sha and <c>failed</c> read first and marked after, and it writes one
+    /// question however often the verdict repeats.</item>
+    /// </list>
     ///
-    /// <para>A mark never lowers a concluded verdict. The runner that pushed
-    /// can arrive after another runner's poll has already read the build, so a
-    /// mark of <c>pending</c> on the sha the row holds, over <c>passed</c> or
-    /// <c>failed</c>, takes the flag and keeps the verdict. Any other request
-    /// stores what it says: a poll's <c>pending</c> after a <c>failed</c> is a
-    /// re-run.</para>
-    ///
-    /// <para>The failed-again question goes up when a save moves the row into
-    /// <c>failed</c> and marked - whichever of the two arrived last - unless a
-    /// question is already open on the issue, which is already the flag. It is
-    /// written in the same save as the row.</para>
+    /// <para>The event is written when the verdict, the sha or the set of
+    /// failing names changes, and the first verdict for a repository counts. The
+    /// flag alone writes none.</para>
     /// </remarks>
     [HttpPut]
     public async Task<ActionResult<BuildCheckDto>> PutBuildCheck(
@@ -72,55 +75,43 @@ public class BuildCheckController(
         var remote = request.Remote?.Trim() ?? "";
         var (canonical, error) = RemoteIdentity.Canonical(remote);
         if (canonical is null) return BadRequest(error);
-        if (remote.Length > EfHatchMergeCheck.MaxRemoteLength || canonical.Length > EfHatchMergeCheck.MaxRemoteLength)
-            return BadRequest($"a remote is at most {EfHatchMergeCheck.MaxRemoteLength} characters");
+        if (remote.Length > EfHatchBuildCheck.MaxRemoteLength || canonical.Length > EfHatchBuildCheck.MaxRemoteLength)
+            return BadRequest($"a remote is at most {EfHatchBuildCheck.MaxRemoteLength} characters");
 
         var verdict = request.Verdict?.Trim() ?? "";
         if (!BuildVerdicts.All.Contains(verdict))
             return BadRequest($"a verdict is one of {string.Join(", ", BuildVerdicts.All)}");
 
+        // A build is about a branch and a sha, for every verdict: there is no
+        // none-without-a-branch, because none is "no check ran on this sha".
         var branch = request.Branch?.Trim() ?? "";
-        if (branch.Length == 0) return BadRequest("a verdict names the branch it was taken on");
-        if (branch.Length > EfHatchMergeCheck.MaxRefLength)
-            return BadRequest($"a branch is at most {EfHatchMergeCheck.MaxRefLength} characters");
+        if (branch.Length == 0) return BadRequest("a verdict names the branch it is about");
+        if (branch.Length > EfHatchBuildCheck.MaxRefLength)
+            return BadRequest($"a branch is at most {EfHatchBuildCheck.MaxRefLength} characters");
 
         var sha = request.Sha?.Trim() ?? "";
-        if (sha.Length == 0) return BadRequest("a verdict names the sha the branch stood at");
-        if (sha.Length > EfHatchMergeCheck.MaxShaLength)
-            return BadRequest($"a sha is at most {EfHatchMergeCheck.MaxShaLength} characters");
+        if (sha.Length == 0) return BadRequest("a verdict names the sha it is about");
+        if (sha.Length > EfHatchBuildCheck.MaxShaLength)
+            return BadRequest($"a sha is at most {EfHatchBuildCheck.MaxShaLength} characters");
 
-        // Deduplicated by name and sorted, so that the same failure listed in
+        // Failing checks on a verdict that is not failed are ignored rather than
+        // refused. Deduplicated by name and sorted, so the same failure listed in
         // another order by another runner is the same verdict and not a change.
-        var failing = new List<FailingCheckDto>();
+        List<FailingCheckDto> failing = [];
         if (verdict == BuildVerdicts.Failed)
         {
-            var named = new Dictionary<string, string?>(StringComparer.Ordinal);
-            foreach (var check in request.Failing ?? [])
-            {
-                var name = check?.Name?.Trim() ?? "";
-                if (name.Length == 0) return BadRequest("a failing check has a name");
-                if (name.Length > EfHatchBuildCheck.MaxNameLength)
-                    return BadRequest($"a failing check's name is at most {EfHatchBuildCheck.MaxNameLength} characters");
-                if (name.Contains('\n') || name.Contains('\r'))
-                    return BadRequest("a failing check's name has no line break in it");
-
-                var url = check!.Url?.Trim();
-                if (url is { Length: > EfHatchBuildCheck.MaxUrlLength })
-                    return BadRequest($"a failing check's url is at most {EfHatchBuildCheck.MaxUrlLength} characters");
-
-                // A key writes these and the issue page links them, so only a
-                // web address is kept: anything else is stored as nothing
-                // rather than refused, because the check still failed.
-                var safe = SafeUrl(url);
-                if (!named.TryGetValue(name, out var kept) || kept is null) named[name] = safe;
-            }
-
-            if (named.Count == 0) return BadRequest("a failed verdict names the checks that failed");
+            var named = request.Failing ?? [];
             if (named.Count > EfHatchBuildCheck.MaxFailing)
                 return BadRequest($"a verdict names at most {EfHatchBuildCheck.MaxFailing} failing checks");
+            if (named.Count == 0 || named.Any(f => f is null))
+                return BadRequest("a failed verdict names the checks that failed");
+            if (named.Any(f => (f.Name?.Trim() ?? "").Length is 0 or > EfHatchBuildCheck.MaxCheckNameLength
+                    || f.Name!.Contains('\n') || f.Name.Contains('\r')))
+                return BadRequest($"a check's name is 1 to {EfHatchBuildCheck.MaxCheckNameLength} characters with no line break in it");
+            if (named.Any(f => f.Url is { Length: > EfHatchBuildCheck.MaxCheckUrlLength }))
+                return BadRequest($"a check's url is at most {EfHatchBuildCheck.MaxCheckUrlLength} characters");
 
-            failing = named.OrderBy(n => n.Key, StringComparer.Ordinal)
-                .Select(n => new FailingCheckDto(n.Key, n.Value)).ToList();
+            failing = Failing(named);
         }
 
         var runner = request.Runner?.Trim() ?? "";
@@ -134,26 +125,22 @@ public class BuildCheckController(
         var row = await db.BuildChecks.FirstOrDefaultAsync(b => b.IssueId == issue.Id && b.Canonical == canonical, ct);
 
         var sameSha = row is not null && row.Sha == sha;
-        var storedFailing = row is null ? [] : EfHatchBuildCheck.ReadFailing(row.Failing);
-
-        // A mark that arrives after the poll already concluded: keep what the
-        // poll read, take the flag.
-        if (sameSha && request.PushedByIncrement
-            && verdict == BuildVerdicts.Pending
-            && row!.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed)
-        {
-            verdict = row.Verdict;
-            failing = storedFailing.ToList();
-        }
-
-        var flagged = sameSha ? row!.PushedByIncrement || request.PushedByIncrement : request.PushedByIncrement;
         var wasFailedAndFlagged = sameSha && row!.Verdict == BuildVerdicts.Failed && row.PushedByIncrement;
 
-        var changed = row is null
-            || row.Sha != sha
-            || row.Verdict != verdict
-            || !storedFailing.Select(f => f.Name).SequenceEqual(failing.Select(f => f.Name), StringComparer.Ordinal);
-        var from = row is null ? null : Side(row.Verdict, storedFailing);
+        // Rule two: a mark does not lower what has concluded on the same sha.
+        var keepStored = sameSha && request.PushedByIncrement
+            && verdict == BuildVerdicts.Pending
+            && row!.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
+        if (keepStored)
+        {
+            verdict = row!.Verdict;
+            failing = EfHatchBuildCheck.ReadFailing(row.Failing).OrderBy(f => f.Name, StringComparer.Ordinal).ToList();
+        }
+
+        var storedFailing = row is null ? [] : EfHatchBuildCheck.ReadFailing(row.Failing);
+        var changed = row is null || row.Verdict != verdict || row.Sha != sha
+            || !storedFailing.Select(f => f.Name).SequenceEqual(failing.Select(f => f.Name));
+        var from = row is null ? null : Side(row.Verdict, row.Sha, storedFailing);
 
         if (row is null)
         {
@@ -168,10 +155,12 @@ public class BuildCheckController(
                 Verdict = verdict,
                 CheckedAt = now,
                 Runner = runner,
+                CheckedBy = actor,
             };
             db.BuildChecks.Add(row);
         }
 
+        row.PushedByIncrement = sameSha ? row.PushedByIncrement || request.PushedByIncrement : request.PushedByIncrement;
         if (!sameSha) row.ShaSince = now;
 
         row.Remote = remote;
@@ -179,9 +168,9 @@ public class BuildCheckController(
         row.Sha = sha;
         row.Verdict = verdict;
         row.Failing = EfHatchBuildCheck.WriteFailing(failing);
-        row.PushedByIncrement = flagged;
         row.CheckedAt = now;
         row.Runner = runner;
+        row.CheckedBy = actor;
 
         if (changed)
         {
@@ -190,22 +179,25 @@ public class BuildCheckController(
                 Actor = actor,
                 Kind = EfHatchIssueEvent.BuildCheckChanged,
 
-                // The remote in its canonical form, as the merge check's is.
-                Payload = JsonSerializer.Serialize(new { remote = canonical, sha, from, to = Side(verdict, failing) }),
+                // The canonical remote, for the reason the merge check's is.
+                Payload = JsonSerializer.Serialize(new { remote = canonical, from, to = Side(verdict, sha, failing) }),
                 At = now,
             });
         }
 
-        if (verdict == BuildVerdicts.Failed && flagged && !wasFailedAndFlagged
+        // Rule four. Skipped when a question is already open: that is already
+        // the flag, and a second under it says no more than the first.
+        var failedAndFlagged = row.Verdict == BuildVerdicts.Failed && row.PushedByIncrement;
+        if (failedAndFlagged && !wasFailedAndFlagged
             && !await Questions.Open(db).AnyAsync(c => c.IssueId == issue.Id, ct))
         {
             db.Comments.Add(new EfHatchComment
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = QuestionBody(issue.Number, projectKey, branch, sha, failing),
                 Kind = EfHatchComment.Question,
-                Options = Questions.WriteOptions(StallQuestion.Options),
+                Body = QuestionBody(key, sha, failing),
+                Options = Questions.WriteOptions(StallAnswers.Options()),
                 CreatedAt = now,
             });
 
@@ -223,29 +215,54 @@ public class BuildCheckController(
         return IssueBuildChecks.Project(row);
     }
 
-    private static string QuestionBody(
-        int number, string projectKey, string branch, string sha, IReadOnlyList<FailingCheckDto> failing) =>
-        $"A build increment pushed {sha} to {branch}, and the build on it failed: "
-        + $"{string.Join(", ", failing.Select(f => f.Name))}. "
-        + $"What should happen to {IssueKey.Format(projectKey, number)} now?";
+    private static string QuestionBody(string key, string sha, IReadOnlyList<FailingCheckDto> failing) =>
+        $"""
+        An unattended build increment pushed {Short(sha)} to fix this branch's failing build, and the
+        build on that push has failed again. The checks that still fail:
 
-    /// <summary>The address if it is an absolute http or https one - the test a pull request url is held to - and null otherwise.</summary>
-    private static string? SafeUrl(string? url) =>
-        !string.IsNullOrEmpty(url)
-        && Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-        && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps)
-            ? url
+        {string.Join('\n', failing.Select(f => $"- {f.Name}"))}
+
+        The board does not send another agent at a build that failed on an agent's own fix.
+        Nothing further will be dispatched at {key} until somebody answers this.
+        """;
+
+    private static string Short(string sha) => sha.Length > 10 ? sha[..10] : sha;
+
+    /// <summary>The names, trimmed, deduplicated and sorted, each with its link only where it is a web address a page may draw.</summary>
+    private static List<FailingCheckDto> Failing(IReadOnlyList<FailingCheckDto>? failing) =>
+        (failing ?? [])
+            .Where(f => f is not null && !string.IsNullOrWhiteSpace(f.Name))
+            .Select(f => new FailingCheckDto(f.Name.Trim(), SafeUrl(f.Url)))
+            .GroupBy(f => f.Name, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(f => f.Name, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// A key writes these and the issue page draws them as links, so a value that
+    /// is not an absolute http or https address is stored as nothing rather than
+    /// as something a browser would run.
+    /// </summary>
+    private static string? SafeUrl(string? url)
+    {
+        var trimmed = url?.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.Length > EfHatchBuildCheck.MaxCheckUrlLength) return null;
+
+        return Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed)
+               && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps)
+            ? trimmed
             : null;
+    }
 
-    /// <summary>One side of a change: the verdict, and the names it failed. Spelled out rather than handed a record, as every payload in this module is - a record would serialise with capitals.</summary>
-    private static object Side(string verdict, IReadOnlyList<FailingCheckDto> failing) =>
-        new { verdict, failing = failing.Select(f => f.Name).ToList() };
+    /// <summary>One side of a change, spelled out as every payload in this module is.</summary>
+    private static object Side(string verdict, string sha, IReadOnlyList<FailingCheckDto> failing) =>
+        new { verdict, sha, failing = failing.Select(f => f.Name).ToList() };
 }
 
 /// <summary>The stored verdict, as a client reads it.</summary>
 public static class IssueBuildChecks
 {
     public static BuildCheckDto Project(EfHatchBuildCheck b) => new(
-        b.Remote, b.Canonical, b.Branch, b.Sha, b.Verdict,
-        EfHatchBuildCheck.ReadFailing(b.Failing), b.Runner, b.PushedByIncrement, b.ShaSince, b.CheckedAt);
+        b.Remote, b.Canonical, b.Branch, b.Sha, b.ShaSince, b.Verdict,
+        EfHatchBuildCheck.ReadFailing(b.Failing), b.PushedByIncrement, b.CheckedAt, b.Runner, b.CheckedBy);
 }

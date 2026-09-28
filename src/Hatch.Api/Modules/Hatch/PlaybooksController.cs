@@ -136,9 +136,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// </summary>
     /// <remarks>
     /// A row moves an issue between two columns, with one exception: the review
-    /// column may name itself, and that row is the conflict playbook - what an
-    /// agent is told when a pull request has stopped merging cleanly, an
-    /// increment that starts and ends in review (<see cref="Columns.Target"/>).
+    /// column may name itself, and that row is the review playbook - what an
+    /// agent is told when a pull request has stopped merging cleanly or its build
+    /// has failed, an increment that starts and ends in review (<see cref="Columns.Target"/>).
     /// Which column that is, is measured off the board as it stands and not
     /// named, the way every other rule about review is.
     /// </remarks>
@@ -157,7 +157,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
                 return "a playbook moves an issue between two columns - " +
                        (review is null
                            ? "this board has no review column, so none may name itself"
-                           : $"only the review column, \"{review.Name}\", may name itself, and that row is the conflict playbook");
+                           : $"only the review column, \"{review.Name}\", may name itself, and that row is the review playbook");
         }
 
         var clash = await db.Playbooks

@@ -799,37 +799,41 @@ public class EfHatchMergeCheck
 }
 
 /// <summary>
-/// What the build on an issue's branch says in one repository: whether the
-/// checks the repository runs on the branch's sha passed, failed, are still
-/// running, or do not exist. One row per issue per repository, keyed on the
-/// canonical remote as <see cref="EfHatchMergeCheck"/> is, so a second write
-/// for the same pair replaces the first.
+/// What the build on the tip of an issue's branch came to in one repository,
+/// and which sha it is about.
+///
+/// One row per issue per repository, keyed on <see cref="Canonical"/> for the
+/// reason <see cref="EfHatchMergeCheck"/> is: a project may bind several
+/// repositories, and a single verdict would let a passing one overwrite a
+/// failing one. An issue's build failed if any of its rows says so. A second
+/// write for the same pair replaces the first.
 /// </summary>
 /// <remarks>
-/// <para>Like a merge verdict it is a fact about refs on origin, and a runner
-/// reads it from there - the board only holds it. It is about the branch's
-/// <see cref="Sha"/>: a verdict on a sha that is no longer the branch's tip is
-/// a verdict on something else, and a different sha replaces the row's state
-/// whole.</para>
+/// <para>The sha is what makes a verdict comparable. A build that has concluded
+/// on a sha does not change, short of a re-run, so a verdict about any other
+/// sha says nothing about the branch as it stands now, and the dispatcher
+/// treats it as not read yet.</para>
 ///
-/// <para><see cref="ShaSince"/> is when the board first saw this sha, and is
-/// kept while the sha stays the same, so it says how long a sha has been
-/// waiting on its build. <see cref="PushedByIncrement"/> is true when the runner
-/// that pushed the sha at the end of a build increment said so; it never goes
-/// back to false for the same sha, so a poll that reads the same sha later does
-/// not unmark it. Together with a <c>failed</c> verdict it is what raises the
-/// failed-again question - see <see cref="BuildCheckController"/>.</para>
+/// <para><see cref="ShaSince"/> is when the board first heard about the sha,
+/// and the runner counts ten minutes of asking again about <c>none</c> from
+/// it: a push's checks take a few seconds to appear, so a <c>none</c> straight
+/// after a push is usually premature. <see cref="PushedByIncrement"/> is what
+/// tells a build that fails on an agent's own fix - which is a question - from
+/// one that fails on somebody else's push, which is new work.</para>
 /// </remarks>
 [Table("BuildChecks")]
 [Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
 public class EfHatchBuildCheck
 {
-    /// <summary>The most failing checks one verdict carries.</summary>
-    public const int MaxFailing = 100;
+    public const int MaxRemoteLength = EfHatchMergeCheck.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchMergeCheck.MaxRefLength;
+    public const int MaxShaLength = EfHatchMergeCheck.MaxShaLength;
+    public const int MaxVerdictLength = EfHatchMergeCheck.MaxVerdictLength;
 
-    /// <summary>The longest a check's name is, and a check's url.</summary>
-    public const int MaxNameLength = 200;
-    public const int MaxUrlLength = 2000;
+    /// <summary>The most failing checks one verdict carries. Past this the list is not one anybody reads, and the log is where the rest is.</summary>
+    public const int MaxFailing = 100;
+    public const int MaxCheckNameLength = 200;
+    public const int MaxCheckUrlLength = 2000;
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
@@ -838,47 +842,49 @@ public class EfHatchBuildCheck
     public EfHatchIssue? Issue { get; set; }
 
     /// <summary>The remote as the runner spelled it.</summary>
-    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    [MaxLength(MaxRemoteLength)]
     public required string Remote { get; set; }
 
     /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the identity, and the unique index's other half.</summary>
-    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    [MaxLength(MaxRemoteLength)]
     public required string Canonical { get; set; }
 
-    /// <summary>The issue's branch.</summary>
-    [MaxLength(EfHatchMergeCheck.MaxRefLength)]
+    /// <summary>The issue's branch, and the sha of its tip that the verdict is about.</summary>
+    [MaxLength(MaxRefLength)]
     public required string Branch { get; set; }
 
-    /// <summary>Where the branch stood when the build was read.</summary>
-    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    [MaxLength(MaxShaLength)]
     public required string Sha { get; set; }
 
-    /// <summary>When the board first saw <see cref="Sha"/>. The board's clock, for the reason <see cref="EfHatchMergeCheck.CheckedAt"/> is.</summary>
+    /// <summary>When the board first heard about <see cref="Sha"/>. Kept across writes for the same sha; the board's clock, as <see cref="CheckedAt"/> is.</summary>
     public required DateTimeOffset ShaSince { get; set; }
 
     /// <summary>One of <see cref="BuildVerdicts"/>.</summary>
-    [MaxLength(EfHatchMergeCheck.MaxVerdictLength)]
+    [MaxLength(MaxVerdictLength)]
     public required string Verdict { get; set; }
 
-    /// <summary>The failed checks, as a JSON array of <see cref="FailingCheckDto"/>. <c>[]</c> when there are none. jsonb, as <see cref="EfHatchComment.Options"/> is.</summary>
-    public string Failing { get; set; } = "[]";
+    /// <summary>The failing checks as <c>[{ name, url }]</c>, sorted by name. jsonb, as <see cref="EfHatchComment.Options"/> is.</summary>
+    public string? Failing { get; set; }
 
-    /// <summary>True once the runner that pushed <see cref="Sha"/> at the end of a build increment has said so.</summary>
+    /// <summary>Whether a build increment pushed <see cref="Sha"/>. Once set it stays set for the same sha.</summary>
     public bool PushedByIncrement { get; set; }
 
-    /// <summary>When the board took the verdict.</summary>
     public required DateTimeOffset CheckedAt { get; set; }
 
     /// <summary>The checkout that took it, as it names itself.</summary>
     [MaxLength(ClaimRequest.MaxRunnerLength)]
     public required string Runner { get; set; }
 
+    /// <summary>The name of the credential it arrived under - a name and not an id, for the reason <see cref="EfHatchIssue.CreatedBy"/> is.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CheckedBy { get; set; }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public static string WriteFailing(IReadOnlyList<FailingCheckDto> failing) =>
-        JsonSerializer.Serialize(failing, Json);
+    public static string? WriteFailing(IReadOnlyList<FailingCheckDto> failing) =>
+        failing.Count == 0 ? null : JsonSerializer.Serialize(failing, Json);
 
-    /// <summary>The stored list, or empty for a row that will not parse - the rule <see cref="Questions.ReadOptions"/> follows.</summary>
+    /// <summary>The stored list, or empty. A row that will not parse reads as empty rather than throwing the verdict away.</summary>
     public static IReadOnlyList<FailingCheckDto> ReadFailing(string? stored)
     {
         if (string.IsNullOrWhiteSpace(stored)) return [];
@@ -996,13 +1002,15 @@ public class EfHatchIssueEvent
     public const string MergeCheckChanged = "merge_check_changed";
 
     /// <summary>
-    /// The verdict on the build of the issue's branch changed - see
-    /// <see cref="EfHatchBuildCheck"/>. The payload carries the canonical
-    /// remote and the <c>sha</c>, and <c>from</c> and <c>to</c> as
-    /// <c>{ verdict, failing }</c> where <c>failing</c> is the names of the
-    /// failed checks (<c>from</c> is null for the first verdict on that
-    /// repository). Written when the verdict, the sha or the set of failing
-    /// names changes; a poll that reads the same thing again writes none.
+    /// A runner's verdict on the build on the tip of the issue's branch changed -
+    /// see <see cref="EfHatchBuildCheck"/>. The payload carries the canonical
+    /// remote, because an issue may hold one verdict per repository, and
+    /// <c>from</c> and <c>to</c> as <c>{ verdict, sha, failing }</c> (<c>from</c>
+    /// is null for the first verdict on that repository; <c>failing</c> is the
+    /// names of the checks). Written when the verdict, the sha or the set of
+    /// failing names changes, so the trail says when a build started failing and
+    /// when it stopped. A verdict that repeats the stored one, and a mark that
+    /// only sets whether an increment pushed the sha, write none.
     /// </summary>
     public const string BuildCheckChanged = "build_check_changed";
 
