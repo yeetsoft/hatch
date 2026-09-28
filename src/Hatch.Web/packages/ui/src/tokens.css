@@ -189,6 +189,22 @@
      Black in both themes - it is the absence of picture, not a surface. */
   --letterbox: #000000;
 
+  /* The console (apps/hatch OmniBar): a dark terminal in both themes, because
+     the look is the point - a console that turned white in the light theme
+     would be a search box. Fixed like --letterbox, so declared here and in
+     neither dark block; tokens.test.ts holds that line. Contrast is WCAG,
+     measured against --console:
+       --on-console    14.6:1
+       --console-dim    6.6:1 (5.1:1 on the highlighted row's ground)
+       --console-glow  13.5:1 (10.5:1 on the highlighted row's ground)
+     The glow is mint rather than --success, which means "it worked" and would
+     read as a success message lit in that colour. */
+  --console: #0b1020;
+  --console-line: #1e2a44;
+  --on-console: #d6e2ff;
+  --console-dim: #8a98bb;
+  --console-glow: #5ef2c5;
+
   /* Categorical series (state-timeline chart) - fixed order, validated for CVD
      safety. Carried across exactly; this ramp is not a value to improvise on. */
   --series-1: #2a78d6;

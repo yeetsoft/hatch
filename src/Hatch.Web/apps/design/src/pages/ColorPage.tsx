@@ -90,6 +90,17 @@ const GROUPS: ColorGroup[] = [
     note: 'Black in both themes. It is the absence of picture, not a surface, so it does not follow the palette.',
     tokens: [{ name: '--letterbox', use: 'Behind a video or image whose aspect is not the frame’s' }],
   },
+  {
+    title: 'Console',
+    note: 'Dark in both themes, because the look is the point: a console that turned white in the light theme would be a search box. Fixed like the letterbox, so no dark block redefines them.',
+    tokens: [
+      { name: '--console', use: 'The ground: a blue-black that sits with the top bar’s navy' },
+      { name: '--console-line', use: 'Hairlines between prompt, list and status line; the keycaps' },
+      { name: '--on-console', use: 'Ink: keys, titles, what is typed' },
+      { name: '--console-dim', use: 'The type, the column name, the status line' },
+      { name: '--console-glow', use: 'The phosphor: prompt, caret, matched characters, the row marker' },
+    ],
+  },
 ];
 
 const ALL_TOKENS = GROUPS.flatMap((group) => group.tokens.map((token) => token.name));

@@ -16,6 +16,12 @@ export interface CardProps {
   terminal?: boolean;
 }
 
+interface BoardCardProps {
+  /** The console found this one: draw the ring. */
+  found?: boolean;
+  onPeek: (card: IssueCard) => void;
+}
+
 /** Owed an answer, and drawn as such wherever the card is drawn. */
 const askingClass = (card: IssueCard) => (card.openQuestions > 0 ? ' asking' : '');
 
@@ -43,15 +49,18 @@ export function BoardCard({
   card,
   waiting = false,
   terminal = false,
+  found = false,
   onPeek,
-}: CardProps & { onPeek: (card: IssueCard) => void }) {
+}: CardProps & BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
 
   return (
     <Link
       ref={setNodeRef}
       to={`/issues/${card.key}`}
-      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${expeditedClass(card)}`}
+      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${expeditedClass(card)}${found ? ' found' : ''}`}
+      // How the board finds the element again: the console's take scrolls to it and focuses it.
+      data-issue-key={card.key}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={(e) => {
         if (!isPlainClick(e)) return;
