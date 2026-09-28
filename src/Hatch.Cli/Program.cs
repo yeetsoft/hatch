@@ -63,10 +63,12 @@ var checkoutEnv = root is null ? null : Path.Combine(root, "scripts", ".env");
 // refuse for want of the origin it is there to ask for.
 if (command == "config")
 {
-    var configured = Settings.Layers(checkoutEnv, environment)("HATCH_RUNNER").Value;
-    return await new ConfigCommand(
-            say, new Input(), environment, checkoutEnv, Checkout.Runner(configured, Checkout.Host(), root ?? here),
-            Root: root)
+    var fold = Settings.Layers(checkoutEnv, environment);
+    var configured = fold("HATCH_RUNNER").Value;
+    var configRunnerName = await ResolveRunnerAsync(
+        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, CancellationToken.None);
+
+    return await new ConfigCommand(say, new Input(), environment, checkoutEnv, configRunnerName, Root: root)
         .RunAsync(rest, CancellationToken.None);
 }
 
@@ -85,7 +87,8 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
 // is a document the session parses. `inbox` prints JSON or nothing.
 if (command == "inbox")
 {
-    using var hooked = new HatchClient(settings, Checkout.Runner(settings.Runner, Checkout.Host(), root ?? here));
+    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, CancellationToken.None);
+    using var hooked = new HatchClient(settings, inboxRunnerName);
     return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System)
         .RunAsync(rest, CancellationToken.None);
 }
@@ -107,7 +110,7 @@ foreach (var stray in strays)
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
 var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : here;
-var runnerName = Checkout.Runner(settings.Runner, Checkout.Host(), primaryRoot);
+var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, CancellationToken.None);
 
 using var client = new HatchClient(settings, runnerName);
 var board = new Board(client);
@@ -208,6 +211,28 @@ PosixSignalRegistration? Handle(PosixSignal signal)
         // caught; the ones that do not were never going to arrive.
         return null;
     }
+}
+
+/// <summary>
+/// <see cref="Checkout.RunnerAsync"/>, with the throwaway client it needs to
+/// ask the board what is already live - built and disposed here so every call
+/// site above names a checkout the same way without repeating the plumbing.
+/// </summary>
+/// <remarks>
+/// A second, real client is still built by the caller for everything after:
+/// this one exists only long enough to read <c>GET /api/hatch/runners</c>, and
+/// its own name never reaches the board for anything else.
+/// </remarks>
+async Task<string> ResolveRunnerAsync(string? origin, string? key, string? configured, string forRoot, CancellationToken ct)
+{
+    var host = Checkout.Host();
+
+    using var lookupClient = string.IsNullOrWhiteSpace(origin)
+        ? null
+        : new HatchClient(new Settings { Base = origin.TrimEnd('/'), Key = key ?? "" }, Checkout.Where(host, forRoot));
+
+    return await Checkout.RunnerAsync(
+        configured, host, forRoot, lookupClient is null ? null : new Board(lookupClient), ct);
 }
 
 internal partial class Program
@@ -321,7 +346,8 @@ internal partial class Program
         "                     where calls name themselves with a runner header instead",
         "  HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH",
         "  HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments",
-        "  HATCH_RUNNER       what the board calls this runner (default host:/path)",
+        "  HATCH_RUNNER       what the board calls this runner (default: a character from",
+        "                     the cast list, chosen once per checkout - see `hatch config`)",
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",

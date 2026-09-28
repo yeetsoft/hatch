@@ -59,6 +59,18 @@
     <ProjectReference Include="../Hatch.Contracts/Hatch.Contracts.csproj" />
   </ItemGroup>
 
+  <!--
+    The cast list RunnerNames picks a checkout's name from. Embedded rather than
+    read from disk: the binary is trimmed and single-file (see above), and a
+    published `hatch` carries no sibling files with it. A fixed LogicalName is
+    what makes reading it back with GetManifestResourceStream one line rather
+    than a search over GetManifestResourceNames for whatever the default naming
+    convention did to the path.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="runner-names.txt" LogicalName="runner-names.txt" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Hatch.Contracts" />
   </ItemGroup>

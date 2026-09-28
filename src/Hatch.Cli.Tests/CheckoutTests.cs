@@ -121,23 +121,21 @@ public sealed class CheckoutTests : IDisposable
 
     // ---- What the board calls this runner ----
 
+    private string RunnersPath => Path.Combine(_temp, "runners");
+
     [Fact]
-    public void A_runner_is_the_host_and_the_checkout()
+    public async Task HATCH_RUNNER_wins()
     {
-        Assert.Equal("kestrel:/Users/x/code/Hatch", Checkout.Runner(null, "kestrel", "/Users/x/code/Hatch"));
+        Assert.Equal(
+            "the-box",
+            await Checkout.RunnerAsync("the-box", "kestrel", "/Users/x/code/Hatch", null, default, RunnersPath));
     }
 
     [Fact]
-    public void HATCH_RUNNER_wins()
-    {
-        Assert.Equal("the-box", Checkout.Runner("the-box", "kestrel", "/Users/x/code/Hatch"));
-    }
-
-    [Fact]
-    public void A_long_runner_loses_its_head_rather_than_its_tail()
+    public async Task A_long_configured_runner_loses_its_head_rather_than_its_tail()
     {
         var deep = "/" + string.Join('/', Enumerable.Repeat("a-directory-with-a-long-name", 20)) + "/Hatch";
-        var runner = Checkout.Runner(null, "kestrel", deep);
+        var runner = await Checkout.RunnerAsync(deep, "kestrel", "/Users/x/code/Hatch", null, default, RunnersPath);
 
         // The server refuses a longer one, and a refused claim is a loop that
         // cannot start.
@@ -147,6 +145,88 @@ public sealed class CheckoutTests : IDisposable
         // part that survives.
         Assert.StartsWith("...", runner, StringComparison.Ordinal);
         Assert.EndsWith("/Hatch", runner, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_fresh_choice_is_recorded_and_a_later_run_repeats_it()
+    {
+        var tree = Tree("one");
+
+        var first = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
+        var second = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
+
+        Assert.Equal(first, second);
+        Assert.Contains(first, RunnerNames.All);
+        Assert.Contains($"{Checkout.Canonical(tree)}={first}", File.ReadAllLines(RunnersPath));
+    }
+
+    [Fact]
+    public async Task A_recorded_name_beats_a_fresh_choice()
+    {
+        var tree = Tree("one");
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(tree), "Some Recorded Name");
+
+        Assert.Equal("Some Recorded Name", await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath));
+    }
+
+    [Fact]
+    public async Task Two_spellings_of_one_path_read_one_record()
+    {
+        var tree = Tree("one");
+        var trailingSlash = tree + Path.DirectorySeparatorChar;
+
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
+        var again = await Checkout.RunnerAsync(null, "kestrel", trailingSlash, null, default, RunnersPath);
+
+        Assert.Equal(chosen, again);
+        Assert.Single(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    [Fact]
+    public async Task Two_checkouts_on_one_machine_never_share_a_name_even_hashing_to_the_same_slot()
+    {
+        var one = await Checkout.RunnerAsync(null, "kestrel", Tree("one"), null, default, RunnersPath);
+        var two = await Checkout.RunnerAsync(null, "kestrel", Tree("two"), null, default, RunnersPath);
+
+        Assert.NotEqual(one, two);
+    }
+
+    [Fact]
+    public async Task A_name_held_by_a_live_runner_elsewhere_is_skipped()
+    {
+        var tree = Tree("one");
+        var wouldChoose = RunnerNames.Choose(
+            "kestrel", Checkout.Canonical(tree), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        var wire = new Wire();
+        wire.Json("GET", "/api/hatch/runners", new[]
+        {
+            new RunnerDto(
+                wouldChoose, "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
+                "running", null, null, null, null, 90, [], null, "elsewhere:/some/other/tree"),
+        });
+
+        var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);
+        var board = new Board(client);
+
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+
+        Assert.NotEqual(wouldChoose, chosen);
+    }
+
+    [Fact]
+    public async Task The_local_record_is_the_backstop_when_the_board_cannot_be_reached()
+    {
+        var tree = Tree("one");
+        var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", new Wire());
+        var board = new Board(client);
+
+        // No rule stubbed on the wire, so the read 404s the way an unreachable
+        // or too-old Hatch would - and a name is still chosen rather than the
+        // whole command failing over it.
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+
+        Assert.Contains(chosen, RunnerNames.All);
     }
 
     // ---- What a runner serves ----

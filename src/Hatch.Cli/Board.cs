@@ -48,6 +48,15 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Every runner that has spoken to this Hatch lately - what
+    /// <see cref="Checkout.RunnerAsync"/> reads to skip a name a live runner
+    /// elsewhere already holds. Throws on a Hatch too old to have the route,
+    /// the same as every other read here; the caller decides what that means.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
+        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners", ct) ?? [];
+
+    /// <summary>
     /// A verdict on one issue's branch in one repository - see
     /// <see cref="MergeCheckRequest"/>. The remote is spelled the way this
     /// runner has it; the board canonicalises it.

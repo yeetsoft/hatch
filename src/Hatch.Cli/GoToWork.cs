@@ -432,7 +432,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             return 1;
         }
 
-        if (repoFlags.Count > 0 || workspaceFlag is not null)
+        var repoOverridden = repoFlags.Count > 0 || workspaceFlag is not null;
+        if (repoOverridden)
         {
             // The whole list for this run, in place of Settings.Repos - the
             // highest layer wins whole, as the settings already fold, rather
@@ -455,15 +456,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
             var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
-            var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
 
+            // Not yet named for the new root - that asks the board, and asking
+            // is deferred past the lock below, so a lock refusal touches the
+            // wire for nothing.
             runtime = runtime with
             {
                 Checkouts = repoCheckouts,
                 Root = root,
-                RunnerName = runnerName,
-                Where = Checkout.Where(Checkout.Host(), root),
-                Board = runtime.NewBoard(runnerName),
                 Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
         }
@@ -534,6 +534,24 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         try
         {
+            // Named for the new root only once the locks say this loop
+            // actually gets to run - so a lock refusal above never touched the
+            // wire - and inside this try, so a failure here still releases
+            // them in the finally below.
+            if (repoOverridden)
+            {
+                var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), runtime.Root));
+                var runnerName = await Checkout.RunnerAsync(
+                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, lookupBoard, ct, runtime.RunnersPath);
+
+                runtime = runtime with
+                {
+                    RunnerName = runnerName,
+                    Where = Checkout.Where(Checkout.Host(), runtime.Root),
+                    Board = runtime.NewBoard(runnerName),
+                };
+            }
+
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
