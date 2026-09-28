@@ -161,6 +161,10 @@ public sealed class BoardCommands(Cli cli)
     /// further: the column appears only when the answer holds one, so a board
     /// with nothing expedited prints exactly what it printed before, and a
     /// queue whose order has been reordered by somebody says which rows did it.
+    ///
+    /// <para>A conflict dispatch starts and ends in the same column, so an arrow
+    /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
+    /// instead: <c>In Review  resolving conflicts with main</c>.</para>
     /// </remarks>
     public static IReadOnlyList<string> Draw(IReadOnlyList<QueueEntryDto> queue)
     {
@@ -174,7 +178,9 @@ public sealed class BoardCommands(Cli cli)
                 + q.Issue.Key.PadRight(keyWidth) + "  "
                 + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "
-                + (q.Blocked is { Length: > 0 } why ? why : $"-> {q.ToStatus?.Name ?? "?"}"))
+                + (q.Blocked is { Length: > 0 } why
+                    ? why
+                    : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue) : $"-> {q.ToStatus?.Name ?? "?"}"))
             .ToList();
     }
 }

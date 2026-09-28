@@ -43,6 +43,15 @@ set -euo pipefail
 # Where the repository is, whatever directory this was invoked from.
 repo_root() { CDPATH= cd -- "$(dirname -- "$0")/.." && pwd; }
 
+# The same place, spelled the way the program can read it. Under Git Bash `pwd`
+# says /c/Users/..., which the program - a native Windows process - does not
+# know for a directory, and it would answer "no checkout" with no error and
+# quietly stop reading this checkout's scripts/.env. `cygpath` exists only under
+# MSYS and Cygwin, so everywhere else this is repo_root.
+native_root() {
+  if command -v cygpath >/dev/null; then cygpath -w "$(repo_root)"; else repo_root; fi
+}
+
 # The CLI as a built binary if there is one, and `dotnet run` if there is not.
 #
 # A published binary starts in milliseconds and a `dotnet run` spends a few
@@ -61,9 +70,13 @@ runner_cmd() {
     return
   fi
 
+  # The .exe is for Git Bash on Windows, where the build is hatch.exe and
+  # `[ -x ]` is true of it.
   for bin in \
     "${root}/src/Hatch.Cli/bin/Release/net10.0/hatch" \
-    "${root}/src/Hatch.Cli/bin/Debug/net10.0/hatch"
+    "${root}/src/Hatch.Cli/bin/Release/net10.0/hatch.exe" \
+    "${root}/src/Hatch.Cli/bin/Debug/net10.0/hatch" \
+    "${root}/src/Hatch.Cli/bin/Debug/net10.0/hatch.exe"
   do
     [ -x "$bin" ] || continue
     echo "$bin"
@@ -108,7 +121,7 @@ runner_argv() {
 # replaces this process rather than being watched by it.
 exec_hatch() {
   runner_argv
-  HATCH_ROOT="$(repo_root)" exec "${RUNNER_ARGV[@]}" "$@"
+  HATCH_ROOT="$(native_root)" exec "${RUNNER_ARGV[@]}" "$@"
 }
 
 # ---- The supervisor ----
@@ -137,7 +150,7 @@ forget_night_state() {
 
 supervise_go_to_work() {
   local status root
-  root=$(repo_root)
+  root=$(native_root)
 
   night_state=$(mktemp "${TMPDIR:-/tmp}/hatch-night.XXXXXX")
 

@@ -21,6 +21,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// <c>HATCH_TEST_DATABASE_URL</c> at a scratch database, or run
 /// <c>make test-api-db</c>, which does it for you.</para>
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class IssueClaimTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);

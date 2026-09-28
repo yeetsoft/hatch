@@ -706,10 +706,19 @@ hatch go-to-work --no-restart         ...never
 **This needs something standing over the process**, because a process cannot
 rebuild itself. A `hatch` you started by hand has nothing standing over it, so
 it is the loop it started as and these three flags do nothing there. The
-supervisor is Hatch's own `scripts/hatch.sh`, which catches the 75, compiles
-the new source and runs it again. The container runner is a third case: it
+supervisor is Hatch's own `scripts/hatch.sh`, or `scripts\hatch.ps1` in
+PowerShell on Windows, which catches the 75, compiles the new source and runs it
+again. The container runner is a third case: it
 carries the binary its image was built with, so `docker compose pull` is how it
 becomes a newer one.
+
+Windows client editions refuse scripts by default (execution policy
+`Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\scripts\hatch.ps1 go-to-work` runs the supervisor anyway, and
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` allows it for the account
+once; a clone carries no mark of the web, so `RemoteSigned` is enough. Group
+Policy outranks both: if it is what refuses, it is the thing to change, and no
+flag will get round it.
 
 Exit codes:
 

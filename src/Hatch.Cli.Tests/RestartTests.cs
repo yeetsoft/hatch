@@ -11,6 +11,7 @@ public sealed class RestartTests : IDisposable
     public RestartTests()
     {
         Put("scripts/hatch.sh", "#!/usr/bin/env bash\n");
+        Put("scripts/hatch.ps1", "# the PowerShell door\n");
         Put("src/Hatch.Cli/GoToWork.cs", "// the loop\n");
         Put("src/Hatch.Cli/Program.cs", "// the entry point\n");
         Put("src/Hatch.Contracts/Dtos.cs", "// the wire\n");
@@ -47,6 +48,7 @@ public sealed class RestartTests : IDisposable
         var print = Take();
 
         Assert.Contains("scripts/hatch.sh", print.Files.Keys);
+        Assert.Contains("scripts/hatch.ps1", print.Files.Keys);
         Assert.Contains("src/Hatch.Cli/GoToWork.cs", print.Files.Keys);
         Assert.Contains("src/Hatch.Contracts/Dtos.cs", print.Files.Keys);
 
@@ -116,13 +118,25 @@ public sealed class RestartTests : IDisposable
     }
 
     [Fact]
+    public void The_PowerShell_twin_of_the_script_is_part_of_the_loop_too()
+    {
+        var before = Take();
+        Put("scripts/hatch.ps1", "# and a supervisor\n");
+
+        Assert.Equal(["scripts/hatch.ps1"], Take().ChangedFrom(before));
+    }
+
+    [Fact]
     public void Several_changes_are_all_named_and_in_order()
     {
         var before = Take();
         Put("src/Hatch.Cli/Program.cs", "// changed\n");
         Put("scripts/hatch.sh", "# changed\n");
+        Put("scripts/hatch.ps1", "# changed\n");
 
-        Assert.Equal(["scripts/hatch.sh", "src/Hatch.Cli/Program.cs"], Take().ChangedFrom(before));
+        Assert.Equal(
+            ["scripts/hatch.ps1", "scripts/hatch.sh", "src/Hatch.Cli/Program.cs"],
+            Take().ChangedFrom(before));
     }
 
     [Fact]
