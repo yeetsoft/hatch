@@ -842,11 +842,12 @@ claim.
 
 **A claim is drawn where the work is looked at.** A claimed card carries a dot
 in its head row, green while the holder is being heard from and amber once it
-has gone quiet, with who holds it, from where and how long since a word on the
-hover. The issue page draws a **Claim** section saying the same things at
-length: the holder, the `host:/path/to/checkout` they hold it from, when it was
-taken, when it was last heard from, and the last line the runner printed with
-how long ago it printed it. *Quiet* is half the lease without a word — a
+has gone quiet, with who is working it and how long since a word on the hover.
+The issue page draws a **Claim** section saying the same things at length,
+leading with the runner rather than who it runs for — "Buster Bluth is working
+AER-12", with ", for Nathan" appended only when the two differ — plus when it
+was taken, when it was last heard from, and the last line the runner printed
+with how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
 moves the warning with it — and it is not expiry: a claim past its lease is
 drawn as no claim at all, on the card and on the page, because the server has
@@ -1395,7 +1396,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
-| `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is `host:/path/to/checkout`, escaped — a slash in it stays `%2F` |
+| `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
 
 Two of the filters are worth knowing: `ancestorKey` returns everything below an
@@ -3086,9 +3087,26 @@ for a runner in a container and for one on a laptop behind a router nothing can
 reach. The cost is honest and is stated on the page: a press takes effect at the
 top of the next pass, *after* whatever increment is in flight has finished.
 
-**The runner is named as its claim names it** — `host:/path/to/checkout`, or
-`HATCH_RUNNER`'s override, the same string every [claim](#claim) already
-carries. A runner has one identity and this is it; the table is keyed on it.
+**The runner is named as its claim names it** — a character off the cast list
+in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from five
+TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
+string every [claim](#claim) already carries. A runner has one identity and
+this is it; the table is keyed on it. The choice is made once per checkout —
+a SHA-256 over the host and the canonical checkout path picks a starting slot
+in the list, and the walk forward from there skips any name another checkout
+on this machine already recorded, or a live runner elsewhere on the board
+already holds — and then recorded in a per-user `runners` file beside
+`config`, so every later run repeats it rather than choosing again. Editing
+the list renames nobody who already has a name. `hatch config` offers the
+chosen or recorded name as its default and accepts another with the same four
+checks; `hatch config --runner <name>` sets it without asking.
+
+Every heartbeat also carries `where` — the machine and checkout the process is
+actually running from — drawn on the Runners page under the name. A heartbeat
+whose name is already the *live* runner at a different `where` is refused with
+`409`: two live runners never share one row, and a gone row can still be taken
+over, which is how a checkout that moved keeps its name. That refusal is the
+backstop; the first choice already tries to dodge it by reading the board.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,

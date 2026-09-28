@@ -24,23 +24,38 @@ public sealed class Runners(HatchClient client, string name)
     private readonly string _path = $"/api/hatch/runners/{Uri.EscapeDataString(name)}";
 
     /// <summary>
-    /// Still here. Answers what the board would like, or null where it did not
-    /// say - which is not an error and is never worth a line on a terminal.
+    /// Still here. Answers what the board would like, or the one refusal that
+    /// is not weather.
     /// </summary>
-    public async Task<RunnerInstructionDto?> BeatAsync(RunnerHeartbeatRequest beat, CancellationToken ct)
+    public async Task<RunnerBeat> BeatAsync(RunnerHeartbeatRequest beat, CancellationToken ct)
     {
         var answer = await client.Send(HttpMethod.Post, _path, beat, ct);
-        if (!answer.Ok || answer.Body.Trim().Length == 0) return null;
+
+        // The one answer this is not: this name is already live somewhere else,
+        // and going on would be two live runners heartbeating one row - which is
+        // exactly the merge the board's own refusal exists to prevent.
+        if (answer.Conflict) return new RunnerBeat(null, answer.Sentence);
+
+        if (!answer.Ok || answer.Body.Trim().Length == 0) return new RunnerBeat(null, null);
 
         try
         {
-            return System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.RunnerInstructionDto);
+            var instruction =
+                System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.RunnerInstructionDto);
+            return new RunnerBeat(instruction, null);
         }
         catch (System.Text.Json.JsonException)
         {
             // An answer this version cannot read is the same as no answer. A
             // night is not worth losing to a field somebody added.
-            return null;
+            return new RunnerBeat(null, null);
         }
     }
 }
+
+/// <summary>
+/// What a heartbeat came back with: an instruction to fold in, or the sentence
+/// that ends a run - never both, since a refused beat never reached the row
+/// this process would have read an instruction off.
+/// </summary>
+public readonly record struct RunnerBeat(RunnerInstructionDto? Instruction, string? Refusal);

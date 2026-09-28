@@ -269,6 +269,33 @@ public sealed class SettingsTests : IDisposable
         Assert.DoesNotContain("PATH", settings.Sources.Keys);
     }
 
+    /// <summary>
+    /// RunnerNames.Record has its own reader, keyed on a checkout path rather
+    /// than on one of these names - so the runners file next to `config` is
+    /// never read through here, and a checkout path on the left of `=` never
+    /// trips the allowlist warning below.
+    /// </summary>
+    [Fact]
+    public void A_runners_record_line_is_not_shaped_like_a_config_line()
+    {
+        var runners = Write("runners", "/Users/x/code/hatch=Buster Bluth");
+
+        var values = Settings.ReadFile(runners);
+
+        // Read as config, the left of "=" is the path - not one of
+        // Settings.FileNames - so the line is dropped rather than parsed.
+        Assert.Empty(values);
+    }
+
+    [Fact]
+    public void The_runners_file_is_beside_config_and_not_the_same_path()
+    {
+        Assert.NotEqual(RunnerNames.Record.DefaultPath(), Settings.UserConfigPath());
+        Assert.Equal(
+            Path.GetDirectoryName(Settings.UserConfigPath()), Path.GetDirectoryName(RunnerNames.Record.DefaultPath()));
+        Assert.Equal("runners", Path.GetFileName(RunnerNames.Record.DefaultPath()));
+    }
+
     [Fact]
     public void The_heartbeat_defaults_to_twenty_and_takes_a_number_and_refuses_a_negative_one()
     {

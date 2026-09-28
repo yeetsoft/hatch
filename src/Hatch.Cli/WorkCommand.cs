@@ -100,13 +100,16 @@ public sealed class WorkCommand(Runtime runtime)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
             var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
-            var runnerName = Checkout.Runner(runtime.Settings.Runner, Checkout.Host(), root);
+            var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), root));
+            var runnerName = await Checkout.RunnerAsync(
+                runtime.Settings.Runner, Checkout.Host(), root, lookupBoard, ct, runtime.RunnersPath);
 
             runtime = runtime with
             {
                 Checkouts = repoCheckouts,
                 Root = root,
                 RunnerName = runnerName,
+                Where = Checkout.Where(Checkout.Host(), root),
                 Board = runtime.NewBoard(runnerName),
                 Settings = runtime.Settings with { Workspace = effectiveWorkspace },
             };
@@ -217,13 +220,22 @@ public sealed class WorkCommand(Runtime runtime)
 
         // One heartbeat, so that an increment run by hand shows up beside the
         // loops on the Runners page rather than being a session nobody can see.
-        // The answer is not read: there is no second pass here to apply an
-        // instruction to, and the row ages out on its own once this exits.
-        await runtime.Runners().BeatAsync(
+        // The instruction is not read: there is no second pass here to apply
+        // one to, and the row ages out on its own once this exits. The one
+        // refusal that is not weather still ends the run, before anything is
+        // claimed.
+        var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: RunnerKinds.Once,
-                Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand"),
+                Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
+                Where: runtime.Where),
             ct);
+
+        if (beat.Refusal is { Length: > 0 } refusal)
+        {
+            runtime.Say.Complain($"hatch: {refusal}");
+            return 1;
+        }
 
         var clones = runtime.Settings.Workspace is not null;
 

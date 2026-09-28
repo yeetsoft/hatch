@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, Button, Card } from '@hatch/ui';
-import { agoPhrase, claimHealth } from '../lib/claim';
+import { agoPhrase, claimHealth, claimedBySuffix } from '../lib/claim';
 import { renderMarkdown } from '../lib/markdown';
 import { messageState } from '../lib/messages';
 import { useAutoGrow } from '../lib/useAutoGrow';
@@ -75,7 +75,8 @@ export function ClaimPanel({
       </div>
 
       <p className="hatch-claim-holder">
-        <strong>{claim.claimedBy}</strong> is working {issueKey} from <code>{claim.runner}</code>
+        <strong>{claim.runner}</strong> is working {issueKey}
+        {claimedBySuffix(claim)}
       </p>
 
       {/* Elapsed words rather than timestamps: the question a claim raises is

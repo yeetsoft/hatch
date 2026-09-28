@@ -89,8 +89,21 @@ export function agoPhrase(at: string | null | undefined, now: Date): string {
 }
 
 /**
- * The whole claim in one sentence: `hatch is working this from
- * somewhere:/checkouts/one, last heard from 4 minutes ago`.
+ * `, for Ada` when the runner is not who it runs for, `` when it is - the
+ * claim already named the runner, and naming the same thing twice is not a
+ * second fact.
+ *
+ * The one rule every place that draws a claim shares, now that the runner is
+ * a name and not a path: ClaimPanel, ClearClaimDialog and `claimTitle` below
+ * all lead with `claim.runner` and append this.
+ */
+export function claimedBySuffix(claim: IssueClaim): string {
+  return claim.claimedBy !== claim.runner ? `, for ${claim.claimedBy}` : '';
+}
+
+/**
+ * The whole claim in one sentence: `Buster Bluth is working this, for Ada,
+ * last heard from 4 minutes ago`.
  *
  * The card's tooltip, and the line the clear dialog opens with. Every fact the
  * card cannot draw at the size of a dot, said where a hover can reach it.
@@ -100,5 +113,5 @@ export function agoPhrase(at: string | null | undefined, now: Date): string {
  * terminal, and it rides no read a browser makes.
  */
 export function claimTitle(claim: IssueClaim, now: Date): string {
-  return `${claim.claimedBy} is working this from ${claim.runner}, last heard from ${agoPhrase(claim.heartbeatAt, now)}`;
+  return `${claim.runner} is working this${claimedBySuffix(claim)}, last heard from ${agoPhrase(claim.heartbeatAt, now)}`;
 }

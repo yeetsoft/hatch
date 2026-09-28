@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUIET_FRACTION, agoPhrase, claimHealth, claimTitle } from './claim';
+import { QUIET_FRACTION, agoPhrase, claimHealth, claimTitle, claimedBySuffix } from './claim';
 import type { IssueClaim } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');
@@ -90,12 +90,31 @@ describe('agoPhrase', () => {
   });
 });
 
+describe('claimedBySuffix', () => {
+  it('is empty when the runner is who it runs for', () => {
+    expect(claimedBySuffix(claim({ claimedBy: 'somewhere:/checkouts/one', runner: 'somewhere:/checkouts/one' }))).toBe(
+      '',
+    );
+  });
+
+  it('names who it runs for only when that differs from the runner', () => {
+    expect(claimedBySuffix(claim({ claimedBy: 'Ada', runner: 'Buster Bluth' }))).toBe(', for Ada');
+  });
+});
+
 describe('claimTitle', () => {
-  it('names the holder, the runner and how long ago it was last heard from', () => {
+  it('leads with the runner and how long ago it was last heard from', () => {
     const said = claimTitle(claim({ heartbeatAt: at(-4 * 60_000) }), NOW);
 
     expect(said).toContain('hatch');
     expect(said).toContain('somewhere:/checkouts/one');
     expect(said).toContain('4 minutes ago');
+    expect(said.startsWith('somewhere:/checkouts/one is working this')).toBe(true);
+  });
+
+  it('does not append a for-clause when claimedBy and runner are the same name', () => {
+    const said = claimTitle(claim({ claimedBy: 'Buster Bluth', runner: 'Buster Bluth' }), NOW);
+
+    expect(said).toBe(`Buster Bluth is working this, last heard from ${agoPhrase(claim().heartbeatAt, NOW)}`);
   });
 });
