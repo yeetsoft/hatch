@@ -249,6 +249,40 @@
   letter-spacing: 0.01em;
 }
 
+/* The peek's pill, wearing the small pill's paint plus the chrome that makes
+   it a button: no border of its own, a pointer cursor, and a halo in the
+   column's own colour rather than the house's - the pill is already that
+   colour, and a generic ring would fight it. */
+.hatch-status-pill-press {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  gap: var(--sp-1);
+  transition: box-shadow var(--transition), opacity var(--transition);
+}
+
+.hatch-status-pill-press:hover:not(:disabled) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-color) 35%, transparent);
+}
+
+.hatch-status-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-status-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-status-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-status-pill-press[aria-expanded='true'] .hatch-status-pill-caret {
+  transform: rotate(180deg);
+}
+
 /* ---- The status meter ----
 
    One bar that says where the bulk of a subtree is sitting: a segment per
@@ -705,6 +739,39 @@
   align-items: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
+}
+
+/* The status picker's band, on a line of its own under the meta row: flex-basis
+   100% forces the wrap regardless of what else sits in the row before it, and
+   order puts it after every chip whatever their own order. The same wash,
+   leading edge and radius as the issue page's status bar (.hatch-status-bar),
+   at a tighter padding for the peek's smaller frame. */
+.hatch-peek-status {
+  flex-basis: 100%;
+  order: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--status-color) 10%, var(--card));
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--status-color);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+@keyframes hatch-peek-status-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-peek-status {
+    animation: none;
+  }
 }
 
 .hatch-peek-title {

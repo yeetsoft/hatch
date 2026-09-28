@@ -35,6 +35,7 @@ import { MomentChip } from '../components/MomentChip';
 import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
+import { StatusSteps } from '../components/StatusSteps';
 import { MomentField } from '../components/MomentField';
 import { BuildCheckChips } from '../components/BuildCheckChips';
 import { MergeConflictChips } from '../components/MergeConflictChips';
@@ -46,7 +47,7 @@ import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
-import { boardColumns, isSettled } from '../lib/columns';
+import { isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { message } from '../lib/errors';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
@@ -620,17 +621,9 @@ export function IssuePage() {
  * of this thing" - the first question anybody opens an issue with - the same
  * size as its ready date. Here it is the page's own band: the column it is in,
  * in that column's colour, and the whole board's worth of columns beside it as
- * one press each.
- *
- * Every column is offered, in board order, because Hatch has no transition
- * rules on purpose (docs/hatch.md, "Non-goals") - any status to any status,
- * we trust ourselves.
- *
- * Including the deferred ones, which is what makes this band the only way onto
- * the shelf. The board cannot offer them - a column there is a drop target, and
- * work must not be parked by being dragged one lane too far - so they are drawn
- * here, after a divider, as the presses they are: a decision about this ticket,
- * made on this ticket's page.
+ * one press each, drawn by StatusSteps - the same group the board peek's
+ * status picker opens, so the two screens cannot disagree about what is on
+ * offer.
  */
 function StatusBar({
   statuses,
@@ -642,25 +635,6 @@ function StatusBar({
   onMove: (statusId: number) => void;
 }) {
   const current = statuses.find((s) => s.id === statusId);
-  const lanes = boardColumns(statuses);
-  const shelf = statuses.filter((s) => s.isDeferred);
-
-  const step = (status: Status) => {
-    const here = status.id === statusId;
-    return (
-      <button
-        key={status.id}
-        type="button"
-        className={`hatch-status-step${here ? ' here' : ''}${status.isDeferred ? ' deferred' : ''}`}
-        style={statusVars(status.color)}
-        aria-pressed={here}
-        disabled={here}
-        onClick={() => onMove(status.id)}
-      >
-        {status.name}
-      </button>
-    );
-  };
 
   return (
     <section className="hatch-status-bar" style={statusVars(current?.color)} aria-label="Status">
@@ -669,22 +643,7 @@ function StatusBar({
         {current ? <StatusPill status={current} size="lg" /> : <span className="text-muted">unknown</span>}
       </div>
 
-      <div className="hatch-status-steps" role="group" aria-label="Move this issue">
-        {lanes.map(step)}
-
-        {/* Grouped and labelled rather than run on to the end of the row,
-            because these do not continue the board - they leave it. A board
-            with no deferred column draws neither the divider nor the label and
-            reads exactly as it did before. */}
-        {shelf.length > 0 && (
-          <>
-            <span className="hatch-status-shelf-label" aria-hidden="true">
-              or park it
-            </span>
-            {shelf.map(step)}
-          </>
-        )}
-      </div>
+      <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} />
     </section>
   );
 }

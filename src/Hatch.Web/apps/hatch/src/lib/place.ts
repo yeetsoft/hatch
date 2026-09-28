@@ -183,6 +183,20 @@ function insertionIndex(ranked: IssueCard[], afterKey: string | null, beforeKey:
 }
 
 /**
+ * Where a card sent to a column - by a press, not a drag - lands: the foot of
+ * it, the same place the server puts a card sent with no position
+ * (`RankService.PlaceAsync`), the issue page's status bar puts one
+ * (`IssuesController.StageEditAsync`), and `hatch move` puts one.
+ *
+ * Every card is passed for both of `place`'s list arguments, not a filtered
+ * one, so a card sent to a column goes under everything already in it rather
+ * than under only what a filter happens to be showing.
+ */
+export function sendTo(all: IssueCard[], key: string, statusId: number): Placement | null {
+  return place(all, all, key, columnDroppableId(statusId));
+}
+
+/**
  * Where a card sits in its own column, as the request that would put it back.
  *
  * Read off the board before a drop, so an undo can name the same two

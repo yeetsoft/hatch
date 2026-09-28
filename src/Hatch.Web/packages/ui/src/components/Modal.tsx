@@ -47,11 +47,26 @@ export interface ModalProps {
  * a known outline gap this phase inherited rather than caused: lifting it to
  * <h2> would move it from 18px to 22px, and Phase 4 may not change type a
  * designer has not chosen.
+ *
+ * `onClose` is read from a ref rather than named in the open effect's
+ * dependencies, so a caller that passes a new arrow on every render (an
+ * inline `() => setOpen(false)`) does not re-run the effect and re-steal
+ * focus on every parent re-render — a 30s board poll, or an optimistic
+ * repaint. Only `open` flipping should touch focus.
+ *
+ * Escape acts only when this panel is the *last* `[aria-modal="true"]` in the
+ * document. Dialogs here are not portalled, so a dialog stacked over another
+ * (the close-subtree offer drawn over the issue peek) sits later in the DOM
+ * at the same z-index and paints on top — and both panels' `keydown`
+ * listeners fire on the same event before either close commits, so without
+ * this check one Escape would close both.
  */
 export function Modal({ open, onClose, title, children, footer }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<Element | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +77,10 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
     panelRef.current?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      const panels = document.querySelectorAll('[aria-modal="true"]');
+      if (panels[panels.length - 1] !== panelRef.current) return;
+      onCloseRef.current();
     };
     document.addEventListener('keydown', onKeyDown);
 
@@ -71,7 +89,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
       const opener = openerRef.current;
       if (opener instanceof HTMLElement && document.contains(opener)) opener.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
