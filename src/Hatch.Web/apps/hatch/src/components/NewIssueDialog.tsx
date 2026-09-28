@@ -8,7 +8,7 @@ import { IssuePicker } from './IssuePicker';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MomentField } from './MomentField';
 import { ISSUE_TYPES } from '../types';
-import type { IssueCard, IssueType, Project } from '../types';
+import type { Issue, IssueCard, IssueType, Project } from '../types';
 
 /**
  * Filing an issue: a project, a type, the parent it hangs under, a title, and somewhere to
@@ -33,7 +33,7 @@ export function NewIssueDialog({
       the first-project fallback below, until somebody picks another. */
   defaultProjectKey: string;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (created: Issue) => void;
 }) {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [type, setType] = useState<IssueType>('task');
@@ -79,7 +79,7 @@ export function NewIssueDialog({
       setReadyAt('');
       setDueAt('');
       setError(null);
-      onCreated();
+      onCreated(created);
       onClose();
     } catch (err) {
       setError(message(err));

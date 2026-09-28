@@ -522,57 +522,147 @@
   flex-wrap: wrap;
 }
 
+/* One look for every control in the bar: search, project, types, the waiting
+   switch and assignee are the same height, radius, border, font and padding.
+   The look carries a meaning: at rest is "holding its default", tinted is
+   "holding something else" - which is how tasks hidden by default avoid
+   looking like a change somebody made.
+
+   A fixed height rather than matching paddings, because a native <select>, a
+   <button> and an <input> each work out their own line height. */
+.hatch-board-filters {
+  --facet-h: 2.25rem;
+}
+
+.hatch-facet,
+.hatch-board-search {
+  box-sizing: border-box;
+  height: var(--facet-h);
+}
+
+.hatch-facet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition),
+    box-shadow var(--transition);
+}
+
+.hatch-facet:hover {
+  border-color: var(--line-strong);
+}
+
+/* Its name, inside the control, beside the value. */
+.hatch-facet__label {
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 600;
+}
+
+.hatch-facet__caret {
+  flex: none;
+}
+
+/* The select inside a facet is stripped to its text: the wrapper draws the box.
+   Whose cards to draw is a native <select> and not IssuePicker - that component
+   exists for sixty issue keys sharing a prefix, and a household's worth of
+   names is neither long enough nor ambiguous enough to need it. */
+.hatch-facet select {
+  appearance: none;
+  max-width: 12rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.hatch-facet select:focus {
+  box-shadow: none;
+}
+
+.hatch-facet:focus-within,
+.hatch-facet:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+/* Tinted: not at its default. The ring above is --primary-bg, which is this
+   ground, so a lit control takes an outline for focus instead. */
+.hatch-facet--lit,
+.hatch-board-search--lit {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+}
+
+.hatch-facet--lit .hatch-facet__label {
+  color: inherit;
+}
+
+.hatch-facet--lit:focus-within,
+.hatch-facet--lit:focus-visible {
+  box-shadow: none;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .hatch-board-search {
   flex: 0 1 22rem;
   min-width: 12rem;
 }
 
-.hatch-type-toggles {
+/* The Types panel. Rows are padded like a menu item. */
+.hatch-types-panel {
   display: flex;
-  gap: var(--sp-1);
+  flex-direction: column;
+  min-width: 12rem;
 }
 
-/* Whose cards to draw. A native <select> and not IssuePicker: that component
-   exists for sixty issue keys sharing a prefix, and a household's worth of
-   names is neither long enough nor ambiguous enough to need it. */
-.hatch-assignee-filter {
-  flex: 0 0 auto;
-  max-width: 12rem;
-}
-
-/* Which project's cards to draw - drawn only when the board has more than
-   one, same as the picker on the Plan page. */
-.hatch-project-filter {
-  flex: 0 0 auto;
-  max-width: 12rem;
-}
-
-/* A toggle rather than a checkbox: four of these sit in a row and read as one
-   control, which is what they are. The pressed state is `aria-pressed` as well
-   as a class - the colour is the only thing a sighted reader gets, and it must
-   not be the only thing anybody gets. */
-.hatch-type-toggle {
-  padding: var(--sp-1) var(--sp-2-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--t-label);
-  font-weight: 600;
+.hatch-types-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
-  transition: all var(--transition);
 }
 
-.hatch-type-toggle:hover {
-  color: var(--ink);
-  border-color: var(--line-strong);
+.hatch-types-row:hover {
+  background: var(--primary-bg);
 }
 
-.hatch-type-toggle.on {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--on-accent);
+.hatch-types-row input {
+  accent-color: var(--primary);
+}
+
+.hatch-types-name {
+  text-transform: capitalize;
+}
+
+.hatch-types-count {
+  margin-left: auto;
+  padding-left: var(--sp-4);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-types-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  border-top: 1px solid var(--line-strong);
 }
 
 .hatch-filter-count {
@@ -1702,9 +1792,9 @@ input.hatch-inline-title-input {
   border: 1px solid var(--line);
   background: transparent;
   color: inherit;
-  border-radius: var(--r-ctl);
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--t-label);
+  border-radius: var(--r-in);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-body);
   cursor: pointer;
 }
 
@@ -2119,12 +2209,6 @@ input.hatch-inline-title-input {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
-}
-
-.hatch-waiting-toggle.on {
-  background: var(--warn);
-  border-color: var(--warn);
-  color: var(--on-accent);
 }
 
 /* The band down the left edge is what makes this card different from the four
