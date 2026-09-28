@@ -724,6 +724,15 @@
   font-weight: 600;
 }
 
+/* The branch has stopped merging with the trunk. The `soon` ladder's colours
+   rather than `today`'s: it is the loop's to fix and a person only needs to
+   know it is happening, not to do something about it. */
+.hatch-chip-conflict {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 /* The pull request chip, which is the only chip that goes anywhere. It is a
    link, so it says so on hover and carries the primary ink rather than the
    muted grey the dates wear - a chip nobody can tell is clickable is a chip
@@ -2755,6 +2764,16 @@ button.hatch-option.chosen {
   flex: none;
   color: var(--muted);
   font-size: var(--t-micro);
+}
+
+/* Which files conflict, on the row's second line, where the pull request row
+   keeps its URL - the same quiet size and the same clip. */
+.hatch-attention-files {
+  font-size: var(--t-micro);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hatch-attention-url {

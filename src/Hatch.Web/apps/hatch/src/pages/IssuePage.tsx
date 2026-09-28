@@ -34,6 +34,7 @@ import { MomentChip } from '../components/MomentChip';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { MomentField } from '../components/MomentField';
+import { MergeConflictChips } from '../components/MergeConflictChips';
 import { PullRequestLink } from '../components/PullRequestLink';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
@@ -333,6 +334,7 @@ export function IssuePage() {
             <MomentChip kind="ready" value={issue.readyAt} />
             <MomentChip kind="due" value={issue.dueAt} muted={stopped} />
             <PullRequestLink url={issue.pullRequestUrl} />
+            <MergeConflictChips checks={issue.mergeChecks} />
             <span className="text-muted">
               filed by {issue.createdBy} on {new Date(issue.createdAt).toLocaleDateString()}
             </span>

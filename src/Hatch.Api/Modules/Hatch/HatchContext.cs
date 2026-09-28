@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, ten tables.
+/// migration history, eleven tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -19,6 +19,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
+    public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -177,6 +178,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(r => r.Project)
                 .WithMany(p => p.Repositories)
                 .HasForeignKey(r => r.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A verdict is about an issue and means nothing without it, the same
+        // as its events: deleting the issue takes them.
+        modelBuilder.Entity<EfHatchMergeCheck>(e =>
+        {
+            e.HasOne(m => m.Issue)
+                .WithMany(i => i.MergeChecks)
+                .HasForeignKey(m => m.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

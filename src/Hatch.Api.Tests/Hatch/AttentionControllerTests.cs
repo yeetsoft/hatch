@@ -91,6 +91,120 @@ public class AttentionControllerTests
         Assert.Equal(0, attention.InReviewWithoutPullRequest);
     }
 
+    // ---- The conflict half ----
+
+    [Fact]
+    public async Task Attention_ListsTheReviewColumnsIssuesWhoseBranchConflicts()
+    {
+        var h = await NewAsync();
+        var conflicted = await h.FileAsync("story", "stopped merging", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        var clean = await h.FileAsync("story", "merges fine", h.Review, pullRequestUrl: "https://forge.example/pulls/2");
+        var unchecked_ = await h.FileAsync("story", "nobody has looked", h.Review);
+        await h.CheckAsync(conflicted, MergeVerdicts.Conflicted, ["a.cs", "b.cs"]);
+        await h.CheckAsync(clean, MergeVerdicts.Clean);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Conflicts);
+
+        Assert.Equal(Key(conflicted), row.Key);
+        Assert.Equal("stopped merging", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        Assert.Equal(["a.cs", "b.cs"], Assert.Single(row.Checks).Files);
+        Assert.NotEqual(Key(unchecked_), row.Key);
+    }
+
+    [Theory]
+    [InlineData(MergeVerdicts.Clean)]
+    [InlineData(MergeVerdicts.None)]
+    [InlineData(MergeVerdicts.Ambiguous)]
+    public async Task Attention_SaysNothingAboutAVerdictThatIsNotConflicted(string verdict)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, verdict);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAConflictOnAnIssueThatIsNotInReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still being written", h.InProgress);
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAConflictWithNoPullRequest_AndStillCountsItAsWithoutOne()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a branch and no link", h.Review);
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        // The two halves are separate questions: whether there is somewhere to
+        // review it, and whether the branch still merges.
+        Assert.Equal(Key(issue), Assert.Single(attention.Conflicts).Key);
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_ListsConflictsInTheColumnsOwnOrder()
+    {
+        var h = await NewAsync();
+        var second = await h.FileAsync("story", "below", h.Review, rank: 2048);
+        var first = await h.FileAsync("story", "top", h.Review, rank: 1024);
+        await h.CheckAsync(second, MergeVerdicts.Conflicted, ["a.cs"]);
+        await h.CheckAsync(first, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        Assert.Equal(
+            [Key(first), Key(second)],
+            Value(await h.Attention.GetAttention(default)).Conflicts.Select(c => c.Key));
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnIssueOnceAndNamesOnlyTheRepositoriesThatConflict()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "two repositories", h.Review);
+        await h.CheckAsync(issue, MergeVerdicts.Clean, remote: "forge.example/owner/one");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"], remote: "forge.example/owner/two");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["b.cs"], remote: "forge.example/owner/three");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Conflicts);
+
+        Assert.Equal(["forge.example/owner/three", "forge.example/owner/two"], row.Checks.Select(c => c.Canonical));
+    }
+
+    [Fact]
+    public async Task Attention_FindsConflictsInTheReviewColumnAfterItIsRenamedAndTheBoardReordered()
+    {
+        var h = await NewAsync();
+        var moved = await h.FileAsync("story", "in the column that is now last before done", h.InProgress);
+        var was = await h.FileAsync("story", "in the one that used to be", h.Review);
+        await h.CheckAsync(moved, MergeVerdicts.Conflicted, ["a.cs"]);
+        await h.CheckAsync(was, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        await h.RenameAsync(h.InProgress, "Waiting on Nathan");
+        await h.ReorderAsync(h.InProgress, 36);
+
+        // Measured, not named: whichever column is immediately left of the
+        // first terminal one.
+        Assert.Equal(Key(moved), Assert.Single(Value(await h.Attention.GetAttention(default)).Conflicts).Key);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersNoConflictsOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -257,6 +371,27 @@ public class AttentionControllerTests
             Db.Issues.Add(issue);
             await Db.SaveChangesAsync();
             return issue;
+        }
+
+        /// <summary>A runner's verdict, written straight to the row: these tests are about who reads it, not about what the route refuses.</summary>
+        public async Task CheckAsync(
+            EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo")
+        {
+            Db.MergeChecks.Add(new EfHatchMergeCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = remote,
+                Trunk = "main",
+                TrunkSha = new string('1', 40),
+                Verdict = verdict,
+                Files = EfHatchMergeCheck.JoinFiles(files ?? []),
+                CheckedAt = Now,
+                Runner = "box:/work/repo",
+                CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>What an operator does on the Statuses page, written straight to the row.</summary>

@@ -249,7 +249,8 @@ public record IssueDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IssueClaimDto? Claim = null,
-    bool Expedited = false);
+    bool Expedited = false,
+    IReadOnlyList<MergeCheckDto>? MergeChecks = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -522,10 +523,30 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// order and the same definition of open that <c>/api/hatch/questions</c>
 /// answers with, because it is the same call.
 /// </param>
+/// <param name="Conflicts">
+/// The review column's issues whose branch conflicts with the trunk in at
+/// least one repository, in that column's board order, whether or not they
+/// carry a pull request. Not counted towards the badge: a conflict is the
+/// loop's to fix, and one it cannot fix becomes a stall, which is a question,
+/// which already lights the control.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
-    IReadOnlyList<QuestionDto> Questions);
+    IReadOnlyList<QuestionDto> Questions,
+    IReadOnlyList<ConflictDto> Conflicts);
+
+/// <summary>
+/// One issue in review whose branch conflicts with the trunk: what the panel
+/// draws, and the words that say where.
+/// </summary>
+/// <param name="Checks">Only the conflicted verdicts, one per repository, so a clean repository beside a conflicted one is not listed as a conflict.</param>
+public record ConflictDto(
+    string Key,
+    string Title,
+    string Type,
+    string? PullRequestUrl,
+    IReadOnlyList<MergeCheckDto> Checks);
 
 // ---- The board ----
 
@@ -1111,6 +1132,67 @@ public static class RunnerKinds
     /// <summary><c>work</c>, and <c>go-to-work --once</c>: one heartbeat, and no second pass to apply an instruction to.</summary>
     public const string Once = "once";
 }
+
+/// <summary>
+/// What a runner found when it merged an issue's branch against the trunk of
+/// one repository - the four things it can say. Spelled on the contract because
+/// both sides act on them: the runner writes one, and the board and the
+/// dispatcher read it.
+/// </summary>
+public static class MergeVerdicts
+{
+    /// <summary>The branch merges with the trunk without conflict. Nothing for an agent to do.</summary>
+    public const string Clean = "clean";
+
+    /// <summary>The branch conflicts with the trunk, in the files the verdict names.</summary>
+    public const string Conflicted = "conflicted";
+
+    /// <summary>No unmerged branch on origin is named for the issue.</summary>
+    public const string None = "none";
+
+    /// <summary>Two or more unmerged branches on origin are named for it, and nothing here guesses which is its own.</summary>
+    public const string Ambiguous = "ambiguous";
+
+    public static readonly IReadOnlyList<string> All = [Clean, Conflicted, None, Ambiguous];
+}
+
+/// <summary>
+/// A verdict, as the runner reports it. Who took it is the credential's to say,
+/// and when is the board's, so the body names neither.
+/// </summary>
+/// <param name="Remote">The repository as the runner spells it. The board keys the verdict on its canonical form.</param>
+/// <param name="Trunk">The trunk's name, and <paramref name="TrunkSha"/> where it stood when the merge was tried.</param>
+/// <param name="Verdict">One of <see cref="MergeVerdicts"/>.</param>
+/// <param name="Branch">The issue's branch, and <paramref name="BranchSha"/> where it stood. Absent for <c>none</c> and <c>ambiguous</c>, which carry neither.</param>
+/// <param name="Files">The conflicted paths. Required for <c>conflicted</c> and ignored otherwise.</param>
+/// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+public record MergeCheckRequest(
+    string Remote,
+    string Trunk,
+    string TrunkSha,
+    string Verdict,
+    string? Branch,
+    string? BranchSha,
+    IReadOnlyList<string>? Files,
+    string Runner);
+
+/// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
+/// <param name="Remote">The remote as the runner spelled it.</param>
+/// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
+/// <param name="CheckedAt">When the board took it.</param>
+/// <param name="CheckedBy">The name of the credential it arrived under.</param>
+public record MergeCheckDto(
+    string Remote,
+    string Canonical,
+    string Trunk,
+    string TrunkSha,
+    string Verdict,
+    string? Branch,
+    string? BranchSha,
+    IReadOnlyList<string> Files,
+    DateTimeOffset CheckedAt,
+    string Runner,
+    string CheckedBy);
 
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and

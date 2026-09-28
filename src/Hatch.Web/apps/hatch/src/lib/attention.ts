@@ -21,6 +21,10 @@ export type AttentionTone = 'rest' | 'asking';
  * cannot act on from here, and a control that stayed lit for one would be a
  * control nobody reads after a week. It is said out loud in the section's empty
  * state instead - see `reviewEmptyWords`.
+ *
+ * Nor `conflicts`. A branch that has stopped merging is the loop's to fix, and
+ * one it cannot fix becomes a stall, which is a question, which is counted
+ * here already. Listed beside the rest, and never lit for.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
@@ -99,3 +103,6 @@ export function waitedWords(askedAt: string, now: Date): string {
 
 /** `1 question`, `2 questions`. Every noun here takes a plain -s. */
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/** The conflicts section's empty state - one wording, like the questions'. */
+export const conflictEmptyWords = (): string => 'No branch in review has stopped merging.';
