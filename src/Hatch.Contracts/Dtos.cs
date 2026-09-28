@@ -754,6 +754,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// a reviewer's browser uses, and a key cannot read the shell's config to find
 /// out.
 /// </param>
+/// <param name="Kind">
+/// One of <see cref="WorkKinds"/>: whether this dispatch moves the issue on
+/// (<c>advance</c>) or resolves the conflict its branch has with the trunk
+/// (<c>conflicts</c>). Derived from the move and stored nowhere - a conflict
+/// dispatch is exactly the one whose two ends are the same column.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -763,7 +769,25 @@ public record WorkDto(
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
-    string? IssueUrl);
+    string? IssueUrl,
+    string Kind = WorkKinds.Advance);
+
+/// <summary>
+/// What a dispatch is for. Two, and the second is the only dispatch that does
+/// not end in a different column.
+/// </summary>
+public static class WorkKinds
+{
+    /// <summary>Move the issue from its column to the next: every dispatch there has ever been.</summary>
+    public const string Advance = "advance";
+
+    /// <summary>
+    /// Resolve the merge conflict between the branch of an issue in review and
+    /// the trunk. It starts and ends in the review column, so it is judged by
+    /// the branch and not by the column.
+    /// </summary>
+    public const string Conflicts = "conflicts";
+}
 
 /// <summary>
 /// One of the project's bound remotes, as a dispatch names it - see
@@ -795,11 +819,13 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// entry with a null <c>Blocked</c> is the issue <c>work/next</c> returns for
 /// the same arguments, because it is the same walk.
 /// </param>
+/// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
-    string? Blocked);
+    string? Blocked,
+    string Kind = WorkKinds.Advance);
 
 // ---- Rollups ----
 
