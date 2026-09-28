@@ -115,6 +115,25 @@ export function MenuPage() {
       </GallerySection>
 
       <GallerySection
+        title="Press only"
+        note="hover={false}: resting on the trigger or the panel does nothing, and leaving an open panel does not close it. A click, Enter, Space or ArrowDown opens it; it stays open while its rows are used, and closes on Escape, an outside press or Tab past the end. For a panel that is worked in, such as a filter, which a passing pointer must not open."
+      >
+        <div className="stage-page menu-stage">
+          <Menu label="Filter" hover={false}>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> Backlog
+            </label>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> In progress
+            </label>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> In review
+            </label>
+          </Menu>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Both tones, on their grounds"
         note="tone=surface on a page, tone=accent on the bar's fill, where the ink, the hover wash and the focus ring come from --on-chrome, --on-chrome-wash and --chrome-glow. The panel is a card either way. active lights the trigger."
       >

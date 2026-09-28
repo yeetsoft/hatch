@@ -1,11 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Ref } from 'react';
 import type { ReactNode } from 'react';
 import { moveIssue } from '../api/client';
 import { appHref } from '../lib/basename';
 import {
+  age,
   cascadeClause,
   cascadeOrder,
   canUndo,
+  clockHeld,
+  counting,
   dismiss,
   newestUndoable,
   raise,
@@ -15,10 +19,15 @@ import {
   withCascade,
 } from '../lib/confirmations';
 import type { Confirmation, MovedConfirmation } from '../lib/confirmations';
+import { readLifetime } from '../lib/confirmationLifetime';
 import { HttpError, message } from '../lib/errors';
 import { currentPlatform, undoShortcutLabel } from '../lib/shortcuts';
 import { IssueConfirmationsContext } from '../lib/useIssueConfirmations';
 import type { IssueConfirmations } from '../lib/useIssueConfirmations';
+
+/** How often the clock looks. Fine enough that a chicklet leaves within a
+    quarter of a second of its time, coarse enough to cost nothing. */
+const TICK_MS = 250;
 
 /**
  * What the corner of the window says about issues filed, and cards moved, in
@@ -33,8 +42,19 @@ import type { IssueConfirmations } from '../lib/useIssueConfirmations';
  * where, with an Undo on it: a card dragged one lane too far should cost a
  * keystroke, not a hunt for where it came from.
  *
- * They stay until they are closed. Nothing times out, because a timeout is a
- * confirmation that expires while the operator is looking at something else.
+ * Each stays for the lifetime the operator chose on the Settings page - 15
+ * seconds unless they said otherwise, or until closed if they said Never - and
+ * is closed by the clock as if its × were pressed. A timeout is a confirmation
+ * that can expire while the operator is looking at something else, so the clock
+ * is held for as long as the pointer or keyboard focus is in the corner, a
+ * dialog is open, or the tab is hidden; see `clockHeld`. It holds the whole
+ * stack, not the chicklet under the pointer, because the list is drawn
+ * `column-reverse` and one closing below would slide the ones above it down
+ * under a click aimed at something else.
+ *
+ * Every chicklet is the same width, and a new kind must be too. The width
+ * belongs to the list (see App.css), and `Chicklet` is the only frame there is:
+ * a new kind of chicklet is a new body inside it, never a new frame.
  *
  * Local to this app rather than in @hatch/ui: that package's barrel puts every
  * component's CSS in every consuming app's bundle, and there is exactly one
@@ -64,6 +84,53 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     setStack(held.current);
   }, []);
 
+  const region = useRef<HTMLDivElement>(null);
+
+  /* The clock: one timer, running only while some chicklet is counting.
+     Elapsed time is measured, not assumed to be TICK, so a background timer the
+     browser has throttled cannot make the corner live longer than it should.
+
+     What holds it is read off the document afresh every tick, not tracked from
+     events. Pressing × removes the chicklet under the pointer from the DOM and
+     no pointerout is ever delivered for it, so a tracked "hovered" would stay
+     true until the pointer crossed another one. `:hover` cannot go stale, and
+     matches an ancestor of what is hovered, so it holds for the region though
+     the region itself takes no pointer events. `:focus-visible` rather than
+     `:focus-within`: a link or button that was clicked keeps focus, and after
+     pressing a chicklet's key link `:focus-within` would hold the stack open
+     until the operator clicked elsewhere. */
+  const running = stack.some(counting);
+  useEffect(() => {
+    if (!running) return;
+
+    let last = performance.now();
+    const tick = () => {
+      const now = performance.now();
+      const elapsed = now - last;
+      last = now;
+
+      const hold = clockHeld({
+        hovered: region.current?.matches(':hover') ?? false,
+        focused: region.current?.querySelector(':focus-visible') != null,
+        hidden: document.visibilityState === 'hidden',
+        dialog: document.querySelector('[aria-modal="true"]') !== null,
+      });
+      if (!hold) change((prev) => age(prev, elapsed));
+    };
+    // A hidden tab's timer is throttled to a tick a second or a minute, so the
+    // first tick after it is shown would spend the time it was hidden.
+    const shown = () => {
+      last = performance.now();
+    };
+
+    const timer = window.setInterval(tick, TICK_MS);
+    document.addEventListener('visibilitychange', shown);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', shown);
+    };
+  }, [running, change]);
+
   // Monotonic and never reused, so React's key is stable and closing one
   // chicklet can never take a later one filed under the same issue key.
   const nextId = useRef(0);
@@ -73,7 +140,8 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     (issue) => {
       nextId.current += 1;
       const id = nextId.current;
-      change((prev) => raise(prev, issue, id));
+      const lifetime = readLifetime();
+      change((prev) => raise(prev, issue, id, lifetime));
     },
     [change],
   );
@@ -82,7 +150,8 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     (move) => {
       nextId.current += 1;
       const id = nextId.current;
-      change((prev) => raiseMove(prev, move, id));
+      const lifetime = readLifetime();
+      change((prev) => raiseMove(prev, move, id, lifetime));
     },
     [change],
   );
@@ -157,6 +226,7 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     <IssueConfirmationsContext.Provider value={value}>
       {children}
       <ConfirmationStack
+        regionRef={region}
         stack={stack}
         onUndo={undo}
         onDismiss={(id) => change((prev) => dismiss(prev, id))}
@@ -174,19 +244,27 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
  * change, so a region that appeared along with the first chicklet would
  * announce nothing. Empty it draws no box and takes no clicks.
  */
-function ConfirmationStack({
+export function ConfirmationStack({
+  regionRef,
   stack,
   onUndo,
   onDismiss,
   onDismissAll,
 }: {
+  regionRef?: Ref<HTMLDivElement>;
   stack: Confirmation[];
   onUndo: (id: number) => void;
   onDismiss: (id: number) => void;
   onDismissAll: () => void;
 }) {
   return (
-    <div className="hatch-confirmations" role="status" aria-live="polite" aria-label="Issues filed and moved">
+    <div
+      ref={regionRef}
+      className="hatch-confirmations"
+      role="status"
+      aria-live="polite"
+      aria-label="Issues filed and moved"
+    >
       {/* Only worth drawing where there is more than one to dismiss: with one
           chicklet its own close control is already the whole of the job. */}
       {stack.length > 1 && (
@@ -197,38 +275,57 @@ function ConfirmationStack({
 
       <ul className="hatch-confirmations-list">
         {stack.map((c) => (
-          <li key={c.id} className="hatch-confirmation">
-            {/* An anchor rather than a <Link>: target="_blank" opens a second
-                document, which React Router does not route. appHref is what
-                keeps that second document on the right prefix - this bundle
-                answers at two addresses and only one of them names it. See
-                lib/basename.ts. */}
-            <a
-              className="hatch-confirmation-key"
-              href={appHref(`/issues/${c.issueKey}`)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {c.issueKey} ↗
-            </a>
-            <span className="hatch-confirmation-body">
-              <span className="hatch-confirmation-title">{c.title}</span>
-              {c.kind === 'moved' && <MoveLine c={c} onUndo={onUndo} />}
-            </span>
-            {/* Named after what it closes, because "Dismiss" eight times over
-                tells a screen reader nothing about which one is which. */}
-            <button
-              type="button"
-              className="hatch-confirmation-close"
-              aria-label={`Dismiss ${c.issueKey}`}
-              onClick={() => onDismiss(c.id)}
-            >
-              ×
-            </button>
-          </li>
+          <Chicklet key={c.id} c={c} onDismiss={onDismiss}>
+            {c.kind === 'moved' && <MoveLine c={c} onUndo={onUndo} />}
+          </Chicklet>
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The frame every chicklet is drawn in: the key link, a body holding the title
+ * and then whatever `children` say, and the ×.
+ *
+ * The one frame there is. Its width is not its own - the list gives every
+ * chicklet in it the same one, and lib/confirmationsCss.test.ts holds the
+ * frame to declaring none - so a new kind of chicklet is a new body passed in
+ * as `children`, never a new frame.
+ */
+export function Chicklet({
+  c,
+  onDismiss,
+  children,
+}: {
+  c: Confirmation;
+  onDismiss: (id: number) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="hatch-confirmation">
+      {/* An anchor rather than a <Link>: target="_blank" opens a second
+          document, which React Router does not route. appHref is what keeps
+          that second document on the right prefix - this bundle answers at two
+          addresses and only one of them names it. See lib/basename.ts. */}
+      <a className="hatch-confirmation-key" href={appHref(`/issues/${c.issueKey}`)} target="_blank" rel="noreferrer">
+        {c.issueKey} ↗
+      </a>
+      <span className="hatch-confirmation-body">
+        <span className="hatch-confirmation-title">{c.title}</span>
+        {children}
+      </span>
+      {/* Named after what it closes, because "Dismiss" eight times over tells a
+          screen reader nothing about which one is which. */}
+      <button
+        type="button"
+        className="hatch-confirmation-close"
+        aria-label={`Dismiss ${c.issueKey}`}
+        onClick={() => onDismiss(c.id)}
+      >
+        ×
+      </button>
+    </li>
   );
 }
 

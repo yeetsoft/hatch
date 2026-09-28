@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button, Card, Field, PageHeader } from '@hatch/ui';
 import { getHatchSettings, putHatchSettings } from '../api/client';
 import { Command } from '../components/Command';
+import { LIFETIME_CHOICES, readLifetime, writeLifetime } from '../lib/confirmationLifetime';
+import type { Lifetime } from '../lib/confirmationLifetime';
 import { message } from '../lib/errors';
 import { nameSave, tokenClear, tokenIsSet, tokenPlaceholder, tokenSave } from '../lib/hatchSettings';
 import { announceLocalPersonChanged } from '../lib/localPerson';
@@ -9,7 +11,8 @@ import { useLoaded } from '../lib/useLoaded';
 import type { HatchSettings, HatchSettingsWriteRequest } from '../types';
 
 /**
- * The two things a Hatch install of its own configures.
+ * The two things a Hatch install of its own configures, and the one thing this
+ * browser does.
  *
  * Here rather than on the admin app's Settings page because an install with no
  * admin app - which is every install that is only somebody's tracker - still
@@ -21,6 +24,11 @@ import type { HatchSettings, HatchSettingsWriteRequest } from '../types';
  * they do not behave alike anyway - one is a credential that is never read
  * back, and the other is a name that always is. The rules each follows are in
  * lib/hatchSettings.ts, which is where they are tested.
+ *
+ * The third card is neither: how long a confirmation stays in the corner is
+ * remembered by this browser, like the theme, and never sent anywhere. So it
+ * is drawn outside everything the server says - the wall being up, or the
+ * settings failing to load, takes nothing from it.
  */
 export function SettingsPage() {
   const { data: settings, setData, error, setError } = useLoaded<HatchSettings>(getHatchSettings);
@@ -28,6 +36,7 @@ export function SettingsPage() {
   const [name, setName] = useState<string | null>(null);
   // Which button is mid-request, so one card's Save does not spin the other's.
   const [busy, setBusy] = useState<'token' | 'name' | null>(null);
+  const [lifetime, setLifetime] = useState<Lifetime>(readLifetime);
 
   async function save(what: 'token' | 'name', request: HatchSettingsWriteRequest) {
     setBusy(what);
@@ -52,7 +61,7 @@ export function SettingsPage() {
     <div className="hatch-page">
       <PageHeader
         title="Settings"
-        description="What this installation of Hatch knows about the account it runs on and the person it runs for."
+        description="What this installation of Hatch knows about the account it runs on and the person it runs for, and how this browser behaves."
       />
 
       {error && <p className="text-danger">{error}</p>}
@@ -140,6 +149,32 @@ export function SettingsPage() {
           </div>
         </Card>
       )}
+
+      <Card>
+        <h2 className="hatch-section-title">Confirmations</h2>
+        <Field
+          label="Close after"
+          hint="How long a chicklet stays in the bottom-left corner after an issue is filed or a card is moved. It waits while the pointer or keyboard focus is on it, while a dialog is open, and while the tab is hidden. Remembered by this browser only, and it takes effect for the next one."
+        >
+          <select
+            value={choiceOf(lifetime)}
+            onChange={(e) => {
+              const chosen = LIFETIME_CHOICES.find((c) => choiceOf(c.value) === e.target.value)?.value ?? null;
+              setLifetime(chosen);
+              writeLifetime(chosen);
+            }}
+          >
+            {LIFETIME_CHOICES.map((c) => (
+              <option key={choiceOf(c.value)} value={choiceOf(c.value)}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Card>
     </div>
   );
 }
+
+/** An option's value: a select's values are strings, and Never is null. */
+const choiceOf = (value: Lifetime): string => (value === null ? 'never' : String(value));

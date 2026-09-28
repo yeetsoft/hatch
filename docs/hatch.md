@@ -68,7 +68,11 @@ absence starts to hurt:
 - **No swimlanes, sprints, or WIP limits.**
 - **No GitHub integration.** A commit sha in a comment is the link, and it is
   written by whoever did the work.
-- **No live board updates.** Refetch on action and on focus; no websockets.
+- **No websockets.** The board refetches on action and on focus, and every 30
+  seconds while it is on screen, and at once when it returns to the screen. It
+  was once refetched on action and focus alone, on the premise that whoever
+  moves a card is looking at it; the loop moves cards all night, so the premise
+  lapsed and the board polls.
 - **Events are recorded, not rendered.** The Plan view answers "how far along
   is this" from current state; nothing draws the event log as a report.
 
@@ -528,10 +532,16 @@ The drop's chicklet can take an accepted cascade back too: see
 A card dropped into another column on the board is confirmed in the bottom-left
 corner, in the same chicklet a filing raises: the key (a link that opens the
 issue in a new tab), the title, *from → to*, and an **Undo**. Move chicklets
-stack with filed ones, newest at the bottom, and — for the reason a filing's
-never times out — stay until they are closed or *Dismiss all* is pressed: a
-timeout is a confirmation that expires while the operator is looking at
-something else. They live in the tab, above `<Routes>`, so they survive a click
+stack with filed ones, newest at the bottom, every one the same width. Each
+leaves after the lifetime set on the Settings page — 15 seconds by default, or
+*Never*, which keeps it until it is closed or *Dismiss all* is pressed — counted
+from its own raise. The clock is held for the whole stack while the pointer or
+keyboard focus is on it, while a dialog is open, and while the tab is hidden, so
+a confirmation does not expire while the operator is looking at something else;
+an Undo in flight is not counted down either, and a chicklet that has just
+finished one starts a full lifetime again. The choice is remembered by the
+browser, not the install. Once a chicklet has left, ⌘Z / Ctrl+Z no longer
+reaches its move. They live in the tab, above `<Routes>`, so they survive a click
 through to an issue, and Undo works from whichever page they are showing on.
 
 **Only a change of column is a transition.** A reorder inside a column raises
@@ -547,9 +557,9 @@ rearrange a board nobody is looking at — and it steps aside for a text field
 With nothing to undo it does nothing, and the browser keeps the key.
 
 **An undo never overrules somebody else.** The loop moves cards all night and
-the board does not live-update, so the request names the column the card is
-expected to be in, `fromStatusId`, and the server answers a card anywhere else
-with a `409` naming where it is and writes nothing. The chicklet then says so
+the board can be up to 30 seconds behind it, so the request names the column
+the card is expected to be in, `fromStatusId`, and the server answers a card
+anywhere else with a `409` naming where it is and writes nothing. The chicklet then says so
 and offers no Undo. Any other failure leaves the button, so it can be pressed
 again.
 
@@ -2649,4 +2659,5 @@ code already settles is a round trip through a person for nothing.
   made them.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
-- **Live updates.** Refetch on action and focus.
+- **Pushed updates.** The board polls (see above); a server-sent signal would
+  only make the same refresh arrive sooner.

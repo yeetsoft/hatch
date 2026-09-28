@@ -535,8 +535,8 @@ public class IssuesController(
     ///
     /// <c>FromStatusId</c> is a precondition on what the caller last saw: a
     /// card that is anywhere else is a 409 and nothing is written. The board
-    /// does not live-update and the loop moves cards all night, so an undo
-    /// names the column it is taking the card out of.
+    /// is up to thirty seconds behind and the loop moves cards all night, so an
+    /// undo names the column it is taking the card out of.
     /// </remarks>
     [HttpPost("{key}/move")]
     public async Task<ActionResult<IssueDto>> MoveIssue(string key, IssueMoveRequest request, CancellationToken ct)
