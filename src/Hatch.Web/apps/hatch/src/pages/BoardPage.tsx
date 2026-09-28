@@ -22,6 +22,7 @@ import { NewIssueDialog } from '../components/NewIssueDialog';
 import { StatusDot } from '../components/StatusPill';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
+import { dropConfirmation } from '../lib/confirmations';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
 import { NO_FILTER, assigneeFacets, filterCards, isFiltering } from '../lib/filter';
@@ -29,7 +30,9 @@ import type { CardFilter } from '../lib/filter';
 import { columnDroppableId, place, targetStatusId } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
+import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
+import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import type { AssigneeDirectory, Board, IssueCard, Project, Status } from '../types';
 
@@ -83,6 +86,10 @@ export function BoardPage() {
   // The offer to close everything under a card dropped into a terminal column.
   const closing = useCloseSubtree(reload);
   const { ask } = closing;
+
+  // The corner's chicklets: a drop raises one, and its Undo moves the card
+  // back from wherever the operator is by then.
+  const { moved, undoNewest, onUndone } = useIssueConfirmations();
 
   useEffect(() => {
     getProjects()
@@ -147,6 +154,12 @@ export function BoardPage() {
       const was = board.issues.find((i) => i.key === placed.key)?.statusId ?? null;
       const offer = closeOffer(board, placed.key, was, placed.statusId);
 
+      // Only a change of column is a transition worth confirming - the server
+      // writes no event for a reorder either. What would put the card back is
+      // read now, off the board as it stood: after the repaint below, the card
+      // and its old neighbours are somewhere else.
+      const move = dropConfirmation(board, placed.key, placed.statusId);
+
       // Applied before the request so the card does not spring back under the
       // cursor for a round trip. A refusal reloads, which is the honest
       // correction: whatever the server thinks is what the board shows.
@@ -159,6 +172,8 @@ export function BoardPage() {
           beforeKey: placed.beforeKey,
         });
         await reload();
+        // After the reload, so the board the chicklet sits over already shows the move.
+        if (move) moved(move);
         ask(offer);
       } catch (err) {
         // Nothing is asked here: a move the server refused closed nothing.
@@ -166,8 +181,32 @@ export function BoardPage() {
         await reload();
       }
     },
-    [board, visible, setBoard, setError, reload, ask],
+    [board, visible, setBoard, setError, reload, ask, moved],
   );
+
+  // Undo on the board's own account: this listener is mounted only while the
+  // board is the page on screen, so a keystroke made anywhere else cannot
+  // rearrange it. Each condition below leaves the key to whoever else wants it -
+  // a text field's own undo above all.
+  const dragUnderway = dragging !== null;
+  useEffect(() => {
+    if (dragUnderway) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isUndoShortcut(e) || e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
+      // Every Modal marks itself so: a dialog is open, and it has the operator's attention.
+      if (document.querySelector('[aria-modal="true"]')) return;
+
+      if (undoNewest()) e.preventDefault();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [dragUnderway, undoNewest]);
+
+  // An undo pressed anywhere moved a card this board is showing somewhere else.
+  useEffect(() => onUndone(() => void reload()), [onUndone, reload]);
 
   if (error && !board) return <p className="text-danger">{error}</p>;
   if (!board) return <p className="text-muted">Loading…</p>;

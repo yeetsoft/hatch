@@ -181,3 +181,37 @@ function insertionIndex(ranked: IssueCard[], afterKey: string | null, beforeKey:
   // bottom is the honest place for a card whose requested position is gone.
   return ranked.length;
 }
+
+/**
+ * Where a card sits in its own column, as the request that would put it back.
+ *
+ * Read off the board before a drop, so an undo can name the same two
+ * neighbours the card had. By rank rather than by what is on screen - the
+ * board floats expedited cards to the top, and the server places a card by
+ * rank - and over every card rather than the filtered list, because the server
+ * orders over the whole column. `insertionIndex` tries `beforeKey` first and
+ * then `afterKey`, so when one neighbour has since left the column the card
+ * still lands beside the other.
+ *
+ * `fromStatusId` is left for the caller: it is the column the card is dropped
+ * *into*, which is not something the card's own column can say.
+ *
+ * @returns null when no card on the board has that key.
+ */
+export function restorePoint(
+  all: IssueCard[],
+  key: string,
+): { statusId: number; afterKey: string | null; beforeKey: string | null } | null {
+  const card = all.find((i) => i.key === key);
+  if (!card) return null;
+
+  // Sort is stable, so two cards sharing a rank keep the order they were served in.
+  const column = all.filter((i) => i.statusId === card.statusId).sort((a, b) => a.rank - b.rank);
+  const at = column.findIndex((i) => i.key === key);
+
+  return {
+    statusId: card.statusId,
+    afterKey: column[at - 1]?.key ?? null,
+    beforeKey: column[at + 1]?.key ?? null,
+  };
+}

@@ -1,3 +1,4 @@
+import { HttpError } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
   ApiKey,
@@ -72,7 +73,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     return await new Promise<T>(() => {});
   }
   if (!res.ok) {
-    throw new Error(await failureMessage(res, init?.method ?? 'GET', path));
+    throw new HttpError(await failureMessage(res, init?.method ?? 'GET', path), res.status);
   }
   // 204s (every DELETE here) have no body, and res.json() throws on empty input.
   const text = await res.text();

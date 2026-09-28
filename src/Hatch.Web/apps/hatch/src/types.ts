@@ -444,6 +444,8 @@ export interface IssueMoveRequest {
   statusId: number;
   afterKey?: string | null;
   beforeKey?: string | null;
+  /** The column the caller believes the card is in; a card that has left it is a 409. */
+  fromStatusId?: number | null;
 }
 
 export interface CommentCreateRequest {

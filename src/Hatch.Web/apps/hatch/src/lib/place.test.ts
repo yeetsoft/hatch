@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnDroppableId, place, targetStatusId } from './place';
+import { columnDroppableId, place, restorePoint, targetStatusId } from './place';
 import type { IssueCard } from '../types';
 
 const INBOX = 1;
@@ -214,5 +214,45 @@ describe('place, when the board has moved underneath', () => {
   it('has nothing to say about a card that is no longer there', () => {
     expect(place(board, board, 'AER-404', 'AER-1')).toBeNull();
     expect(place(board, board, 'AER-1', 'AER-404')).toBeNull();
+  });
+});
+
+describe('restorePoint', () => {
+  it('names the neighbours of a card in the middle of its column', () => {
+    expect(restorePoint(board, 'AER-2')).toEqual({ statusId: INBOX, afterKey: 'AER-1', beforeKey: 'AER-3' });
+  });
+
+  it('has nothing above a card at the top', () => {
+    expect(restorePoint(board, 'AER-1')).toEqual({ statusId: INBOX, afterKey: null, beforeKey: 'AER-2' });
+  });
+
+  it('has nothing below a card at the bottom', () => {
+    expect(restorePoint(board, 'AER-3')).toEqual({ statusId: INBOX, afterKey: 'AER-2', beforeKey: null });
+  });
+
+  it('gives a card alone in its column no neighbours', () => {
+    expect(restorePoint(board, 'AER-9')).toEqual({ statusId: TODO, afterKey: null, beforeKey: null });
+  });
+
+  it('has nothing to say about a key that is not on the board', () => {
+    expect(restorePoint(board, 'AER-404')).toBeNull();
+  });
+
+  /* The board serves the expedited card first, but the server places by rank:
+     AER-3 is drawn at the top of its column and is still the bottom of it. */
+  it('reads rank and not the order the board draws', () => {
+    const served = [card('AER-3', INBOX, 3072, true), card('AER-1', INBOX, 1024), card('AER-2', INBOX, 2048)];
+
+    expect(restorePoint(served, 'AER-3')).toEqual({ statusId: INBOX, afterKey: 'AER-2', beforeKey: null });
+    expect(restorePoint(served, 'AER-1')).toEqual({ statusId: INBOX, afterKey: null, beforeKey: 'AER-2' });
+  });
+
+  /* The filter hides cards from the drop, never from the column: the server
+     orders over all of it, so a hidden neighbour is still the neighbour. The
+     function is given every card and has no filter to apply. */
+  it('counts a card the filter would hide', () => {
+    const all = [card('AER-1', INBOX, 1024), { ...card('AER-2', INBOX, 2048), readyAt: '2999-01-01' }, card('AER-3', INBOX, 3072)];
+
+    expect(restorePoint(all, 'AER-3')?.afterKey).toBe('AER-2');
   });
 });
