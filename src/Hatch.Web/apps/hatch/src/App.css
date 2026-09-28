@@ -1634,6 +1634,41 @@ input.hatch-inline-title-input {
   overflow-wrap: anywhere;
 }
 
+/* The box that talks to the agent, and what has been said to it. Set apart from
+   the facts above by a rule, because the facts describe the session and this is
+   what the person does about it. */
+.hatch-claim-tell {
+  margin: var(--sp-3) 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.hatch-claim-tell-label {
+  font-weight: 600;
+}
+
+.hatch-claim-tell .hatch-comment-box {
+  margin-top: var(--sp-2);
+}
+
+.hatch-claim-messages {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* The band the thread gives a message, so the same message reads as the same
+   thing in both places. */
+.hatch-claim-message,
+.hatch-comment-message {
+  border-left: 2px solid var(--success);
+  padding-left: var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
 /* The dialog's stack, as .hatch-cascade is for the close offer. */
 .hatch-claim-clear {
   display: flex;

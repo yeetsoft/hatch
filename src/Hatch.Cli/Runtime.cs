@@ -38,7 +38,7 @@ public sealed record Runtime(
 
     public Idle Idle() => new(Board, Say, Checkouts, Settings.Workspace is not null);
 
-    public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts);
+    public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts, TempDirectory);
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back

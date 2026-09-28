@@ -24,8 +24,14 @@ test-api:
 # The CLI - `hatch`, which lives in src/Hatch.Cli. Its own target because it
 # is what somebody editing the loop runs, and because it needs neither a
 # database nor a node: a stub wire and a stub session are the whole fixture.
+#
+# Clamped, because an unattended session runs this and nobody is there to press
+# ^C: a test that hangs past thirty seconds is killed and named, and a run past
+# two minutes is aborted. The whole suite takes under one.
 test-hatch:
-	dotnet test ./src/Hatch.Cli.Tests/Hatch.Cli.Tests.csproj
+	dotnet test ./src/Hatch.Cli.Tests/Hatch.Cli.Tests.csproj \
+		--blame-hang-timeout 30s --blame-hang-dump-type none \
+		-- RunConfiguration.TestSessionTimeout=120000
 
 # A built CLI for this machine, so that `hatch.sh work` starts in milliseconds
 # rather than spending a few seconds in `dotnet run` deciding whether to build

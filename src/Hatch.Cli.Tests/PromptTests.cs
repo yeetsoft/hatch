@@ -166,4 +166,45 @@ public sealed class PromptTests
         Assert.Contains("Run these from the repository root. The key is already in the environment.",
             prompt, StringComparison.Ordinal);
     }
+    // ---- What was said to the agent ----
+
+    [Fact]
+    public void Unread_messages_are_carried_under_their_own_heading_after_the_decisions()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work(
+            "AER-12",
+            questions: [Fixtures.Question(1, "AER-12", answered: true)],
+            messages: [Fixtures.Message(7, body: "use the other table"), Fixtures.Message(8, body: "and rename it")]));
+
+        Assert.Contains("## Said to you since the last session", prompt, StringComparison.Ordinal);
+        Assert.Contains("Nathan sent this to you on AER-12 at 2026-09-28T03:00:00+00:00, after the last session on it ended:", prompt, StringComparison.Ordinal);
+        Assert.Contains("use the other table", prompt, StringComparison.Ordinal);
+        Assert.Contains("and rename it", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("## Decisions already made", StringComparison.Ordinal)
+            < prompt.IndexOf("## Said to you since the last session", StringComparison.Ordinal));
+        Assert.DoesNotContain("while you were working", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void With_nothing_said_there_is_no_heading()
+    {
+        Assert.DoesNotContain("## Said to you", Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+        Assert.DoesNotContain("## Said to you", Prompt.Compose(Fixtures.Work("AER-12", messages: [])), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_hook_and_the_prompt_say_it_in_the_same_words()
+    {
+        var message = Fixtures.Message(7);
+
+        var live = Prompt.Message("AER-12", message, whileWorking: true);
+        var carried = Prompt.Message("AER-12", message, whileWorking: false);
+
+        // Only the sentence about when it arrived differs.
+        Assert.Contains("while you were working:", live, StringComparison.Ordinal);
+        Assert.Equal(
+            live.Replace(", while you were working:", ":", StringComparison.Ordinal),
+            carried.Replace(", after the last session on it ended:", ":", StringComparison.Ordinal));
+    }
 }

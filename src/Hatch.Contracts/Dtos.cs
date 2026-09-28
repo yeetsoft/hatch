@@ -394,14 +394,20 @@ public record IssueBulkEditRequest(
 // ---- Comments and events ----
 
 /// <param name="Kind">
-/// <c>""</c> for an ordinary note, <c>"question"</c> or <c>"answer"</c> - see
-/// <see cref="EfHatchComment.Kind"/> for why those two are a column.
+/// <c>""</c> for an ordinary note, <c>"question"</c>, <c>"answer"</c> or
+/// <c>"message"</c> - see <see cref="EfHatchComment.Kind"/> for why those are a
+/// column.
 /// </param>
 /// <param name="AnswersId">The question this answers, on the same issue. Null on everything else.</param>
 /// <param name="Options">
 /// The answers a question offers, or null on one asked in prose. See
 /// <see cref="EfHatchComment.Options"/>.
 /// </param>
+/// <param name="DeliveredAt">
+/// When a <c>message</c> was put in front of a session, or null while it has
+/// not been - and always null on any other kind.
+/// </param>
+/// <param name="DeliveredTo">The runner that was holding the issue then, or the caller's name where nothing was.</param>
 public record CommentDto(
     long Id,
     string Author,
@@ -409,7 +415,18 @@ public record CommentDto(
     string Kind,
     long? AnswersId,
     IReadOnlyList<QuestionOptionDto>? Options,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DeliveredAt = null,
+    string? DeliveredTo = null);
+
+/// <summary>
+/// Mark messages as read, and get back the ones this call marked.
+/// </summary>
+/// <param name="Ids">
+/// Exactly these messages, or null for every unread one on the issue. Ids that
+/// are not unread messages on this issue are ignored, not refused.
+/// </param>
+public record MessageDeliverRequest(IReadOnlyList<long>? Ids = null);
 
 /// <summary>
 /// One answer a question offers up front.
@@ -743,6 +760,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// session must not re-open, and an open one is why there is no next session
 /// yet - see <paramref name="Blocked"/>.
 /// </param>
+/// <param name="Messages">
+/// The messages sent to the session working this issue that no session has read
+/// yet, oldest first. Carried on the dispatch so the next session's prompt can
+/// say them; the runner marks exactly these read as it spawns.
+/// </param>
 /// <param name="IssueUrl">
 /// The absolute link to this issue's page on this Hatch, for writing into
 /// places that are not Hatch - a pull request description, chiefly. Null when
@@ -768,7 +790,8 @@ public record WorkDto(
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
     string? IssueUrl,
-    string Kind = WorkKinds.Advance);
+    string Kind = WorkKinds.Advance,
+    IReadOnlyList<CommentDto>? Messages = null);
 
 /// <summary>
 /// What a dispatch is for. Two, and the second is the only dispatch that does

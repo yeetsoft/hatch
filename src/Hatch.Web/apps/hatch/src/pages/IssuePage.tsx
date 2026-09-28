@@ -32,6 +32,7 @@ import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssuePicker } from '../components/IssuePicker';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MomentChip } from '../components/MomentChip';
+import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { MomentField } from '../components/MomentField';
@@ -47,6 +48,8 @@ import { closeOffer } from '../lib/closeSubtree';
 import { boardColumns, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { message } from '../lib/errors';
+import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
+import { mayRefresh } from '../lib/refresh';
 import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { openQuestions } from '../lib/questions';
@@ -90,6 +93,8 @@ export function IssuePage() {
      while the request runs and says so on its own button. */
   const [clearingClaim, setClearingClaim] = useState(false);
   const [claimClearing, setClaimClearing] = useState(false);
+  /* A message to the agent is on its way to the server. */
+  const [messageSending, setMessageSending] = useState(false);
 
   const load = useCallback(async () => {
     /* The fifth read, sent with the other four and awaited apart from them.
@@ -167,6 +172,63 @@ export function IssuePage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
+
+  /* While a message to the agent is waiting under a live claim, and only then:
+     the comments and the claim - not the whole eight-read `load` - every five
+     seconds, so a message reads as read without a reload. It is the one thing
+     on this page that polls, for the reason `useRunners` gives for polling at
+     all: the state changes on its own and the person is watching for the
+     change. It stops when nothing is waiting, when the claim ends (`watching`
+     turns false on either), and while the tab is hidden - and a tab that comes
+     back re-reads at once, since its timers were throttled to a stop.
+
+     A failed read is dropped and the next tick tries again: the page already
+     says what it knows, and an error line every five seconds would say it
+     louder than a message that has not been read yet. */
+  const waiting = watching(comments, issue?.claim ?? null);
+  useEffect(() => {
+    if (!waiting) return;
+
+    const reread = async () => {
+      try {
+        const [loadedComments, loadedIssue] = await Promise.all([getComments(key), getIssue(key)]);
+        setComments(loadedComments);
+        setIssue(loadedIssue);
+      } catch {
+        /* The next tick asks again. */
+      }
+    };
+    const refreshIf = () => {
+      if (mayRefresh({ visible: document.visibilityState === 'visible', paused: false })) void reread();
+    };
+
+    const timer = setInterval(refreshIf, WATCH_MS);
+    document.addEventListener('visibilitychange', refreshIf);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshIf);
+    };
+  }, [key, waiting]);
+
+  /* Sends what was typed into the Claim panel to the session holding the claim.
+     Answers whether it went, so the box is emptied only when it did. */
+  const sendMessage = useCallback(
+    async (body: string): Promise<boolean> => {
+      setMessageSending(true);
+      try {
+        await addComment(key, { body, kind: 'message' });
+        await load();
+        return true;
+      } catch (err) {
+        setError(message(err));
+        return false;
+      } finally {
+        setMessageSending(false);
+      }
+    },
+    [key, load],
+  );
 
   /* Answers whether the patch went through. Every existing caller says
      `void save({ … })` and is unaffected; the one that asks is the status bar,
@@ -356,7 +418,14 @@ export function IssuePage() {
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing
           anything below. Draws nothing on the overwhelming majority of pages. */}
-      <ClaimPanel issueKey={key} claim={issue.claim} onClear={() => setClearingClaim(true)} />
+      <ClaimPanel
+        issueKey={key}
+        claim={issue.claim}
+        messages={claimMessages(comments, issue.claim)}
+        sending={messageSending}
+        onSend={sendMessage}
+        onClear={() => setClearingClaim(true)}
+      />
 
       <ClearClaimDialog
         issueKey={key}
@@ -515,7 +584,13 @@ export function IssuePage() {
         />
       )}
 
-      <Comments issueKey={key} comments={comments} onAdded={() => void load()} onError={setError} />
+      <Comments
+        issueKey={key}
+        comments={comments}
+        claim={issue.claim}
+        onAdded={() => void load()}
+        onError={setError}
+      />
 
       {/* Between the thread and the trail, and visibly part of neither: a
           comment is somebody talking, an event is something happening, and this
@@ -1273,16 +1348,20 @@ function QuestionOptions({
 function Comments({
   issueKey,
   comments,
+  claim,
   onAdded,
   onError,
 }: {
   issueKey: string;
   comments: Comment[];
+  /** Only to say where a message to the agent stands - a note shows nothing of it. */
+  claim: Issue['claim'];
   onAdded: () => void;
   onError: (message: string) => void;
 }) {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const now = new Date();
 
   async function submit() {
     setSaving(true);
@@ -1313,7 +1392,9 @@ function Comments({
                   was decided and when. */}
               {comment.kind === 'question' && <Badge>asked</Badge>}
               {comment.kind === 'answer' && <Badge>answered</Badge>}
+              {comment.kind === 'message' && <Badge>to the agent</Badge>}
               <span className="text-muted">{new Date(comment.createdAt).toLocaleString()}</span>
+              <MessageState status={messageState(comment, claim, issueKey, now)} />
             </div>
             <div
               className={`hatch-markdown${comment.kind === 'question' ? ' hatch-question-body' : ''}`}
@@ -1370,6 +1451,8 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
  */
 function describe(event: IssueEvent): string {
   const { from, to } = event.payload ?? {};
+  /* A delivery names the runner it was handed to and nothing it changed from. */
+  if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

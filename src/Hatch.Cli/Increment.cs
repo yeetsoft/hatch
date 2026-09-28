@@ -96,9 +96,17 @@ public sealed record ConflictRun(Rechecked Found, Func<CancellationToken, Task<R
 /// does the last word, because one of them is talking to somebody sitting there
 /// and the other is writing a log nobody will read until morning.
 /// </remarks>
+/// <param name="tempDirectory">
+/// Where the hooks' directory is made - outside every checkout, so wiring them
+/// in never shows up in a session's <c>git status</c>. The system's temporary
+/// directory unless a test says otherwise.
+/// </param>
 public sealed class Increment(
-    Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts)
+    Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts,
+    string? tempDirectory = null)
 {
+    private readonly string _temp = tempDirectory ?? Path.GetTempPath();
+
     public async Task<IncrementReport> RunAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         Claim claim, CancellationToken ct,
@@ -284,8 +292,17 @@ public sealed class Increment(
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         IReadOnlyList<BranchEntry>? branches, Rechecked? conflict)
     {
-        var request = new SessionRequest(root, model, effort, Prompt.Compose(work, repositories, branches, conflict), quiet, addDirs);
+        // The hooks a message sent while this runs reaches the session by. Made
+        // for this increment and deleted with it, in a directory of its own.
+        using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath));
+        if (hooks is null)
+            say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
+
+        var request = new SessionRequest(
+            root, model, effort, Prompt.Compose(work, repositories, branches, conflict), quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
+
+        await MarkSaidAsync(work, ct);
 
         if (quiet)
         {
@@ -333,6 +350,31 @@ public sealed class Increment(
                 if (line.Length > 0) claim.Chatter.Line = line.Trim();
             }
         }, ct);
+    }
+
+    /// <summary>
+    /// Marks read exactly the messages the prompt is about to carry, and no
+    /// others - one sent since the dispatch was read is not in the prompt, and
+    /// is left for the hooks to deliver. Public because an attached session is
+    /// handed the same prompt.
+    /// </summary>
+    /// <remarks>
+    /// A failure is said and does not stop the increment. The message stays
+    /// unread, and the session's own hooks will hand it over at its first step.
+    /// </remarks>
+    public async Task MarkSaidAsync(WorkDto work, CancellationToken ct)
+    {
+        if (work.Messages is not { Count: > 0 } said) return;
+
+        try
+        {
+            await board.DeliverMessagesAsync(work.Issue.Key, said.Select(m => m.Id).ToList(), ct);
+        }
+        catch (HatchException e)
+        {
+            say.Complain(e.Message);
+            say.Complain($"hatch: {work.Issue.Key} - could not mark what was said to the session as read; the session's hooks will hand it over");
+        }
     }
 
     // ---- The meter ----

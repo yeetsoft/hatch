@@ -617,7 +617,16 @@ public class EfHatchComment
     /// <summary>A decision being given, pointing at the question it settles.</summary>
     public const string Answer = "answer";
 
-    public static bool IsValidKind(string kind) => kind is Note or Question or Answer;
+    /// <summary>
+    /// Something said to whichever session is working the issue. Not every
+    /// comment is one: the server cannot tell an operator's comment from the
+    /// session's own, so delivering all of them would feed a session its own
+    /// notes. A message is the one kind that is written to be read now, by the
+    /// agent, and is the only kind that carries <see cref="DeliveredAt"/>.
+    /// </summary>
+    public const string Message = "message";
+
+    public static bool IsValidKind(string kind) => kind is Note or Question or Answer or Message;
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
@@ -686,6 +695,22 @@ public class EfHatchComment
     /// to disagree with the first.
     /// </remarks>
     public string? Options { get; set; }
+
+    /// <summary>
+    /// When a <see cref="Message"/> was put in front of a session, or null while
+    /// it has not been. Written once, by a conditional <c>UPDATE</c> whose
+    /// <c>WHERE</c> repeats "and still null" - see
+    /// <see cref="IssueThreadController"/> - so two checks that race deliver it
+    /// once between them. Null on everything that is not a message.
+    /// </summary>
+    public DateTimeOffset? DeliveredAt { get; set; }
+
+    /// <summary>
+    /// The runner that was holding the issue when it was delivered, or the
+    /// caller's name where nothing held it. Null while undelivered.
+    /// </summary>
+    [MaxLength(ClaimRequest.MaxRunnerLength)]
+    public string? DeliveredTo { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
 }
@@ -881,6 +906,12 @@ public class EfHatchIssueEvent
     public const string ClaimCleared = "claim_cleared";
 
     public const string Commented = "commented";
+
+    /// <summary>A message was sent to whichever session is working the issue.</summary>
+    public const string Messaged = "messaged";
+
+    /// <summary>A message was put in front of a session. The payload names the comment and the runner.</summary>
+    public const string MessageDelivered = "message_delivered";
 
     /// <summary>A question was asked, and the issue is waiting on a person until it is answered.</summary>
     public const string Asked = "asked";

@@ -13,9 +13,14 @@ namespace Hatch.Cli;
 /// Every other checkout the dispatch's project binds and this runner holds, so
 /// a session can reach a sibling repository without leaving <see cref="Root"/>.
 /// </param>
+/// <param name="HookSettings">
+/// A settings file, outside every checkout, declaring the hooks that carry a
+/// message sent while the session works into its context. Null where nobody is
+/// to be spoken to that way - an attached session has a person at the keyboard.
+/// </param>
 public sealed record SessionRequest(
     string Root, string Model, string Effort, string Prompt, bool Quiet,
-    IReadOnlyList<string>? AddDirs = null)
+    IReadOnlyList<string>? AddDirs = null, string? HookSettings = null)
 {
     public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
 }
@@ -81,6 +86,14 @@ public sealed class ClaudeSessionRunner(string? configured = null) : ISessionRun
         start.ArgumentList.Add("-p");
         start.ArgumentList.Add("--permission-mode");
         start.ArgumentList.Add("bypassPermissions");
+
+        // Read from a file the runner wrote outside the tree, so that wiring the
+        // hooks in leaves the checkout exactly as the session changed it.
+        if (request.HookSettings is { Length: > 0 } hooks)
+        {
+            start.ArgumentList.Add("--settings");
+            start.ArgumentList.Add(hooks);
+        }
 
         if (request.Quiet)
         {
