@@ -28,6 +28,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   sortOrder: id,
   isTerminal: false,
   isDeferred: false,
+  isWip: false,
   expressSkips: false,
   color: '#336699',
   ...over,

@@ -147,6 +147,16 @@ public class AdminSurfaceTests
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
         "StatusesController.DeleteStatus",
+
+        // Which columns are in the WIP section, and how much of one slice of
+        // the board may sit across them at once, cut the same way as the
+        // runner bound below: reading is Hatch-scoped - an agent stalled
+        // behind a full section is entitled to know why - and the write names
+        // no scope, because a key that could raise the limit or empty the
+        // section could pull more of its own work in overnight. See
+        // WipController.
+        "WipController.GetWip",
+        "WipController.PutWip",
         "IssuesController.GetIssue",
         "IssuesController.SearchIssues",
         "IssuesController.CreateIssue",
@@ -440,6 +450,7 @@ public class AdminSurfaceTests
         "PlaybooksController.DeletePlaybook",
         "IssuePlaybookController.PatchIssuePlaybook",
         "RunnersController.PatchRunner",
+        "WipController.PutWip",
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssueExpedite",
         "IssueExpressController.PutIssueExpress",

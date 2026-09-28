@@ -1764,6 +1764,24 @@ public class IssuesControllerTests
     }
 
     /// <summary>
+    /// StatusPatchRequest carries no IsWip - a key that could reach the flag
+    /// through the ordinarily key-writable status route could put its own
+    /// column in the WIP section. Deserialized with the same defaults the web
+    /// client and the server share, the field has nowhere to land.
+    /// </summary>
+    [Fact]
+    public async Task PatchingIsWipThroughTheKeyWritableRoute_LeavesTheFlagAlone()
+    {
+        var h = await NewAsync();
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var request = JsonSerializer.Deserialize<StatusPatchRequest>("""{"isWip": true}""", options)!;
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, request, default));
+
+        Assert.False(patched.IsWip);
+    }
+
+    /// <summary>
     /// More than one shelf is allowed, and they are ordinary columns in every
     /// other way - the board is simply not where they are drawn.
     /// </summary>

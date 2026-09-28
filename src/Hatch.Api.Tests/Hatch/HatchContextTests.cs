@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsTwelveTables()
+    public void TheModuleOwnsThirteenTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["BuildChecks", "Comments", "IssueDependencies", "IssueEvents", "Issues", "MergeChecks", "Playbooks", "ProjectRepositories", "Projects", "Runners", "Statuses", "WorkLogEntries"],
+            ["BuildChecks", "Comments", "IssueDependencies", "IssueEvents", "Issues", "MergeChecks", "Playbooks", "ProjectRepositories", "Projects", "Runners", "Statuses", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
