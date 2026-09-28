@@ -11,6 +11,7 @@ import {
   boundsProblem,
   boundsRequest,
   isControllable,
+  mineLabel,
   repositoriesLabel,
   runnerActivity,
   type RunnerActivity,
@@ -176,6 +177,7 @@ function Row({
     holding. */
 function BoundsSummary({ runner }: { runner: Runner }) {
   const said = [
+    mineLabel(runner),
     runner.under && `under ${runner.under}`,
     repositoriesLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,

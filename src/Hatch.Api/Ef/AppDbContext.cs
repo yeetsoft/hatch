@@ -161,12 +161,17 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
 
         modelBuilder.Entity<EfAuthInvite>();
 
-        // A key has no relationships either, and for a sharper reason than an
-        // invite: it is not owned by anybody. A person is a member of the
-        // household; a key is a program the operator handed a credential to,
-        // and giving it an owner FK would invite the reading that deleting the
-        // operator revokes Claude's access to the board.
-        modelBuilder.Entity<EfApiKey>();
+        // A key now has exactly one relationship: who it belongs to, for a
+        // --mine pass to read. SetNull rather than Cascade, unlike a grant -
+        // a key is a program the operator handed a credential to, and
+        // deleting its owner does not mean the program stops running; it
+        // means the program no longer has anybody's tickets to claim, which
+        // is precisely "owned by nobody".
+        modelBuilder.Entity<EfApiKey>()
+            .HasOne(k => k.Owner)
+            .WithMany()
+            .HasForeignKey(k => k.OwnerPersonId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // People sit beside auth for the same reason auth sits here: they are
         // infrastructure the whole install shares rather than one family app's

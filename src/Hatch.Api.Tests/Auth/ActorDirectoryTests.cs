@@ -1,6 +1,7 @@
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Auth;
@@ -95,6 +96,87 @@ public class ActorDirectoryTests
         Assert.Null(await directory.MeAsync(default));
     }
 
+    // ---- PrincipalAsync: whose work the caller is doing ----
+
+    [Fact]
+    public async Task TheSignedInPerson_IsTheirOwnPrincipal()
+    {
+        var ada = NewPerson("Ada");
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity { Person = ada });
+
+        var principal = await directory.PrincipalAsync(default);
+
+        Assert.Equal(new Actor(ActorKind.Person, ada.Id, "Ada"), principal);
+    }
+
+    [Fact]
+    public async Task AKeyWithALiveOwner_IsAStandInForThatPerson()
+    {
+        var db = NewDb();
+        var ada = NewPerson("Ada");
+        db.Add(ada);
+        await db.SaveChangesAsync();
+        var key = new EfApiKey
+        {
+            Id = Guid.NewGuid(), Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now,
+            OwnerPersonId = ada.Id,
+        };
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity { ApiKey = key }, db);
+
+        var principal = await directory.PrincipalAsync(default);
+
+        Assert.Equal("Ada", principal?.Name);
+    }
+
+    /// <summary>The liveness rule reaching --mine without a line of its own: an owner that no longer resolves is the same as no owner.</summary>
+    [Fact]
+    public async Task AKeyWhoseOwnerWasDeleted_HasNoPrincipal()
+    {
+        var key = new EfApiKey
+        {
+            Id = Guid.NewGuid(), Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now,
+            OwnerPersonId = Guid.NewGuid(),
+        };
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity { ApiKey = key });
+
+        Assert.Null(await directory.PrincipalAsync(default));
+    }
+
+    [Fact]
+    public async Task AKeyWithNoOwner_HasNoPrincipal()
+    {
+        var key = new EfApiKey { Id = Guid.NewGuid(), Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now };
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity { ApiKey = key });
+
+        Assert.Null(await directory.PrincipalAsync(default));
+    }
+
+    /// <summary>
+    /// The one place PrincipalAsync deliberately disagrees with LocalAsync: a
+    /// runner that named itself is still the local person's own work, not the
+    /// runner's - a runner is never assignable, so it could never be "its own"
+    /// tickets otherwise.
+    /// </summary>
+    [Fact]
+    public async Task WithTheWallOffAndARunnerHeader_ThePrincipalIsStillTheLocalPerson()
+    {
+        var runner = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity { Local = runner }, localPersonName: "Ada");
+
+        var principal = await directory.PrincipalAsync(default);
+
+        Assert.Equal(new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada"), principal);
+    }
+
+    /// <summary>With the wall up, a caller that is neither a person nor a key has no principal - the same as MeAsync.</summary>
+    [Fact]
+    public async Task WithTheWallUpAndNothingAuthenticated_ThereIsNoPrincipal()
+    {
+        var directory = NewDirectoryWithCaller(new StubCallerIdentity(), wallEnabled: true);
+
+        Assert.Null(await directory.PrincipalAsync(default));
+    }
+
     private static AppDbContext NewDb() => new(
         new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
@@ -102,7 +184,13 @@ public class ActorDirectoryTests
         new() { Id = Guid.NewGuid(), Name = name, CreatedAt = Now, UpdatedAt = Now };
 
     private static ActorDirectory NewDirectory(AppDbContext? db = null, Actor? local = null) =>
-        new(db ?? NewDb(), new StubLocalCaller(local), new FakeTimeProvider(Now));
+        new(db ?? NewDb(), new StubLocalCaller(local), new FakeTimeProvider(Now),
+            new StubSiteSettings(), Options.Create(new AuthOptions()));
+
+    private static ActorDirectory NewDirectoryWithCaller(
+        ICallerIdentity caller, AppDbContext? db = null, bool wallEnabled = false, string? localPersonName = null) =>
+        new(db ?? NewDb(), caller, new FakeTimeProvider(Now),
+            new StubSiteSettings(localPersonName: localPersonName), Options.Create(new AuthOptions { Enabled = wallEnabled }));
 
     /// <summary>A caller that is only ever the third lane - which is every request in local mode.</summary>
     private sealed class StubLocalCaller(Actor? local) : ICallerIdentity

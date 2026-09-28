@@ -29,6 +29,9 @@ public sealed class StubActorDirectory : IActorDirectory
     /// <summary>Who is making the request, as an actor. Null is the signed-out state.</summary>
     public Actor? Me { get; set; }
 
+    /// <summary>Whose tickets a --mine pass reaches. Null is "belongs to nobody".</summary>
+    public Actor? Principal { get; set; }
+
     /// <summary>Adds a person and answers with them, so a test can name one in a single expression.</summary>
     public Actor AddPerson(string name, Guid? id = null)
     {
@@ -54,4 +57,6 @@ public sealed class StubActorDirectory : IActorDirectory
             : Live.FirstOrDefault(a => a.Kind == kind && a.Id == id.Value));
 
     public Task<Actor?> MeAsync(CancellationToken ct) => Task.FromResult(Me);
+
+    public Task<Actor?> PrincipalAsync(CancellationToken ct) => Task.FromResult(Principal);
 }

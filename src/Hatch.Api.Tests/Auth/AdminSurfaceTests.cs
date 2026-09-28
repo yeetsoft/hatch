@@ -78,6 +78,7 @@ public class AdminSurfaceTests
         "ApiKeysController.ListScopes",
         "ApiKeysController.CreateKey",
         "ApiKeysController.RevokeKey",
+        "ApiKeysController.SetOwner",
 
         // People. The writes above all, because Role is set here: an
         // unguarded PUT would let any enrolled device promote itself, which

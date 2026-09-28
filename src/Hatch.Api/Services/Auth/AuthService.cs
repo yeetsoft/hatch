@@ -88,7 +88,7 @@ public interface IAuthService
     /// </summary>
     Task<EfApiKey?> VerifyApiKeyAsync(string? secret, CancellationToken ct);
 
-    /// <summary>Every key, newest first, for the admin API Keys page - revoked ones included, because a revocation is a fact worth seeing.</summary>
+    /// <summary>Every key, newest first, for the admin API Keys page - revoked ones included, because a revocation is a fact worth seeing. Each carries its owner, so the page draws a name without a second read.</summary>
     Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct);
 
     /// <summary>
@@ -96,7 +96,7 @@ public interface IAuthService
     /// hash, exactly as for an invite code - it is shown once and then gone.
     /// Returns null when the name is already taken.
     /// </summary>
-    Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, CancellationToken ct);
+    Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct);
 
     /// <summary>
     /// Stops a key working. Returns false if there was no such key, which a
@@ -104,6 +104,14 @@ public interface IAuthService
     /// rather than a refusal - the caller wanted it off and it is off.
     /// </summary>
     Task<bool> RevokeApiKeyAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
+    /// Changes or clears whose tickets a key's <c>--mine</c> means. Returns
+    /// false for an unknown key id, which a caller turns into a 404; an
+    /// unknown person id is the caller's to check before this runs, the same
+    /// division <see cref="SetGrantPersonAsync"/> draws.
+    /// </summary>
+    Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct);
 
     /// <summary>
     /// Records that the browser was just handed a fresh cookie for this grant,
@@ -349,9 +357,9 @@ public class AuthService(
     }
 
     public async Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
-        await db.ApiKeys.AsNoTracking().OrderByDescending(k => k.CreatedAt).ToListAsync(ct);
+        await db.ApiKeys.AsNoTracking().Include(k => k.Owner).OrderByDescending(k => k.CreatedAt).ToListAsync(ct);
 
-    public async Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, CancellationToken ct)
+    public async Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct)
     {
         // Checked rather than left to the unique index, because the index turns
         // a name somebody typed twice into a 500 and this turns it into a
@@ -365,13 +373,14 @@ public class AuthService(
             Prefix = AuthTokens.ApiKeyPrefixOf(secret),
             Hash = AuthTokens.Hash(secret),
             Scopes = [.. scopes],
+            OwnerPersonId = ownerPersonId,
             CreatedAt = time.GetUtcNow(),
         };
 
         db.ApiKeys.Add(key);
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("API key {KeyId} ({Name}) minted with scopes {Scopes}", key.Id, key.Name, key.Scopes);
+        logger.LogInformation("API key {KeyId} ({Name}) minted with scopes {Scopes}, owned by {OwnerPersonId}", key.Id, key.Name, key.Scopes, key.OwnerPersonId);
         return new ApiKeyCreated(key, secret);
     }
 
@@ -390,6 +399,21 @@ public class AuthService(
             logger.LogWarning("API key {KeyId} ({Name}) revoked", key.Id, key.Name);
         }
 
+        return true;
+    }
+
+    public async Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct)
+    {
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id, ct);
+        if (key is null) return false;
+
+        key.OwnerPersonId = personId;
+        await db.SaveChangesAsync(ct);
+
+        // Information rather than Warning, the same choice SetGrantPersonAsync
+        // makes and for the same reason: this changes whose tickets a --mine
+        // pass reaches, not what the key itself may do.
+        logger.LogInformation("API key {KeyId} ({Name}) owner set to {OwnerPersonId}", key.Id, key.Name, personId);
         return true;
     }
 

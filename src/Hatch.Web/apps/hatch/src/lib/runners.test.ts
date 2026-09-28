@@ -6,6 +6,7 @@ import {
   boundsProblem,
   boundsRequest,
   isControllable,
+  mineLabel,
   repositoriesLabel,
   runnerActivity,
 } from './runners';
@@ -29,6 +30,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   under: null,
   repositories: [],
   clones: null,
+  mine: null,
   where: 'here:/checkouts/one',
   maxRuns: null,
   maxSpend: null,
@@ -105,6 +107,17 @@ describe('repositoriesLabel', () => {
     expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: null }))).toBe(
       'example.com/owner/repo',
     );
+  });
+});
+
+describe('mineLabel', () => {
+  it('says own tickets only for a runner started with --mine', () => {
+    expect(mineLabel(runner({ mine: true }))).toBe('own tickets only');
+  });
+
+  it('says nothing for a runner without the flag', () => {
+    expect(mineLabel(runner({ mine: false }))).toBeNull();
+    expect(mineLabel(runner({ mine: null }))).toBeNull();
   });
 });
 

@@ -1341,6 +1341,14 @@ sent where it was sent. It follows that there is no `hatch expedite` verb — th
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
 
+**A key's owner is cut the same way, and for the reason the assignee edge
+names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
+key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
+set its own owner could simply say it is whoever holds the tickets it wants.
+`ApiKeysController` is `[RequireAdmin]` with no `AcceptScope` on the whole
+class — not one route carved out of it — so no key can mint a key, revoke one,
+or change whose it is; a person does that, at the API Keys page, on purpose.
+
 **And so is the WIP section and its limit.** Which columns are work in
 progress, and how much of one slice of the board may sit across them at once,
 is the operator's to set — a key that could raise the limit or empty the
@@ -1416,8 +1424,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
@@ -2039,6 +2048,21 @@ housekeeping and is not: a ready date is a decision about scheduling, while an
 edge is a fact about the work, so `work/{key}` refuses on one too. Somebody who
 disagrees takes the edge off, which is one press.
 
+**`?mine=true` is a third, and separate, policy** — a further narrowing rather
+than a rewrite of the second: plain `next`/`queue` still skip every ticket
+assigned to a person, including the caller's own, exactly as above.
+`?mine=true` instead takes *only* the caller's own — a ticket assigned to the
+person it works for, or to its own key — and folds everything else with a
+sentence naming whose it is: `"assigned to Ada, not to you"`, or `"assigned to
+nobody - a --mine pass takes only your own"`. "Its own" is read off the calling
+key, never off anything the caller says about itself: the key carries an
+`OwnerPersonId`, set only by an admin at the API Keys page, and a caller whose
+key belongs to nobody — never set, or its person since deleted — is refused
+before anything is scanned, with the sentence saying so. A setting like
+`HATCH_ME=Ada` would have reopened [the one edge that is deliberately
+cut](#the-one-edge-that-is-deliberately-cut): any key could say it is Ada and
+take the work she kept for herself.
+
 ### What a pass skipped
 
 `work/next` folding in silence is right for one increment and backwards for an
@@ -2230,7 +2254,10 @@ sentence saying which one it failed is what `work/queue` reports:
    card folded off the board is not one to spend an increment on tonight.
 4. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
-   to an API key, or to nobody, is picked up exactly as it always was.
+   to an API key, or to nobody, is picked up exactly as it always was. A
+   `?mine=true` pass inverts this condition rather than skipping it: it takes
+   only a ticket assigned to the caller's own person or key, and folds every
+   other one — see [one more, on `next` alone](#one-more-on-next-alone).
 5. **It holds no unanswered question.** It is waiting on a person, and another
    agent sent at it would ask the same thing again or guess at the answer.
 6. **The project's [repositories](#repository) match a remote the caller
@@ -3305,16 +3332,23 @@ the plan reads — and is read on demand.
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
 `queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
-`questions`, `answer`, `config`, `work`, `go-to-work`, and `api` for everything
-else. It finds a column by name rather than by id — on the letters and digits
-alone, so `todo` at a terminal reaches the column the board calls `To Do` — and
-folds off cards whose ready date has not arrived, exactly as the board does.
-`hatch --help` lists the surface and every subcommand takes `-h` for its own.
+`questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
+for everything else. It finds a column by name rather than by id — on the
+letters and digits alone, so `todo` at a terminal reaches the column the board
+calls `To Do` — and folds off cards whose ready date has not arrived, exactly
+as the board does. `hatch --help` lists the surface and every subcommand takes
+`-h` for its own.
 
-Only `work` and `go-to-work` need to be run inside a git checkout, because only
-those two are about a codebase. The other fourteen are one request and a
-sentence about the answer, and `hatch board` from a directory that has never
-been a repository is the ordinary case.
+Only `work`, `go-to-work` and `do-my-work` need to be run inside a git
+checkout, because only those three are about a codebase. The other fourteen
+are one request and a sentence about the answer, and `hatch board` from a
+directory that has never been a repository is the ordinary case.
+
+`--mine` on `work`, `go-to-work` and `queue` narrows to the caller's own
+tickets — assigned to the person the calling key belongs to, or to the key
+itself. `hatch do-my-work` is exactly `go-to-work --mine`; plain `go-to-work`
+still skips every person's own tickets, including the caller's — see
+["Mine held"](#one-more-on-next-alone).
 
 Its settings are read in three layers, highest first: an exported `HATCH_BASE`
 or `HATCH_KEY`, then `scripts/.env` in the checkout you happen to be
