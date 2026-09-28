@@ -8,6 +8,7 @@ const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Stat
   sortOrder,
   isTerminal: false,
   isDeferred: false,
+  isWip: false,
   expressSkips: false,
   color: '#6b7280',
   ...opts,
