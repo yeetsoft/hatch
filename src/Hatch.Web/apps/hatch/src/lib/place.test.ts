@@ -19,6 +19,7 @@ const card = (key: string, statusId: number, rank: number, expedited = false): I
   assignee: null,
   claim: null,
   expedited,
+  express: false,
 });
 
 /* The board as the API hands it over: grouped by column, ranked within it. */

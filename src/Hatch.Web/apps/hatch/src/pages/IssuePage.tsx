@@ -20,9 +20,11 @@ import {
   removeDependency,
   setAssignee,
   setExpedited,
+  setExpress,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { ExpediteControl } from '../components/ExpediteControl';
+import { ExpressControl } from '../components/ExpressControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
@@ -48,6 +50,7 @@ import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { boardColumns, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
+import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
@@ -301,6 +304,21 @@ export function IssuePage() {
     [key, load],
   );
 
+  /* Carried past a column marked Express skips, with no session. Its own call
+     for the reason `saveExpedited` is - its own endpoint, closed to an API
+     key - and otherwise exactly it. */
+  const saveExpress = useCallback(
+    async (express: boolean) => {
+      try {
+        await setExpress(key, express);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      }
+    },
+    [key, load],
+  );
+
   /* Taking the ticket back off a runner. Its own call for the reason
      `saveAssignee` is - its own endpoint, closed to an API key - and otherwise
      exactly `save`: it re-reads, so the section, the card and the trail below
@@ -503,6 +521,19 @@ export function IssuePage() {
               expedited={issue.expedited}
               directory={directory}
               onChange={(expedited) => void saveExpedited(expedited)}
+            />
+          </Field>
+
+          {/* `as="div"` for the reason the fields above it are. */}
+          <Field
+            label="Express"
+            as="div"
+            hint="Carried past a column marked Express skips, with no session, whenever it holds no open question."
+          >
+            <ExpressControl
+              express={issue.express}
+              directory={directory}
+              onChange={(express) => void saveExpress(express)}
             />
           </Field>
 
@@ -1446,21 +1477,3 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
   );
 }
 
-/**
- * One line saying what an event did. Long values are cut rather than wrapped -
- * a description edit carries both whole texts in its payload, and the trail is
- * a list of what happened, not a diff viewer.
- */
-function describe(event: IssueEvent): string {
-  const { from, to } = event.payload ?? {};
-  /* A delivery names the runner it was handed to and nothing it changed from. */
-  if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
-  if (from === undefined && to === undefined) return '';
-  return `${short(from)} → ${short(to)}`;
-}
-
-function short(value: unknown): string {
-  if (value === null || value === undefined) return 'none';
-  const text = String(value);
-  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
-}
