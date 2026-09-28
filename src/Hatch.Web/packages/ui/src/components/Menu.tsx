@@ -50,6 +50,10 @@ export interface MenuProps {
   active?: boolean;
   /** Open on first render, uncontrolled. For the gallery's "open" specimen. */
   defaultOpen?: boolean;
+  /** Open when a pointer that can hover rests on the trigger, and close when it
+      leaves. Off for a panel that is worked in, such as a list of checkboxes,
+      which a passing pointer must not open. */
+  hover?: boolean;
   /** Draw the trigger yourself, for an icon. */
   trigger?: (props: MenuTriggerProps) => ReactNode;
   children: ReactNode;
@@ -111,6 +115,7 @@ function MenuRoot({
   tone = 'surface',
   active = false,
   defaultOpen = false,
+  hover = true,
   trigger,
   children,
 }: MenuProps) {
@@ -193,11 +198,11 @@ function MenuRoot({
   if (trigger) triggerProps['aria-label'] = label;
 
   const onPointerEnter = (event: ReactPointerEvent) => {
-    if (event.pointerType === 'touch') return;
+    if (!hover || event.pointerType === 'touch') return;
     controller.pointerEnter(id, canHover());
   };
   const onPointerLeave = (event: ReactPointerEvent) => {
-    if (event.pointerType === 'touch') return;
+    if (!hover || event.pointerType === 'touch') return;
     controller.pointerLeave(id);
   };
   const onKeyDown = (event: ReactKeyboardEvent) => {

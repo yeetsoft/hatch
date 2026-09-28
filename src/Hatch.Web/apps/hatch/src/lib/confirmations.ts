@@ -6,11 +6,13 @@
  * page and nothing else: nothing here reads or writes localStorage or
  * sessionStorage, which is what makes a reload - and a second tab, and a
  * restarted browser - start on an empty corner without a line of code spent
- * clearing anything.
+ * clearing anything. That includes the lifetime: it arrives as an argument to
+ * `raise` and `raiseMove`, read by the provider from lib/confirmationLifetime.ts.
  */
 
 import { restorePoint } from './place';
 import type { CloseOffer } from './closeSubtree';
+import type { Lifetime } from './confirmationLifetime';
 import type { Board, IssueMoveRequest } from '../types';
 
 /** A column named on a chicklet. The name is kept, because the chicklet is read
@@ -26,6 +28,14 @@ interface Chicklet {
   id: number;
   issueKey: string;
   title: string;
+  /** The full life this chicklet was raised with, in milliseconds; null for one
+      that stays until it is closed. Kept so a chicklet that settles can start
+      over, and so a later change of the setting never reaches one already
+      raised. */
+  lifetime: Lifetime;
+  /** How much of that life is left, or null for a chicklet that never leaves.
+      `age` spends it and drops the chicklet when it is gone. */
+  left: Lifetime;
 }
 
 export interface FiledConfirmation extends Chicklet {
@@ -82,18 +92,26 @@ const unsettled = { cascade: [] as CascadeEntry[], state: 'moved' as MoveState, 
  *
  * Newest first, because the region paints in `column-reverse`: index 0 is the
  * chicklet nearest the bottom-left corner, and the older ones run upward from
- * it. Nothing is dropped and there is no cap - a stack too tall for the screen
- * is answered with a scrollbar rather than by quietly discarding the
- * confirmation somebody has not read yet.
+ * it. There is no cap - a stack too tall for the screen is answered with a
+ * scrollbar rather than by quietly discarding the confirmation somebody has not
+ * read yet. A chicklet leaves when its `lifetime` has run out (see `age`) or it
+ * is closed, and at no other time.
+ *
+ * @param lifetime How long it stays, in milliseconds; null for until closed.
  */
-export function raise(stack: Confirmation[], issue: { key: string; title: string }, id: number): Confirmation[] {
-  return [{ id, kind: 'filed', issueKey: issue.key, title: issue.title }, ...stack];
+export function raise(
+  stack: Confirmation[],
+  issue: { key: string; title: string },
+  id: number,
+  lifetime: Lifetime,
+): Confirmation[] {
+  return [{ id, kind: 'filed', issueKey: issue.key, title: issue.title, lifetime, left: lifetime }, ...stack];
 }
 
 /** A card dropped into another column, on the front of the stack, ready to be
     taken back. */
-export function raiseMove(stack: Confirmation[], move: MoveRaise, id: number): Confirmation[] {
-  return [{ ...move, ...unsettled, id, kind: 'moved' }, ...stack];
+export function raiseMove(stack: Confirmation[], move: MoveRaise, id: number, lifetime: Lifetime): Confirmation[] {
+  return [{ ...move, ...unsettled, id, kind: 'moved', lifetime, left: lifetime }, ...stack];
 }
 
 /** One chicklet closed, and every other one left exactly where it was. An id
@@ -102,10 +120,65 @@ export function dismiss(stack: Confirmation[], id: number): Confirmation[] {
   return stack.filter((c) => c.id !== id);
 }
 
-/** A move chicklet's new state and what it now says. A filed chicklet, and an
-    id that is not in the stack, are left as they were. */
+/**
+ * A move chicklet's new state and what it now says. A filed chicklet, and an id
+ * that is not in the stack, are left as they were.
+ *
+ * Every state but `undoing` gives the chicklet a full life again: what it now
+ * says - back where it was, or why not - is news, and has to be readable for as
+ * long as any other. `undoing` leaves the time where it was, and `age` does not
+ * spend it while the request is in flight.
+ */
 export function settle(stack: Confirmation[], id: number, state: MoveState, note: string | null): Confirmation[] {
-  return stack.map((c) => (c.id === id && c.kind === 'moved' ? { ...c, state, note } : c));
+  return stack.map((c) =>
+    c.id === id && c.kind === 'moved' ? { ...c, state, note, left: state === 'undoing' ? c.left : c.lifetime } : c,
+  );
+}
+
+/** Whether time is passing for this chicklet: it leaves at some point, and is not
+    waiting on a request. */
+export function counting(c: Confirmation): boolean {
+  return c.left !== null && !(c.kind === 'moved' && c.state === 'undoing');
+}
+
+/**
+ * The stack after `elapsedMs` of the clock running: every counting chicklet has
+ * that much less life, and any with none left is gone, as if its × were pressed.
+ * The order of the rest is untouched.
+ */
+export function age(stack: Confirmation[], elapsedMs: number): Confirmation[] {
+  if (stack.length === 0) return stack;
+  return stack.flatMap((c) => {
+    if (!counting(c)) return [c];
+    const left = c.left! - elapsedMs;
+    return left > 0 ? [{ ...c, left }] : [];
+  });
+}
+
+/** What holds the clock: any one of these being true stops every chicklet ageing. */
+export interface ClockSignals {
+  /** The pointer is over a chicklet, or over Dismiss all. */
+  hovered: boolean;
+  /** Keyboard focus is inside the corner. */
+  focused: boolean;
+  /** The tab is not in front. */
+  hidden: boolean;
+  /** A dialog is open. */
+  dialog: boolean;
+}
+
+/**
+ * Whether the stack is held.
+ *
+ * The whole stack stops together rather than the chicklet under the pointer: the
+ * list is drawn `column-reverse`, so when one below closes the ones above slide
+ * down, and a click aimed at one Undo would land on another. A dialog holds it
+ * because the close offer opens just after the move's chicklet is raised, and
+ * its accepted cascade attaches to that chicklet - one that closed while the
+ * operator read the dialog would take the cascade's Undo with it.
+ */
+export function clockHeld(signals: ClockSignals): boolean {
+  return signals.hovered || signals.focused || signals.hidden || signals.dialog;
 }
 
 /** Whether pressing Undo on this chicklet would do anything. A `failed` one
@@ -116,7 +189,8 @@ export function canUndo(c: Confirmation): c is MovedConfirmation {
 
 /**
  * What the keyboard takes back: the newest move chicklet that has not been
- * undone, so each press walks one further back through the stack.
+ * undone, so each press walks one further back through the stack. A chicklet
+ * that has closed is no longer in the stack, so its move is out of reach.
  *
  * While the newest one is still in flight the answer is that there is nothing -
  * a second keystroke must wait for the first rather than reach past it and

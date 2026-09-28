@@ -42,8 +42,35 @@ import type { AssigneeDirectory, Board, IssueCard, Project, Status } from '../ty
     PlanPage's picker uses. */
 const PROJECT = 'project';
 
+/** How often the board re-asks while it is on screen.
+ *
+ *  Half a runner's heartbeat. A runner beats at a fifth of its lease - 60 s at
+ *  the default 300 s - and that is how often a card's claim and its chatter can
+ *  change, so 30 s keeps the board within one heartbeat of the runner. Between
+ *  the runners page's 20 s (a control surface under a finger) and the attention
+ *  bar's minute: most moves on this board are made by the loop, with nobody
+ *  watching, and a read is a few cheap queries. */
+export const POLL_MS = 30 * 1000;
+
 export function BoardPage() {
-  const { data: board, setData: setBoard, error, setError, reload } = useLoaded<Board>(getBoard);
+  // The card under the cursor and the column it is over, kept only for the
+  // duration of a drag: one paints the overlay, the other lights up the column
+  // the drop would land in. Above the loader, which pauses its refresh for both.
+  const [dragging, setDragging] = useState<IssueCard | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  /* How many moves are on their way to the server. A drop paints the card in its
+     new column before the request, and a refresh landing in that window would
+     draw it back. A count and not a flag, so a second drop made while the first
+     is still out cannot lift the guard early. */
+  const [moving, setMoving] = useState(0);
+
+  const {
+    data: board,
+    setData: setBoard,
+    error,
+    setError,
+    reload,
+  } = useLoaded<Board>(getBoard, { everyMs: POLL_MS, paused: dragging !== null || moving > 0 });
   const [projects, setProjects] = useState<Project[]>([]);
   /* Who is signed in, read once for the whole board rather than once per card
      opened. The summary needs it to know whether to offer the expedite press -
@@ -75,12 +102,6 @@ export function BoardPage() {
     },
     [params, setParams],
   );
-
-  // The card under the cursor and the column it is over, kept only for the
-  // duration of a drag: one paints the overlay, the other lights up the column
-  // the drop would land in.
-  const [dragging, setDragging] = useState<IssueCard | null>(null);
-  const [over, setOver] = useState<number | null>(null);
 
   /** The card a click opened a summary for. Null when the dialog is closed. */
   const [peeking, setPeeking] = useState<IssueCard | null>(null);
@@ -183,6 +204,7 @@ export function BoardPage() {
       // Applied before the request so the card does not spring back under the
       // cursor for a round trip. A refusal reloads, which is the honest
       // correction: whatever the server thinks is what the board shows.
+      setMoving((n) => n + 1);
       setBoard({ ...board, issues: placed.issues });
 
       try {
@@ -199,6 +221,8 @@ export function BoardPage() {
         // Nothing is asked here: a move the server refused closed nothing.
         setError(message(err));
         await reload();
+      } finally {
+        setMoving((n) => n - 1);
       }
     },
     [board, visible, setBoard, setError, reload, ask, moved],
@@ -230,6 +254,11 @@ export function BoardPage() {
 
   if (error && !board) return <p className="text-danger">{error}</p>;
   if (!board) return <p className="text-muted">Loading…</p>;
+
+  // The board as it now stands, for the card a peek was opened on: the peek
+  // holds a snapshot, and the title, column and dates drawn should follow the
+  // refresh. Keyed by key alone below, so the description is not fetched again.
+  const peeked = peeking && (board.issues.find((i) => i.key === peeking.key) ?? peeking);
 
   const onDragStart = ({ active }: DragStartEvent) => {
     setDragging(board.issues.find((card) => card.key === String(active.id)) ?? null);
@@ -310,8 +339,8 @@ export function BoardPage() {
       />
 
       <IssuePeek
-        card={peeking}
-        status={peeking ? board.statuses.find((s) => s.id === peeking.statusId) : undefined}
+        card={peeked}
+        status={peeked ? board.statuses.find((s) => s.id === peeked.statusId) : undefined}
         directory={directory}
         onExpedited={() => void reload()}
         onClose={() => setPeeking(null)}
