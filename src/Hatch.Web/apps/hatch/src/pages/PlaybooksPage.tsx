@@ -8,8 +8,10 @@ import {
   patchPlaybook,
 } from '../api/client';
 import { Choice } from '../components/Choice';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
+import { normalizeEol } from '../lib/text';
 import { useLoaded } from '../lib/useLoaded';
 import {
   ISSUE_TYPES,
@@ -165,15 +167,17 @@ function Row({
  */
 function PromptCell({ prompt, onSave }: { prompt: string; onSave: (prompt: string) => void }) {
   const [draft, setDraft] = useState(prompt);
-  const dirty = draft !== prompt;
+  // Line endings alone are not an edit: the editor's text is always `\n`.
+  const dirty = normalizeEol(draft) !== normalizeEol(prompt);
 
   return (
     <div className="hatch-playbook-prompt">
       <Field
         label="Prompt"
+        as="div"
         hint="What the agent is told before it is shown the ticket. The ticket is the brief; this is the method."
       >
-        <textarea rows={16} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <MarkdownEditor value={draft} onChange={setDraft} rows={16} className="hatch-grows" ariaLabel="Prompt" />
       </Field>
       <div className="hatch-form-actions">
         <Button variant="primary" disabled={!dirty || draft.trim() === ''} onClick={() => onSave(draft)}>
@@ -267,8 +271,15 @@ function NewPlaybook({
           <Choice value={effort} options={PLAYBOOK_EFFORTS} onChange={setEffort} />
         </Field>
       </div>
-      <Field label="Prompt" hint="What the agent is told before it is shown the ticket.">
-        <textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+      <Field label="Prompt" as="div" hint="What the agent is told before it is shown the ticket.">
+        <MarkdownEditor
+          value={prompt}
+          onChange={setPrompt}
+          rows={6}
+          className="hatch-grows"
+          deferred
+          ariaLabel="Prompt"
+        />
       </Field>
       <div className="hatch-form-actions">
         <Button

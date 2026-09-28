@@ -1486,8 +1486,19 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
-.hatch-comment-box textarea {
-  width: 100%;
+/* The answer to an open question: one line, the input across the card and the
+   button beside it - not a box with the button under it, which is what the
+   Comments box above is. */
+.hatch-answer-box {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.hatch-answer-box input {
+  flex: 1;
+  min-width: 0;
 }
 
 .hatch-events summary {
@@ -1907,20 +1918,14 @@ input.hatch-inline-title-input {
   white-space: nowrap;
 }
 
-/* The prompt, unfolded under its row. Full width and a monospace box, because
-   what is being edited is an instruction whose line breaks are load-bearing -
-   the agent reads it as written. */
+/* The prompt, unfolded under its row. The editor is full width and monospace on
+   its own (`.hatch-md-editor`): what is being edited is an instruction whose
+   line breaks are load-bearing - the agent reads it as written. */
 .hatch-playbook-prompt {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
-}
-
-.hatch-playbook-prompt textarea {
-  width: 100%;
-  font-family: var(--mono);
-  line-height: 1.5;
 }
 
 /* ---- Questions ----
