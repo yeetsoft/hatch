@@ -3,9 +3,9 @@ import { Button, Field, Modal } from '@hatch/ui';
 import { createIssue } from '../api/client';
 import { message } from '../lib/errors';
 import { parentCandidates, parentHint } from '../lib/parents';
-import { useAutoGrow } from '../lib/useAutoGrow';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { IssuePicker } from './IssuePicker';
+import { MarkdownEditor } from './MarkdownEditor';
 import { MomentField } from './MomentField';
 import { ISSUE_TYPES } from '../types';
 import type { IssueCard, IssueType, Project } from '../types';
@@ -44,7 +44,6 @@ export function NewIssueDialog({
   const [dueAt, setDueAt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const brief = useAutoGrow(description);
   const { confirm } = useIssueConfirmations();
 
   // The filtered project, then the first project, until somebody picks
@@ -128,13 +127,16 @@ export function NewIssueDialog({
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
         </Field>
 
-        <Field label="Description" hint="Markdown, rendered on the issue page.">
-          <textarea
-            ref={brief}
-            className="hatch-grows"
-            rows={6}
+        {/* `as="div"` because the editor is not something a <label> can choose:
+            MarkdownEditor focuses it when the label is clicked, and names it
+            with `ariaLabel`. */}
+        <Field label="Description" as="div" hint="Markdown, rendered on the issue page.">
+          <MarkdownEditor
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
+            rows={6}
+            className="hatch-grows"
+            ariaLabel="Description"
           />
         </Field>
 

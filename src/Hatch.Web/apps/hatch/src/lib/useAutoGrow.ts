@@ -31,6 +31,28 @@ export function grownHeight(floor: number, content: number, chrome: number): num
   return Math.max(floor, content + chrome);
 }
 
+/**
+ * The height an editor that measures its own content takes, in outer
+ * (border-box) px: what the content needs plus the border, held between the
+ * height it opened at and the ceiling its place gives it.
+ *
+ * The floor wins over a ceiling below it, which is what `.hatch-grows`'s
+ * `max()` promises: a box never goes back under the height it opened at.
+ */
+export function clampedHeight(floor: number, ceiling: number, content: number, chrome: number): number {
+  return Math.max(floor, Math.min(ceiling, content + chrome));
+}
+
+/**
+ * The ceiling a computed `max-height` names, in px. `'none'`, an empty string
+ * and anything that is not a length in px (a percentage, `auto`) is no ceiling
+ * - the computed value of a length is always px, so nothing readable is lost.
+ */
+export function parseCeiling(maxHeight: string): number {
+  const px = /^\s*(\d+(?:\.\d+)?)px\s*$/.exec(maxHeight);
+  return px ? Number(px[1]) : Infinity;
+}
+
 /** The box this one scrolls inside, whose position must survive a measurement. */
 function scrollParent(el: HTMLElement): HTMLElement | null {
   for (let node = el.parentElement; node; node = node.parentElement) {
