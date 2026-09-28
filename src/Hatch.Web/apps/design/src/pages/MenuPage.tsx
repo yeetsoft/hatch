@@ -115,6 +115,22 @@ export function MenuPage() {
       </GallerySection>
 
       <GallerySection
+        title="Press only"
+        note="hover={false}: hovering does nothing, and a click, Enter, Space or ArrowDown opens it. It stays open while its rows are used, and leaving it with the pointer does not close it. For a panel that is worked in, such as a list of checkboxes."
+      >
+        <div className="stage-page menu-stage">
+          <Menu label="Types" hover={false}>
+            {['epic', 'story', 'task', 'bug'].map((type) => (
+              <label key={type} className="menu-stage__row menu-stage__check">
+                <input type="checkbox" defaultChecked={type !== 'task'} />
+                {type}
+              </label>
+            ))}
+          </Menu>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Both tones, on their grounds"
         note="tone=surface on a page, tone=accent on the bar's fill, where the ink, the hover wash and the focus ring come from --on-chrome, --on-chrome-wash and --chrome-glow. The panel is a card either way. active lights the trigger."
       >

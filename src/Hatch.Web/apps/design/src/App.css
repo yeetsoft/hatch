@@ -697,3 +697,11 @@
 .menu-stage__row {
   padding: var(--sp-2) var(--sp-3);
 }
+
+.menu-stage__check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  text-transform: capitalize;
+  cursor: pointer;
+}
