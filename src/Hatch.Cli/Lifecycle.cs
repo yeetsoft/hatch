@@ -182,9 +182,13 @@ public sealed class Lifecycle(Runtime runtime)
             var canonical = CanonicalFor(work, chosen, path);
 
             // Only a repository that holds a failed verdict: another repository's
-            // build is not this dispatch's to read.
+            // build is not this dispatch's to read. A project that binds nothing
+            // has one standing checkout and no identity to match on, and another
+            // runner may have spelled its remote differently, so any failed
+            // verdict is the standing checkout's.
             var failed = Builds.Of(work.Issue).FirstOrDefault(b =>
-                canonical is not null ? b.Canonical == canonical : b.Remote == remote);
+                canonical is not null ? b.Canonical == canonical : b.Remote == remote)
+                ?? (work.Repositories.Count == 0 ? Builds.Of(work.Issue).FirstOrDefault() : null);
             if (failed is null) continue;
 
             var heads = runtime.Workspace(path, baseBranch).Heads();
@@ -219,6 +223,15 @@ public sealed class Lifecycle(Runtime runtime)
             }
 
             repos.Add(new BuiltRepo(path, remote, branch, failed.Sha, tip, read.Verdict, failing));
+        }
+
+        // A failed verdict in a repository this runner holds no checkout of is not
+        // one it can read, and "nothing to do" would be a false answer that sends
+        // the pass straight back to the same issue in a tight loop.
+        if (repos.Count == 0 && !unknown)
+        {
+            runtime.Say.Complain($"hatch: {key} - no checkout here holds the repository whose build failed, so it was not read");
+            unknown = true;
         }
 
         return new BuildFound(repos, unknown, reported);

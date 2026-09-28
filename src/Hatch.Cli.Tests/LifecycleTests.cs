@@ -664,4 +664,39 @@ public sealed class LifecycleTests
         Assert.False(judged.Pushed);
         Assert.True(judged.Unknown);
     }
+
+    [Fact]
+    public async Task A_build_recheck_in_a_repository_the_runner_has_no_checkout_of_is_unknown_and_not_clear()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/elsewhere"));
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        // Not "no longer failing": that would send the pass straight back to the
+        // same issue.
+        Assert.True(found.Unknown);
+        Assert.Empty(found.StillFailing);
+        Assert.Empty(h.Forge.Reads);
+        Assert.Contains(h.Say.Complained, l => l.Contains("no checkout here holds the repository", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_build_recheck_for_a_project_that_binds_nothing_takes_any_failed_verdict_as_the_standing_checkouts()
+    {
+        using var h = new Harness();
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/build-check", Fixtures.Build());
+        h.Workspace.HeadsFor[h.Root] = HeadsAt(BuildTip);
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        // Another runner spelled the remote its own way.
+        var work = Fixtures.BuildWork("AER-1", [Fixtures.Build(BuildVerdicts.Failed, "other.example/o/r")]);
+
+        var found = await new Lifecycle(h.Runtime).RecheckBuildAsync(work, chosen, default);
+
+        Assert.False(found.Unknown);
+        Assert.Single(found.StillFailing);
+        Assert.Null(h.Forge.Canonicals.Single());
+    }
 }

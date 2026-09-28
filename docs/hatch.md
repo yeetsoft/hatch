@@ -225,9 +225,9 @@ forever and lose a renamed one's colour. The ink written on a colour is computed
 from its luminance (`lib/color.ts`), because CSS still cannot ask that question.
 
 Every install starts with the same seven columns, and with the same flow
-through them. `In Review` is the operator's except for one thing: a pull request
-that has stopped merging cleanly is an agent's to fix, and that is the only work
-the loop does in it.
+through them. `In Review` is the operator's except for two things: a pull request
+that has stopped merging cleanly, and one whose build has failed, are an agent's
+to fix, and that is the only work the loop does in it.
 
 No column ships deferred. It is a box the operator ticks on the Statuses page
 for a column they added — `Shelved`, `Someday`, `Won't Do For Now`, whatever
@@ -241,7 +241,7 @@ the flag existed.
 | Backlog | 30 | | operator | Specified work, awaiting selection. |
 | To Do | 40 | | **agent** | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | **agent** | Write the code, get it green, push it, put it up for review. |
-| In Review | 60 | | operator; **agent** for a conflict | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, and resolves that on the branch — see [the conflict playbook](#playbooks). |
+| In Review | 60 | | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
 | Done | 70 | ✓ | operator | Terminal. |
 
 **Which column belongs to whom is not a field.** It is derived: a column an
@@ -1659,8 +1659,8 @@ missing configuration:
    an agent*.
 7. The project's [repositories](#repository) match none of the remotes the
    caller declared, and the move is into the column where the code gets
-   written, or is a conflict in review — a session on a branch needs a checkout
-   of the repository the branch is in. A caller that declares nothing — an older
+   written, or is a conflict or a failing build in review — a session on a
+   branch needs a checkout of the repository the branch is in. A caller that declares nothing — an older
    CLI, or the issue page — is not folded by this at all: declaring is opt-in,
    which is what keeps them working unchanged. A project bound to nothing is
    worked from the caller's standing checkout exactly as before; one bound to
@@ -1669,10 +1669,13 @@ missing configuration:
 8. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written. Only that move: a pull request that
    already exists is not held back by what its ticket once waited on.
-9. It is in review and its branch does not conflict with the trunk — because
-   it merges cleanly, because it has no branch on origin (one already merged
-   counts as none), because more than one branch is named for it, or because no
-   runner has checked yet. See [the conflict](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review).
+9. It is in review and there is nothing for an agent to do on its branch: it
+   neither conflicts with the trunk nor has a build that failed on its current
+   tip — because it merges cleanly and its build passes, is still running, was
+   not read on that tip or has no checks, because it has no branch on origin
+   (one already merged counts as none), because more than one branch is named
+   for it, or because no runner has checked yet. See [the review
+   dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, the ordinary one: no playbook covers this
 transition for this type.
@@ -1693,44 +1696,91 @@ useful answer and a list of reasons is not — while `work/{key}`, which somebod
 asked for by name, returns the refusal rather than a 404, because a person who
 named a ticket is owed the sentence saying why it cannot move.
 
-### The issue in review whose branch conflicts with the trunk is dispatched to review
+### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 
 Every other dispatch ends in a different column, and this one ends where it
 started. `Columns.Target` answers "where does a dispatch out of this column
 end": the next column, except that the review column — when a terminal column
-stands after it — is dispatched to itself. A move is a *conflict move* exactly
+stands after it — is dispatched to itself. A move is a *review move* exactly
 when its two ends are the same column, and `WorkDto.Kind` and
-`QueueEntryDto.Kind` say so (`advance` or `conflicts`) — derived from the move,
-stored nowhere, and nothing compares a column's name.
+`QueueEntryDto.Kind` say which of two it is (`conflicts` or `build`; `advance`
+for every other move) — derived, stored nowhere, and nothing compares a column's
+name. What decides between the two is what runners have reported about the
+branch, and `ReviewWork.Judge` says, returning the kind and the fold together so
+the two cannot disagree.
 
-**Code decides whether a branch conflicts, not a prompt.** A runner asks git
-(`git merge-tree`) and reports a [merge check](#merge-check); the dispatcher
-reads what the board holds and applies one rule, on the server beside the other
-folds, so `hatch queue` explains a clean branch the same way it explains a
-question or a claim. An issue in review is actionable **only** when a verdict
-says `conflicted`:
+**Code decides, not a prompt.** A runner asks git (`git merge-tree`) and
+reports a [merge check](#merge-check), and asks its own `gh` and reports a
+[build check](#build-check); the dispatcher reads what the board holds and
+applies one rule, on the server beside the other folds, so `hatch queue`
+explains a passing branch the same way it explains a question or a claim. An
+issue in review is actionable **only** when its branch conflicts with the trunk
+**or** when the build on its branch's current tip has failed. The order is the
+order of what a person would do about each, and **conflicts come first**:
 
-- *no runner has checked its branch against `<trunk>` yet*, when no verdict is
-  held;
-- *more than one branch on origin is named for it - delete the ones that are not
-  its branch*, when any verdict is `ambiguous` — the loop will not guess which
-  branch is the ticket's, and says why;
-- *no branch on origin is named for it*, when every verdict is `none`;
-- *its branch merges cleanly with `<trunk>` - nothing for an agent to do*,
-  otherwise.
+1. Any merge verdict `conflicted` is conflict work, whatever the build says. The
+   merge commit gives the branch a new sha, so the build's answer is about to be
+   stale — and a pull request with a merge conflict often gets no CI run at all.
+2. The three folds that say there is no one branch to ask about, unchanged:
+   - *no runner has checked its branch against `<trunk>` yet*, when no verdict is
+     held;
+   - *more than one branch on origin is named for it - delete the ones that are
+     not its branch*, when any verdict is `ambiguous` — the loop will not guess
+     which branch is the ticket's, and says why;
+   - *no branch on origin is named for it*, when every verdict is `none`.
+3. For the repositories whose merge verdict is `clean`, **only build verdicts
+   about that merge check's own branch sha count**: a verdict about any other sha
+   says nothing about the branch as it stands. Any `failed` is **build work**,
+   printed `In Review  fixing its failing build (<checks>)`.
+4. Any `pending`: *its build on `<sha>` is still running*. Nothing is fixed until
+   every check has concluded, so one increment sees every failure at once.
+5. A clean repository whose build verdict is about a different sha than its merge
+   check read: *no runner has read its build on `<sha>` yet*.
+6. **No build verdict at all** in any clean repository: *its branch merges
+   cleanly with `<trunk>` - nothing for an agent to do*, exactly as it was before
+   builds were read. That is also every repository whose builds cannot be read —
+   a runner without `gh`, one that is not signed in, a host it cannot reach — so
+   not being able to read a build costs nothing.
+7. Every counted verdict `passed`: *its branch merges cleanly with `<trunk>` and
+   its build passes - nothing for an agent to do*.
+8. Otherwise, `none`: *its branch merges cleanly with `<trunk>` and no checks ran
+   on it*.
 
 Where the project binds repositories only a verdict for one it still binds
-counts, and an issue conflicts if any one of its verdicts does. Every other fold
-still applies to an issue in review, outranks the verdict, and keeps its order:
-a claim, a ready date, a person assignee, an open question, a repository this
-runner has no checkout of. The verdict comes after the repository — a question
-needs a person, a repository needs a clone, and a clean branch needs nothing at
-all — and a missing conflict playbook is still the last fold.
+counts, for a merge check and a build alike, and an issue conflicts, or has a
+failing build, if any one of its counted verdicts says so. Every other fold still
+applies to an issue in review, outranks both verdicts, and keeps its order: a
+claim, a ready date, a person assignee, an open question, a repository this
+runner has no checkout of. The verdicts come after the repository — a question
+needs a person, a repository needs a clone, and a passing branch needs nothing
+at all — and a missing review playbook is still the last fold. Nothing is ever
+dispatched into a terminal column.
 
-**Only conflicts.** A branch that has fallen behind the trunk but still merges
-cleanly is left alone: the branch is brought up to date when its pull request
-opens, and the forge does the rest. There is no setting for keeping branches
-current, and a pull request that merges cleanly is never touched.
+**Conflicts and builds share one playbook, and one model and effort.** The
+review-to-review row stays the one playbook for an issue in review: the runner
+brings the facts (a `## The conflict` or a `## The failing build` section) and
+the playbook says what to do with them. The cost is that conflict work and build
+work run on the same model and effort.
+
+**Nothing is dispatched as build work until every runner knows how to run it.**
+The build increment ([judged first by the push](#a-build-increment-is-judged-first-by-the-push-then-by-the-build))
+landed before this dispatch did, so no runner is handed a dispatch it does not
+know how to run. A runner on an old binary given `kind: build` would treat it as
+an advance and stall; runners rebuild from the trunk between increments.
+
+**A build that fails again on the agent's own fix is not sent to another agent.**
+The board opens a question with the failed verdict, and an open question folds
+the issue — see [build check](#build-check). A `leave it` answer does not stop
+the loop: once answered, the issue is dispatchable again while its build still
+fails on that sha, exactly as after the stall guard's question.
+
+**Only what is broken.** A branch that has fallen behind the trunk but still
+merges cleanly, and whose build is green or still running, is left alone: the
+branch is brought up to date when its pull request opens, and the forge does the
+rest. There is no setting for keeping branches current, and a pull request that
+merges and builds cleanly is never touched. Re-running a failed check is not
+here either: a flaky check is a failure, and an increment that only re-runs one
+leaves the tip where it was, which is a stall.
 
 ### One more, on `next` alone
 
@@ -1809,8 +1859,9 @@ The columns with nowhere to go — a terminal one, a deferred one, and a rightmo
 one that is not terminal — are absent rather than listed as blocked. An issue the dispatcher
 never reaches is not something the pass skipped, and shipped work is not a
 backlog. The review column is listed: it has somewhere to go — itself — and each
-issue in it is a conflict to fix, printed `In Review  resolving conflicts with
-<trunk>`, or a row saying why not.
+issue in it is a conflict to resolve, printed `In Review  resolving conflicts
+with <trunk>`, a failing build to fix, printed `In Review  fixing its failing
+build (<checks>)`, or a row saying why not.
 
 It is a read, and it costs what a read should: the statuses, the scope, which
 dependencies are unmet, the open-question counts and the whole playbook matrix
@@ -1862,23 +1913,35 @@ paragraph, which is what the description is for. Setting one is a person's
 (`PATCH /api/hatch/issues/{key}/playbook`); reading one is anybody's who can
 read the issue.
 
-**A row from the review column to itself is the conflict playbook.** It is the
+**A row from the review column to itself is the review playbook.** It is the
 one row whose two ends are the same column, and the Playbooks page accepts it
 for the review column and for no other — measured off the board as it stands,
 the way every rule about review is — and refuses any other column naming itself
 with a sentence saying which may. It is written on that page, with its own model
-and effort, like every other session instruction. The runner adds the facts —
-the branch, both shas and the files — and the playbook says what to do with
-them: resolve, build, test, commit the merge, push, and stop, never rebase and
-never force-push.
+and effort, like every other session instruction. One row answers both kinds of
+review work: the runner adds the facts — for a conflict the branch, both shas and
+the files, for a failing build the branch, the sha, each failing check with its
+link and the lines of its log that lead up to the failure — and the playbook says
+what to do with them: find the failure, fix it and nothing else, build and test
+until green, push to the same branch, and stop, never rebase and never
+force-push. A flaky check is still the session's to report on the ticket, not to
+paper over.
+
+The stock text was written for a conflict alone and reworded when failing builds
+were added. A migration (`RewordReviewPlaybook`) rewrites the row **only where it
+still reads the seeded text, byte for byte**, and leaves an edited row alone —
+an edited prompt is somebody's wording, and the operator is told on the ticket
+what to change. The reworded text does not say the merge is in progress, because
+for a build dispatch it is not: it points at the branch section for the state of
+the tree.
 
 Eight rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken. A
 feature that does nothing until somebody fills in a table is the same failure,
-so the eighth is the stock conflict playbook, for every type, at `sonnet` and
+so the eighth is the stock review playbook, for every type, at `sonnet` and
 `high`. A migration seeds it only where no row from the review column to itself
-exists; an operator who deletes it turns conflict work off, and nothing puts it
-back. The other seven cover every transition an agent owns, so `go-to-work` on a fresh install
+exists; an operator who deletes it turns conflict and build work off, and nothing
+puts it back. The other seven cover every transition an agent owns, so `go-to-work` on a fresh install
 needs no configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
 that renamed its columns first seeds nothing, which is the right failure: a
@@ -1944,18 +2007,22 @@ the sentence saying which one it failed is what `work/queue` reports:
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here and only when the move is into the column
-   where the code gets written, or is a conflict in review, and the dependency
+   where the code gets written, or is a conflict or a failing build in review,
+   and the dependency
    below is checked on the first of those alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
 7. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **In review, its branch conflicts with the trunk.** An issue in the review
-   column is the loop's only when a [merge check](#merge-check) says
-   `conflicted` — decided by git and by code, never by a prompt — and the
-   sentences for a clean branch, no branch, more than one branch and an
-   unchecked one are what `hatch queue` prints. A clean branch that has merely
-   fallen behind the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review).
+8. **In review, its branch conflicts with the trunk or its build failed.** An
+   issue in the review column is the loop's only when a [merge check](#merge-check)
+   says `conflicted`, or — on a branch that merges cleanly — when the
+   [build check](#build-check) on the branch's current tip says `failed`. Both
+   are decided by a runner and by code, never by a prompt, and conflicts come
+   first. The sentences for a passing build, a running one, one nobody has read
+   on this tip, no checks, no branch, more than one branch and an unchecked one
+   are what `hatch queue` prints. A clean branch that has merely fallen behind
+   the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 9. **A playbook covers that transition for that type.** Without one there is
    nothing to say to the session — and a column no playbook leads out of is
    exactly [how a column becomes the operator's](#status), which is why the
@@ -2305,7 +2372,7 @@ is a stash that would not go. The runner never pushes to the trunk.
 #### Checking the branches in review
 
 Whether a pull request still merges with the trunk is decided by **git, in the
-runner, and never by a prompt** — the [dispatcher](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review)
+runner, and never by a prompt** — the [dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
 only reads what the runner reports. Once per interval, between the heartbeat and
 the pass, on an idle board and a busy one alike, the loop:
 
@@ -2445,7 +2512,7 @@ origin — and it is the runner that asks, in the same code for the loop and for
   should not be spent on a merge that may not exist.
 - **The session starts on the issue's branch with the trunk merge in progress**,
   exactly as [the branch step](#the-issues-branch) leaves it. Its prompt is the
-  conflict playbook, then the ticket — whose header reads `In Review (resolving
+  review playbook, then the ticket — whose header reads `In Review (resolving
   conflicts with <trunk>)` — then a `## The conflict` section naming, for each
   repository that conflicts, the branch and the trunk with both shas and the
   files. Those facts are the fresh verdicts the recheck just took, not the

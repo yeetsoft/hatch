@@ -138,7 +138,8 @@ public class WorkController(
     /// issue the dispatcher never reaches is not something the pass skipped,
     /// and shipped work is not a backlog. The review column is listed, because
     /// it has somewhere to go - itself - and every issue in it is either a
-    /// conflict to fix or a row saying why it is not.
+    /// conflict to resolve, a failing build to fix, or a row saying why it is
+    /// neither.
     /// </remarks>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
@@ -166,7 +167,7 @@ public class WorkController(
             ToStatusDto(r.From),
             r.To is null ? null : ToStatusDto(r.To),
             r.Blocked,
-            KindOf(r.From, r.To))).ToList();
+            r.Kind)).ToList();
     }
 
     /// <summary>
@@ -310,6 +311,9 @@ public class WorkController(
         var verdicts = review is not null && byColumn.TryGetValue(review.Id, out var inReview)
             ? await MergeChecksAsync(inReview.Select(i => i.Id).ToList(), ct)
             : [];
+        var builds = review is not null && byColumn.TryGetValue(review.Id, out var inReviewToo)
+            ? await BuildChecksAsync(inReviewToo.Select(i => i.Id).ToList(), ct)
+            : [];
 
         // Blocked is static and has no db, so the assignees are resolved here
         // and handed in, the way `open` and `gate` already are. One memoized
@@ -351,12 +355,14 @@ public class WorkController(
 
                     var playbook = Match(playbooks, status.Id, to.Id, issue.Type);
                     open.TryGetValue(issue.Id, out var waiting);
+                    var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
+                    var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     rows.Add(new ScanRow(
                         issue, status, to,
                         Blocked(
                             issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
-                            assignees[issue.Id], repos,
-                            verdicts.TryGetValue(issue.Id, out var found) ? found : [])));
+                            assignees[issue.Id], repos, merged, built),
+                        KindOf(issue, status, to, merged, built)));
                 }
             }
         }
@@ -365,7 +371,7 @@ public class WorkController(
     }
 
     /// <summary>One issue the pass looked at, and what it decided.</summary>
-    private sealed record ScanRow(EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked);
+    private sealed record ScanRow(EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind);
 
     /// <summary>
     /// A finished pass, or the argument it would not accept. A refusal carries
@@ -613,48 +619,6 @@ public class WorkController(
     }
 
     /// <summary>
-    /// Why an unattended run should not be spawned at an issue in review: its
-    /// branch does not conflict with the trunk, or nobody has said whether it
-    /// does. Null when it conflicts, which is the one thing in that column an
-    /// agent has to do.
-    /// </summary>
-    /// <remarks>
-    /// <para>Where the project binds repositories only a verdict for one it
-    /// still binds counts: a verdict about a repository the project let go of
-    /// is a fact about something nobody is asking about. An unbound project
-    /// counts every verdict, because it has no list to be measured against.
-    /// An issue conflicts if any one of its verdicts does.</para>
-    ///
-    /// <para>The order of the sentences is the order of what a person would do
-    /// about each. No verdict is waiting on a runner to look; more than one
-    /// branch is waiting on a person to delete one; no branch is nothing to
-    /// merge; and a clean one is a pull request the forge can merge without
-    /// anybody's help.</para>
-    /// </remarks>
-    private static string? MergeFold(EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> verdicts)
-    {
-        var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
-
-        var counted = bound.Count == 0
-            ? verdicts
-            : verdicts.Where(v => bound.Any(r => r.Canonical == v.Canonical)).ToList();
-
-        if (counted.Any(v => v.Verdict == MergeVerdicts.Conflicted)) return null;
-
-        if (counted.Count == 0)
-            return $"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet";
-
-        if (counted.Any(v => v.Verdict == MergeVerdicts.Ambiguous))
-            return "more than one branch on origin is named for it - delete the ones that are not its branch";
-
-        if (counted.All(v => v.Verdict == MergeVerdicts.None))
-            return "no branch on origin is named for it";
-
-        var trunk = counted.First(v => v.Verdict == MergeVerdicts.Clean).Trunk;
-        return $"its branch merges cleanly with {trunk} - nothing for an agent to do";
-    }
-
-    /// <summary>
     /// The verdicts on these issues, grouped by issue - one query for however
     /// many, and ordered by repository so the sentence a fold prints is stable.
     /// </summary>
@@ -678,12 +642,18 @@ public class WorkController(
         .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchBuildCheck>)g.ToList());
 
     /// <summary>
-    /// What a move is for. Derived rather than stored: a conflict dispatch is
+    /// What a move is for. Derived rather than stored: a review dispatch is
     /// exactly the one that starts and ends in the same column, and nothing
-    /// compares column names to say so.
+    /// compares column names to say so. Which of the two review kinds it is - a
+    /// conflict to resolve or a failing build to fix - is what runners have
+    /// reported about the branch, and <see cref="ReviewWork"/> says.
     /// </summary>
-    private static string KindOf(EfHatchStatus from, EfHatchStatus? to) =>
-        to is not null && to.Id == from.Id ? WorkKinds.Conflicts : WorkKinds.Advance;
+    private static string KindOf(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        to is not null && to.Id == from.Id
+            ? ReviewWork.Judge(issue, merges, builds).Kind
+            : WorkKinds.Advance;
 
     /// <summary>
     /// The same answer for an issue somebody named. Blocked or not, it is
@@ -793,6 +763,16 @@ public class WorkController(
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
 
+        // What runners reported about the branch, for an issue in review: the
+        // fold and the kind are decided from the same two lists, in one place.
+        var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
+        IReadOnlyList<EfHatchMergeCheck> merged = inReview
+            ? (await MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
+            : [];
+        IReadOnlyList<EfHatchBuildCheck> built = inReview
+            ? (await BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
+            : [];
+
         var repositories = issue.Project!.Repositories
             .OrderBy(r => r.SortOrder)
             .Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical)))
@@ -822,12 +802,9 @@ public class WorkController(
             Blocked(
                 issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
                 await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-                repos,
-                from.Id == Columns.AwaitingReview(statuses)?.Id
-                    ? (await MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
-                    : []),
+                repos, merged, built),
             IssueUrl(issueDto.Key),
-            KindOf(from, to),
+            KindOf(issue, from, to, merged, built),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct));
     }
 
@@ -856,14 +833,17 @@ public class WorkController(
     /// verdict on an issue's branch, and last a missing playbook. A column with
     /// nowhere an agent may go is a fact about the board and no argument alters
     /// it; a ready date needs time; a question needs a person; a repository
-    /// needs a clone; a dependency needs other work to land; a clean branch
-    /// needs nothing at all; and a missing playbook needs the operator, which
+    /// needs a clone; a dependency needs other work to land; a clean branch with
+    /// a build that passes, is running or has not been read needs nothing at all;
+    /// and a missing playbook needs the operator, which
     /// is last because it is only worth saying about an issue that is otherwise
     /// a candidate.</para>
     ///
     /// <para>The verdict is asked only of the review column, which is
     /// dispatched to itself (<see cref="Columns.Target"/>) and only when its
-    /// branch conflicts with the trunk. There is no "the next column is
+    /// branch conflicts with the trunk or the build on its tip has failed -
+    /// <see cref="ReviewWork"/> has the order and the reasons, and says which of
+    /// the two it is. There is no "the next column is
     /// terminal" for it: an issue in review is not advanced, it is fixed, and
     /// only the operator moves it on. The repository fold applies to that move
     /// as it does to the implementation move - a session on a branch needs a
@@ -936,7 +916,8 @@ public class WorkController(
         EfHatchStatus? implementation,
         AssigneeDto? assignee,
         RepositoryDeclaration repos,
-        IReadOnlyList<EfHatchMergeCheck> verdicts)
+        IReadOnlyList<EfHatchMergeCheck> verdicts,
+        IReadOnlyList<EfHatchBuildCheck> builds)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -977,7 +958,7 @@ public class WorkController(
 
         // A repository matters wherever code is about to be written or a branch
         // is about to be entered: the move into the implementation column, and a
-        // conflict, which is a session on the branch. Dependencies gate only the
+        // conflict or a failing build, each of which is a session on the branch. Dependencies gate only the
         // first - a pull request that already exists is not held back by what
         // its ticket once waited on.
         var conflicts = to.Id == from.Id;
@@ -993,10 +974,11 @@ public class WorkController(
         }
 
         // Last before the playbook, and after the repository: a question needs a
-        // person, a repository needs a clone, and a clean branch needs nothing
-        // at all - so it is the least useful thing to say about an issue that
-        // is folded for a reason somebody can act on.
-        if (conflicts && MergeFold(issue, verdicts) is { } mergeBlock) return mergeBlock;
+        // person, a repository needs a clone, and a clean branch with a build
+        // that is passing, running or unread needs nothing at all - so it is the
+        // least useful thing to say about an issue that is folded for a reason
+        // somebody can act on.
+        if (conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is { } reviewBlock) return reviewBlock;
 
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
