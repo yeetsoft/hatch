@@ -211,8 +211,9 @@ from a build that looked successful.
 ### Two entry points, because they are two kinds of thing
 
 `tokens.css` states values and paints nothing. `base.css` paints: the box model,
-the body's face and ground, the heading scale bound to the type registers, and
-the native form controls.
+the body's face and ground, the heading scale bound to the type registers, the
+native form controls, and one utility, `.hatch-visually-hidden`: a name that
+must be in the outline but not on the screen.
 
 The native controls are why `base.css` exists at all rather than being a
 convenience. `<Field>` renders a label around a control the *app* supplies — a
@@ -220,6 +221,14 @@ raw `<input>`, `<select>`, `<textarea>`. If those rules lived only in one
 consuming app's own stylesheet, a `<Field>` specimen in the gallery would
 render a naked browser input, and a gallery that shows a component looking
 different from how it looks in the app is worse than no gallery.
+
+The controls it dresses are an enumerated list: text, email, number, password,
+datetime-local, search, date and time, an `<input>` with no `type` at all, and
+`select` and `textarea`. The list is enumerated rather than "every input but
+checkbox" so that a type the house has not considered arrives looking wrong and
+gets a decision. These controls share `--r-ctl` and a one-step-darker border on
+hover with buttons, and pad one pixel short of a button on the block axis so the
+two are the same height on a row.
 
 Two rules are deliberately **not** in `base.css`, and each app states its own:
 

@@ -108,6 +108,13 @@
   margin: 0 auto;
 }
 
+/* The board has no title row: its first line is the filter row, and it sits at
+   --sp-6 because that is where every page's first line sits (.hatch-page,
+   .hatch-issue-page) and where the header's top edge used to be, so moving
+   between the board and any other page does not make the first line jump. What
+   the header took - its height, its own margin-bottom and the one --sp-4 gap it
+   held in this column - goes to the columns. A smaller rung would buy more
+   room at the cost of a first line higher than every other page's. */
 .hatch-board-page {
   flex: 1;
   min-height: 0;
@@ -674,6 +681,17 @@
   cursor: pointer;
 }
 
+/* The auto margin takes the row's spare space, so this sits at the right edge
+   of whichever line it lands on; flex: none keeps it from shrinking below its
+   label when the row wraps. */
+.hatch-filter-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  margin-left: auto;
+}
+
 /* ---- The summary dialog ---- */
 
 .hatch-peek {
@@ -1129,7 +1147,12 @@
   cursor: text;
 }
 
-.hatch-inline-title-input {
+/* `font: inherit` is what keeps the title at the heading's size: the input sits
+   in PageHeader's <h1>. base.css's `input:not([type])` is (0,1,1), the same as
+   this selector, so the tie goes to this rule on source order alone - theme.css
+   (and base.css with it) is imported before App.css in main.tsx. Keep that
+   order. */
+input.hatch-inline-title-input {
   font: inherit;
   width: 100%;
 }
@@ -1151,7 +1174,6 @@
 .hatch-description-editor {
   width: 100%;
   font-family: var(--mono);
-  font-size: var(--t-body);
 }
 
 /* A box that grows with what is typed. The height is set by lib/useAutoGrow.ts,
@@ -1954,7 +1976,6 @@
 .hatch-playbook-prompt textarea {
   width: 100%;
   font-family: var(--mono);
-  font-size: var(--t-body);
   line-height: 1.5;
 }
 
@@ -2370,16 +2391,20 @@ button.hatch-option.chosen {
 .hatch-issue-picker-button {
   width: 100%;
   text-align: left;
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--sp-2) - 1px) var(--sp-3);
   border: 1px solid var(--line);
-  border-radius: var(--r-in);
+  border-radius: var(--r-ctl);
   background: var(--card);
   color: var(--ink);
   font-weight: 400;
   font-size: var(--t-body);
 }
 
-/* Matching base.css's rule for the native controls this sits beside. */
+/* Matching base.css's rules for the native controls this sits beside. */
+.hatch-issue-picker-button:hover:not(:focus):not(:disabled) {
+  border-color: var(--line-strong);
+}
+
 .hatch-issue-picker-button:focus {
   outline: none;
   border-color: var(--primary);
@@ -3075,12 +3100,21 @@ button.hatch-option.chosen {
      view without anything having to scroll it there, and the older ones run
      away upward. The chat-log arrangement. */
   flex-direction: column-reverse;
-  align-items: flex-start;
+  /* The width is the stack's, not the chicklet's: one fixed width, stretched
+     over whatever the list holds, so every chicklet - filed or moved, one word
+     or two lines, and any kind added later - lines up on both edges. Nothing on
+     .hatch-confirmation may declare a width; lib/confirmationsCss.test.ts holds
+     it to that. Wide enough for a key and a sentence, never wide enough to sit
+     on top of the board, and narrowing with a window too small for it and the
+     corner's margins (the list's own padding is inside the box: base.css sets
+     border-box). */
+  width: min(24rem, calc(100vw - 2 * var(--sp-2)));
+  align-items: stretch;
   gap: var(--sp-2);
   /* So a planning session that files twenty does not run a column of chicklets
-     off the top of the screen. The stack scrolls instead - nothing is dropped,
-     because a confirmation nobody has read is not the thing to throw away. The
-     same cap .hatch-issue-picker-list uses, for the same reason. */
+     off the top of the screen. The stack scrolls instead, and each chicklet
+     still leaves on its own time - see the clock in Confirmations.tsx. The same
+     cap .hatch-issue-picker-list uses, for the same reason. */
   max-height: 40vh;
   overflow-y: auto;
   margin: 0;
@@ -3095,9 +3129,6 @@ button.hatch-option.chosen {
   display: flex;
   align-items: baseline;
   gap: var(--sp-2);
-  /* Wide enough for a key and a sentence, and never wide enough to sit on top
-     of the board. */
-  max-width: 24rem;
   padding: var(--sp-2) var(--sp-2-5);
   background: var(--card);
   border: 1px solid var(--line);
@@ -3115,12 +3146,17 @@ button.hatch-option.chosen {
 }
 
 /* The title, and under a move the line that says what it did. Its own column so
-   the key and the close control keep their places whatever it holds. */
+   the key and the close control keep their places whatever it holds. It takes
+   the room the key and the × leave, so the × is at the right-hand edge of every
+   chicklet, and nothing it says can widen the chicklet: a long sentence, or a
+   run of keys with no spaces in it, wraps inside. */
 .hatch-confirmation-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--sp-1);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Two lines of title at most: enough to recognise which of six filings this

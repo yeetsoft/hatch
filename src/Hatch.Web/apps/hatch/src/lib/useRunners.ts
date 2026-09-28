@@ -31,10 +31,10 @@ export interface RunnersState {
  * would otherwise show an hour-old page. Focus is not enough on its own,
  * because a tab revealed without being clicked is never focused.
  *
- * Polling on the board was rejected and is still rejected; this is not that. A
- * kanban card changes when somebody moves it, and the person who moved it is
- * looking at it. A runner changes on its own, all night, which is the whole
- * reason there is a page for one.
+ * A runner changes on its own, all night, which is the whole reason there is a
+ * page for one - and the board polls for the same reason. The runners page asks
+ * more often (20 s to the board's 30 s) because it is a control surface
+ * somebody presses, not a view they glance at.
  */
 export function useRunners(): RunnersState {
   const [runners, setRunners] = useState<Runner[] | null>(null);

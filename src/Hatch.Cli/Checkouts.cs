@@ -282,6 +282,64 @@ public static class Checkouts
         IReadOnlyList<RepositoryLine> Repositories);
 
     /// <summary>
+    /// One checkout a verdict is taken in, and what to report it under.
+    /// </summary>
+    /// <param name="Remote">
+    /// The checkout's <c>origin</c> as it spells it - the name a verdict is put
+    /// under, for the board to canonicalise. Null for a standing checkout with
+    /// no origin, which has nothing to report under.
+    /// </param>
+    /// <param name="Canonical">
+    /// The board's own identity for the repository, where the project binds it.
+    /// Null for a project that binds nothing, where the board has none to give.
+    /// </param>
+    public sealed record Polled(string Path, string? BaseBranch, string? Remote, string? Canonical);
+
+    /// <summary>
+    /// Every checkout of this runner's that a poll of the issue looks in: each
+    /// bound repository it holds - not only the primary, because the board
+    /// records a verdict per repository - or, for a project that binds nothing,
+    /// the standing checkout.
+    /// </summary>
+    /// <remarks>
+    /// The same matching <see cref="Choose"/> does, and for the same reason it
+    /// is not written a second way: the board's own <c>MatchedRemote</c> first,
+    /// the first checkout for a remote two of them share. What differs is that
+    /// nothing here needs the primary: a runner that holds only the second of
+    /// two repositories can still say whether the branch conflicts in it.
+    /// </remarks>
+    public static IReadOnlyList<Polled> ToPoll(
+        IReadOnlyList<WorkRepositoryDto> repositories,
+        IReadOnlyList<CheckoutEntry> checkouts,
+        string? standingBaseBranch)
+    {
+        if (repositories.Count == 0)
+            return checkouts.FirstOrDefault(c => c.Standing) is { } standing
+                ? [new Polled(standing.Path, standingBaseBranch, standing.Remote, null)]
+                : [];
+
+        var byRemote = checkouts.Where(c => c.Remote is not null)
+            .GroupBy(c => c.Remote!).ToDictionary(g => g.Key, g => g.First());
+
+        var found = new List<Polled>();
+        foreach (var r in repositories)
+        {
+            var matched = r.MatchedRemote is { } m && byRemote.TryGetValue(m, out var byDeclared)
+                ? byDeclared
+                : byRemote.GetValueOrDefault(r.Remote);
+            if (matched is null) continue;
+
+            found.Add(new Polled(
+                matched.Path,
+                matched.Standing ? standingBaseBranch ?? r.BaseBranch : r.BaseBranch,
+                matched.Remote,
+                r.Canonical));
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// Where to spawn an unbound project's dispatch, or one bound to
     /// repositories this runner holds - or null when the primary matched
     /// nothing this runner has, which is the caller's cue to treat the ticket

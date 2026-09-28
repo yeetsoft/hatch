@@ -161,6 +161,7 @@ export function IssuePicker({
       if (highlight !== null) void take(rows[highlight]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation(); // the picker used the key up - a Modal around it must not close too
       close();
     }
   }

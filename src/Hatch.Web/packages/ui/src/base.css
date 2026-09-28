@@ -1,7 +1,8 @@
 /* @hatch/ui — the document layer.
    ---------------------------------------------------------------------------
    The rules an app needs before it renders anything of its own: the box model,
-   the body's face and ground, the heading scale, and the native form controls.
+   the body's face and ground, the heading scale, the native form controls, and
+   one utility.
 
    This is a separate entry point from tokens.css because it is a different
    kind of thing. tokens.css states values and paints nothing; base.css paints,
@@ -24,7 +25,9 @@
    - `html, body, #root { height: 100% }`. That is an app-shell decision — a
      full-height flex column — not a property of the vocabulary.
 
-   Every value comes from tokens.css. A literal here is a bug. */
+   Every value comes from tokens.css. A literal here is a bug - except the
+   hairline clip of the visually-hidden utility at the end, which tokens.css §4
+   leaves free: below the base, hairlines and 1-3px nudges are not tokens. */
 
 * {
   box-sizing: border-box;
@@ -89,23 +92,104 @@ button:disabled {
 
 /* Enumerated rather than `input:not([type=checkbox])`: a type this house has
    not used yet should arrive looking wrong and get a decision, not inherit a
-   text field's padding by accident. */
+   text field's padding by accident. Checkbox, radio, color and file were
+   considered and stay out; each has a face of its own.
+
+   Four entries came in with the screens that brought them: a typeless input
+   (the browser treats it as text) is the New issue title and every admin page's
+   text boxes; `search` is the board's filter; `date` and `time` are
+   MomentField's Ready and Due.
+
+   Kept a plain selector list, with no :is() or :where(): each selector keeps
+   its own specificity, where :is() takes the highest in its list and would lift
+   `select` and `textarea` above a class that sets their font-family. The hover,
+   placeholder and disabled rules below repeat the list for the same reason.
+
+   The radius is --r-ctl, the one a button takes. The padding is one pixel short
+   of a button's on the block axis because the border adds it back: 1px border +
+   (--sp-2 - 1px) padding matches a borderless button's --sp-2, so the two stand
+   the same height on a row. That is the optical nudge tokens.css §4 permits
+   below the base unit. */
+input:not([type]),
 input[type="text"],
 input[type="email"],
 input[type="number"],
 input[type="password"],
 input[type="search"],
 input[type="datetime-local"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
 select,
 textarea {
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--sp-2) - 1px) var(--sp-3);
   border: 1px solid var(--line);
-  border-radius: var(--r-in);
+  border-radius: var(--r-ctl);
   font-family: inherit;
   font-size: var(--t-body);
   color: var(--ink);
   background: var(--card);
   transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+/* The board's search box stays type="search": Escape clears it and the browser
+   draws its clear button, and nothing on the board listens for Escape. (The
+   issue picker's filter is type="text" because there Escape closes the popup,
+   and a search input eats that key.) This is normalize's reset for WebKit and
+   Blink, which round the field and add native chrome; it leaves the cancel
+   button in place. */
+input[type="search"] {
+  appearance: textfield;
+}
+
+input[type="search"]::-webkit-search-decoration {
+  appearance: none;
+}
+
+/* A step darker than the hairline, the one the secondary button takes. Not on a
+   focused control, which has the primary ring, and not on a disabled one. */
+input:not([type]):hover:not(:focus):not(:disabled),
+input[type="text"]:hover:not(:focus):not(:disabled),
+input[type="email"]:hover:not(:focus):not(:disabled),
+input[type="number"]:hover:not(:focus):not(:disabled),
+input[type="password"]:hover:not(:focus):not(:disabled),
+input[type="datetime-local"]:hover:not(:focus):not(:disabled),
+input[type="search"]:hover:not(:focus):not(:disabled),
+input[type="date"]:hover:not(:focus):not(:disabled),
+input[type="time"]:hover:not(:focus):not(:disabled),
+select:hover:not(:focus):not(:disabled),
+textarea:hover:not(:focus):not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+/* opacity: 1 because Firefox dims a placeholder by default. */
+input:not([type])::placeholder,
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="number"]::placeholder,
+input[type="password"]::placeholder,
+input[type="datetime-local"]::placeholder,
+input[type="search"]::placeholder,
+input[type="date"]::placeholder,
+input[type="time"]::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input:not([type]):disabled,
+input[type="text"]:disabled,
+input[type="email"]:disabled,
+input[type="number"]:disabled,
+input[type="password"]:disabled,
+input[type="datetime-local"]:disabled,
+input[type="search"]:disabled,
+input[type="date"]:disabled,
+input[type="time"]:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 input:focus,
@@ -114,4 +198,25 @@ textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+/* ---------------------------------------------------------------------------
+   Utility.
+
+   A name that must be in the outline but not on the screen: a page title the
+   design drops, a label a control does not draw. Visually hidden, not
+   display:none - the name is still announced. Clip rather than a zero-size box
+   so it is never read as an empty label. It restates
+   .hatch-theme-switch__legend rather than replacing it: a component keeps its
+   own appearance, and the standalone top bar loads without this file. */
+.hatch-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

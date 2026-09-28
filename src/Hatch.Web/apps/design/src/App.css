@@ -702,6 +702,6 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  text-transform: capitalize;
+  padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
 }

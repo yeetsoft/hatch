@@ -116,16 +116,19 @@ export function MenuPage() {
 
       <GallerySection
         title="Press only"
-        note="hover={false}: hovering does nothing, and a click, Enter, Space or ArrowDown opens it. It stays open while its rows are used, and leaving it with the pointer does not close it. For a panel that is worked in, such as a list of checkboxes."
+        note="hover={false}: resting on the trigger or the panel does nothing, and leaving an open panel does not close it. A click, Enter, Space or ArrowDown opens it; it stays open while its rows are used, and closes on Escape, an outside press or Tab past the end. For a panel that is worked in, such as a filter, which a passing pointer must not open."
       >
         <div className="stage-page menu-stage">
-          <Menu label="Types" hover={false}>
-            {['epic', 'story', 'task', 'bug'].map((type) => (
-              <label key={type} className="menu-stage__row menu-stage__check">
-                <input type="checkbox" defaultChecked={type !== 'task'} />
-                {type}
-              </label>
-            ))}
+          <Menu label="Filter" hover={false}>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> Backlog
+            </label>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> In progress
+            </label>
+            <label className="menu-stage__check">
+              <input type="checkbox" /> In review
+            </label>
           </Menu>
         </div>
       </GallerySection>
