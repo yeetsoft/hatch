@@ -11,6 +11,7 @@ public sealed class BoardCommands(Cli cli)
         "usage: hatch board",
         "",
         "  The columns, and how many cards in each.",
+        "  Then how full the WIP section is, where a limit is set.",
     ];
 
     public static readonly string[] NextUsage =
@@ -83,7 +84,28 @@ public sealed class BoardCommands(Cli cli)
             cli.Say.Line($"{status.Name}{terminal}: {column.Count}{first}{carried}");
         }
 
+        if (board.Wip is { } wip) cli.Say.Line(WipLine(board, wip));
+
         return 0;
+    }
+
+    /// <summary>
+    /// The one line <c>hatch board</c> prints for the WIP section, in the same
+    /// order the browser's band says the parts (HA-91): the count, then how much
+    /// of it is only claimed and not yet in, then which columns, then whether it
+    /// is full or over.
+    /// </summary>
+    public static string WipLine(BoardDto board, WipDto wip)
+    {
+        var names = string.Join(", ", board.Statuses
+            .Where(s => wip.StatusIds.Contains(s.Id))
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
+            .Select(s => s.Name));
+
+        var claimed = wip.ClaimedInbound > 0 ? $" ({wip.ClaimedInbound} claimed on the way in)" : "";
+        var state = wip.Load > wip.Limit ? " - over the limit" : wip.Load == wip.Limit ? " - full" : "";
+
+        return $"WIP: {wip.Load} of {wip.Limit}{claimed} across {names}{state}";
     }
 
     /// <summary>

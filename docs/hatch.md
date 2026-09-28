@@ -798,6 +798,34 @@ is no `GET`: both lists ride `IssueDto`, where the board, the page and a client
 at a terminal need them anyway. Both directions land in the issue's history, on the issue that
 waits and on it alone.
 
+### WIP
+
+How full the [WIP section](#status) is right now, as one number against one
+limit — the read every later story shares (`Wip.LoadAsync` in
+`Modules/Hatch/Wip.cs`) rather than counting for itself.
+
+**The load** is every issue of a counted type sitting in a WIP column, plus
+every issue of a counted type outside the section that holds a live
+[claim](#claim) whose next column is itself a WIP column. Which columns count
+and which types count are exactly what `IsWip` and the `WipLimits` row already
+say — see [Status](#status) — narrowed the same way: a deferred or terminal
+column never counts, whatever it is flagged.
+
+**The claimed-inbound half** exists because a claim is what stops a second
+runner filling the same slot: an issue in a feeder column that a runner has
+already taken is effectively on its way into the section, and letting it
+through the gate while ignoring it in the count would let the section overfill
+by exactly the number of runners working the feeder column at once. It counts
+only while the claim is live — an unclaimed issue in a feeder column counts for
+nothing — and it drops out of the load the instant the claim does, one second
+past the TTL, same as if it had never been claimed.
+
+`null` means no WIP at all: no column is flagged, or no limit row exists. A
+board that has never turned WIP on reads exactly as one that predates it.
+
+Read at `GET /api/hatch/board`'s `wip` block, and printed as one line by
+`hatch board`.
+
 ### Claim
 
 Seven nullable columns on the issue row — `ClaimToken`, `ClaimedBy`,
@@ -1404,7 +1432,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ limit, types, statusIds }` — the flagged columns that are neither deferred nor terminal, in board order |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, statusIds? }`, the bulk rule throughout: `limit` is a string (`""` clears it, a whole number of one or more sets it), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
-| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them |
+| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: the section's limit, counted types, status ids, load and claimed-inbound part, or `null` where no column is flagged or no limit is set (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |

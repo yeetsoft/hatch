@@ -660,7 +660,25 @@ public record FailingBuildDto(
 /// unable to tell an empty board from a filtered one - and an agent asking what
 /// it may work on has one comparison to make instead of a flag to know about.
 /// </remarks>
-public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues);
+/// <param name="Wip">
+/// How full the WIP section is right now, or null where the board has never
+/// heard of WIP - no column flagged, or no limit row - so a board that has
+/// never turned this on serves exactly what it served before.
+/// </param>
+public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null);
+
+/// <summary>
+/// How full the WIP section is right now, the shape <c>GET /board</c> carries
+/// and <c>hatch board</c> prints one line from. Not <see cref="WipSectionDto"/>:
+/// that is the settings route's shape (a nullable limit, no load); this one is
+/// always a load against a limit that is known to exist.
+/// </summary>
+/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once.</param>
+/// <param name="Types">The issue types this slice counts - the limit row's own types.</param>
+/// <param name="StatusIds">The counted columns, in board order. Never includes a deferred or terminal column, whatever it is flagged.</param>
+/// <param name="Load">How many counted issues are on the board right now - inside the section, plus <paramref name="ClaimedInbound"/>.</param>
+/// <param name="ClaimedInbound">Of <paramref name="Load"/>, how many are outside the section but claimed and on their way in.</param>
+public record WipDto(int Limit, IReadOnlyList<string> Types, IReadOnlyList<int> StatusIds, int Load, int ClaimedInbound);
 
 // ---- The importer ----
 
