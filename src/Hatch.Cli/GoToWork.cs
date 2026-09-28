@@ -122,8 +122,9 @@ public sealed class Tally
 
         // Two lists rather than one, because they are two different mornings:
         // the moved ones are what the night got done, and the stalled ones are
-        // what is waiting on somebody.
-        if (report.Moved) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
+        // what is waiting on somebody. A conflict that was resolved is something
+        // the night got done, though the ticket did not move.
+        if (report.Moved || report.Resolved) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
         // A lost lease is not a failure. It is the loop working correctly on a
@@ -633,6 +634,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var idle = new SaidOnce();
         var busy = new SaidOnce();
         var paused = new SaidOnce();
+        var poll = new Poll();
 
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
@@ -710,6 +712,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             paused.Clear();
 
+            // Between the heartbeat and the pass, and on every iteration - an
+            // idle loop and a busy one alike - so a pull request that stopped
+            // merging while a session was running is conflict work as soon as
+            // the next pass reads the board. It is timed by the interval and not
+            // by the iteration: a loop that finishes an increment and goes
+            // straight on asks git nothing more than one that waited.
+            await poll.RunAsync(runtime, interval, ct);
+
             var pass = await PassAsync(under, quiet, tally, idle, busy, interval, once, restart, line, ct);
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
@@ -724,7 +734,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // An increment that ran is followed by the next one immediately. The
             // interval is what to do when there was nothing to do.
-            if (pass is Pass.Worked or Pass.Asked) continue;
+            if (pass is Pass.Worked or Pass.Asked or Pass.Cleared) continue;
             if (!await NapAsync(interval, tally, ct)) return false;
         }
 
@@ -743,6 +753,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
         /// claim goes back on the way out - a restart holds no ticket.
         /// </summary>
         Restarting,
+
+        /// <summary>
+        /// A conflict dispatch whose conflict had gone by the time the claim was
+        /// held and the branch checked again. Nothing was spawned and no
+        /// increment counted, and the board has taken the verdict that says so -
+        /// so the next pass is asked for at once, and does not find it again.
+        /// </summary>
+        Cleared,
 
         /// <summary>
         /// The ticket needed a person to say which branch, and the question is
@@ -945,6 +963,41 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // checked out. On the trunk, the check sees what the trunk has.
             var lifecycle = new Lifecycle(runtime);
             var work = picked.Work!;
+
+            // A conflict is asked about again before anything is spawned, against
+            // the refs the reset just fetched: the board's verdict was read
+            // before the claim, and the trunk or the branch may have moved since.
+            // The tree has not been moved onto the branch yet, so nothing needs
+            // undoing if there is nothing to do.
+            Rechecked? found = null;
+            if (work.Kind == WorkKinds.Conflicts)
+            {
+                found = await lifecycle.RecheckAsync(work, picked.Chosen!, ct);
+
+                if (found.Conflicts.Count == 0)
+                {
+                    if (found.Unknown)
+                    {
+                        // The board's verdict is not contradicted by a runner
+                        // that cannot read one, and a session should not be
+                        // spent on a merge that may not exist.
+                        line.Line = $"{work.Issue.Key} could not be checked against the trunk";
+                        runtime.Say.Complain(
+                            $"hatch: {work.Issue.Key} - its branch could not be checked against the trunk, so nothing was spawned - trying again in {interval}s");
+                        return Pass.Waited;
+                    }
+
+                    var was = found.Trunk ?? Conflicts.Trunk(work.Issue);
+                    line.Line = $"{work.Issue.Key} no longer conflicts with {was}";
+                    runtime.Say.Line($"hatch: {work.Issue.Key} no longer conflicts with {was} - nothing to do");
+
+                    // Straight on only if the board took the verdicts. One that was
+                    // refused still calls the issue conflicted, and a pass that
+                    // went straight back would find it again in a tight loop.
+                    return found.Reported ? Pass.Cleared : Pass.Waited;
+                }
+            }
+
             var entering = await lifecycle.EnterAsync(work, picked.Chosen!, ct);
             if (entering.Asked)
             {
@@ -964,7 +1017,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // which arrive folded into the playbook already.
             var report = await runtime.Increment().RunAsync(
                 work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
-                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries);
+                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries,
+                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)));
 
             tally.Record(report);
 
@@ -974,16 +1028,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // gets the trees back on the trunk and nothing written.
             await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
 
+            // A conflict that was resolved did not move the ticket, and did not
+            // fail to: it stays in review, which is where it belongs.
+            var said = report.Moved ? $"{report.Key} moved, {report.Outcome}"
+                : report.Resolved ? $"{report.Key} {report.Outcome}"
+                : $"{report.Key} did not move - {report.Outcome}";
+
             runtime.Say.Line("");
-            runtime.Say.Line(report.Moved
-                ? $"hatch: {report.Key} moved, {report.Outcome}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)})"
-                : $"hatch: {report.Key} did not move - {report.Outcome}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)})");
+            runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)})");
 
             // What the next heartbeat carries. In-increment chatter rides the
             // claim, so what this row wants is what happened to the last one.
-            line.Line = report.Moved
-                ? $"{report.Key} moved, {report.Outcome}"
-                : $"{report.Key} did not move - {report.Outcome}";
+            line.Line = said;
 
             return Pass.Worked;
         }

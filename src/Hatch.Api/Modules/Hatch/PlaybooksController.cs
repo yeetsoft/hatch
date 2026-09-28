@@ -134,13 +134,31 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// column that does not exist, a transition that goes nowhere, or a
     /// duplicate of one already filed.
     /// </summary>
+    /// <remarks>
+    /// A row moves an issue between two columns, with one exception: the review
+    /// column may name itself, and that row is the conflict playbook - what an
+    /// agent is told when a pull request has stopped merging cleanly, an
+    /// increment that starts and ends in review (<see cref="Columns.Target"/>).
+    /// Which column that is, is measured off the board as it stands and not
+    /// named, the way every other rule about review is.
+    /// </remarks>
     private async Task<string?> Refusal(int from, int to, string types, int? id, CancellationToken ct)
     {
-        if (from == to) return "a playbook moves an issue between two columns, not into the one it is in";
-
         var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
         if (!known.Contains(from)) return $"there is no column {from}";
         if (!known.Contains(to)) return $"there is no column {to}";
+
+        if (from == to)
+        {
+            var review = Columns.AwaitingReview(await db.Statuses.AsNoTracking()
+                .OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct));
+
+            if (review?.Id != from)
+                return "a playbook moves an issue between two columns - " +
+                       (review is null
+                           ? "this board has no review column, so none may name itself"
+                           : $"only the review column, \"{review.Name}\", may name itself, and that row is the conflict playbook");
+        }
 
         var clash = await db.Playbooks
             .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types && p.Id != id, ct);
