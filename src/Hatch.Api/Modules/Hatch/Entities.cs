@@ -278,14 +278,16 @@ public class EfHatchIssue
     /// <summary>
     /// Which parents each type may take. Advisory shape rather than a
     /// hierarchy: every issue may also have no parent at all, which is the
-    /// ordinary state of a freshly captured bug.
+    /// ordinary state of a freshly captured bug. A task may also hang directly
+    /// under an epic: the model permits more than the planning habit (an epic
+    /// takes stories, a story takes tasks) uses.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> LegalParentTypes =
         new Dictionary<string, string[]>
         {
             ["epic"] = ["epic"],
             ["story"] = ["epic"],
-            ["task"] = ["story", "bug"],
+            ["task"] = ["story", "bug", "epic"],
             ["bug"] = ["epic", "story"],
         };
 

@@ -281,7 +281,7 @@ two copies disagreeing after a rename.
 
 Types are `epic | story | task | bug`. Parentage is optional and validated
 server-side: the parent must exist, be in the same project, form no cycle, and
-be a legal type — epic→epic, story→epic, task→story or bug, bug→epic or story.
+be a legal type — epic→epic, story→epic, task→story, bug or epic, bug→epic or story.
 
 `Description` is markdown, stored exactly as typed and rendered by the client
 (`marked` + `dompurify`, the pair the docs app already bundles). What the

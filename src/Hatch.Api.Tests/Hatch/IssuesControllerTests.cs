@@ -118,6 +118,31 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task ATask_HangsUnderAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+
+        var task = await h.CreateAsync("task", "a checkbox", parentKey: "AER-1");
+
+        Assert.Equal("AER-1", task.ParentKey);
+        Assert.Equal(["AER-2"], Value(await h.Issues.GetIssue("AER-1", default)).ChildKeys);
+    }
+
+    [Fact]
+    public async Task ATaskFiledOnItsOwn_CanBeMovedUnderAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "a checkbox");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+
+        Assert.Equal("AER-1", moved.ParentKey);
+        Assert.Equal(["AER-2"], Value(await h.Issues.GetIssue("AER-1", default)).ChildKeys);
+    }
+
+    [Fact]
     public async Task AParentInAnotherProject_IsRefused()
     {
         var h = await NewAsync();
@@ -1995,11 +2020,11 @@ public class IssuesControllerTests
     public async Task AnIssueThatRefusesTheEdit_IsLeftCompletelyUntouched()
     {
         var h = await NewAsync();
-        await h.CreateAsync("epic", "the plan");
         await h.CreateAsync("story", "phase 0");
         await h.CreateAsync("task", "a checkbox");
+        await h.CreateAsync("epic", "the plan");
 
-        // A story hangs under an epic and a task does not, so the third issue
+        // A task hangs under a story and an epic does not, so the third issue
         // refuses the parent while the second takes it.
         var result = Value(await h.Issues.BulkEdit(
             Bulk(["AER-2", "AER-3"], statusId: h.Todo, parentKey: "AER-1"), default));
@@ -2011,6 +2036,20 @@ public class IssuesControllerTests
         Assert.Equal(h.Inbox, refused.StatusId);
         Assert.Null(refused.ParentKey);
         Assert.Single(await h.EventsAsync("AER-3"));
+    }
+
+    [Fact]
+    public async Task ABulkEdit_CanHangATaskUnderAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "a checkbox");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-2"], parentKey: "AER-1"), default));
+
+        Assert.Equal(["AER-2"], result.Changed);
+        Assert.Empty(result.Failures);
+        Assert.Equal("AER-1", Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
     }
 
     [Fact]
