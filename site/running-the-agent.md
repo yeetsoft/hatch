@@ -183,8 +183,7 @@ change, with a one-line "still nothing" every ten minutes.
 ### What it does to your checkout
 
 Before every increment, on every checkout the ticket's project is bound to —
-so a session's first act is cutting a branch and the thing it cuts from is
-not in question:
+so a session never has to work out its own base:
 
 - It fetches with prune, and puts the checkout on the default branch at the
   tip `origin` has it at. The trunk is whatever the binding's own base branch
@@ -200,6 +199,20 @@ not in question:
 - A local branch whose upstream on origin has been deleted is deleted too,
   named on the terminal with the short sha it pointed at, so
   `git branch <name> <sha>` puts it back.
+- **Then it goes onto the ticket's branch.** If origin has one branch named for
+  the key — the lowercased key, or that and a hyphen and anything — the checkout
+  goes onto it at origin's tip and the trunk is merged in; a conflict is left in
+  progress for the session, and the prompt says so. With no branch, or only one
+  already merged, the checkout stays on the trunk and the prompt names a branch
+  to cut. With two unmerged branches the loop asks on the ticket which to use and
+  spawns nothing. Never a rebase, never a force-push.
+- **When the increment ends, the tree is put right before the ticket is let go**:
+  a merge or rebase left half-done is aborted, uncommitted changes are stashed
+  under a message naming the ticket, unpushed commits and commits left on the
+  local trunk are named on the ticket (the latter moved to a `-rescued-` branch),
+  and a pull request whose branch has fallen behind the trunk gets the trunk
+  merged into it on origin, when that merge is clean. Everything found is one
+  comment on the ticket. The checkout is back on the trunk afterwards.
 
 The practical consequence: work that matters is work that is committed. Do
 not leave something half-finished in the tree and then start the loop in the

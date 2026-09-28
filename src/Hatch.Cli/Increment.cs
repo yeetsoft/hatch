@@ -73,7 +73,8 @@ public sealed class Increment(
         WorkDto work, string root, string model, string effort, bool quiet,
         Claim claim, CancellationToken ct,
         IReadOnlyList<string>? addDirs = null,
-        IReadOnlyList<Checkouts.RepositoryLine>? repositories = null)
+        IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
+        IReadOnlyList<BranchEntry>? branches = null)
     {
         var report = new IncrementReport
         {
@@ -102,7 +103,7 @@ public sealed class Increment(
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
         claim.OnLost = _ => stopping.Cancel();
 
-        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories);
+        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches);
         report.ExitCode = result.ExitCode;
         report.SessionId = facts.SessionId;
         report.Cost = facts.CostUsd;
@@ -186,9 +187,10 @@ public sealed class Increment(
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         RunFacts facts, Claim claim, CancellationToken ct,
-        IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories)
+        IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
+        IReadOnlyList<BranchEntry>? branches)
     {
-        var request = new SessionRequest(root, model, effort, Prompt.Compose(work, repositories), quiet, addDirs);
+        var request = new SessionRequest(root, model, effort, Prompt.Compose(work, repositories, branches), quiet, addDirs);
         var render = new StreamRender(root, facts);
 
         if (quiet)
