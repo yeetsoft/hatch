@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  age,
   canUndo,
   cascadeClause,
   cascadeEntries,
   cascadeOrder,
+  clockHeld,
+  counting,
   dismiss,
   dropConfirmation,
   newestUndoable,
@@ -17,17 +20,26 @@ import type { CascadeEntry, Confirmation, MovedConfirmation, MoveRaise, MoveStat
 import type { CloseOffer } from './closeSubtree';
 import type { Board, IssueCard, Status } from '../types';
 
-const filed = (id: number, key: string): Confirmation => ({ id, kind: 'filed', issueKey: key, title: `title ${key}` });
+const LIFE = 15_000;
+
+const filed = (id: number, key: string): Confirmation => ({
+  id,
+  kind: 'filed',
+  issueKey: key,
+  title: `title ${key}`,
+  lifetime: LIFE,
+  left: LIFE,
+});
 
 describe('raise', () => {
   it('takes the key and the title off the issue the server returned', () => {
-    expect(raise([], { key: 'AER-12', title: 'Drain retries' }, 1)).toEqual([
-      { id: 1, kind: 'filed', issueKey: 'AER-12', title: 'Drain retries' },
+    expect(raise([], { key: 'AER-12', title: 'Drain retries' }, 1, LIFE)).toEqual([
+      { id: 1, kind: 'filed', issueKey: 'AER-12', title: 'Drain retries', lifetime: LIFE, left: LIFE },
     ]);
   });
 
   it('puts the newest on the front and leaves what was there', () => {
-    const stack = raise([filed(1, 'AER-12')], { key: 'AER-13', title: 'title AER-13' }, 2);
+    const stack = raise([filed(1, 'AER-12')], { key: 'AER-13', title: 'title AER-13' }, 2, LIFE);
 
     expect(stack.map((c) => c.issueKey)).toEqual(['AER-13', 'AER-12']);
   });
@@ -37,7 +49,7 @@ describe('raise', () => {
   it('never replaces a chicklet already on screen', () => {
     let stack: Confirmation[] = [];
     for (const key of ['AER-12', 'AER-13', 'AER-14']) {
-      stack = raise(stack, { key, title: `title ${key}` }, stack.length + 1);
+      stack = raise(stack, { key, title: `title ${key}` }, stack.length + 1, LIFE);
     }
 
     expect(stack).toHaveLength(3);
@@ -47,14 +59,36 @@ describe('raise', () => {
   /* The id is what keeps them apart, not the key: the same issue confirmed
      twice is two rows that can be closed one at a time. */
   it('keeps two filings of the same key apart', () => {
-    const stack = raise(raise([], { key: 'AER-12', title: 'Drain retries' }, 1), { key: 'AER-12', title: 'Drain retries' }, 2);
+    const stack = raise(
+      raise([], { key: 'AER-12', title: 'Drain retries' }, 1, LIFE),
+      { key: 'AER-12', title: 'Drain retries' },
+      2,
+      LIFE,
+    );
 
     expect(stack.map((c) => c.id)).toEqual([2, 1]);
   });
 
+  it('carries the lifetime it was given, all of it left', () => {
+    const [c] = raise([], { key: 'AER-12', title: 'x' }, 1, 30_000);
+    const [never] = raise([], { key: 'AER-12', title: 'x' }, 1, null);
+
+    expect(c).toMatchObject({ lifetime: 30_000, left: 30_000 });
+    expect(never).toMatchObject({ lifetime: null, left: null });
+  });
+
+  /* Each counts from its own raise: a new chicklet neither resets nor extends
+     the ones already there. */
+  it('leaves what time the older ones have left alone', () => {
+    const older = { ...filed(1, 'AER-12'), left: 4_000 };
+    const stack = raise([older], { key: 'AER-13', title: 'x' }, 2, LIFE);
+
+    expect(stack.map((c) => c.left)).toEqual([LIFE, 4_000]);
+  });
+
   it('does not touch the stack it was given', () => {
     const before = [filed(1, 'AER-12')];
-    raise(before, { key: 'AER-13', title: 'title AER-13' }, 2);
+    raise(before, { key: 'AER-13', title: 'title AER-13' }, 2, LIFE);
 
     expect(before).toHaveLength(1);
   });
@@ -97,19 +131,28 @@ const drop = (key: string): MoveRaise => ({
 const stacked = (...states: (MoveState | 'filed')[]): Confirmation[] =>
   states.reduce<Confirmation[]>((stack, state, i) => {
     const id = i + 1;
-    if (state === 'filed') return raise(stack, { key: `AER-${id}`, title: `title ${id}` }, id);
-    return settle(raiseMove(stack, drop(`AER-${id}`), id), id, state, null);
+    if (state === 'filed') return raise(stack, { key: `AER-${id}`, title: `title ${id}` }, id, LIFE);
+    return settle(raiseMove(stack, drop(`AER-${id}`), id, LIFE), id, state, null);
   }, []);
 
 describe('raiseMove', () => {
   it('puts the drop on the front, ready to be taken back', () => {
-    const [c] = raiseMove([], drop('AER-12'), 7);
+    const [c] = raiseMove([], drop('AER-12'), 7, LIFE);
 
-    expect(c).toEqual({ ...drop('AER-12'), id: 7, kind: 'moved', state: 'moved', note: null, cascade: [] });
+    expect(c).toEqual({
+      ...drop('AER-12'),
+      id: 7,
+      kind: 'moved',
+      state: 'moved',
+      note: null,
+      cascade: [],
+      lifetime: LIFE,
+      left: LIFE,
+    });
   });
 
   it('stacks among the filings, newest first', () => {
-    const stack = raiseMove(raise([], { key: 'AER-11', title: 'filed' }, 1), drop('AER-12'), 2);
+    const stack = raiseMove(raise([], { key: 'AER-11', title: 'filed' }, 1, LIFE), drop('AER-12'), 2, LIFE);
 
     expect(stack.map((c) => [c.kind, c.issueKey])).toEqual([
       ['moved', 'AER-12'],
@@ -117,10 +160,21 @@ describe('raiseMove', () => {
     ]);
   });
 
+  it('carries the lifetime it was given, all of it left', () => {
+    expect(raiseMove([], drop('AER-12'), 1, 60_000)[0]).toMatchObject({ lifetime: 60_000, left: 60_000 });
+    expect(raiseMove([], drop('AER-12'), 1, null)[0]).toMatchObject({ lifetime: null, left: null });
+  });
+
+  it('leaves what time the older ones have left alone', () => {
+    const older = { ...filed(1, 'AER-12'), left: 4_000 };
+
+    expect(raiseMove([older], drop('AER-13'), 2, LIFE).map((c) => c.left)).toEqual([LIFE, 4_000]);
+  });
+
   /* Dragging the same card back and forth is two drops, and each can be taken
      back on its own. */
   it('keeps two drops of one card apart', () => {
-    const stack = raiseMove(raiseMove([], drop('AER-12'), 1), drop('AER-12'), 2);
+    const stack = raiseMove(raiseMove([], drop('AER-12'), 1, LIFE), drop('AER-12'), 2, LIFE);
 
     expect(stack.map((c) => c.id)).toEqual([2, 1]);
   });
@@ -136,6 +190,27 @@ describe('settle', () => {
     expect(newer).toMatchObject({ id: 2, state: 'moved', note: null });
   });
 
+  /* Criterion 13: what it now says has to be readable, so it starts over. */
+  it('gives a chicklet its full life again when it ends, however it ends', () => {
+    for (const state of ['undone', 'refused', 'failed'] as const) {
+      const worn = age(stacked('moved'), 12_000);
+
+      expect(settle(worn, 1, state, 'x')[0]).toMatchObject({ left: LIFE });
+    }
+  });
+
+  it('starts over with the life it was raised with, not the current setting', () => {
+    const worn = age(raiseMove([], drop('AER-1'), 1, 30_000), 12_000);
+
+    expect(settle(worn, 1, 'undone', 'x')[0]).toMatchObject({ left: 30_000 });
+  });
+
+  it('leaves the time where it was while the request is in flight', () => {
+    const worn = age(stacked('moved'), 12_000);
+
+    expect(settle(worn, 1, 'undoing', null)[0]).toMatchObject({ state: 'undoing', left: 3_000 });
+  });
+
   it('leaves a filed chicklet and an unknown id alone', () => {
     const stack = stacked('filed', 'moved');
 
@@ -148,6 +223,79 @@ describe('settle', () => {
     settle(before, 1, 'undone', 'x');
 
     expect(before[0]).toMatchObject({ state: 'moved' });
+  });
+});
+
+describe('age', () => {
+  it('takes the time off every chicklet that is counting', () => {
+    const stack = age(stacked('filed', 'moved', 'filed'), 4_000);
+
+    expect(stack.map((c) => c.left)).toEqual([11_000, 11_000, 11_000]);
+  });
+
+  it('leaves a chicklet that never leaves alone', () => {
+    const forever = { ...filed(1, 'AER-1'), lifetime: null, left: null };
+
+    expect(age([forever], 60_000)).toEqual([forever]);
+  });
+
+  it('leaves one whose undo is in flight alone', () => {
+    const stack = age(stacked('undoing', 'moved'), 4_000);
+
+    expect(stack.map((c) => c.left)).toEqual([11_000, LIFE]);
+  });
+
+  it('drops one that reaches exactly zero, and one that overshoots', () => {
+    const stack = [
+      { ...filed(3, 'AER-3'), left: 5_000 },
+      { ...filed(2, 'AER-2'), left: 3_000 },
+      { ...filed(1, 'AER-1'), left: 2_000 },
+    ];
+
+    expect(age(stack, 3_000).map((c) => c.id)).toEqual([3]);
+  });
+
+  it('keeps the rest in the order they were in', () => {
+    const stack = [
+      { ...filed(4, 'AER-4'), left: 9_000 },
+      { ...filed(3, 'AER-3'), left: 1_000 },
+      { ...filed(2, 'AER-2'), left: 8_000 },
+      { ...filed(1, 'AER-1'), left: 7_000 },
+    ];
+
+    expect(age(stack, 2_000).map((c) => c.id)).toEqual([4, 2, 1]);
+  });
+
+  it('is a no-op for an empty stack', () => {
+    expect(age([], 1_000)).toEqual([]);
+  });
+
+  it('does not touch the stack it was given', () => {
+    const before = stacked('filed');
+    age(before, 4_000);
+
+    expect(before[0].left).toBe(LIFE);
+  });
+});
+
+describe('counting', () => {
+  it('is what age spends: a chicklet with a life and no request in flight', () => {
+    expect(counting(stacked('filed')[0])).toBe(true);
+    expect(counting(stacked('moved')[0])).toBe(true);
+    expect(counting(stacked('undoing')[0])).toBe(false);
+    expect(counting({ ...filed(1, 'AER-1'), left: null })).toBe(false);
+  });
+});
+
+describe('clockHeld', () => {
+  const none = { hovered: false, focused: false, hidden: false, dialog: false };
+
+  it('lets the clock run when nothing holds it', () => {
+    expect(clockHeld(none)).toBe(false);
+  });
+
+  it.each(['hovered', 'focused', 'hidden', 'dialog'] as const)('is held by %s alone', (signal) => {
+    expect(clockHeld({ ...none, [signal]: true })).toBe(true);
   });
 });
 
@@ -184,6 +332,18 @@ describe('newestUndoable', () => {
 
     expect(undone).toEqual([3, 2, 1]);
     expect(newestUndoable(stack)).toBeNull();
+  });
+
+  /* Criterion 14: a chicklet that has closed takes its move out of reach. */
+  it('answers the next one once age has dropped the newest', () => {
+    const [base] = stacked('moved');
+    const stack = [
+      { ...base, id: 2, left: 1_000 },
+      { ...base, id: 1, left: 9_000 },
+    ];
+
+    expect(newestUndoable(stack)?.id).toBe(2);
+    expect(newestUndoable(age(stack, 1_000))?.id).toBe(1);
   });
 
   it('steps over one whose card had moved on', () => {
@@ -253,7 +413,7 @@ describe('withCascade', () => {
   /* Dragging the same epic twice is two chicklets, and the offer was asked
      about the second. */
   it('attaches to the newest chicklet for the key and to no other', () => {
-    const stack = withCascade(raiseMove(stacked('moved'), drop('AER-1'), 2), 'AER-1', [entry('AER-5', 1, 1024)]);
+    const stack = withCascade(raiseMove(stacked('moved'), drop('AER-1'), 2, LIFE), 'AER-1', [entry('AER-5', 1, 1024)]);
 
     expect((stack[0] as MovedConfirmation).cascade).toHaveLength(1);
     expect((stack[1] as MovedConfirmation).cascade).toHaveLength(0);
@@ -379,7 +539,7 @@ describe('the stack lives only in the page', () => {
     globals.localStorage = trap;
     globals.sessionStorage = trap;
     try {
-      dismiss(raise(raise([], { key: 'AER-12', title: 'one' }, 1), { key: 'AER-13', title: 'two' }, 2), 1);
+      dismiss(raise(raise([], { key: 'AER-12', title: 'one' }, 1, LIFE), { key: 'AER-13', title: 'two' }, 2, LIFE), 1);
     } finally {
       delete globals.localStorage;
       delete globals.sessionStorage;

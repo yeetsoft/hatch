@@ -41,6 +41,7 @@ import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { childTypes } from '../lib/childTypes';
+import { parentCandidates, parentHint } from '../lib/parents';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { boardColumns, isSettled } from '../lib/columns';
@@ -54,7 +55,7 @@ import { openQuestions } from '../lib/questions';
 import { useAutoGrow } from '../lib/useAutoGrow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { ISSUE_TYPES, LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
+import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -347,12 +348,9 @@ export function IssuePage() {
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
   // The legal parents: same project, a type this issue may hang under, and
-  // never itself. The server decides too - this only keeps the picker from
-  // offering something it will refuse.
-  const legal = LEGAL_PARENT_TYPES[issue.type];
-  const parents = board.issues.filter(
-    (i) => i.projectKey === issue.projectKey && i.key !== issue.key && legal.includes(i.type),
-  );
+  // never itself - see lib/parents.ts. The server decides too - this only keeps
+  // the picker from offering something it will refuse.
+  const parents = parentCandidates(board.issues, issue.projectKey, issue.type, issue.key);
 
   // What may be filed under this issue, read off the same table the server
   // refuses by - see lib/childTypes.ts. Empty on a task, which is what decides
@@ -469,7 +467,7 @@ export function IssuePage() {
               `void`: the picker awaits it to know when the press is over, and
               `save` catches its own rejection and puts the server's sentence
               in `error` above. */}
-          <Field label="Parent" as="div" hint={`A ${issue.type} hangs under ${legal.join(' or ')}.`}>
+          <Field label="Parent" as="div" hint={parentHint(issue.type)}>
             <IssuePicker
               label="Parent"
               value={issue.parentKey}

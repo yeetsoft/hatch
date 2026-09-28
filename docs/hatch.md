@@ -532,10 +532,16 @@ The drop's chicklet can take an accepted cascade back too: see
 A card dropped into another column on the board is confirmed in the bottom-left
 corner, in the same chicklet a filing raises: the key (a link that opens the
 issue in a new tab), the title, *from → to*, and an **Undo**. Move chicklets
-stack with filed ones, newest at the bottom, and — for the reason a filing's
-never times out — stay until they are closed or *Dismiss all* is pressed: a
-timeout is a confirmation that expires while the operator is looking at
-something else. They live in the tab, above `<Routes>`, so they survive a click
+stack with filed ones, newest at the bottom, every one the same width. Each
+leaves after the lifetime set on the Settings page — 15 seconds by default, or
+*Never*, which keeps it until it is closed or *Dismiss all* is pressed — counted
+from its own raise. The clock is held for the whole stack while the pointer or
+keyboard focus is on it, while a dialog is open, and while the tab is hidden, so
+a confirmation does not expire while the operator is looking at something else;
+an Undo in flight is not counted down either, and a chicklet that has just
+finished one starts a full lifetime again. The choice is remembered by the
+browser, not the install. Once a chicklet has left, ⌘Z / Ctrl+Z no longer
+reaches its move. They live in the tab, above `<Routes>`, so they survive a click
 through to an issue, and Undo works from whichever page they are showing on.
 
 **Only a change of column is a transition.** A reorder inside a column raises
