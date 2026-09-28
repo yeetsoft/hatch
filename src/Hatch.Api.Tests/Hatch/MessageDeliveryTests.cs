@@ -15,6 +15,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// <c>WHERE</c> clause of a conditional <c>UPDATE</c>, and EF's in-memory
 /// provider refuses <c>ExecuteUpdateAsync</c>. Run <c>make test-api-db</c>.</para>
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class MessageDeliveryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
