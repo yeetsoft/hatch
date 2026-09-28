@@ -2991,12 +2991,21 @@ button.hatch-option.chosen {
      view without anything having to scroll it there, and the older ones run
      away upward. The chat-log arrangement. */
   flex-direction: column-reverse;
-  align-items: flex-start;
+  /* The width is the stack's, not the chicklet's: one fixed width, stretched
+     over whatever the list holds, so every chicklet - filed or moved, one word
+     or two lines, and any kind added later - lines up on both edges. Nothing on
+     .hatch-confirmation may declare a width; lib/confirmationsCss.test.ts holds
+     it to that. Wide enough for a key and a sentence, never wide enough to sit
+     on top of the board, and narrowing with a window too small for it and the
+     corner's margins (the list's own padding is inside the box: base.css sets
+     border-box). */
+  width: min(24rem, calc(100vw - 2 * var(--sp-2)));
+  align-items: stretch;
   gap: var(--sp-2);
   /* So a planning session that files twenty does not run a column of chicklets
-     off the top of the screen. The stack scrolls instead - nothing is dropped,
-     because a confirmation nobody has read is not the thing to throw away. The
-     same cap .hatch-issue-picker-list uses, for the same reason. */
+     off the top of the screen. The stack scrolls instead, and each chicklet
+     still leaves on its own time - see the clock in Confirmations.tsx. The same
+     cap .hatch-issue-picker-list uses, for the same reason. */
   max-height: 40vh;
   overflow-y: auto;
   margin: 0;
@@ -3011,9 +3020,6 @@ button.hatch-option.chosen {
   display: flex;
   align-items: baseline;
   gap: var(--sp-2);
-  /* Wide enough for a key and a sentence, and never wide enough to sit on top
-     of the board. */
-  max-width: 24rem;
   padding: var(--sp-2) var(--sp-2-5);
   background: var(--card);
   border: 1px solid var(--line);
@@ -3031,12 +3037,17 @@ button.hatch-option.chosen {
 }
 
 /* The title, and under a move the line that says what it did. Its own column so
-   the key and the close control keep their places whatever it holds. */
+   the key and the close control keep their places whatever it holds. It takes
+   the room the key and the × leave, so the × is at the right-hand edge of every
+   chicklet, and nothing it says can widen the chicklet: a long sentence, or a
+   run of keys with no spaces in it, wraps inside. */
 .hatch-confirmation-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--sp-1);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Two lines of title at most: enough to recognise which of six filings this
