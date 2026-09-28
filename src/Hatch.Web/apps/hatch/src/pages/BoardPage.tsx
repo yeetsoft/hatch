@@ -11,7 +11,7 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Button, EmptyState, PageHeader } from '@hatch/ui';
+import { Button, EmptyState } from '@hatch/ui';
 import { getAssignees, getBoard, getProjects, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
@@ -275,14 +275,10 @@ export function BoardPage() {
 
   return (
     <div className="hatch-board-page">
-      <PageHeader
-        title="Board"
-        actions={
-          <Button variant="primary" onClick={() => setFiling(true)}>
-            New issue
-          </Button>
-        }
-      />
+      {/* The page names itself here rather than through PageHeader: the top bar
+          is deliberately not a page heading, and the board is the one page whose
+          visible title the operator asked to lose. */}
+      <h1 className="hatch-visually-hidden">Board</h1>
 
       <BoardFilters
         filter={filter}
@@ -291,6 +287,11 @@ export function BoardPage() {
         projects={projects}
         showing={visible.length}
         total={board.issues.length}
+        trailing={
+          <Button variant="primary" onClick={() => setFiling(true)}>
+            New issue
+          </Button>
+        }
       />
 
       {error && <p className="text-danger">{error}</p>}
