@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnDroppableId, place, restorePoint, targetStatusId } from './place';
+import { columnDroppableId, place, restorePoint, sendTo, targetStatusId } from './place';
 import type { IssueCard } from '../types';
 
 const INBOX = 1;
@@ -215,6 +215,32 @@ describe('place, when the board has moved underneath', () => {
   it('has nothing to say about a card that is no longer there', () => {
     expect(place(board, board, 'AER-404', 'AER-1')).toBeNull();
     expect(place(board, board, 'AER-1', 'AER-404')).toBeNull();
+  });
+});
+
+describe('sendTo', () => {
+  it('lands after the last card the board holds in the target column', () => {
+    const placed = sendTo(board, 'AER-1', TODO)!;
+
+    expect(placed.statusId).toBe(TODO);
+    expect(placed.afterKey).toBe('AER-9');
+    expect(placed.beforeKey).toBeNull();
+    expect(keysIn(placed.issues, TODO)).toEqual(['AER-9', 'AER-1']);
+  });
+
+  it('has no afterKey into an empty column', () => {
+    const placed = sendTo(board, 'AER-1', 99)!;
+
+    expect(placed.afterKey).toBeNull();
+    expect(keysIn(placed.issues, 99)).toEqual(['AER-1']);
+  });
+
+  it('is nothing at all sent to the column the card is already in', () => {
+    expect(sendTo(board, 'AER-3', INBOX)).toBeNull();
+  });
+
+  it('has nothing to say about a card that is not on the board', () => {
+    expect(sendTo(board, 'AER-404', TODO)).toBeNull();
   });
 });
 

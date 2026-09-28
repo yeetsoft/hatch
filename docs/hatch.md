@@ -207,8 +207,11 @@ on one column is not refused (the reads that care take deferred first).
 the whole of the feature and the reason it is a flag rather than a convention:
 parking a ticket is a decision somebody makes about a particular ticket, not a
 lane work drifts into, and a column nobody can drag to is a column nothing lands
-in by accident. The way in is the issue page's status bar, which offers every
-column including the deferred ones — see [deferring an issue](#deferring-an-issue).
+in by accident. The way in is a press, not a drag: the issue page's status bar,
+or the board's own peek, opened off a card and pressed rather than dropped —
+both offer every column including the deferred ones — see [deferring an
+issue](#deferring-an-issue). A drop may still overshoot a lane; a press in a
+list cannot, which is why the peek may offer the shelf where a drag does not.
 
 Everything that measures the board measures it off the columns that are drawn
 (`Columns.Board`, and `boardColumns` in `lib/columns.ts`), so a shelf sorted
@@ -554,8 +557,9 @@ shipped and the plan meter went on counting eleven leaves waiting, because
 closing them one at a time is the work nobody does.
 
 So an issue that lands in a terminal column with open work under it — dropped
-there on the board, or pressed there on its own status bar — is answered with a
-question about that work. It costs no request: `GET /board` hands the browser
+there on the board, pressed there on its own status bar, or pressed there from
+the board's peek — is answered with a question about that work. It costs no
+request: `GET /board` hands the browser
 every issue with its `parentKey` and its column, so `lib/closeSubtree.ts` walks
 the subtree locally, and the dialog is on screen in the same frame the card
 lands. A reorder inside a terminal column is not a close and asks nothing, and
@@ -680,10 +684,13 @@ them.
 
 #### Deferring an issue
 
-A deferred column ([Status](#status)) is reached from one place: the status bar
-on the issue page, which draws the board's own columns and then, after a
-divider, the deferred ones. The board cannot offer them, because a column there
-is a drop target and work must not be parked by being dragged one lane too far.
+A deferred column ([Status](#status)) is reached from two places: the status
+bar on the issue page, and the board's own peek, opened off a card's status
+pill. Both draw the board's own columns and then, after a divider, the deferred
+ones. The board itself cannot offer them as a drop target, because a drag can
+overshoot by a lane and work must not be parked by accident; a press in either
+list is deliberate in a way a drop is not, so both may offer the shelf that a
+drop may not.
 
 **Deferring cascades exactly as closing does**, through the same module and the
 same dialog — `closeOffer` fires on any column where work stops, and the dialog
