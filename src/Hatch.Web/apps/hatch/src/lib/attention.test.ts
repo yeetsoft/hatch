@@ -4,6 +4,7 @@ import {
   attentionLabel,
   attentionTone,
   conflictEmptyWords,
+  failingBuildEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
   waitedWords,
@@ -70,6 +71,17 @@ describe('attentionCount', () => {
     // The loop's to fix, and one it cannot fix becomes a stall - which is a
     // question, which is counted already.
     expect(attentionCount(attention({ conflicts: [conflict(), conflict({ key: 'AER-15' })] }))).toBe(0);
+  });
+
+  it('does not count a build that is failing, and stays resting for it', () => {
+    // The loop fixes it, and one it cannot fix becomes a question.
+    const failing = attention({
+      failingBuilds: [{ key: 'AER-16', title: 'red', type: 'story', pullRequestUrl: null, checks: [] }],
+    });
+
+    expect(attentionCount(failing)).toBe(0);
+    expect(attentionTone(failing)).toBe('rest');
+    expect(attentionLabel(failing)).toBe('Nothing is waiting on you');
   });
 });
 
@@ -147,6 +159,12 @@ describe('reviewEmptyWords', () => {
     expect(reviewEmptyWords(attention({ inReviewWithoutPullRequest: 1 }))).toBe(
       '1 issue is in review with no pull request recorded.',
     );
+  });
+});
+
+describe('failingBuildEmptyWords', () => {
+  it('says no build is failing', () => {
+    expect(failingBuildEmptyWords()).toBe('No build in review is failing.');
   });
 });
 

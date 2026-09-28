@@ -207,6 +207,7 @@ public class WorkController(
 
         var held = inReview.Where(i => HoldsCheckout(i, repos)).ToList();
         var verdicts = await MergeChecksAsync(held.Select(i => i.Id).ToList(), ct);
+        var builds = await BuildChecksAsync(held.Select(i => i.Id).ToList(), ct);
 
         return held.Select(i => new ReviewCheckDto(
             IssueKey.Format(i.Project!.Key, i.Number),
@@ -214,7 +215,8 @@ public class WorkController(
                 .OrderBy(r => r.SortOrder)
                 .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
                 .ToList(),
-            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeChecks.Project).ToList()))
+            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeChecks.Project).ToList(),
+            (builds.TryGetValue(i.Id, out var built) ? built : []).Select(IssueBuildChecks.Project).ToList()))
             .ToList();
     }
 
@@ -664,6 +666,16 @@ public class WorkController(
             .ToListAsync(ct))
         .GroupBy(m => m.IssueId)
         .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchMergeCheck>)g.ToList());
+
+    /// <summary>The build verdicts on these issues, grouped by issue - one query, ordered by repository as the merge checks are.</summary>
+    private async Task<Dictionary<long, IReadOnlyList<EfHatchBuildCheck>>> BuildChecksAsync(
+        List<long> issueIds, CancellationToken ct) =>
+        (await db.BuildChecks.AsNoTracking()
+            .Where(b => issueIds.Contains(b.IssueId))
+            .OrderBy(b => b.Canonical)
+            .ToListAsync(ct))
+        .GroupBy(b => b.IssueId)
+        .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchBuildCheck>)g.ToList());
 
     /// <summary>
     /// What a move is for. Derived rather than stored: a conflict dispatch is

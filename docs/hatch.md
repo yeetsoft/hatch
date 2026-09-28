@@ -843,6 +843,85 @@ a row an interval for as long as nothing changed. It is the same call a
 Every `IssueDto` carries its verdicts, ordered by canonical remote, read in one
 batched query for a list of issues.
 
+### Build check
+
+`EfHatchBuildCheck` — `IssueId`, `Remote`, `Canonical`, `Branch`, `Sha`,
+`ShaSince`, `Verdict`, `Failing` (`jsonb`), `PushedByIncrement`, `CheckedAt`,
+`Runner`, `CheckedBy`. What the build on the tip of an issue's branch came to in
+one repository, and which sha it is about. **A verdict is about one sha**, the
+branch's tip on origin: a build that has concluded on a sha does not change,
+short of a re-run, and a verdict about any other sha says nothing about the
+branch as it stands now. `Verdict` is one of four:
+
+| Verdict | Means |
+|---|---|
+| `passed` | Every check on the sha has concluded and none failed. Nothing for an agent to do |
+| `failed` | Every check has concluded and at least one failed. `Failing` names each, with a link |
+| `pending` | Something is still queued or running. A runner waits for every check to conclude, so one increment sees every failure at once instead of spending two |
+| `none` | No check ran on the sha |
+
+A check run fails on `failure`, `timed_out` or `startup_failure`; a commit status
+on `failure` or `error`. `cancelled`, `skipped`, `neutral`, `stale` and
+`action_required` are not failures. Every check counts, not only the required
+ones: whether a check is required is a branch-protection setting a runner may
+not be allowed to read, and an optional check that fails is still red on the
+pull request somebody reads.
+
+**One verdict per issue per repository**, unique on `(IssueId, Canonical)`, for
+the reason the [merge check](#merge-check) is: a passing repository must not
+overwrite a failing one. An issue's build failed if any of its rows says so.
+
+`ShaSince` is when the board first heard about the sha. A push's checks take a
+few seconds to appear, so a `none` read straight after a push is usually
+premature, and the runner keeps asking about a sha that reads `none` until ten
+minutes after `ShaSince`. `PushedByIncrement` records that a build increment
+pushed the sha, and is what tells a build that fails on an agent's own fix — a
+question — from one that fails on somebody else's push, which is new work.
+
+`PUT /api/hatch/issues/{key}/build-check` writes it, and a key may, for the
+reason a key may write a merge check. It is refused, in a sentence, for a remote
+that does not canonicalise, an unknown verdict, no branch, no sha, `failed` with
+no failing checks, more than 100 of them, a check name that is empty, over 200
+characters or has a line break in it, and a runner over its limit; an unknown key
+is a `404`. Failing checks on a verdict that is not `failed` are ignored, not
+refused. They are deduplicated by name and sorted, so the same failure listed in
+another order is not a change. **A check's link is stored only if it is an
+absolute `http` or `https` address, and as null otherwise**: a key writes it and
+the issue page draws it as a link, so anything else would be stored script. The
+verdict is not refused for it. The issue's column is not checked, for the reason
+the merge check's is not.
+
+Four rules decide what is stored, and they hold whichever order two runners'
+calls arrive in — another runner's poll can read the build between an
+increment's push and the increment marking it:
+
+1. `PushedByIncrement` after the save is `stored || request` for the same sha and
+   the request's for a new one. It never falls back to false on the same sha.
+2. **A mark never lowers a concluded verdict.** A request that says an increment
+   pushed the sha, on the sha the row holds, with `pending` while the row holds
+   `passed` or `failed`, takes the flag and keeps the verdict. Every other
+   request stores what it says: a poll's `pending` after a `failed` is a re-run.
+3. `ShaSince` is kept for the same sha and is now for a new one.
+4. **The question opens when a save moves the row into *failed and flagged*.**
+   That covers `pending` then `failed` on a marked sha, and `failed` read first
+   and marked after. The board writes it in the same save as the verdict, so no
+   pass can see that failure without it, and a repeated verdict writes no second.
+   It names the sha and the failing checks, says a build increment pushed it, and
+   offers the stall guard's two answers — `leave it` and `try again` — in the
+   stall guard's words, which live in `Hatch.Contracts` so both share one wording.
+   It is skipped when a question is already open: that is already the flag.
+
+**A verdict that changes the stored one writes a `build_check_changed` event; a
+repeat writes none.** Changed means a different verdict, a different sha, or a
+different set of failing names. The payload is `{ remote, from, to }`, each side
+`{ verdict, sha, failing }` with `failing` the names, the remote canonical. The
+mark alone writes none. The trail says when a build started failing and when it
+stopped.
+
+Every `IssueDto` carries its build verdicts, ordered by canonical remote, read in
+one batched query for a list of issues. A board that predates them omits the
+field, and readers take that as none.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -912,7 +991,7 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+`dependency_added`, `dependency_removed`, `merge_check_changed`, `build_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered`,
 `imported`.
 
@@ -1167,6 +1246,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
@@ -1364,6 +1444,21 @@ cannot fix becomes a stall, a stall is a question, and a question already lights
 the control — so counting the conflict as well would light it twice for one
 problem, and for the ordinary case, one the loop fixes before anybody looks, it
 would light it for nothing. `attentionCount` leaves it out and its test says so.
+
+### The issue in review whose build has failed
+
+`failingBuilds` is the fourth list, and it too does **not** light the control. It
+is the review column's issues whose [build check](#build-check) says `failed` in
+at least one repository, in the column's own board order, each with only the
+repositories that failed. The panel draws it as *Builds that fail*, after the
+conflicts, and the issue page draws a chip beside the pull request's naming the
+failing checks, each linked.
+
+The reasoning is the conflicts' own: the loop fixes a failing build, and one it
+cannot fix becomes a question, which already lights the control. Counting it as
+well would light the control twice for one problem, and for the ordinary case —
+one the loop fixes before anybody looks — for nothing. `attentionCount` leaves
+it out and its test says so.
 
 ### The issue in review with no pull request
 

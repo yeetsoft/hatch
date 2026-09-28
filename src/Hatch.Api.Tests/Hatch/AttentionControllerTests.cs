@@ -205,6 +205,48 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
     }
 
+    // ---- The failing build half ----
+
+    [Fact]
+    public async Task Attention_ListsTheReviewColumnsIssuesWhoseBuildFailed_WithOnlyTheFailedVerdicts()
+    {
+        var h = await NewAsync();
+        var failed = await h.FileAsync("story", "red", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(failed, BuildVerdicts.Failed, ["api", "CI"], remote: "forge.example/owner/one");
+        await h.BuildAsync(failed, BuildVerdicts.Passed, remote: "forge.example/owner/two");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).FailingBuilds!);
+
+        Assert.Equal(Key(failed), row.Key);
+        Assert.Equal("red", row.Title);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        Assert.Equal(["forge.example/owner/one"], row.Checks.Select(c => c.Canonical));
+        Assert.Equal(["api", "CI"], row.Checks.Single().Failing.Select(f => f.Name));
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Pending)]
+    [InlineData(BuildVerdicts.None)]
+    public async Task Attention_SaysNothingAboutABuildThatDidNotFail(string verdict)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, verdict);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).FailingBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAFailingBuildOnAnIssueThatIsNotInReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still being written", h.InProgress);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).FailingBuilds!);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -386,6 +428,27 @@ public class AttentionControllerTests
                 TrunkSha = new string('1', 40),
                 Verdict = verdict,
                 Files = EfHatchMergeCheck.JoinFiles(files ?? []),
+                CheckedAt = Now,
+                Runner = "box:/work/repo",
+                CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task BuildAsync(
+            EfHatchIssue issue, string verdict, string[]? failing = null, string remote = "forge.example/owner/repo")
+        {
+            Db.BuildChecks.Add(new EfHatchBuildCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = remote,
+                Branch = "ha-1-thing",
+                Sha = new string('2', 40),
+                ShaSince = Now,
+                Verdict = verdict,
+                Failing = EfHatchBuildCheck.WriteFailing((failing ?? []).Select(n => new FailingCheckDto(n)).ToList()),
                 CheckedAt = Now,
                 Runner = "box:/work/repo",
                 CheckedBy = "runner",
