@@ -303,6 +303,7 @@ export function BoardPage() {
       <NewIssueDialog
         open={filing}
         projects={projects}
+        candidates={board.issues}
         defaultProjectKey={filter.project}
         onClose={() => setFiling(false)}
         onCreated={() => void reload()}
