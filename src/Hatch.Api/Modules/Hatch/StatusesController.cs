@@ -21,7 +21,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
-            .Select(s => new StatusDto(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.Color))
+            .Select(s => new StatusDto(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color))
             .ToListAsync(ct);
 
         return statuses;
@@ -51,7 +51,7 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return CreatedAtAction(
             nameof(GetStatuses),
-            new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color));
+            new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip, status.Color));
     }
 
     [HttpPatch("{id:int}")]
@@ -80,7 +80,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         if (request.IsDeferred is { } deferred) status.IsDeferred = deferred;
 
         await db.SaveChangesAsync(ct);
-        return new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.Color);
+        return new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip, status.Color);
     }
 
     /// <summary>

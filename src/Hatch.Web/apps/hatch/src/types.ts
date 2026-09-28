@@ -52,9 +52,40 @@ export interface Status {
       deferred ones included - `boardColumns` in lib/columns.ts is what drops
       them, and it is the one place that does. */
   isDeferred: boolean;
+  /** The stored flag: whether the operator has ticked this column into the WIP
+      section, whatever else is true of it. Not the same question as "does this
+      column count towards the limit" - a deferred or terminal column keeps
+      whatever it was flagged, and it is `WipSection.statusIds` that answers the
+      counted question - see lib/wip.ts. */
+  isWip: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
+}
+
+/** One slice of the board's WIP section: what the limit is, which types it
+    counts, and which columns count towards it right now. Mirrors
+    WipSectionDto. */
+export interface WipSection {
+  /** How many issues of `types` may sit across the counted columns at once, or
+      null for no limit. */
+  limit: number | null;
+  /** The issue types this slice counts - `['story', 'bug']`, the one slice
+      this epic writes. */
+  types: IssueType[];
+  /** The flagged columns that actually count: `Status.isWip` is true and the
+      column is neither deferred nor terminal, in board order. */
+  statusIds: number[];
+}
+
+/** A write to the section: absent or undefined leaves a field alone, the bulk
+    rule every other clearable field in Hatch follows. Mirrors
+    WipSectionRequest. */
+export interface WipSectionRequest {
+  /** `''` clears the limit; a whole number of one or more sets it. */
+  limit?: string;
+  /** The whole section, not a delta - `[]` clears it. */
+  statusIds?: number[];
 }
 
 /** Which kind of thing an assignee is. Mirrors ActorKind. */

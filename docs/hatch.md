@@ -65,7 +65,7 @@ absence starts to hurt:
 - **No granular permissions.** Reaching Hatch at all means trusted to do
   everything in it. The one exception is the API key, whose scope is a
   statement about *which surface*, never about which verb.
-- **No swimlanes, sprints, or WIP limits.**
+- **No swimlanes or sprints.**
 - **No GitHub integration beyond one read.** A commit sha in a comment is the
   link, and it is written by whoever did the work. What is read is the build on
   the tip of a branch in review, and it is read by the runner's own `gh`, never
@@ -182,7 +182,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`Color` (`#rrggbb`).
+`IsWip`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -219,6 +219,17 @@ not a pass* — and the rollup leaves deferred leaves out of every total, so an
 epic finished except for work nobody is going to do reads finished without
 claiming the shelved half shipped.
 
+`IsWip` marks the columns in the WIP section — the lane or lanes the operator
+wants bounded. It is read only where the column is neither deferred nor
+terminal: a flag stranded on a column that has since become either does not
+silently hold a limit down. It is written only through `PUT /api/hatch/wip`, by
+a person — see ["the one edge that is deliberately
+cut"](#the-one-edge-that-is-deliberately-cut) — never through a status write, so
+the ordinarily key-writable `PATCH /api/hatch/statuses/{id}` cannot reach it.
+The limit itself is a row in `hatch."WipLimits"` (`Types`, `Limit`), one per
+slice of the board the flag is measured against; no row means no limit. This
+epic writes exactly one slice, `story,bug`.
+
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
@@ -234,15 +245,20 @@ for a column they added — `Shelved`, `Someday`, `Won't Do For Now`, whatever
 they call it — and until they do, every board behaves exactly as it did before
 the flag existed.
 
-| Column | Sort | Terminal | Whose | What happens in it |
-|---|---|---|---|---|
-| Draft | 10 | | operator | An idea being written. Nothing reads it. |
-| Breakdown | 20 | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
-| Backlog | 30 | | operator | Specified work, awaiting selection. |
-| To Do | 40 | | **agent** | Analyse it until implementing it is mechanical. |
-| In Progress | 50 | | **agent** | Write the code, get it green, push it, put it up for review. |
-| In Review | 60 | | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
-| Done | 70 | ✓ | operator | Terminal. |
+| Column | Sort | Terminal | WIP | Whose | What happens in it |
+|---|---|---|---|---|---|
+| Draft | 10 | | | operator | An idea being written. Nothing reads it. |
+| Breakdown | 20 | | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
+| Backlog | 30 | | | operator | Specified work, awaiting selection. |
+| To Do | 40 | | | **agent** | Analyse it until implementing it is mechanical. |
+| In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. |
+| In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
+| Done | 70 | ✓ | | operator | Terminal. |
+
+A migration flags `In Progress` and `In Review` on a board that still has
+columns of exactly those names, and writes no limit row — the WIP section is
+marked, but nothing changes until the operator types a number on the Statuses
+page. A renamed board seeds neither.
 
 **Which column belongs to whom is not a field.** It is derived: a column an
 agent may leave is a column some [playbook](#playbooks) names as its `from`, for
@@ -1266,6 +1282,17 @@ sent where it was sent. It follows that there is no `hatch expedite` verb — th
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
 
+**And so is the WIP section and its limit.** Which columns are work in
+progress, and how much of one slice of the board may sit across them at once,
+is the operator's to set — a key that could raise the limit or empty the
+section could pull more of its own work in overnight, the loop stalling behind
+a ceiling it had just raised for itself. `PUT /api/hatch/wip` therefore lives
+on its own controller (`WipController`) carrying no class-level scope, cut in
+the route by the same means, and checked a second time in the action for
+`IssueClaimController.NotAPerson`'s reason: `RoleGate` is dormant wherever the
+wall is off, and a keyless runner there is a program too. Reading is open, like
+the rest: an agent stalled behind a full section is entitled to know why.
+
 One related edge is **not** cut, and is stated rather than papered over:
 **nothing stops a key answering its own question.** A key is what
 `hatch answer` types with and it is also what a spawned agent inherits; the
@@ -1288,6 +1315,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
+| `/wip` | GET | `{ limit, types, statusIds }` — the flagged columns that are neither deferred nor terminal, in board order |
+| `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, statusIds? }`, the bulk rule throughout: `limit` is a string (`""` clears it, a whole number of one or more sets it), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |

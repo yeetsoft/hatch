@@ -58,20 +58,68 @@ public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 /// move into one. A reader that wants the board's shape wants the columns this
 /// is false on - the same list <c>Columns</c> measures the board off.
 /// </param>
-public record StatusDto(int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, string Color);
+/// <param name="IsWip">
+/// The stored flag: whether the operator has ticked this column into the WIP
+/// section, whatever else is true of it. Not the same question as "does this
+/// column count towards the limit" - a deferred or terminal column keeps
+/// whatever it was flagged, and it is <c>WipSectionDto.StatusIds</c> that
+/// answers the counted question. See <see cref="EfHatchStatus.IsWip"/>.
+/// </param>
+public record StatusDto(int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
 /// rightmost position, neither terminal nor deferred, and
 /// <see cref="EfHatchStatus.DefaultColor"/> - so the shortest way to add a
 /// column is still a name.
+///
+/// There is no <c>IsWip</c> here or on <see cref="StatusPatchRequest"/>: this
+/// route accepts the <c>hatch</c> scope on every verb, and the WIP section is
+/// the operator's to set - see <see cref="EfHatchStatus.IsWip"/> and
+/// <c>WipController</c>.
 /// </summary>
 public record StatusCreateRequest(
     string Name, int? SortOrder, bool? IsTerminal, string? Color = null, bool? IsDeferred = null);
 
-/// <summary>Every field optional: null means "leave this one alone".</summary>
+/// <summary>Every field optional: null means "leave this one alone". No <c>IsWip</c> - see <see cref="StatusCreateRequest"/>.</summary>
 public record StatusPatchRequest(
     string? Name, int? SortOrder, bool? IsTerminal, string? Color = null, bool? IsDeferred = null);
+
+// ---- WIP ----
+
+/// <summary>
+/// One slice of the board's WIP section, as both the read and the write answer
+/// it: what the limit is, which types it counts, and which columns count
+/// towards it right now.
+/// </summary>
+/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once, or null for no limit.</param>
+/// <param name="Types">The issue types this slice counts - <c>["story", "bug"]</c>, the one slice this epic writes.</param>
+/// <param name="StatusIds">
+/// The flagged columns that actually count: <see cref="StatusDto.IsWip"/> is
+/// true and the column is neither deferred nor terminal, in board order. A flag
+/// stranded on a column that has since become deferred or terminal is left out
+/// here and cleared by the next <see cref="WipSectionRequest"/> that names
+/// <see cref="StatusIds"/>, whatever it names - see <c>Wip.SectionAsync</c>.
+/// </param>
+public record WipSectionDto(int? Limit, IReadOnlyList<string> Types, IReadOnlyList<int> StatusIds);
+
+/// <summary>
+/// A write to the section: absent or null leaves a field alone, the bulk rule
+/// every other clearable number in Hatch already follows - see
+/// <see cref="RunnerPatchRequest"/>.
+/// </summary>
+/// <param name="Limit">
+/// Absent or null leaves the limit alone; <c>""</c> (or whitespace) removes the
+/// row; a whole number of one or more sets it. Anything else is refused with a
+/// sentence.
+/// </param>
+/// <param name="StatusIds">
+/// Absent or null leaves the section alone; otherwise the whole section - not a
+/// delta - so <c>[]</c> clears it. Every column in the house is set to
+/// <see cref="StatusDto.IsWip"/> true if it is named here and false otherwise.
+/// A deferred or terminal column named here is refused with a sentence.
+/// </param>
+public record WipSectionRequest(string? Limit = null, IReadOnlyList<int>? StatusIds = null);
 
 // ---- Issues ----
 

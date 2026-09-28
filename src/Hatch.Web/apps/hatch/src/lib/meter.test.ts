@@ -8,6 +8,7 @@ const status = (id: number, name: string, sortOrder: number, isTerminal = false)
   sortOrder,
   isTerminal,
   isDeferred: false,
+  isWip: false,
   color: '#6b7280',
 });
 

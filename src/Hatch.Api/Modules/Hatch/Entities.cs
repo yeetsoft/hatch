@@ -197,6 +197,17 @@ public class EfHatchStatus
     public bool IsDeferred { get; set; }
 
     /// <summary>
+    /// Whether this column is in the WIP section: the lane the operator wants
+    /// bounded. Read only where the column is neither <see cref="IsDeferred"/>
+    /// nor <see cref="IsTerminal"/> - see <see cref="Wip"/>, which is the one
+    /// place that says which columns count - and written only by
+    /// <see cref="WipController"/>, never through <see cref="StatusPatchRequest"/>
+    /// or <see cref="StatusCreateRequest"/>: the key-writable status route must
+    /// not be able to reach a flag the WIP limit is measured against.
+    /// </summary>
+    public bool IsWip { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave
@@ -1203,6 +1214,32 @@ public class EfHatchPlaybook
         model is not null &&
         (ModelAliases.Contains(model) ||
          Regex.IsMatch(model, FullModelPattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
+}
+
+/// <summary>
+/// A WIP limit: how much of one slice of the board the operator will let stand
+/// at once, across every column <see cref="EfHatchStatus.IsWip"/> flags. One row
+/// per slice, keyed by <see cref="Types"/> - and, for now, exactly one row ever
+/// written: <see cref="StoriesAndBugs"/>, the only slice this epic asks for. No
+/// row for a slice means no limit, which is why a limit is a nullable read
+/// rather than a row that is always there holding a large number.
+/// </summary>
+[Table("WipLimits")]
+[Index(nameof(Types), IsUnique = true)]
+public class EfHatchWipLimit
+{
+    /// <summary>The one slice this epic writes: stories and bugs, comma separated the way <see cref="EfHatchPlaybook.Types"/> is.</summary>
+    public const string StoriesAndBugs = "story,bug";
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>Which issue types this limit counts, normalised the way <see cref="EfHatchPlaybook.NormalizeTypes"/> does.</summary>
+    [MaxLength(EfHatchPlaybook.MaxTypesLength)]
+    public required string Types { get; set; }
+
+    /// <summary>How many issues of these types may sit across the WIP columns at once.</summary>
+    public required int Limit { get; set; }
 }
 
 /// <summary>

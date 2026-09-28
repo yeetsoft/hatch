@@ -51,6 +51,8 @@ import type {
   StatusCreateRequest,
   StatusPatchRequest,
   Utilization,
+  WipSection,
+  WipSectionRequest,
   Work,
   WorkLog,
   WorkLogHistory,
@@ -139,6 +141,13 @@ export const patchStatus = (id: number, request: StatusPatchRequest) =>
   fetchJson<Status>(`/api/hatch/statuses/${id}`, { method: 'PATCH', ...asJson(request) });
 export const deleteStatus = (id: number) =>
   fetchJson<void>(`/api/hatch/statuses/${id}`, { method: 'DELETE' });
+
+/** Which columns are work in progress, and how much of one slice of the board
+    may sit across them at once. Its own route because a key must not write it
+    - see WipController. */
+export const getWip = () => fetchJson<WipSection>('/api/hatch/wip');
+export const putWip = (request: WipSectionRequest) =>
+  fetchJson<WipSection>('/api/hatch/wip', { method: 'PUT', ...asJson(request) });
 
 // ---- Issues ----
 

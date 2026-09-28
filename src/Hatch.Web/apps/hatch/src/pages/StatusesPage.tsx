@@ -1,14 +1,21 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Button, Card, Field, PageHeader, Table } from '@hatch/ui';
-import { createStatus, deleteStatus, getStatuses, patchStatus } from '../api/client';
+import { createStatus, deleteStatus, getStatuses, getWip, patchStatus, putWip } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
 import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
-import type { Status } from '../types';
+import { limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
+import type { Status, WipSection } from '../types';
 
 export function StatusesPage() {
-  const { data: statuses, error, setError, reload } = useLoaded<Status[]>(getStatuses);
+  const load = useCallback(
+    () => Promise.all([getStatuses(), getWip()]).then(([statuses, section]) => ({ statuses, section })),
+    [],
+  );
+  const { data, error, setError, reload } = useLoaded(load);
+  const statuses = data?.statuses;
+  const section = data?.section;
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -69,7 +76,19 @@ export function StatusesPage() {
         </div>
       </Card>
 
-      {statuses && (
+      {section && (
+        <Card>
+          <h2 className="hatch-section-title">WIP limit</h2>
+          <div className="hatch-field-grid">
+            <LimitField
+              section={section}
+              onSetLimit={(limit) => void act(() => putWip({ limit }))}
+            />
+          </div>
+        </Card>
+      )}
+
+      {statuses && section && (
         <Card flush>
           <Table>
             <thead>
@@ -80,6 +99,7 @@ export function StatusesPage() {
                 <th title="Parked work. Not drawn on the board and not dragged into - the issue page is the only way in.">
                   Deferred
                 </th>
+                <th title="Stories and bugs across the WIP columns count towards the limit above.">WIP</th>
                 <th>Order</th>
                 <th />
               </tr>
@@ -116,6 +136,22 @@ export function StatusesPage() {
                       checked={status.isDeferred}
                       aria-label={`${status.name} is deferred`}
                       onChange={(e) => void act(() => patchStatus(status.id, { isDeferred: e.target.checked }))}
+                    />
+                  </td>
+                  {/* Independent of Done and Deferred, and refused by the
+                      server on either: a column that has just shipped or been
+                      parked is disabled here before the refusal is ever sent -
+                      see lib/wip.ts's wipBlocked. */}
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={section.statusIds.includes(status.id)}
+                      disabled={wipBlocked(status) !== null}
+                      title={wipBlocked(status) ?? undefined}
+                      aria-label={`${status.name} is work in progress`}
+                      onChange={(e) =>
+                        void act(() => putWip({ statusIds: toggled(section, statuses, status.id, e.target.checked) }))
+                      }
                     />
                   </td>
                   <td>
@@ -197,5 +233,36 @@ function NameCell({ status, onRename }: { status: Status; onRename: (name: strin
         if (draft.trim() && draft !== status.name) onRename(draft.trim());
       }}
     />
+  );
+}
+
+/**
+ * How much of the stories-and-bugs slice may sit across the WIP columns at
+ * once. Committed on blur, the way NameCell is, and only if changed - a blank
+ * box takes the limit off rather than refusing "0", the same string-on-the-wire
+ * convention `RunnerBounds` uses.
+ */
+function LimitField({ section, onSetLimit }: { section: WipSection; onSetLimit: (limit: string) => void }) {
+  const [draft, setDraft] = useState(limitDraft(section));
+  const [known, setKnown] = useState(section.limit);
+
+  // Re-syncs when the row changes underneath - see ColorCell above.
+  if (section.limit !== known) {
+    setKnown(section.limit);
+    setDraft(limitDraft(section));
+  }
+
+  return (
+    <Field label="WIP limit" hint="Stories and bugs across the WIP columns; blank means no limit.">
+      <input
+        inputMode="numeric"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const next = limitRequest(draft);
+          if (next !== limitDraft(section)) onSetLimit(next);
+        }}
+      />
+    </Field>
   );
 }
