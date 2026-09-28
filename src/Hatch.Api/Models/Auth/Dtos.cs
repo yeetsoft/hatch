@@ -120,6 +120,12 @@ public record AuthInviteDto(
 /// against the value in a config file without either of them holding the whole
 /// thing.
 /// </param>
+/// <param name="Owner">
+/// Whose tickets this key's <c>--mine</c> reaches, or null for a key owned by
+/// nobody. Carried as <c>{ id, name }</c> rather than a bare id, the same
+/// choice <see cref="AuthGrantDto"/> makes, so the page draws a name without a
+/// second read.
+/// </param>
 public record ApiKeyDto(
     Guid Id,
     string Name,
@@ -127,11 +133,16 @@ public record ApiKeyDto(
     IReadOnlyList<string> Scopes,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt,
-    DateTimeOffset? RevokedAt)
+    DateTimeOffset? RevokedAt,
+    ApiKeyOwnerDto? Owner)
 {
     public static ApiKeyDto From(EfApiKey key) =>
-        new(key.Id, key.Name, key.Prefix, key.Scopes, key.CreatedAt, key.LastUsedAt, key.RevokedAt);
+        new(key.Id, key.Name, key.Prefix, key.Scopes, key.CreatedAt, key.LastUsedAt, key.RevokedAt,
+            key.Owner is { } owner ? new ApiKeyOwnerDto(owner.Id, owner.Name) : null);
 }
+
+/// <summary>A key's owner, drawn small - the page needs a name and an id to edit by, nothing else about the person.</summary>
+public record ApiKeyOwnerDto(Guid Id, string Name);
 
 /// <summary>
 /// A freshly minted key, on its way to a screen once. The same shape as
@@ -147,4 +158,17 @@ public record ApiKeyMintedDto(ApiKeyDto Key, string Secret);
 /// key with no scopes reaches nothing, which is the right way for a mistyped
 /// request to fail.
 /// </param>
-public record CreateApiKeyRequest(string? Name, string[]? Scopes);
+/// <param name="OwnerPersonId">
+/// Whose tickets this key's <c>--mine</c> will reach. Absent defaults to the
+/// admin minting it - or to nobody, where the wall is off and there is no
+/// admin to default to (<c>ApiKeysController.CreateKey</c>).
+/// </param>
+public record CreateApiKeyRequest(string? Name, string[]? Scopes, Guid? OwnerPersonId = null);
+
+/// <summary>
+/// Changes or clears an existing key's owner. A record with one nullable field
+/// rather than a bare Guid in the URL, the same shape <see cref="LinkPersonRequest"/>
+/// takes and for the same reason: "nobody" is something the API can be told,
+/// not the absence of being told anything.
+/// </summary>
+public record ApiKeyOwnerRequest(Guid? PersonId);

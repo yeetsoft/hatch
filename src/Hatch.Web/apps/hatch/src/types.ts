@@ -1128,6 +1128,12 @@ export interface AuthMe {
 
 // ---- API keys ----
 
+/** Whose tickets a key's `--mine` reaches. Mirrors ApiKeyOwnerDto. */
+export interface ApiKeyOwner {
+  id: string;
+  name: string;
+}
+
 /** One API key as the Admin page lists it. Mirrors ApiKeyDto. The secret is
     not here and never is: it exists once, in the response to the mint. */
 export interface ApiKey {
@@ -1139,6 +1145,8 @@ export interface ApiKey {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  /** Null for a key owned by nobody - never set, or its person since deleted. */
+  owner: ApiKeyOwner | null;
 }
 
 /** A freshly minted key. Mirrors ApiKeyMintedDto. */
@@ -1147,8 +1155,9 @@ export interface ApiKeyMinted {
   secret: string;
 }
 
-/** Mirrors CreateApiKeyRequest. */
+/** Mirrors CreateApiKeyRequest. Omitted `ownerPersonId` defaults to the admin minting it. */
 export interface ApiKeyCreateRequest {
   name: string;
   scopes: string[];
+  ownerPersonId?: string;
 }

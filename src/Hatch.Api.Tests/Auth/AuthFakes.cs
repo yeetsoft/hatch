@@ -108,12 +108,18 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     /// <summary>What CreateApiKeyAsync answers; null is how a test reaches the duplicate-name 409.</summary>
     public ApiKeyCreated? MintResult { get; set; }
 
-    public List<(string Name, IReadOnlyList<string> Scopes)> KeysCreated { get; } = [];
+    public List<(string Name, IReadOnlyList<string> Scopes, Guid? OwnerPersonId)> KeysCreated { get; } = [];
 
     public List<Guid> KeysRevoked { get; } = [];
 
+    /// <summary>Every owner change asked for, key id and the person id (or null, to clear).</summary>
+    public List<(Guid Id, Guid? PersonId)> OwnersSet { get; } = [];
+
     /// <summary>Whether RevokeApiKeyAsync found a row. False is how a test reaches the 404.</summary>
     public bool RevokeKeyResult { get; set; } = true;
+
+    /// <summary>Whether SetApiKeyOwnerAsync found a row. False is how a test reaches the 404.</summary>
+    public bool SetOwnerResult { get; set; } = true;
 
     public Task<EfApiKey?> VerifyApiKeyAsync(string? secret, CancellationToken ct)
     {
@@ -124,9 +130,9 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     public Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<EfApiKey>>(Keys);
 
-    public Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, CancellationToken ct)
+    public Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct)
     {
-        KeysCreated.Add((name, scopes));
+        KeysCreated.Add((name, scopes, ownerPersonId));
         return Task.FromResult(MintResult);
     }
 
@@ -136,5 +142,42 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
         return Task.FromResult(RevokeKeyResult);
     }
 
+    public Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct)
+    {
+        OwnersSet.Add((id, personId));
+        return Task.FromResult(SetOwnerResult);
+    }
+
     public Task<bool> HasAnyAccessAsync(CancellationToken ct) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// A caller a test can set directly - the person, the key, or the local actor -
+/// without building a real <see cref="Microsoft.AspNetCore.Http.HttpContext"/>.
+/// For a controller or service that just needs "who is asking" answered a
+/// fixed way, the way <see cref="ApiKeysController"/> and
+/// <see cref="Hatch.Api.Services.Auth.ActorDirectory.PrincipalAsync"/>'s
+/// callers do.
+/// </summary>
+internal sealed class StubCallerIdentity : ICallerIdentity
+{
+    public EfPerson? Person { get; set; }
+    public EfApiKey? ApiKey { get; set; }
+    public Actor? Local { get; set; }
+
+    public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
+
+    public Task<Guid?> PersonIdAsync(CancellationToken ct) => Task.FromResult(Person?.Id);
+
+    public Task<EfPerson?> PersonAsync(CancellationToken ct) => Task.FromResult(Person);
+
+    public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(ApiKey);
+
+    public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult(Local);
+
+    public Task<bool> IsProgramAsync(CancellationToken ct) =>
+        Task.FromResult(ApiKey is not null || Local is { Kind: ActorKind.Key });
+
+    public Task<string> ActorNameAsync(CancellationToken ct) =>
+        Task.FromResult(Person?.Name ?? ApiKey?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
 }

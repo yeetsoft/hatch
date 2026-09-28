@@ -408,7 +408,10 @@ board wants a key. Mint one on its API keys page and run `hatch config`.
 
 **`hatch: 403 - the key is good and this route is not one it may take.`**
 A key is never an administrator. Playbooks, expedite, assignees, settings and
-the Runners page controls are a person's to change, in the browser.
+the Runners page controls are a person's to change, in the browser. Whose
+tickets a key's `--mine` reaches is the same kind of change — an admin sets it
+on the API Keys page when minting a key, or afterwards, and a key can never
+set its own.
 
 **`hatch: cannot tell which branch is the trunk here`.** `origin/HEAD` is
 not set in this clone. `git remote set-head origin -a` fixes it, or name the

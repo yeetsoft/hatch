@@ -370,6 +370,10 @@ export const mintApiKey = (request: ApiKeyCreateRequest) =>
 export const revokeApiKey = (id: string) =>
   fetchJson<void>(`/api/auth/keys/${seg(id)}/revoke`, { method: 'POST' });
 
+/** Changes or clears whose tickets a key's `--mine` reaches. Admin only, like the rest of this file. */
+export const setApiKeyOwner = (id: string, personId: string | null) =>
+  fetchJson<void>(`/api/auth/keys/${seg(id)}/owner`, { method: 'PUT', ...asJson({ personId }) });
+
 // ---- Settings ----
 //
 // Person only, both verbs: unlike every other route in this file, a Hatch-scoped

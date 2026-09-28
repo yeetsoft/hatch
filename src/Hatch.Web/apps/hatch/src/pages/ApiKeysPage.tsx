@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Table, Text } from '@hatch/ui';
-import { getApiKeyScopes, getApiKeys, mintApiKey, revokeApiKey } from '../api/client';
+import { getApiKeyScopes, getApiKeys, getAuthMe, getPeople, mintApiKey, revokeApiKey, setApiKeyOwner } from '../api/client';
 import { Command } from '../components/Command';
 import {
   dismissSecret,
   lastUsedLabel,
   mintProblem,
+  ownerLabel,
   partitionKeys,
   scopesLabel,
   showSecret,
@@ -30,14 +31,26 @@ export function ApiKeysPage() {
   const { me, isAdmin } = useMe();
   const { data: keys, error, setError, reload } = useLoaded(getApiKeys);
   const { data: scopes } = useLoaded(getApiKeyScopes);
+  const { data: people } = useLoaded(getPeople);
 
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [owner, setOwner] = useState('');
   const [minting, setMinting] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [secret, setSecret] = useState<SecretPanel>(null);
   const [revoking, setRevoking] = useState<ApiKey | null>(null);
   const [busy, setBusy] = useState(false);
+  const [changingOwner, setChangingOwner] = useState<string | null>(null);
+
+  // Pre-selects the admin minting it, the same way the mint form's picker is
+  // supposed to default - read from the auth device's own person rather than
+  // Hatch's /me, which answers "local" or nothing for a signed-in Admin's key.
+  useEffect(() => {
+    getAuthMe()
+      .then((authMe) => setOwner((current) => current || (authMe?.personId ?? '')))
+      .catch(() => {});
+  }, []);
 
   if (me !== null && !isAdmin) return <p>Admins only.</p>;
 
@@ -46,7 +59,11 @@ export function ApiKeysPage() {
   async function mint() {
     setMinting(true);
     try {
-      setSecret(showSecret(await mintApiKey({ name: name.trim(), scopes: selected })));
+      setSecret(
+        showSecret(
+          await mintApiKey({ name: name.trim(), scopes: selected, ownerPersonId: owner || undefined }),
+        ),
+      );
       setName('');
       setSelected([]);
       setRefusal(null);
@@ -70,6 +87,19 @@ export function ApiKeysPage() {
     } finally {
       setBusy(false);
       setRevoking(null);
+      await reload();
+    }
+  }
+
+  async function changeOwner(key: ApiKey, personId: string) {
+    setChangingOwner(key.id);
+    try {
+      await setApiKeyOwner(key.id, personId || null);
+      setError(null);
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setChangingOwner(null);
       await reload();
     }
   }
@@ -120,6 +150,15 @@ export function ApiKeysPage() {
             ))}
           </div>
         </Field>
+        <Field label="Belongs to" hint="Whose tickets this key's --mine will reach.">
+          <select value={owner} onChange={(e) => setOwner(e.target.value)}>
+            {(people ?? []).map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </select>
+        </Field>
         {refusal && <p className="text-danger">{refusal}</p>}
         <div className="hatch-form-actions">
           <Button variant="primary" loading={minting} disabled={problem !== null} onClick={() => void mint()}>
@@ -138,6 +177,7 @@ export function ApiKeysPage() {
                 <th>Name</th>
                 <th>Prefix</th>
                 <th>Scopes</th>
+                <th>Owner</th>
                 <th>Created</th>
                 <th>Last used</th>
                 <th>Revoked</th>
@@ -154,6 +194,25 @@ export function ApiKeysPage() {
                     <code>{key.prefix}</code>
                   </td>
                   <td>{scopesLabel(key.scopes)}</td>
+                  <td>
+                    {key.revokedAt ? (
+                      ownerLabel(key.owner)
+                    ) : (
+                      <select
+                        aria-label={`Owner of ${key.name}`}
+                        value={key.owner?.id ?? ''}
+                        disabled={changingOwner === key.id}
+                        onChange={(e) => void changeOwner(key, e.target.value)}
+                      >
+                        <option value="">nobody</option>
+                        {(people ?? []).map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                   <td>{new Date(key.createdAt).toLocaleDateString()}</td>
                   <td>{lastUsedLabel(key.lastUsedAt)}</td>
                   <td>

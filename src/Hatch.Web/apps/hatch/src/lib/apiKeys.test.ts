@@ -3,6 +3,7 @@ import {
   dismissSecret,
   lastUsedLabel,
   mintProblem,
+  ownerLabel,
   partitionKeys,
   scopesLabel,
   showSecret,
@@ -18,6 +19,7 @@ const key = (over: Partial<ApiKey> = {}): ApiKey => ({
   createdAt: '2026-09-08T12:00:00Z',
   lastUsedAt: null,
   revokedAt: null,
+  owner: null,
   ...over,
 });
 
@@ -81,5 +83,10 @@ describe('labels', () => {
   it('says never for a key that was never used', () => {
     expect(lastUsedLabel(null)).toBe('never');
     expect(lastUsedLabel('2026-09-08T12:00:00Z')).not.toBe('never');
+  });
+
+  it('says nobody for an unowned key', () => {
+    expect(ownerLabel(null)).toBe('nobody');
+    expect(ownerLabel({ id: 'p1', name: 'Ada' })).toBe('Ada');
   });
 });

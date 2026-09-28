@@ -73,6 +73,20 @@ public class EfApiKey
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
+    /// Who this key belongs to, for a <c>--mine</c> pass to read - or nobody,
+    /// left that way or emptied by a deletion. A foreign key with
+    /// <c>ON DELETE SET NULL</c> is allowed here and not on an issue's
+    /// assignee (<see cref="Hatch.Api.Services.Auth.IActorDirectory"/>):
+    /// both <c>ApiKeys</c> and <c>People</c> live in the core <c>public</c>
+    /// schema, so the constraint never crosses the boundary Modules/README.md
+    /// forbids a module pointing across. Only an admin ever writes this - see
+    /// <c>ApiKeysController</c> for why a key may not set its own.
+    /// </summary>
+    public Guid? OwnerPersonId { get; set; }
+
+    public EfPerson? Owner { get; set; }
+
+    /// <summary>
     /// When the wall last saw this key. Written at most once per
     /// <c>Auth:LastSeenThrottleSeconds</c>, the same throttle
     /// <see cref="EfAuthGrant.LastSeenAt"/> takes and for the same reason -
