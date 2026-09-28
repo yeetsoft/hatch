@@ -30,7 +30,9 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssuePicker } from '../components/IssuePicker';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MomentChip } from '../components/MomentChip';
+import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { MomentField } from '../components/MomentField';
@@ -40,18 +42,20 @@ import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { childTypes } from '../lib/childTypes';
+import { parentCandidates, parentHint } from '../lib/parents';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { boardColumns, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { message } from '../lib/errors';
+import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
+import { mayRefresh } from '../lib/refresh';
 import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { openQuestions } from '../lib/questions';
-import { useAutoGrow } from '../lib/useAutoGrow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { ISSUE_TYPES, LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
+import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -89,6 +93,8 @@ export function IssuePage() {
      while the request runs and says so on its own button. */
   const [clearingClaim, setClearingClaim] = useState(false);
   const [claimClearing, setClaimClearing] = useState(false);
+  /* A message to the agent is on its way to the server. */
+  const [messageSending, setMessageSending] = useState(false);
 
   const load = useCallback(async () => {
     /* The fifth read, sent with the other four and awaited apart from them.
@@ -166,6 +172,63 @@ export function IssuePage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
+
+  /* While a message to the agent is waiting under a live claim, and only then:
+     the comments and the claim - not the whole eight-read `load` - every five
+     seconds, so a message reads as read without a reload. It is the one thing
+     on this page that polls, for the reason `useRunners` gives for polling at
+     all: the state changes on its own and the person is watching for the
+     change. It stops when nothing is waiting, when the claim ends (`watching`
+     turns false on either), and while the tab is hidden - and a tab that comes
+     back re-reads at once, since its timers were throttled to a stop.
+
+     A failed read is dropped and the next tick tries again: the page already
+     says what it knows, and an error line every five seconds would say it
+     louder than a message that has not been read yet. */
+  const waiting = watching(comments, issue?.claim ?? null);
+  useEffect(() => {
+    if (!waiting) return;
+
+    const reread = async () => {
+      try {
+        const [loadedComments, loadedIssue] = await Promise.all([getComments(key), getIssue(key)]);
+        setComments(loadedComments);
+        setIssue(loadedIssue);
+      } catch {
+        /* The next tick asks again. */
+      }
+    };
+    const refreshIf = () => {
+      if (mayRefresh({ visible: document.visibilityState === 'visible', paused: false })) void reread();
+    };
+
+    const timer = setInterval(refreshIf, WATCH_MS);
+    document.addEventListener('visibilitychange', refreshIf);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshIf);
+    };
+  }, [key, waiting]);
+
+  /* Sends what was typed into the Claim panel to the session holding the claim.
+     Answers whether it went, so the box is emptied only when it did. */
+  const sendMessage = useCallback(
+    async (body: string): Promise<boolean> => {
+      setMessageSending(true);
+      try {
+        await addComment(key, { body, kind: 'message' });
+        await load();
+        return true;
+      } catch (err) {
+        setError(message(err));
+        return false;
+      } finally {
+        setMessageSending(false);
+      }
+    },
+    [key, load],
+  );
 
   /* Answers whether the patch went through. Every existing caller says
      `void save({ … })` and is unaffected; the one that asks is the status bar,
@@ -285,12 +348,9 @@ export function IssuePage() {
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
   // The legal parents: same project, a type this issue may hang under, and
-  // never itself. The server decides too - this only keeps the picker from
-  // offering something it will refuse.
-  const legal = LEGAL_PARENT_TYPES[issue.type];
-  const parents = board.issues.filter(
-    (i) => i.projectKey === issue.projectKey && i.key !== issue.key && legal.includes(i.type),
-  );
+  // never itself - see lib/parents.ts. The server decides too - this only keeps
+  // the picker from offering something it will refuse.
+  const parents = parentCandidates(board.issues, issue.projectKey, issue.type, issue.key);
 
   // What may be filed under this issue, read off the same table the server
   // refuses by - see lib/childTypes.ts. Empty on a task, which is what decides
@@ -358,7 +418,14 @@ export function IssuePage() {
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing
           anything below. Draws nothing on the overwhelming majority of pages. */}
-      <ClaimPanel issueKey={key} claim={issue.claim} onClear={() => setClearingClaim(true)} />
+      <ClaimPanel
+        issueKey={key}
+        claim={issue.claim}
+        messages={claimMessages(comments, issue.claim)}
+        sending={messageSending}
+        onSend={sendMessage}
+        onClear={() => setClearingClaim(true)}
+      />
 
       <ClearClaimDialog
         issueKey={key}
@@ -400,7 +467,7 @@ export function IssuePage() {
               `void`: the picker awaits it to know when the press is over, and
               `save` catches its own rejection and puts the server's sentence
               in `error` above. */}
-          <Field label="Parent" as="div" hint={`A ${issue.type} hangs under ${legal.join(' or ')}.`}>
+          <Field label="Parent" as="div" hint={parentHint(issue.type)}>
             <IssuePicker
               label="Parent"
               value={issue.parentKey}
@@ -517,7 +584,13 @@ export function IssuePage() {
         />
       )}
 
-      <Comments issueKey={key} comments={comments} onAdded={() => void load()} onError={setError} />
+      <Comments
+        issueKey={key}
+        comments={comments}
+        claim={issue.claim}
+        onAdded={() => void load()}
+        onError={setError}
+      />
 
       {/* Between the thread and the trail, and visibly part of neither: a
           comment is somebody talking, an event is something happening, and this
@@ -1195,17 +1268,20 @@ function Asked({
         <QuestionOptions options={question.options} chosen={chosen} onChoose={(o) => setBody(o.label)} />
       )}
 
-      <div className="hatch-comment-box">
-        <textarea
-          rows={2}
+      <div className="hatch-answer-box">
+        <input
+          type="text"
           value={body}
+          aria-label="Your answer"
           placeholder={question.options ? 'Or say something else.' : 'The decision, in a sentence.'}
           onChange={(e) => setBody(e.target.value)}
-          // Meta/Ctrl+Enter sends, the convention every comment box in the
-          // world shares. A bare Enter has to stay a newline - an answer with a
-          // caveat under it is a good answer.
+          // A bare Enter sends: this is one line, an answer and not a piece of
+          // writing. An answer with a caveat under it is a comment, and the
+          // Comments box under the thread is where a composed reply goes. Not
+          // while an input method is composing - there Enter commits the
+          // candidate, and is not the operator's to send.
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && body.trim() && !saving) void submit();
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && body.trim() && !saving) void submit();
           }}
         />
         <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
@@ -1272,17 +1348,20 @@ function QuestionOptions({
 function Comments({
   issueKey,
   comments,
+  claim,
   onAdded,
   onError,
 }: {
   issueKey: string;
   comments: Comment[];
+  /** Only to say where a message to the agent stands - a note shows nothing of it. */
+  claim: Issue['claim'];
   onAdded: () => void;
   onError: (message: string) => void;
 }) {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
-  const box = useAutoGrow(body);
+  const now = new Date();
 
   async function submit() {
     setSaving(true);
@@ -1313,7 +1392,9 @@ function Comments({
                   was decided and when. */}
               {comment.kind === 'question' && <Badge>asked</Badge>}
               {comment.kind === 'answer' && <Badge>answered</Badge>}
+              {comment.kind === 'message' && <Badge>to the agent</Badge>}
               <span className="text-muted">{new Date(comment.createdAt).toLocaleString()}</span>
+              <MessageState status={messageState(comment, claim, issueKey, now)} />
             </div>
             <div
               className={`hatch-markdown${comment.kind === 'question' ? ' hatch-question-body' : ''}`}
@@ -1325,13 +1406,14 @@ function Comments({
       </ul>
 
       <div className="hatch-comment-box">
-        <textarea
-          ref={box}
-          className="hatch-grows"
-          rows={3}
+        <MarkdownEditor
           value={body}
+          onChange={setBody}
+          rows={3}
+          className="hatch-grows"
+          deferred
+          ariaLabel="Comment"
           placeholder="Markdown, like everything else."
-          onChange={(e) => setBody(e.target.value)}
         />
         <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
           Comment
@@ -1369,6 +1451,8 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
  */
 function describe(event: IssueEvent): string {
   const { from, to } = event.payload ?? {};
+  /* A delivery names the runner it was handed to and nothing it changed from. */
+  if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

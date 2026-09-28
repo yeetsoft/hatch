@@ -158,6 +158,12 @@ public class AdminSurfaceTests
         "IssueThreadController.AddComment",
         "IssueThreadController.GetEvents",
 
+        // The other end of a message written by AddComment: a session, or the
+        // runner spawning one, marking what it has put in front of the model.
+        // Hatch-scoped for the reason AddComment is - the key a spawned agent
+        // inherits is the one that reads and delivers.
+        "IssueMessagesController.Deliver",
+
         // Hatch-scoped like the rest of the module, including the answering.
         // A key is what `hatch.sh answer` types with, and a key is also what a
         // spawned agent inherits - the server cannot tell those apart, so it
@@ -185,6 +191,11 @@ public class AdminSurfaceTests
         // board that `next` and `/issues` do not already say, only in one
         // answer instead of a hundred.
         "WorkController.GetQueue",
+
+        // The review column's branches and what the board holds about each, for
+        // a runner's poll. A read, and one that says strictly less than the
+        // issues do: the verdicts already ride IssueDto.
+        "WorkController.GetReview",
 
         // The read a meter is drawn from, Hatch-scoped like the rest of the
         // module: it says how far along a subtree is, which is exactly what a

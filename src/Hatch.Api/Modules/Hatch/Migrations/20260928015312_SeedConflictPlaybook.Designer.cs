@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hatch.Api.Modules.Hatch.Migrations
 {
     [DbContext(typeof(HatchContext))]
-    [Migration("20260928020047_SeedConflictPlaybook")]
+    [Migration("20260928015312_SeedConflictPlaybook")]
     partial class SeedConflictPlaybook
     {
         /// <inheritdoc />

@@ -134,27 +134,30 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// column that does not exist, a transition that goes nowhere, or a
     /// duplicate of one already filed.
     /// </summary>
+    /// <remarks>
+    /// A row moves an issue between two columns, with one exception: the review
+    /// column may name itself, and that row is the conflict playbook - what an
+    /// agent is told when a pull request has stopped merging cleanly, an
+    /// increment that starts and ends in review (<see cref="Columns.Target"/>).
+    /// Which column that is, is measured off the board as it stands and not
+    /// named, the way every other rule about review is.
+    /// </remarks>
     private async Task<string?> Refusal(int from, int to, string types, int? id, CancellationToken ct)
     {
         var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
         if (!known.Contains(from)) return $"there is no column {from}";
         if (!known.Contains(to)) return $"there is no column {to}";
 
-        // One column may name itself: the review column of the board as it
-        // stands, where a row from it to itself is the conflict playbook - what
-        // a session is told when the branch of an issue in review no longer
-        // merges. Measured, and never by name, for the reason Columns says.
-        // The row is refused for every other column because nothing would ever
-        // dispatch it, and a playbook that does nothing reads as one that works.
         if (from == to)
         {
-            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
-            var review = Columns.AwaitingReview(statuses);
+            var review = Columns.AwaitingReview(await db.Statuses.AsNoTracking()
+                .OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct));
+
             if (review?.Id != from)
-            {
-                return $"a playbook moves an issue between two columns - only the review column, \"{review?.Name}\", " +
-                       "may name itself, and that row is the conflict playbook";
-            }
+                return "a playbook moves an issue between two columns - " +
+                       (review is null
+                           ? "this board has no review column, so none may name itself"
+                           : $"only the review column, \"{review.Name}\", may name itself, and that row is the conflict playbook");
         }
 
         var clash = await db.Playbooks

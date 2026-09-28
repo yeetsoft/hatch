@@ -62,17 +62,30 @@ public static class Fixtures
         IReadOnlyList<WorkRepositoryDto>? repositories = null,
         IssueDto? issue = null,
         string? issueUrl = null,
-        bool noLink = false) =>
+        bool noLink = false,
+        string kind = WorkKinds.Advance,
+        IReadOnlyList<CommentDto>? messages = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
-            ToStatus: to is null ? null : Status(4, to),
+            ToStatus: to is null ? null : Status(kind == WorkKinds.Conflicts ? 3 : 4, to),
             Playbook: Playbook(),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
-            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}");
+            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
+            Kind: kind,
+            Messages: messages);
+
+    /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
+    public static WorkDto ConflictWork(
+        string key, string trunk = "main", IReadOnlyList<MergeCheckDto>? checks = null,
+        IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        Work(
+            key, from: "In Review", to: "In Review", repositories: repositories,
+            issue: Issue(key) with { MergeChecks = checks ?? [MergeCheck(MergeVerdicts.Conflicted, trunk, files: "a.txt")] },
+            kind: WorkKinds.Conflicts);
 
     public static WorkRepositoryDto Repository(
         string remote, string? canonical = null, string? baseBranch = null, bool primary = false,
@@ -82,8 +95,35 @@ public static class Fixtures
     public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false) =>
         new(Issue(key, expedited: expedited), Status(3, "In Progress"), Status(4, "In Review"), blocked);
 
+    /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
+    public static MergeCheckDto MergeCheck(
+        string verdict = MergeVerdicts.Conflicted, string trunk = "main", string canonical = "example.com/o/r",
+        params string[] files) =>
+        new(
+            $"https://{canonical}.git", canonical, trunk, new string('a', 40), verdict,
+            verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-a-thing" : null,
+            verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
+            files, DateTimeOffset.UnixEpoch, "runner", "hatch");
+
+    /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
+    public static ReviewCheckDto Review(
+        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
+        new(key, repositories ?? [], checks);
+
+    /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
+    public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>
+        new(
+            Issue(key) with { MergeChecks = [MergeCheck(MergeVerdicts.Conflicted, trunk, files: files)] },
+            Status(4, "In Review"), Status(4, "In Review"), null, WorkKinds.Conflicts);
+
     public static CommentDto Comment(string body = "ok") =>
         new(1, "hatch", body, "comment", null, null, DateTimeOffset.UnixEpoch);
+
+    /// <summary>A message to the agent, unread unless it is told it was read.</summary>
+    public static CommentDto Message(
+        long id, string body = "use the other table", string author = "Nathan",
+        DateTimeOffset? deliveredAt = null, string? deliveredTo = null) =>
+        new(id, author, body, "message", null, null, DateTimeOffset.Parse("2026-09-28T03:00:00+00:00"), deliveredAt, deliveredTo);
 
     public static QuestionDto Question(long id, string key = "AER-1", string body = "Which way?", bool answered = false) =>
         new(

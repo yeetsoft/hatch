@@ -394,14 +394,20 @@ public record IssueBulkEditRequest(
 // ---- Comments and events ----
 
 /// <param name="Kind">
-/// <c>""</c> for an ordinary note, <c>"question"</c> or <c>"answer"</c> - see
-/// <see cref="EfHatchComment.Kind"/> for why those two are a column.
+/// <c>""</c> for an ordinary note, <c>"question"</c>, <c>"answer"</c> or
+/// <c>"message"</c> - see <see cref="EfHatchComment.Kind"/> for why those are a
+/// column.
 /// </param>
 /// <param name="AnswersId">The question this answers, on the same issue. Null on everything else.</param>
 /// <param name="Options">
 /// The answers a question offers, or null on one asked in prose. See
 /// <see cref="EfHatchComment.Options"/>.
 /// </param>
+/// <param name="DeliveredAt">
+/// When a <c>message</c> was put in front of a session, or null while it has
+/// not been - and always null on any other kind.
+/// </param>
+/// <param name="DeliveredTo">The runner that was holding the issue then, or the caller's name where nothing was.</param>
 public record CommentDto(
     long Id,
     string Author,
@@ -409,7 +415,18 @@ public record CommentDto(
     string Kind,
     long? AnswersId,
     IReadOnlyList<QuestionOptionDto>? Options,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DeliveredAt = null,
+    string? DeliveredTo = null);
+
+/// <summary>
+/// Mark messages as read, and get back the ones this call marked.
+/// </summary>
+/// <param name="Ids">
+/// Exactly these messages, or null for every unread one on the issue. Ids that
+/// are not unread messages on this issue are ignored, not refused.
+/// </param>
+public record MessageDeliverRequest(IReadOnlyList<long>? Ids = null);
 
 /// <summary>
 /// One answer a question offers up front.
@@ -743,6 +760,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// session must not re-open, and an open one is why there is no next session
 /// yet - see <paramref name="Blocked"/>.
 /// </param>
+/// <param name="Messages">
+/// The messages sent to the session working this issue that no session has read
+/// yet, oldest first. Carried on the dispatch so the next session's prompt can
+/// say them; the runner marks exactly these read as it spawns.
+/// </param>
 /// <param name="IssueUrl">
 /// The absolute link to this issue's page on this Hatch, for writing into
 /// places that are not Hatch - a pull request description, chiefly. Null when
@@ -753,9 +775,10 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// out.
 /// </param>
 /// <param name="Kind">
-/// One of <see cref="WorkKinds"/>: which of the two things a dispatch can be.
-/// Derived from the move rather than stored - a move that ends in the column it
-/// started in is the conflict move, and nothing else is.
+/// One of <see cref="WorkKinds"/>: whether this dispatch moves the issue on
+/// (<c>advance</c>) or resolves the conflict its branch has with the trunk
+/// (<c>conflicts</c>). Derived from the move and stored nowhere - a conflict
+/// dispatch is exactly the one whose two ends are the same column.
 /// </param>
 public record WorkDto(
     IssueDto Issue,
@@ -767,7 +790,25 @@ public record WorkDto(
     IReadOnlyList<QuestionDto> Questions,
     string? Blocked,
     string? IssueUrl,
-    string Kind = WorkKinds.Advance);
+    string Kind = WorkKinds.Advance,
+    IReadOnlyList<CommentDto>? Messages = null);
+
+/// <summary>
+/// What a dispatch is for. Two, and the second is the only dispatch that does
+/// not end in a different column.
+/// </summary>
+public static class WorkKinds
+{
+    /// <summary>Move the issue from its column to the next: every dispatch there has ever been.</summary>
+    public const string Advance = "advance";
+
+    /// <summary>
+    /// Resolve the merge conflict between the branch of an issue in review and
+    /// the trunk. It starts and ends in the review column, so it is judged by
+    /// the branch and not by the column.
+    /// </summary>
+    public const string Conflicts = "conflicts";
+}
 
 /// <summary>
 /// One of the project's bound remotes, as a dispatch names it - see
@@ -806,6 +847,28 @@ public record QueueEntryDto(
     StatusDto? ToStatus,
     string? Blocked,
     string Kind = WorkKinds.Advance);
+
+/// <summary>
+/// One issue in the review column that a runner holds a checkout for, and what
+/// the board holds about its branch - what the runner's poll is read from.
+/// </summary>
+/// <remarks>
+/// A fact about a branch and not work, so it is not narrowed by a claim, a
+/// question, a date or an assignee: an issue somebody else is working still has
+/// a branch, and whether it conflicts is still worth knowing.
+/// </remarks>
+/// <param name="Key">The issue's key.</param>
+/// <param name="Repositories">
+/// The project's bound repositories, each with <see cref="WorkRepositoryDto.MatchedRemote"/>
+/// set to the runner's own spelling where the runner has a checkout of it.
+/// Empty for a project that binds nothing, which is checked from the runner's
+/// standing checkout.
+/// </param>
+/// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
+public record ReviewCheckDto(
+    string Key,
+    IReadOnlyList<WorkRepositoryDto> Repositories,
+    IReadOnlyList<MergeCheckDto> MergeChecks);
 
 // ---- Rollups ----
 
@@ -1139,20 +1202,6 @@ public static class RunnerKinds
 
     /// <summary><c>work</c>, and <c>go-to-work --once</c>: one heartbeat, and no second pass to apply an instruction to.</summary>
     public const string Once = "once";
-}
-
-/// <summary>
-/// The two things a dispatch can be, told apart by the move alone: a move into
-/// another column is an advance, and a move that ends in the column it started
-/// in is the review column's conflict work.
-/// </summary>
-public static class WorkKinds
-{
-    /// <summary>The increment moves the issue one column to the right.</summary>
-    public const string Advance = "advance";
-
-    /// <summary>The issue is in the review column and its branch conflicts with the trunk; the increment resolves that and leaves the issue where it is.</summary>
-    public const string Conflicts = "conflicts";
 }
 
 /// <summary>

@@ -39,11 +39,14 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<QuestionDto>))]
 [JsonSerializable(typeof(List<IssueCardDto>))]
 [JsonSerializable(typeof(List<QueueEntryDto>))]
+[JsonSerializable(typeof(List<ReviewCheckDto>))]
+[JsonSerializable(typeof(MergeCheckDto))]
 [JsonSerializable(typeof(ProjectRepositoryDto))]
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 
 // What is written.
 [JsonSerializable(typeof(CommentCreateRequest))]
+[JsonSerializable(typeof(MessageDeliverRequest))]
 [JsonSerializable(typeof(IssueMoveRequest))]
 [JsonSerializable(typeof(IssuePatchRequest))]
 [JsonSerializable(typeof(IssueDependencyRequest))]
@@ -51,6 +54,11 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ClaimRequest))]
 [JsonSerializable(typeof(ClaimHeartbeatRequest))]
 [JsonSerializable(typeof(RunnerHeartbeatRequest))]
+[JsonSerializable(typeof(MergeCheckRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
+
+// What a hook prints for the session that ran it.
+[JsonSerializable(typeof(PostToolUseOutput))]
+[JsonSerializable(typeof(StopBlock))]
 internal sealed partial class HatchJson : JsonSerializerContext;

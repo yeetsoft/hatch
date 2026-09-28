@@ -8,8 +8,11 @@ import {
   patchPlaybook,
 } from '../api/client';
 import { Choice } from '../components/Choice';
+import { MarkdownEditor } from '../components/MarkdownEditor';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
+import { isConflictPlaybook, transitionLabel } from '../lib/playbooks';
+import { normalizeEol } from '../lib/text';
 import { useLoaded } from '../lib/useLoaded';
 import {
   ISSUE_TYPES,
@@ -51,7 +54,7 @@ export function PlaybooksPage() {
     <div className="hatch-page">
       <PageHeader
         title="Playbooks"
-        description="What an agent is told, and how much thought to spend, when it moves an issue one column along - or, from the review column to itself, when its branch conflicts with the trunk."
+        description="What an agent is told, and how much thought to spend, when it moves an issue one column along - and, for the review column to itself, when a pull request there has stopped merging with the trunk."
       />
 
       {error && <p className="text-danger">{error}</p>}
@@ -108,19 +111,14 @@ function Row({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  // A row from a column to itself is the review column's: what a session is
-  // told when the branch of an issue in review no longer merges. The server
-  // refuses that shape for any other column, so this is never a mislabelled
-  // ordinary row.
-  const conflict = playbook.fromStatusId === playbook.toStatusId;
 
   return (
     <>
       <tr>
         <td>
-          {conflict ? (
+          {isConflictPlaybook(playbook) ? (
             <>
-              <strong>{playbook.fromStatusName}</strong> · conflict playbook
+              <strong>{playbook.fromStatusName}</strong> <Text tone="muted">conflict playbook</Text>
             </>
           ) : (
             <>
@@ -133,7 +131,7 @@ function Row({
         </td>
         <td>
           <Choice
-            label={`${playbook.fromStatusName} to ${playbook.toStatusName} model`}
+            label={`${transitionLabel(playbook)} model`}
             value={playbook.model}
             options={PLAYBOOK_MODELS}
             onChange={(model) => onPatch({ model })}
@@ -141,7 +139,7 @@ function Row({
         </td>
         <td>
           <Choice
-            label={`${playbook.fromStatusName} to ${playbook.toStatusName} effort`}
+            label={`${transitionLabel(playbook)} effort`}
             value={playbook.effort}
             options={PLAYBOOK_EFFORTS}
             onChange={(effort) => onPatch({ effort })}
@@ -178,15 +176,17 @@ function Row({
  */
 function PromptCell({ prompt, onSave }: { prompt: string; onSave: (prompt: string) => void }) {
   const [draft, setDraft] = useState(prompt);
-  const dirty = draft !== prompt;
+  // Line endings alone are not an edit: the editor's text is always `\n`.
+  const dirty = normalizeEol(draft) !== normalizeEol(prompt);
 
   return (
     <div className="hatch-playbook-prompt">
       <Field
         label="Prompt"
+        as="div"
         hint="What the agent is told before it is shown the ticket. The ticket is the brief; this is the method."
       >
-        <textarea rows={16} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <MarkdownEditor value={draft} onChange={setDraft} rows={16} className="hatch-grows" ariaLabel="Prompt" />
       </Field>
       <div className="hatch-form-actions">
         <Button variant="primary" disabled={!dirty || draft.trim() === ''} onClick={() => onSave(draft)}>
@@ -263,7 +263,7 @@ function NewPlaybook({
         </Field>
         <Field
           label="To"
-          hint="Where it should be when the agent stops. The review column may name itself: that row is the conflict playbook."
+          hint="Where it should be when the agent stops. The review column to itself is the conflict playbook: what an agent is told when a pull request there has stopped merging."
         >
           <select value={to} onChange={(e) => setTo(Number(e.target.value))}>
             {statuses.map((s) => (
@@ -283,12 +283,22 @@ function NewPlaybook({
           <Choice value={effort} options={PLAYBOOK_EFFORTS} onChange={setEffort} />
         </Field>
       </div>
-      <Field label="Prompt" hint="What the agent is told before it is shown the ticket.">
-        <textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+      <Field label="Prompt" as="div" hint="What the agent is told before it is shown the ticket.">
+        <MarkdownEditor
+          value={prompt}
+          onChange={setPrompt}
+          rows={6}
+          className="hatch-grows"
+          deferred
+          ariaLabel="Prompt"
+        />
       </Field>
       <div className="hatch-form-actions">
         <Button
           variant="primary"
+          /* Not disabled when both ends match: the server says which column may
+             name itself, and its sentence is better than a greyed-out button
+             that says nothing about why. */
           disabled={!prompt.trim()}
           onClick={() => {
             onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort });

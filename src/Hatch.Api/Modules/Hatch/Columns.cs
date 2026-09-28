@@ -56,26 +56,27 @@ public static class Columns
     }
 
     /// <summary>
-    /// The column an increment on an issue in <paramref name="from"/> ends in:
-    /// <see cref="Advance"/> for every column but one, and for the review
-    /// column - when a terminal column stands after it - the review column
-    /// itself.
-    ///
-    /// <para>Only the operator moves work into a terminal column, so an issue
-    /// in review has no move to the right that an agent may make. It has one
-    /// job left, which is the branch conflicting with the trunk, and that job
-    /// ends where it began. A move is a conflict move exactly when its two ends
-    /// are the same column; nothing compares names.</para>
-    ///
-    /// <para>On a board with no terminal column the review column is the
-    /// rightmost one and <see cref="Advance"/> is null, so this is null too:
-    /// work ends there, and there is nowhere for it to go.</para>
+    /// The column a dispatch out of <paramref name="from"/> ends in: the next
+    /// one, except for the review column, which is dispatched to itself.
     /// </summary>
-    public static EfHatchStatus? Target(List<EfHatchStatus> statuses, EfHatchStatus from)
-    {
-        var next = Advance(statuses, from);
-        return next is { IsTerminal: true } && AwaitingReview(statuses)?.Id == from.Id ? from : next;
-    }
+    /// <remarks>
+    /// <para>Review is the one column whose next move is the operator's - only
+    /// a person decides that something shipped - so there is nowhere to
+    /// <em>advance</em> it to. There is something to do <em>in</em> it,
+    /// though: a pull request that has stopped merging cleanly is an agent's to
+    /// fix, and that increment starts and ends in the column. A move is a
+    /// conflict move exactly when <c>to.Id == from.Id</c>; nothing compares
+    /// column names.</para>
+    ///
+    /// <para>Only where a terminal column stands after review. On a board with
+    /// none, <see cref="AwaitingReview"/> is the rightmost column and is where
+    /// work ends, so it is not dispatchable at all and
+    /// <see cref="Advance"/>'s null stands.</para>
+    /// </remarks>
+    public static EfHatchStatus? Target(List<EfHatchStatus> statuses, EfHatchStatus from) =>
+        Advance(statuses, from) is { IsTerminal: true } && AwaitingReview(statuses)?.Id == from.Id
+            ? from
+            : Advance(statuses, from);
 
     /// <summary>
     /// The last stop before shipped: the column immediately left of the first

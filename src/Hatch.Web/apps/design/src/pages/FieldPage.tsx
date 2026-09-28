@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Field, Grid, Text } from '@hatch/ui';
+import { Button, Card, Field, Grid, Text } from '@hatch/ui';
 import { GalleryPage, GallerySection } from '../components/Gallery';
 
 /* The inputs on this page are real and uncontrolled — type in them. The
@@ -19,7 +19,7 @@ export function FieldPage() {
     >
       <GallerySection
         title="The controls"
-        note="One component over any control at all. It sets the label and the stacking and nothing about the control itself, which is base.css's job."
+        note="One component over any control at all. It sets the label and the stacking and nothing about the control itself, which is base.css's job. Hover a control that is neither focused nor disabled and its border darkens one step, the step a secondary button takes."
       >
         <Grid cols={3}>
           <Field label="Name">
@@ -38,6 +38,36 @@ export function FieldPage() {
             <textarea rows={3} defaultValue="Faces west; warms up after 16:00." />
           </Field>
         </Grid>
+      </GallerySection>
+
+      <GallerySection
+        title="Input types"
+        note="Every type base.css dresses looks the same: a typeless input (the browser's text), a search box, and a date and time pair. The search box keeps type=search for Escape and the browser's clear button, minus the native rounding. Placeholders are in the muted ink."
+      >
+        <Grid cols={2}>
+          <Field label="Title">
+            <input placeholder="No type attribute" />
+          </Field>
+          <Field label="Search">
+            <input type="search" placeholder="Search titles, keys, parents…" />
+          </Field>
+          <Field label="Due date">
+            <input type="date" />
+          </Field>
+          <Field label="Due time">
+            <input type="time" disabled />
+          </Field>
+        </Grid>
+      </GallerySection>
+
+      <GallerySection
+        title="Beside a button"
+        note="An input and a Button on one row stand the same height, to within a pixel: the input's border is paid for out of its padding."
+      >
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+          <input placeholder="Remote" style={{ flex: 1 }} />
+          <Button>Add</Button>
+        </div>
       </GallerySection>
 
       <GallerySection
@@ -75,7 +105,7 @@ export function FieldPage() {
 
       <GallerySection
         title="Disabled, and read-only"
-        note="Two different facts. Disabled means you may not change this; read-only means this is not yours to change. A disabled control is skipped by the tab order, which is why a value someone still needs to copy should be read-only instead."
+        note="Two different facts. Disabled means you may not change this, and it is drawn at half opacity with a not-allowed cursor; read-only means this is not yours to change. A disabled control is skipped by the tab order, which is why a value someone still needs to copy should be read-only instead."
       >
         <Grid cols={2}>
           <Field label="Adapter" hint="Set when the device was discovered.">
@@ -126,6 +156,9 @@ export function FieldPage() {
           <Grid cols={2}>
             <Field label="Display name">
               <input type="text" defaultValue="Household" />
+            </Field>
+            <Field label="Search">
+              <input type="search" placeholder="Search…" />
             </Field>
             <Field label="Time zone">
               <select defaultValue="UTC">

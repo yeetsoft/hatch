@@ -137,6 +137,18 @@ public sealed class FakeWorkspace
     /// <summary>The lines <see cref="IWorkspace.Leave"/> answers with, for every checkout.</summary>
     public List<string> LeaveNotes { get; } = [];
 
+    /// <summary>What <c>Heads</c> answers for a checkout - null, like an origin that did not answer, unless a test says.</summary>
+    public Dictionary<string, RemoteHeads?> HeadsFor { get; } = [];
+
+    /// <summary>What <c>Fetch</c> answers, for every checkout.</summary>
+    public bool FetchAnswer { get; set; } = true;
+
+    /// <summary>What <c>Check</c> answers for one issue in one checkout. Absent is a check that could not be made.</summary>
+    public Dictionary<(string Path, string Key), Verdict?> Verdicts { get; } = [];
+
+    /// <summary>What <c>Leave</c> hands back as the verdict on origin's branch, per checkout.</summary>
+    public Dictionary<string, Verdict?> FoundFor { get; } = [];
+
     /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced.</summary>
     public List<(string Path, string Key, bool Sync)> Left { get; } = [];
 
@@ -183,7 +195,25 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"leave {path}");
             owner.Left.Add((path, key, syncPullRequest));
-            return new Leaving(path, [.. owner.LeaveNotes]);
+            return new Leaving(path, [.. owner.LeaveNotes], owner.FoundFor.GetValueOrDefault(path));
+        }
+
+        public RemoteHeads? Heads()
+        {
+            owner.Calls.Add($"heads {path}");
+            return owner.HeadsFor.GetValueOrDefault(path);
+        }
+
+        public bool Fetch()
+        {
+            owner.Calls.Add($"fetch {path}");
+            return owner.FetchAnswer;
+        }
+
+        public Verdict? Check(string key)
+        {
+            owner.Calls.Add($"check {path} {key}");
+            return owner.Verdicts.GetValueOrDefault((path, key));
         }
 
         public void Return() => owner.Calls.Add($"return {path}");

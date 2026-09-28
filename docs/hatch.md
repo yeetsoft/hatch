@@ -68,7 +68,11 @@ absence starts to hurt:
 - **No swimlanes, sprints, or WIP limits.**
 - **No GitHub integration.** A commit sha in a comment is the link, and it is
   written by whoever did the work.
-- **No live board updates.** Refetch on action and on focus; no websockets.
+- **No websockets.** The board refetches on action and on focus, and every 30
+  seconds while it is on screen, and at once when it returns to the screen. It
+  was once refetched on action and focus alone, on the premise that whoever
+  moves a card is looking at it; the loop moves cards all night, so the premise
+  lapsed and the board polls.
 - **Events are recorded, not rendered.** The Plan view answers "how far along
   is this" from current state; nothing draws the event log as a report.
 
@@ -215,7 +219,9 @@ forever and lose a renamed one's colour. The ink written on a colour is computed
 from its luminance (`lib/color.ts`), because CSS still cannot ask that question.
 
 Every install starts with the same seven columns, and with the same flow
-through them:
+through them. `In Review` is the operator's except for one thing: a pull request
+that has stopped merging cleanly is an agent's to fix, and that is the only work
+the loop does in it.
 
 No column ships deferred. It is a box the operator ticks on the Statuses page
 for a column they added — `Shelved`, `Someday`, `Won't Do For Now`, whatever
@@ -229,7 +235,7 @@ the flag existed.
 | Backlog | 30 | | operator | Specified work, awaiting selection. |
 | To Do | 40 | | **agent** | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | **agent** | Write the code, get it green, push it, put it up for review. |
-| In Review | 60 | | operator; **agent** only when its branch conflicts | Read the pull request, wait for green, merge. If the trunk has moved and the branch no longer merges, an agent resolves the conflicts and pushes; a branch that merges cleanly is never touched. |
+| In Review | 60 | | operator; **agent** for a conflict | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, and resolves that on the branch — see [the conflict playbook](#playbooks). |
 | Done | 70 | ✓ | operator | Terminal. |
 
 **Which column belongs to whom is not a field.** It is derived: a column an
@@ -528,10 +534,16 @@ The drop's chicklet can take an accepted cascade back too: see
 A card dropped into another column on the board is confirmed in the bottom-left
 corner, in the same chicklet a filing raises: the key (a link that opens the
 issue in a new tab), the title, *from → to*, and an **Undo**. Move chicklets
-stack with filed ones, newest at the bottom, and — for the reason a filing's
-never times out — stay until they are closed or *Dismiss all* is pressed: a
-timeout is a confirmation that expires while the operator is looking at
-something else. They live in the tab, above `<Routes>`, so they survive a click
+stack with filed ones, newest at the bottom, every one the same width. Each
+leaves after the lifetime set on the Settings page — 15 seconds by default, or
+*Never*, which keeps it until it is closed or *Dismiss all* is pressed — counted
+from its own raise. The clock is held for the whole stack while the pointer or
+keyboard focus is on it, while a dialog is open, and while the tab is hidden, so
+a confirmation does not expire while the operator is looking at something else;
+an Undo in flight is not counted down either, and a chicklet that has just
+finished one starts a full lifetime again. The choice is remembered by the
+browser, not the install. Once a chicklet has left, ⌘Z / Ctrl+Z no longer
+reaches its move. They live in the tab, above `<Routes>`, so they survive a click
 through to an issue, and Undo works from whichever page they are showing on.
 
 **Only a change of column is a transition.** A reorder inside a column raises
@@ -547,9 +559,9 @@ rearrange a board nobody is looking at — and it steps aside for a text field
 With nothing to undo it does nothing, and the browser keeps the key.
 
 **An undo never overrules somebody else.** The loop moves cards all night and
-the board does not live-update, so the request names the column the card is
-expected to be in, `fromStatusId`, and the server answers a card anywhere else
-with a `409` naming where it is and writes nothing. The chicklet then says so
+the board can be up to 30 seconds behind it, so the request names the column
+the card is expected to be in, `fromStatusId`, and the server answers a card
+anywhere else with a `409` naming where it is and writes nothing. The chicklet then says so
 and offers no Undo. Any other failure leaves the button, so it can be pressed
 again.
 
@@ -724,8 +736,23 @@ how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
 moves the warning with it — and it is not expiry: a claim past its lease is
 drawn as no claim at all, on the card and on the page, because the server has
-already stopped sending one. Neither polls. Both go stale with the read they
-came from and come back current on the next one.
+already stopped sending one. Neither polls, with one bounded exception: the
+issue page re-reads its comments and claim every five seconds **while a message
+to the agent is waiting under a live claim** and the tab is on screen, and stops
+the moment nothing is waiting, the claim ends, or the tab is hidden. The state
+of that message changes on its own, and the person who just pressed Send is
+watching for the change — the reason `useRunners` polls, and no other reason
+extends it. Everything else goes stale with the read it came from and comes back
+current on the next one.
+
+**The Claim section talks to the session.** A box there, *Tell the agent*, posts a
+comment of kind `message`, and each message under it says in words where it
+stands: *not read yet* while a claim is live, *read 2 minutes ago by
+`<runner>`*, or, when nobody is working the issue, *not read — nobody is working
+AER-12; the next session on it is told*. The same words sit on the message in
+the Comments thread. See [Comment, question and answer](#comment-question-and-answer)
+for what *read* means, and [What a runner does](#what-a-runner-does-in-order)
+for how a message reaches a session.
 
 **Clearing a claim does not stop the runner.** The operator's
 `DELETE .../claim` takes the lease off the row and nothing else: that session
@@ -819,15 +846,17 @@ batched query for a list of issues.
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
-`Options`, `CreatedAt`.
+`Options`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
-mind. Two are not, and those carry a `Kind`.
+mind. Three are not, and those carry a `Kind`.
 
 - A **question** (`Kind = "question"`) is an agent saying it cannot proceed
   without a decision that is not its to make.
 - An **answer** (`Kind = "answer"`) is that decision, bound to the question it
   settles by `AnswersId`.
+- A **message** (`Kind = "message"`) is something said to whichever session is
+  working the issue, written from the Claim panel.
 
 A question is a row rather than a heading in a comment body for the same reason
 a ready date is a column rather than a line saying "not until March": something
@@ -857,6 +886,23 @@ nobody kept, and the sentence the next agent's prompt carries is the same
 sentence a person reads six months later. A second column saying it in numbers
 is a second thing that can come to disagree with the first.
 
+**A message is not every comment, on purpose.** The server cannot tell an
+operator's comment from the session's own — both arrive on the same key under
+the same name — so delivering every comment would feed a session its own commit
+notes, and a note is often written for a reader six months on rather than for the
+agent now. The Claim box talks to the agent; the Comments box stays a note.
+
+`DeliveredAt` and `DeliveredTo` are null on everything but a message that has been
+read. **Read means put into a session's context**: the hook that printed it, or
+the runner that put it in a prompt, is what marks it, and nothing can prove the
+model acted on it. `DeliveredTo` is the live claim's runner, or the caller's name
+where nothing held the issue. They are written once, by `POST
+/issues/{key}/messages/deliver`, whose conditional `UPDATE` repeats "and still
+unread" in its `WHERE` — the way the claim closes its races
+([`IssueClaims.cs`](../src/Hatch.Api/Modules/Hatch/IssueClaims.cs)) — so two
+checks that race return a message once between them. Unread messages ride the
+dispatch as `WorkDto.Messages`.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -866,7 +912,8 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `asked`, `answered`,
+`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+names the comment and the runner), `asked`, `answered`,
 `imported`.
 
 Nothing renders this, and it has been written since the first release anyway,
@@ -1104,7 +1151,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written |
-| `/issues/{key}/comments` | GET, POST | POST carries the kind, the `answersId`, and a question's options |
+| `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
+| `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
@@ -1119,6 +1167,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
@@ -1491,13 +1540,13 @@ missing configuration:
    board, not a pass*. Said before the next one, which would otherwise refuse it
    with "there is nowhere for this to go": true of a shelf, and no use to
    somebody reading a queue wondering why a ticket they parked is not moving.
-3. There is no column to its right. On a board with no terminal column the
-   review column is the rightmost one and is where work ends, so this is what an
-   issue in it is told.
+3. There is nowhere for it to go. Every column has one — the column to its
+   right — except the review column, which is dispatched to **itself** (see
+   below) wherever a terminal column stands after it, and the last column of a
+   board with no terminal one, which is where work ends.
 4. The next column **is** terminal — *only the operator decides that something
-   shipped*. Never said of the review column: an issue in review is dispatched
-   to the review column itself rather than to the terminal one after it, and
-   whether that is worth doing is refusal 9's question.
+   shipped*. Said for every column but review, which is not advanced at all: an
+   issue in review is fixed or left alone, and only the operator moves it on.
 5. Something else holds a live [claim](#claim) on it — *somebody is working this
    right now*, named with the runner it is being worked from and when it was
    last heard from.
@@ -1505,41 +1554,23 @@ missing configuration:
    an agent*.
 7. The project's [repositories](#repository) match none of the remotes the
    caller declared, and the move is into the column where the code gets
-   written, or the conflict move in the review column. A caller that declares
-   nothing — an older CLI, or the issue page —
-   is not folded by this at all: declaring is opt-in, which is what keeps them
-   working unchanged. A project bound to nothing is worked from the caller's
-   standing checkout exactly as before; one bound to remotes none of which
-   match is refused unless the caller says it will clone what it lacks.
+   written, or is a conflict in review — a session on a branch needs a checkout
+   of the repository the branch is in. A caller that declares nothing — an older
+   CLI, or the issue page — is not folded by this at all: declaring is opt-in,
+   which is what keeps them working unchanged. A project bound to nothing is
+   worked from the caller's standing checkout exactly as before; one bound to
+   remotes none of which match is refused unless the caller says it will clone
+   what it lacks.
 8. Something it [depends on](#dependency) is unfinished, and the move is into
-   the column where the code gets written. The conflict move is not gated: the
-   code it merges is already written.
-9. The issue is in the review column and its branch does not conflict with the
-   trunk. What the runners found is stored on the board as one verdict per
-   repository, and the sentence is the one that fits: *no runner has checked its
-   branch against the trunk yet*; *more than one branch on origin is named for it
-   — delete the ones that are not its branch*; *no branch on origin is named for
-   it*; or *its branch merges cleanly with the trunk — nothing for an agent to
-   do*. Any one repository conflicting is enough to clear it. Where the project
-   binds repositories only the verdicts for ones it still binds are read, since
-   a conflict in a repository the project no longer has is no reason to wake an
-   agent.
+   the column where the code gets written. Only that move: a pull request that
+   already exists is not held back by what its ticket once waited on.
+9. It is in review and its branch does not conflict with the trunk — because
+   it merges cleanly, because it has no branch on origin (one already merged
+   counts as none), because more than one branch is named for it, or because no
+   runner has checked yet. See [the conflict](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review).
 
 …and then, if none of those, the ordinary one: no playbook covers this
 transition for this type.
-
-**An issue in the review column is dispatched to the review column.** Its move
-ends where it began, and `WorkDto` and `QueueEntryDto` say so with `kind`:
-`conflicts` for this move and `advance` for every other. The reason is that only
-the operator moves work into a terminal column, so there is no move to the right
-an agent may make from review — but a pull request that stopped merging cleanly
-because something else landed is a job, and it is the only one left there. Code
-decides whether a branch conflicts, from a verdict a runner took with git; the
-prompt is never asked. The order is a question needing a person, a repository
-needing a clone, and last a clean branch needing nothing at all — so a runner
-with no checkout is told that, and not that the branch conflicts. `hatch queue`
-prints the clear row as `In Review  resolving conflicts with <trunk>`, not as an
-arrow to the column the row is already in.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -1556,6 +1587,45 @@ it again.
 useful answer and a list of reasons is not — while `work/{key}`, which somebody
 asked for by name, returns the refusal rather than a 404, because a person who
 named a ticket is owed the sentence saying why it cannot move.
+
+### The issue in review whose branch conflicts with the trunk is dispatched to review
+
+Every other dispatch ends in a different column, and this one ends where it
+started. `Columns.Target` answers "where does a dispatch out of this column
+end": the next column, except that the review column — when a terminal column
+stands after it — is dispatched to itself. A move is a *conflict move* exactly
+when its two ends are the same column, and `WorkDto.Kind` and
+`QueueEntryDto.Kind` say so (`advance` or `conflicts`) — derived from the move,
+stored nowhere, and nothing compares a column's name.
+
+**Code decides whether a branch conflicts, not a prompt.** A runner asks git
+(`git merge-tree`) and reports a [merge check](#merge-check); the dispatcher
+reads what the board holds and applies one rule, on the server beside the other
+folds, so `hatch queue` explains a clean branch the same way it explains a
+question or a claim. An issue in review is actionable **only** when a verdict
+says `conflicted`:
+
+- *no runner has checked its branch against `<trunk>` yet*, when no verdict is
+  held;
+- *more than one branch on origin is named for it - delete the ones that are not
+  its branch*, when any verdict is `ambiguous` — the loop will not guess which
+  branch is the ticket's, and says why;
+- *no branch on origin is named for it*, when every verdict is `none`;
+- *its branch merges cleanly with `<trunk>` - nothing for an agent to do*,
+  otherwise.
+
+Where the project binds repositories only a verdict for one it still binds
+counts, and an issue conflicts if any one of its verdicts does. Every other fold
+still applies to an issue in review, outranks the verdict, and keeps its order:
+a claim, a ready date, a person assignee, an open question, a repository this
+runner has no checkout of. The verdict comes after the repository — a question
+needs a person, a repository needs a clone, and a clean branch needs nothing at
+all — and a missing conflict playbook is still the last fold.
+
+**Only conflicts.** A branch that has fallen behind the trunk but still merges
+cleanly is left alone: the branch is brought up to date when its pull request
+opens, and the forge does the rest. There is no setting for keeping branches
+current, and a pull request that merges cleanly is never touched.
 
 ### One more, on `next` alone
 
@@ -1624,15 +1694,18 @@ the order of the board is precisely the bug this endpoint exists to expose.
 
 Every fold therefore lives in one place and in one order, most fundamental
 first: a next column that is terminal, then a ready date, then an unanswered
-question, then an unmet dependency, and last the missing playbook — last because
-it is only worth saying about an issue that is otherwise a candidate. The one
+question, then a repository this runner lacks, an unmet dependency, and — for an
+issue in review — the verdict on its branch, and last the missing playbook — last
+because it is only worth saying about an issue that is otherwise a candidate. The one
 that is the *loop's* policy rather than a fact about an issue is asked only when
 the pass is asking, so `work/{key}` still ignores it.
 
 The columns with nowhere to go — a terminal one, a deferred one, and a rightmost
 one that is not terminal — are absent rather than listed as blocked. An issue the dispatcher
 never reaches is not something the pass skipped, and shipped work is not a
-backlog.
+backlog. The review column is listed: it has somewhere to go — itself — and each
+issue in it is a conflict to fix, printed `In Review  resolving conflicts with
+<trunk>`, or a row saying why not.
 
 It is a read, and it costs what a read should: the statuses, the scope, which
 dependencies are unmet, the open-question counts and the whole playbook matrix
@@ -1684,26 +1757,27 @@ paragraph, which is what the description is for. Setting one is a person's
 (`PATCH /api/hatch/issues/{key}/playbook`); reading one is anybody's who can
 read the issue.
 
+**A row from the review column to itself is the conflict playbook.** It is the
+one row whose two ends are the same column, and the Playbooks page accepts it
+for the review column and for no other — measured off the board as it stands,
+the way every rule about review is — and refuses any other column naming itself
+with a sentence saying which may. It is written on that page, with its own model
+and effort, like every other session instruction. The runner adds the facts —
+the branch, both shas and the files — and the playbook says what to do with
+them: resolve, build, test, commit the merge, push, and stop, never rebase and
+never force-push.
+
 Eight rows are seeded, for the same reason the columns are: a Hatch whose agent
-loop cannot run until somebody fills in a table is a Hatch that ships broken.
-They cover every transition an agent owns, so `go-to-work` on a fresh install
+loop cannot run until somebody fills in a table is a Hatch that ships broken. A
+feature that does nothing until somebody fills in a table is the same failure,
+so the eighth is the stock conflict playbook, for every type, at `sonnet` and
+`high`. A migration seeds it only where no row from the review column to itself
+exists; an operator who deletes it turns conflict work off, and nothing puts it
+back. The other seven cover every transition an agent owns, so `go-to-work` on a fresh install
 needs no configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
 that renamed its columns first seeds nothing, which is the right failure: a
 playbook wired to the wrong transition is worse than an empty table.
-
-**A row from the review column to itself is the conflict playbook.** It is what
-a session is told when an issue in review has a branch that no longer merges
-with the trunk (see [the dispatcher](#the-dispatcher)), and it is the eighth
-seed: every type, `sonnet`, `high`, a prompt that resolves the conflicts, builds,
-tests, commits the merge and pushes it to the same branch, and never rebases or
-force-pushes. Only the review column may name itself — measured as
-`Columns.AwaitingReview` is, the column immediately left of the first terminal
-one — and the Playbooks page and the API refuse any other column in a sentence
-saying so, since a row nothing would ever dispatch reads as one that works. The
-migration measures the column in SQL rather than by name, seeds only where no
-row from it to itself exists, and takes the row back on a rollback only while
-its prompt is still the stock text.
 
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
@@ -1742,12 +1816,11 @@ line naming the two values says which of them the issue chose.
 Nine conditions. An issue is the loop's to pick up when it meets every one, and
 the sentence saying which one it failed is what `work/queue` reports:
 
-1. **There is a column to its right, and that column is not terminal.** The end
-   of the board is not a transition, and the step into a terminal column is the
-   operator's: *only the operator decides that something shipped*. The review
-   column is the one exception to the wording and not to the rule: its move is
-   to itself, so it has a column to go to whenever a terminal one stands after
-   it, and condition 8 is what decides whether it is worth going.
+1. **There is somewhere for it to go, and that place is not terminal.** For
+   most columns that is the column to their right: the end of the board is not a
+   transition, and the step into a terminal column is the operator's — *only the
+   operator decides that something shipped*. The review column is dispatched to
+   itself instead (see the ninth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -1766,21 +1839,18 @@ the sentence saying which one it failed is what `work/queue` reports:
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here and only when the move is into the column
-   where the code gets written or the conflict move in review, the same
-   restriction the dependency below carries. See
-   [the dispatcher](#the-dispatcher) for the exact sentence.
+   where the code gets written, or is a conflict in review, and the dependency
+   below is checked on the first of those alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
 7. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **If it is in the review column, its branch conflicts with the trunk.** This
-   is the only thing that makes an issue in review actionable, and it is decided
-   by code: a runner merges the branch against the trunk with git and reports a
-   verdict, and the dispatcher reads it. A clean branch that has merely fallen
-   behind is left alone — the forge brings it up to date, and nothing here does
-   it for the sake of tidiness. It sits after the repository and the question
-   because a question needs a person, a repository needs a clone, and a clean
-   branch needs nothing at all.
+8. **In review, its branch conflicts with the trunk.** An issue in the review
+   column is the loop's only when a [merge check](#merge-check) says
+   `conflicted` — decided by git and by code, never by a prompt — and the
+   sentences for a clean branch, no branch, more than one branch and an
+   unchecked one are what `hatch queue` prints. A clean branch that has merely
+   fallen behind the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review).
 9. **A playbook covers that transition for that type.** Without one there is
    nothing to say to the session — and a column no playbook leads out of is
    exactly [how a column becomes the operator's](#status), which is why the
@@ -1789,8 +1859,8 @@ the sentence saying which one it failed is what `work/queue` reports:
    pick up is a type no row names for that move, said in the words that name
    the fix.
 
-Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and
-`work/{key}` asks them too. The other two are the loop's policy and are asked only when the
+Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and `work/{key}`
+asks them too. The other two are the loop's policy and are asked only when the
 pass is asking; see [one more, on `next` alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
@@ -1884,6 +1954,13 @@ up after it.
 
 ### What a runner does, in order
 
+Before every pass, and after the heartbeat, the loop **polls the branches in
+review** — see [checking the branches in
+review](#checking-the-branches-in-review). It is not a step of a pass and holds
+no claim; it is what keeps the board's verdicts on those branches current, so
+that the queue below can tell a conflict from a branch that merges cleanly. A
+runner that is paused polls nothing.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -1906,7 +1983,27 @@ One pass, from the board to the release:
    us: the lease goes straight back, and the walk goes on.
 4. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
-   would be a fetch spent on an increment that never happens.
+   would be a fetch spent on an increment that never happens. Two things are
+   done at the spawn so that a message to the agent is heard:
+   - **The hooks.** The runner writes a settings file into a directory of its
+     own under the system's temporary directory — outside every checkout, so
+     `git status` shows only what the session changed — and hands it to the
+     session with `--settings`. It declares a `PostToolUse` hook (every tool) and
+     a `Stop` hook, each ten seconds long, each running `hatch inbox <key>`. The
+     per-step one asks Hatch at most once every fifteen seconds, by the
+     modification time of a stamp file beside the settings; the stop one always
+     asks, and a message it finds keeps the session going until it has been read.
+     What comes back is printed as the hook's JSON, and `inbox` marks it read.
+     Any failure — Hatch down, slow past five seconds, a Hatch without the route
+     — prints nothing and exits zero, and the message stays unread for a later
+     step. The directory is deleted when the session ends. An attached (`-i`)
+     session gets no hooks: somebody is at the keyboard.
+   - **The marking.** The dispatch carries the messages nothing has read
+     (`WorkDto.Messages`); the prompt prints them under *Said to you since the
+     last session*, and the runner marks exactly those ids read immediately
+     before it spawns. `work --dry-run` prints the heading and marks nothing.
+   For a conflict dispatch the runner then **checks the branch again**, before
+   it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
 5. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
@@ -2080,14 +2177,73 @@ last session left checked out.
   that commit to the branch. The push is a fast-forward or nothing — somebody
   pushing in between makes it refuse, and it is never forced — and no agent is
   involved when the merge is clean. A merge that conflicts lists the files on the
-  ticket and pushes nothing; turning that state into work for an agent is not
-  this step's job. This needs git 2.38 or later; an older one is said
-  once, on the terminal, and the step is skipped.
+  ticket and pushes nothing; turning that state into work for an agent is the
+  dispatcher's job, once the step has told the board — see below. This needs git
+  2.38 or later; an older one is said once, on the terminal, and the step is
+  skipped.
+- **What origin's branch now looks like is reported to the board**, wherever the
+  step fetched: a [merge check](#merge-check) for the branch, taken with the
+  same `merge-tree` and put under the checkout's remote. That covers every
+  outcome with one code path — clean at the new sha after a merge commit was
+  pushed, clean where the trunk was already in the branch, conflicted with the
+  files where the merge was refused, and no branch or more than one. A pull
+  request that conflicts the moment it opens is therefore conflict work on the
+  next pass, without waiting for the poll. Nothing is reported where nothing was
+  fetched, because nothing is known, and a verdict the board refuses is a line on
+  the terminal that does not stop the comment below being written.
 
 Everything found goes to the ticket in **one comment**, so a reviewer reads one
 thing. None of it fails the increment: a refused push — the forge, branch
 protection, somebody else's push landing first — is a line on the ticket, and so
 is a stash that would not go. The runner never pushes to the trunk.
+
+#### Checking the branches in review
+
+Whether a pull request still merges with the trunk is decided by **git, in the
+runner, and never by a prompt** — the [dispatcher](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review)
+only reads what the runner reports. Once per interval, between the heartbeat and
+the pass, on an idle board and a busy one alike, the loop:
+
+1. asks `GET /api/hatch/work/review` for every issue in the review column that
+   this runner holds a checkout for, with the verdicts the board holds. It is
+   the same repository rule as the queue's without the clone allowance — a poll
+   clones nothing — and it is **not narrowed** by a claim, a question, a date or
+   an assignee, because a verdict is a fact about a branch and not work. A
+   repository this runner has never cloned is not polled by it, and the queue's
+   *no runner has checked its branch* is the honest answer for it;
+2. runs one `git ls-remote --heads origin` per checkout that has an issue to
+   check, and builds a **fingerprint** for each: the trunk's sha and every
+   branch the key claims, name and sha, sorted;
+3. **fetches only where a fingerprint changed** — once per checkout however many
+   of its issues moved — and then asks `git merge-tree` for each moved issue and
+   puts the verdict to the board. The tree is never touched: `ls-remote` and
+   `fetch` move no branch a worktree stands on, and `merge-tree --write-tree`
+   writes objects only.
+
+**Why it asks `ls-remote` first.** An idle loop that fetched every interval all
+night against a remote with nothing to say is the thing
+[the workspace](#the-workspace-between-increments) already says the loop does not
+do. One `ls-remote` is the whole cost of an interval in which nothing moved, and
+it says nothing and writes nothing.
+
+**Why the fingerprint is not "compare with the last verdict".** A merged pull
+request has no branch, and a verdict of `none` — like `ambiguous` — carries no
+branch sha, so the board's verdict cannot say whether anything moved. Comparing
+with it would fetch a merged branch's checkout every interval, and an in-review
+ticket whose pull request has merged is the commonest thing in the column. The
+runner instead remembers the fingerprint it took a verdict at, once the board
+took the verdict, and also trusts a stored `clean` or `conflicted` verdict whose
+trunk and branch shas equal what `ls-remote` printed, so a restarted loop does
+not fetch everything once for nothing. A verdict the board refused is not
+remembered, and is asked again next interval.
+
+The terminal hears about a verdict only when it changes — `hatch: HA-12
+conflicts with main (3 files)` — and an interval in which nothing moved prints
+nothing. Every failure is one line and nothing more: an origin that does not
+answer, a board that refuses a verdict or cannot be read, a git older than 2.38
+(said once per run, as the step above says it). None of them fails the pass,
+counts as a failed increment or ends the night, and a line that says what the
+last poll's did is not said again until something changes.
 
 ### When an increment does nothing
 
@@ -2116,6 +2272,49 @@ for a choice something knows the answer to, and the whole content of a stall is
 that nothing here knows why it happened. A ticket that is already waiting on a
 question gets the comment and no second question — that question *is* the flag,
 usually raised by the session's own way out.
+
+#### A conflict increment is judged by the branch, not by the column
+
+An increment on an issue in review whose branch conflicts with the trunk starts
+and ends in the same column, so "the ticket is where it was" is what success
+looks like there, and the rule above would call every good one a stall. It is
+judged by the **verdict** instead — the answer git gives about the branch on
+origin — and it is the runner that asks, in the same code for the loop and for
+`hatch work`:
+
+- **Before anything is spawned**, after the claim and the reset, the runner
+  checks the branch again against the refs the reset just fetched, and reports
+  what it finds. The board's verdict was read before the claim and may be
+  minutes old. If the conflict has gone, nothing is spawned and no increment is
+  counted: the claim goes back, the verdict goes up as clean, and the loop reads
+  the board again at once — unless the board refused the verdict, which still
+  calls the issue conflicted, and a pass that went straight back would find it
+  again in a tight loop. A check that cannot be made — a git older than 2.38, a
+  fetch that failed — spawns nothing either, and the pass waits: a session
+  should not be spent on a merge that may not exist.
+- **The session starts on the issue's branch with the trunk merge in progress**,
+  exactly as [the branch step](#the-issues-branch) leaves it. Its prompt is the
+  conflict playbook, then the ticket — whose header reads `In Review (resolving
+  conflicts with <trunk>)` — then a `## The conflict` section naming, for each
+  repository that conflicts, the branch and the trunk with both shas and the
+  files. Those facts are the fresh verdicts the recheck just took, not the
+  board's.
+- **After the session and its work log**, the runner fetches, asks git again and
+  reports each verdict. Nothing conflicts: resolved, said as `HA-12 conflicts
+  with main resolved` on the terminal, in the tally and on the runner's row, and
+  not a stall. The column is still read and reported, and a session that moved
+  the ticket out of review is reported as having moved it — and judged by the
+  verdict all the same.
+- **Anything that still conflicts is a stall**, flagged like any other and with
+  the same question, but the comment says the branch still conflicts with the
+  trunk and lists the files, in place of "left this issue where it found it". A
+  conflict nobody can resolve costs **one increment and not a night**, for the
+  reason every stall does. A check that could not be made is *not known* and
+  not a stall — the rule the column read already follows — and nothing is
+  flagged on a guess.
+
+None of it runs when the lease was lost: the ticket is somebody else's by then,
+and what the board is told about its branch is theirs to say.
 
 ### Where the loop's rules live
 
@@ -2152,6 +2351,13 @@ The CLI is one program — [`src/Hatch.Cli`](../src/Hatch.Cli), published as a
 single binary called `hatch`. Every command is a command of it: `board`, `next`,
 `queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
 `questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
+
+One command in it is not for a person: `inbox`, which the hooks a spawned session
+runs call to be handed a message and mark it read. It sits beside
+`runner-claude-token` in `Program.Internal`, a command no session is ever told
+about — if sessions knew of it, one could mark its operator's messages read
+without reading them, and the page would say something untrue.
+`DocsContractTests` holds that.
 
 It got there in two steps, for two different reasons.
 
@@ -2195,7 +2401,9 @@ no key and no agent.
 
 Being cross-platform came along with it, and is worth naming because the shell
 was never going to be: `hatch.sh` is Bash 3.2 on purpose, for macOS, and a
-Windows operator had no runner at all.
+Windows operator had no runner at all. A Windows operator now has the program,
+and in a checkout `scripts\hatch.ps1`, the PowerShell twin of `hatch.sh`, as
+its door and its supervisor.
 
 Two things in the shell version existed only because it was a shell, and are
 gone rather than translated. The session id and the bill used to travel back
@@ -2254,7 +2462,11 @@ carry forward and nothing to come back as, so it replaces the shell rather than
 being watched by it. `go-to-work` is *run*, in a loop, because a process cannot
 exec itself into a newer build — relaunching the same binary relaunches the same
 code, and the new source has to be compiled by something that outlives the
-process being replaced. `hatch.sh` was already that something.
+process being replaced. `hatch.sh` was already that something, and
+`hatch.ps1` is the same something in PowerShell. It runs `work` and `go-to-work`
+from a copy of the build under the temp directory, because Windows will not
+overwrite a running binary and a session working a Hatch ticket builds
+`src/Hatch.Cli` in the same checkout.
 
 ### What it stops for
 
@@ -2293,11 +2505,13 @@ and comes back as the new version, and the terminal says which trigger fired
 rather than going quiet and back in a way that reads as a crash.
 
 The runner asks for it by exiting **75** (`EX_TEMPFAIL`, "try again", which
-collides with nothing else it answers with), and `hatch.sh` rebuilds it and runs
-it again. Two triggers, because the answer to which one on the ticket was both:
+collides with nothing else it answers with), and `hatch.sh` (or `hatch.ps1`)
+rebuilds it and runs it again. Two triggers, because the answer to which one on
+the ticket was both:
 
-- **Its own source changed on the trunk.** The set is `scripts/hatch.sh` and
-  everything under `src/Hatch.Cli` and `src/Hatch.Contracts` — the loop,
+- **Its own source changed on the trunk.** The set is `scripts/hatch.sh`,
+  `scripts/hatch.ps1` and everything under `src/Hatch.Cli` and
+  `src/Hatch.Contracts` — the loop,
   the wire records it is compiled against, and the script that resolves and
   launches it — hashed on disk rather than read out of git, since the files that
   are there are the files that run. The baseline is taken once at startup, and
@@ -2332,7 +2546,7 @@ spawned on that pass. It will not restart-loop on a build that failed: the
 supervisor says so and runs the version that is there, and that incarnation took
 its baseline from the source already on disk, so it does not ask again for the
 same change. And it will not restart at all under `--once`, under
-`--no-restart`, or when started by hand rather than through `hatch.sh` — the
+`--no-restart`, or when started by hand rather than through `hatch.sh` or `hatch.ps1` — the
 state path is what tells the runner somebody is standing over it, and a runner
 with nobody to rebuild it is the loop it started as.
 
@@ -2568,7 +2782,12 @@ its wall on and nothing to look at yet.
 
 In this repository, [`scripts/hatch.sh`](../scripts/hatch.sh) still answers to
 every one of these commands and hands them to the program, so nothing anybody
-has typed here stops working.
+has typed here stops working. In PowerShell it is
+[`scripts\hatch.ps1`](../scripts/hatch.ps1), and where the execution policy
+refuses scripts, `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\scripts\hatch.ps1 <command>` runs it anyway; `Set-ExecutionPolicy -Scope
+CurrentUser RemoteSigned` allows it for the account once. Group Policy outranks
+both, and if it is what refuses, it is the thing to change.
 
 `hatch work` reads `work/next`, then spawns a headless session with the
 playbook's prompt, model and effort. It prints the session id first and last
@@ -2703,4 +2922,5 @@ code already settles is a round trip through a person for nothing.
   made them.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
-- **Live updates.** Refetch on action and focus.
+- **Pushed updates.** The board polls (see above); a server-sent signal would
+  only make the same refresh arrive sooner.

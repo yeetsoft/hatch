@@ -50,6 +50,27 @@ public interface IWorkspace
     Leaving Leave(string key, bool syncPullRequest);
 
     /// <summary>
+    /// The trunk's name and every branch on origin, from one <c>ls-remote</c> -
+    /// or null when origin does not answer. Fetches nothing, and touches no
+    /// branch or tree.
+    /// </summary>
+    RemoteHeads? Heads();
+
+    /// <summary>
+    /// Every remote-tracking ref made current, and nothing else: the fetch
+    /// <see cref="Prepare"/> makes, without moving the tree. False when origin
+    /// did not answer.
+    /// </summary>
+    bool Fetch();
+
+    /// <summary>
+    /// Whether the issue's branch on origin still merges with the trunk on
+    /// origin, read from the refs as they stand. Does not fetch, and touches no
+    /// worktree or index. Null when it cannot be said.
+    /// </summary>
+    Verdict? Check(string key);
+
+    /// <summary>
     /// Back on the trunk and nothing else - what an increment whose lease went
     /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
     /// </summary>
@@ -80,9 +101,17 @@ public interface IWorkspace
 /// is still something to count, with the reflog holding the commits
 /// themselves.</para>
 /// </remarks>
-public sealed partial class Workspace(string root, string? configuredBase, Action<string> say, Action<string> complain)
+/// <param name="git">
+/// How git is run, where something other than a process apiece is wanted - a
+/// test host that is slow to fork, chiefly. Null, which is every runner, spawns.
+/// </param>
+public sealed partial class Workspace(
+    string root, string? configuredBase, Action<string> say, Action<string> complain, Workspace.GitRunner? git = null)
     : IWorkspace
 {
+    /// <summary>Git in a directory: its exit code, standard output and standard error.</summary>
+    public delegate (int Code, string Out, string Err) GitRunner(string dir, string[] args);
+
     /// <summary>
     /// What a branch is cut from, and the one thing about it that cannot be
     /// written down in this repository: a repository's trunk is called whatever
@@ -374,6 +403,12 @@ public sealed partial class Workspace(string root, string? configuredBase, Actio
 
     private Ran Git(params string[] args)
     {
+        if (git is not null)
+        {
+            var (code, stdout, stderr) = git(root, args);
+            return new Ran(code, stdout, stderr);
+        }
+
         var start = new ProcessStartInfo
         {
             FileName = "git",

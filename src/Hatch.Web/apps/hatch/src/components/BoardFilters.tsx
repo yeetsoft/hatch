@@ -1,12 +1,17 @@
-import { ISSUE_TYPES } from '../types';
-import type { Assignee, Project } from '../types';
+import type { ReactNode } from 'react';
+import type { Assignee, IssueCard, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
-import { isFiltering, toggleType, toggleWaiting } from '../lib/filter';
+import { DEFAULT_FILTER, isDefault, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
-import { NO_FILTER } from '../lib/filter';
+import { Facet } from './Facet';
+import { facetClass } from '../lib/facet';
+import { TypesFacet } from './TypesFacet';
 
 /**
- * What the board is showing: a toggle per type, and a search box.
+ * What the board is showing: a search box, a project, the types, a switch and
+ * an assignee, all in one look (see `.hatch-facet`). A control holding its
+ * default sits at rest and one holding anything else is tinted, so the bar reads
+ * as "what have I changed" and not as three-of-four-lit.
  *
  * Both are the browser's - the board already holds every issue in the house
  * (BoardDto arrives in one request), so filtering is a pass over an array and
@@ -14,19 +19,24 @@ import { NO_FILTER } from '../lib/filter';
  * would drop the drag in progress and would make typing into the box a
  * conversation with the server.
  *
- * No types chosen means every type, which is the reading that keeps the board
- * from going blank when the last chip is switched off.
+ * The board opens on epics, stories and bugs (DEFAULT_FILTER). The last type
+ * drawn cannot be switched off, so the board never goes blank from a checkbox.
  */
 export function BoardFilters({
   filter,
   onChange,
   assignees,
   projects,
+  cards,
   showing,
   total,
+  trailing,
 }: {
   filter: CardFilter;
   onChange: (next: CardFilter) => void;
+  /** The whole board's cards, for the counts in the Types panel - not the
+      visible ones, so choosing a type does not shrink the list it was chosen from. */
+  cards: IssueCard[];
   /** The assignees this board actually has cards for - see assigneeFacets. */
   assignees: Assignee[];
   /** The projects on the board - see BoardPage's getProjects read. */
@@ -34,14 +44,17 @@ export function BoardFilters({
   /** How many cards survive the filter, and how many there are - the count is the only feedback a search box gives. */
   showing: number;
   total: number;
+  /** Placed at the right end of the row, on whichever line it wraps to; the row does not learn what it is. */
+  trailing?: ReactNode;
 }) {
   const filtering = isFiltering(filter);
 
   return (
     <div className="hatch-board-filters">
+      {/* type="search" on purpose; base.css says why. */}
       <input
         type="search"
-        className="hatch-board-search"
+        className={`hatch-board-search${filter.query.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
         value={filter.query}
         placeholder="Search titles, keys, parents…"
         aria-label="Search the board"
@@ -53,49 +66,31 @@ export function BoardFilters({
           this a control with a single option, and Hatch ships to operators
           who will have several. */}
       {projects.length > 1 && (
-        <select
-          className="hatch-project-filter"
-          aria-label="Project"
-          value={filter.project}
-          onChange={(e) => onChange({ ...filter, project: e.target.value })}
-        >
-          <option value="">All projects</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.key}>
-              {project.key} — {project.name}
-            </option>
-          ))}
-        </select>
+        <Facet label="Project" lit={filter.project !== ''}>
+          <select value={filter.project} onChange={(e) => onChange({ ...filter, project: e.target.value })}>
+            <option value="">All projects</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.key}>
+                {project.key} — {project.name}
+              </option>
+            ))}
+          </select>
+        </Facet>
       )}
 
-      <div className="hatch-type-toggles" role="group" aria-label="Issue types">
-        {ISSUE_TYPES.map((type) => {
-          const on = filter.types.includes(type);
-          return (
-            <button
-              key={type}
-              type="button"
-              className={`hatch-type-toggle${on ? ' on' : ''}`}
-              aria-pressed={on}
-              onClick={() => onChange(toggleType(filter, type))}
-            >
-              {type}
-            </button>
-          );
-        })}
-      </div>
+      <TypesFacet filter={filter} counts={typeCounts(cards)} onChange={onChange} />
 
-      {/* Its own switch beside the type toggles rather than a fifth type: a
+      {/* Its own switch beside the types rather than a fifth type: a
           card waiting on an answer is not a kind of work, it is work that has
           stopped, and it is the first thing to look for when the board has. */}
       <button
         type="button"
-        className={`hatch-type-toggle hatch-waiting-toggle${filter.waiting ? ' on' : ''}`}
+        className={facetClass(filter.waiting)}
         aria-pressed={filter.waiting}
         title="Cards holding a question nobody has answered"
         onClick={() => onChange(toggleWaiting(filter))}
       >
-        waiting on me
+        Waiting on me
       </button>
 
       {/* A native <select> and not IssuePicker, deliberately: that component
@@ -106,31 +101,30 @@ export function BoardFilters({
           "Unassigned" is its own row above the identities rather than derived
           from the cards, because it is the one choice that is a fact about
           absence - assigneeFacets can only report who is there. */}
-      <select
-        className="hatch-assignee-filter"
-        aria-label="Assignee"
-        value={filter.assignee}
-        onChange={(e) => onChange({ ...filter, assignee: e.target.value })}
-      >
-        <option value="">— anyone —</option>
-        <option value={UNASSIGNED}>Unassigned</option>
-        {assignees.map((assignee) => (
-          <option key={assigneeToken(assignee)} value={assigneeToken(assignee)}>
-            {assignee.name}
-          </option>
-        ))}
-      </select>
+      <Facet label="Assignee" lit={filter.assignee !== ''}>
+        <select value={filter.assignee} onChange={(e) => onChange({ ...filter, assignee: e.target.value })}>
+          <option value="">— anyone —</option>
+          <option value={UNASSIGNED}>Unassigned</option>
+          {assignees.map((assignee) => (
+            <option key={assigneeToken(assignee)} value={assigneeToken(assignee)}>
+              {assignee.name}
+            </option>
+          ))}
+        </select>
+      </Facet>
 
       {filtering && (
-        <>
-          <span className="hatch-filter-count">
-            {showing} of {total}
-          </span>
-          <button type="button" className="hatch-filter-clear" onClick={() => onChange(NO_FILTER)}>
-            Clear
-          </button>
-        </>
+        <span className="hatch-filter-count">
+          {showing} of {total}
+        </span>
       )}
+      {!isDefault(filter) && (
+        <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
+          Reset
+        </button>
+      )}
+
+      {trailing && <div className="hatch-filter-trailing">{trailing}</div>}
     </div>
   );
 }

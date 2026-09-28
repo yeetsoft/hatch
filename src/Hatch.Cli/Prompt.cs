@@ -16,11 +16,18 @@ public static class Prompt
     public static string Compose(
         WorkDto work,
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
-        IReadOnlyList<BranchEntry>? branches = null)
+        IReadOnlyList<BranchEntry>? branches = null,
+        Rechecked? conflict = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
         var to = work.ToStatus?.Name ?? "?";
+
+        // A conflict dispatch starts and ends in one column, so an arrow to it
+        // would read "In Review -> In Review". Its trunk is the fresh verdict's
+        // where the runner took one, and the board's where it did not.
+        var isConflict = work.Kind == WorkKinds.Conflicts;
+        var trunk = conflict?.Trunk ?? Conflicts.Trunk(issue);
         var lines = new List<string>
         {
             work.Playbook?.Prompt ?? "",
@@ -30,7 +37,9 @@ public static class Prompt
             "## The ticket",
             "",
             $"{key}  [{issue.Type}]  {issue.Title}",
-            $"moving:   {work.FromStatus.Name} -> {to}",
+            isConflict
+                ? $"moving:   {work.FromStatus.Name} (resolving conflicts with {trunk})"
+                : $"moving:   {work.FromStatus.Name} -> {to}",
         };
 
         if (issue.ParentKey is { Length: > 0 }) lines.Add($"parent:   {issue.ParentKey}");
@@ -52,6 +61,10 @@ public static class Prompt
                 : $"{r.Remote}  (no checkout here)"));
             lines.Add("");
         }
+
+        // After the repositories, which it refers to, and before the branch,
+        // which says what state the tree is in and does not repeat this.
+        if (isConflict) lines.AddRange(Conflict(Conflicts.Facts(work, conflict), trunk));
 
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches));
 
@@ -97,8 +110,85 @@ public static class Prompt
             lines.Add("");
         }
 
+        // What was said to the agent on this ticket while nobody was working
+        // it. A message sent mid-run reaches that run by its hooks; one that
+        // nothing read is carried here instead, so it is neither lost nor
+        // delivered twice - the runner marks exactly these read as it spawns.
+        if (work.Messages is { Count: > 0 } said)
+        {
+            lines.Add("## Said to you since the last session");
+            lines.Add("");
+
+            for (var i = 0; i < said.Count; i++)
+            {
+                if (i > 0)
+                {
+                    lines.Add("");
+                    lines.Add("---");
+                    lines.Add("");
+                }
+
+                lines.Add(Message(key, said[i], whileWorking: false));
+            }
+
+            lines.Add("");
+        }
+
         lines.AddRange(Tail(key, to, work.IssueUrl, repositories));
         return string.Join('\n', lines);
+    }
+
+    /// <summary>
+    /// One message to the agent, in the words both ways of delivering it use:
+    /// the hook that puts it in front of a running session, and the prompt that
+    /// carries it into the next. One method, so the two cannot come to say
+    /// different things.
+    /// </summary>
+    /// <remarks>
+    /// The last sentence is there because nothing structural can prove a model
+    /// acted on what it was handed. Asking it to say so on the ticket is the
+    /// nearest a person watching the ticket gets to knowing.
+    /// </remarks>
+    public static string Message(string key, CommentDto message, bool whileWorking) =>
+        string.Join('\n',
+            $"{message.Author} sent this to you on {key} at {Format.Stamp(message.CreatedAt)}" +
+                (whileWorking ? ", while you were working:" : ", after the last session on it ended:"),
+            "",
+            message.Body.ReplaceLineEndings("\n"),
+            "",
+            "It was sent to change what you are doing now. Apply it, and if it changes your plan," +
+                $" say so on the ticket (hatch comment {key} \"...\").");
+
+    /// <summary>
+    /// The facts of the conflict the playbook is about: the branch and the trunk
+    /// with both shas, and the files. The playbook says what to do with them;
+    /// this only says what they are - and the branch section that follows says
+    /// what state the tree is in, so it is not said twice.
+    /// </summary>
+    private static IEnumerable<string> Conflict(IReadOnlyList<ConflictFacts> conflicts, string trunk)
+    {
+        yield return "## The conflict";
+        yield return "";
+
+        if (conflicts.Count == 0)
+        {
+            yield return $"The board says this issue's branch no longer merges with {trunk}, and holds no";
+            yield return "verdict that names the files.";
+            yield return "";
+            yield break;
+        }
+
+        yield return "This issue's branch on origin no longer merges with the trunk:";
+        yield return "";
+
+        foreach (var c in conflicts)
+        {
+            var where = conflicts.Count > 1 ? $"{c.Where}: " : "";
+            yield return $"- {where}`{c.Branch}` at {c.BranchSha} does not merge with `{c.Trunk}` at {c.TrunkSha}. Conflicted files:";
+            foreach (var file in c.Files) yield return $"  - {file}";
+        }
+
+        yield return "";
     }
 
     /// <summary>

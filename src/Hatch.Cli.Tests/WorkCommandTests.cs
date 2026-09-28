@@ -204,6 +204,37 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_prints_the_messages_and_marks_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1", messages: [Fixtures.Message(7)]));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("## Said to you since the last session", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("use the other table", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.Contains("/messages/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_attached_session_is_handed_the_messages_in_its_prompt_and_they_are_marked_but_it_has_no_hooks()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", messages: [Fixtures.Message(7)]));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/messages/deliver", new[] { Fixtures.Message(7) });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["-i", "AER-1"], default));
+
+        var attached = Assert.Single(h.Sessions.Attached);
+        Assert.Null(attached.HookSettings);
+        Assert.Contains("use the other table", attached.Prompt, StringComparison.Ordinal);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/messages/deliver"));
+    }
+
+    [Fact]
     public async Task With_no_key_it_claims_through_the_same_walk_the_loop_uses()
     {
         using var h = new Harness();

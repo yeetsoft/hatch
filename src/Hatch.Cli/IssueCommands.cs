@@ -98,13 +98,24 @@ public sealed class IssueCommands(Cli cli)
         cli.Say.Line($"--- {comments.Count} comment(s) ---");
         foreach (var comment in comments)
         {
-            cli.Say.Line($"[{Format.Stamp(comment.CreatedAt)}] {comment.Author}:");
+            cli.Say.Line($"[{Format.Stamp(comment.CreatedAt)}] {comment.Author}{Delivery(comment)}:");
             cli.Say.Lines(comment.Body.ReplaceLineEndings("\n").Split('\n'));
             cli.Say.Line("");
         }
 
         return 0;
     }
+
+    /// <summary>
+    /// What a message to the agent has come to, in the header of its comment -
+    /// and nothing for every other kind, so an ordinary note reads as it always
+    /// did.
+    /// </summary>
+    private static string Delivery(CommentDto comment) =>
+        comment.Kind != "message" ? ""
+        : comment.DeliveredAt is { } at
+            ? $" (to the agent, read {Format.Stamp(at)}{(comment.DeliveredTo is { Length: > 0 } to ? $" by {to}" : "")})"
+        : " (to the agent, not read yet)";
 
     /// <summary><c>start</c>, which is <c>move</c> with the column already named.</summary>
     public Task<int> StartAsync(string[] args, CancellationToken ct)

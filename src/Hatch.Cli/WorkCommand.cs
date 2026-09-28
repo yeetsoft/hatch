@@ -175,7 +175,9 @@ public sealed class WorkCommand(Runtime runtime)
         model ??= work.Playbook?.Model ?? "";
         effort ??= work.Playbook?.Effort ?? "";
 
-        runtime.Say.Line($"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
+        runtime.Say.Line(work.Kind == WorkKinds.Conflicts
+            ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+            : $"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
 
@@ -354,6 +356,30 @@ public sealed class WorkCommand(Runtime runtime)
             }
 
             var lifecycle = new Lifecycle(runtime);
+
+            // The loop's own recheck, through the same call: the board's verdict
+            // was read before the claim and the reset, and a conflict that has
+            // gone since is nothing to spend a session on.
+            Rechecked? found = null;
+            if (work.Kind == WorkKinds.Conflicts)
+            {
+                found = await lifecycle.RecheckAsync(work, chosen, ct);
+
+                if (found.Conflicts.Count == 0)
+                {
+                    if (found.Unknown)
+                    {
+                        runtime.Say.Complain(
+                            $"hatch: {work.Issue.Key} - its branch could not be checked against the trunk, so nothing was spawned");
+                        return 1;
+                    }
+
+                    runtime.Say.Line(
+                        $"hatch: {work.Issue.Key} no longer conflicts with {found.Trunk ?? Conflicts.Trunk(work.Issue)} - nothing to do");
+                    return 0;
+                }
+            }
+
             var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
@@ -364,14 +390,15 @@ public sealed class WorkCommand(Runtime runtime)
             var owned = true;
             try
             {
-                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, ct);
+                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, ct);
 
                 // Zero for an increment that happened, whatever the session exited
                 // with: the report is where "it went badly" is said, and a shell
                 // that treated a hard ticket as a broken command would be one more
                 // thing an operator has to work around.
                 var report = await runtime.Increment().RunAsync(
-                    work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries);
+                    work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
+                    found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)));
                 owned = !report.LostLease;
                 return 0;
             }
@@ -399,15 +426,22 @@ public sealed class WorkCommand(Runtime runtime)
     /// </remarks>
     private async Task<int> AttachAsync(
         WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen,
-        IReadOnlyList<BranchEntry> branches, CancellationToken ct)
+        IReadOnlyList<BranchEntry> branches, Rechecked? conflict, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
-        runtime.Say.Line($"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
+        runtime.Say.Line(work.Kind == WorkKinds.Conflicts
+            ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
+            : $"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"hatch:   {chose}");
         runtime.Say.Line("");
 
+        // The prompt carries what was said to the agent, so it is read. Nothing
+        // here declares hooks: a person is in that session, and they can say
+        // it to the agent themselves.
+        await runtime.Increment().MarkSaidAsync(work, ct);
+
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches), Quiet: false, chosen.AddDirs),
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict), Quiet: false, chosen.AddDirs),
             ct);
     }
 

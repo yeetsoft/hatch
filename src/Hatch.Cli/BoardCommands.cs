@@ -161,6 +161,10 @@ public sealed class BoardCommands(Cli cli)
     /// further: the column appears only when the answer holds one, so a board
     /// with nothing expedited prints exactly what it printed before, and a
     /// queue whose order has been reordered by somebody says which rows did it.
+    ///
+    /// <para>A conflict dispatch starts and ends in the same column, so an arrow
+    /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
+    /// instead: <c>In Review  resolving conflicts with main</c>.</para>
     /// </remarks>
     public static IReadOnlyList<string> Draw(IReadOnlyList<QueueEntryDto> queue)
     {
@@ -174,19 +178,9 @@ public sealed class BoardCommands(Cli cli)
                 + q.Issue.Key.PadRight(keyWidth) + "  "
                 + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "
-                + (q.Blocked is { Length: > 0 } why ? why : Move(q)))
+                + (q.Blocked is { Length: > 0 } why
+                    ? why
+                    : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue) : $"-> {q.ToStatus?.Name ?? "?"}"))
             .ToList();
     }
-
-    /// <summary>
-    /// What a clear row is going to do. An advance is an arrow to the next
-    /// column; the review column's conflict move ends where it began, and an
-    /// arrow to the column a row already sits in would read as a mistake, so it
-    /// says the work instead - naming the trunk the first conflicted verdict
-    /// was taken against.
-    /// </summary>
-    private static string Move(QueueEntryDto q) =>
-        q.Kind == WorkKinds.Conflicts
-            ? $"resolving conflicts with {q.Issue.MergeChecks?.FirstOrDefault(m => m.Verdict == MergeVerdicts.Conflicted)?.Trunk ?? "the trunk"}"
-            : $"-> {q.ToStatus?.Name ?? "?"}";
 }

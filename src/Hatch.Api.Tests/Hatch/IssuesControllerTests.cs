@@ -972,6 +972,54 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AMessage_IsAcceptedAndLeavesAMessagedEvent()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var sent = Created(await h.Thread.AddComment("AER-1", new CommentCreateRequest("stop, use the other table", "message"), default));
+
+        Assert.Equal(EfHatchComment.Message, sent.Kind);
+        Assert.Null(sent.DeliveredAt);
+        Assert.Null(sent.DeliveredTo);
+
+        var kinds = (await h.EventsAsync("AER-1")).Select(e => e.Kind).ToList();
+        Assert.Contains(EfHatchIssueEvent.Messaged, kinds);
+        Assert.DoesNotContain(EfHatchIssueEvent.Commented, kinds);
+    }
+
+    [Fact]
+    public async Task AMessage_CannotNameAQuestionOrOfferOptions()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var asked = await h.AskAsync("AER-1", "per-node or global?");
+
+        var naming = await h.Thread.AddComment(
+            "AER-1", new CommentCreateRequest("hm", "message", asked.Id), default);
+        var offering = await h.Thread.AddComment(
+            "AER-1",
+            new CommentCreateRequest("hm", "message", null, [new QuestionOptionDto("a", null, false), new QuestionOptionDto("b", null, false)]),
+            default);
+
+        Assert.IsType<BadRequestObjectResult>(naming.Result);
+        Assert.IsType<BadRequestObjectResult>(offering.Result);
+    }
+
+    [Fact]
+    public async Task ANote_CarriesNoDeliveryState()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.Thread.AddComment("AER-1", new CommentCreateRequest("sha abc123"), default);
+
+        var note = Assert.Single(Value(await h.Thread.GetComments("AER-1", default)));
+
+        Assert.Null(note.DeliveredAt);
+        Assert.Null(note.DeliveredTo);
+    }
+
+    [Fact]
     public async Task TheHouseWideList_IsEveryOpenQuestionOldestFirst()
     {
         var h = await NewAsync();
