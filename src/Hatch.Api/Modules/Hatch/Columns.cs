@@ -63,10 +63,10 @@ public static class Columns
     /// <para>Review is the one column whose next move is the operator's - only
     /// a person decides that something shipped - so there is nowhere to
     /// <em>advance</em> it to. There is something to do <em>in</em> it,
-    /// though: a pull request that has stopped merging cleanly is an agent's to
-    /// fix, and that increment starts and ends in the column. A move is a
-    /// conflict move exactly when <c>to.Id == from.Id</c>; nothing compares
-    /// column names.</para>
+    /// though: a pull request that has stopped merging cleanly, or whose build
+    /// has failed, is an agent's to fix, and that increment starts and ends in
+    /// the column. A move is a review move exactly when <c>to.Id == from.Id</c>;
+    /// nothing compares column names.</para>
     ///
     /// <para>Only where a terminal column stands after review. On a board with
     /// none, <see cref="AwaitingReview"/> is the rightmost column and is where

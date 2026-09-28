@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 
@@ -577,6 +578,7 @@ public class EfHatchIssue
     public ICollection<EfHatchComment> Comments { get; set; } = [];
     public ICollection<EfHatchIssueEvent> Events { get; set; } = [];
     public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
+    public ICollection<EfHatchBuildCheck> BuildChecks { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
@@ -797,6 +799,108 @@ public class EfHatchMergeCheck
 }
 
 /// <summary>
+/// What the build on the tip of an issue's branch came to in one repository,
+/// and which sha it is about.
+///
+/// One row per issue per repository, keyed on <see cref="Canonical"/> for the
+/// reason <see cref="EfHatchMergeCheck"/> is: a project may bind several
+/// repositories, and a single verdict would let a passing one overwrite a
+/// failing one. An issue's build failed if any of its rows says so. A second
+/// write for the same pair replaces the first.
+/// </summary>
+/// <remarks>
+/// <para>The sha is what makes a verdict comparable. A build that has concluded
+/// on a sha does not change, short of a re-run, so a verdict about any other
+/// sha says nothing about the branch as it stands now, and the dispatcher
+/// treats it as not read yet.</para>
+///
+/// <para><see cref="ShaSince"/> is when the board first heard about the sha,
+/// and the runner counts ten minutes of asking again about <c>none</c> from
+/// it: a push's checks take a few seconds to appear, so a <c>none</c> straight
+/// after a push is usually premature. <see cref="PushedByIncrement"/> is what
+/// tells a build that fails on an agent's own fix - which is a question - from
+/// one that fails on somebody else's push, which is new work.</para>
+/// </remarks>
+[Table("BuildChecks")]
+[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
+public class EfHatchBuildCheck
+{
+    public const int MaxRemoteLength = EfHatchMergeCheck.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchMergeCheck.MaxRefLength;
+    public const int MaxShaLength = EfHatchMergeCheck.MaxShaLength;
+    public const int MaxVerdictLength = EfHatchMergeCheck.MaxVerdictLength;
+
+    /// <summary>The most failing checks one verdict carries. Past this the list is not one anybody reads, and the log is where the rest is.</summary>
+    public const int MaxFailing = 100;
+    public const int MaxCheckNameLength = 200;
+    public const int MaxCheckUrlLength = 2000;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>The remote as the runner spelled it.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the identity, and the unique index's other half.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    /// <summary>The issue's branch, and the sha of its tip that the verdict is about.</summary>
+    [MaxLength(MaxRefLength)]
+    public required string Branch { get; set; }
+
+    [MaxLength(MaxShaLength)]
+    public required string Sha { get; set; }
+
+    /// <summary>When the board first heard about <see cref="Sha"/>. Kept across writes for the same sha; the board's clock, as <see cref="CheckedAt"/> is.</summary>
+    public required DateTimeOffset ShaSince { get; set; }
+
+    /// <summary>One of <see cref="BuildVerdicts"/>.</summary>
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    /// <summary>The failing checks as <c>[{ name, url }]</c>, sorted by name. jsonb, as <see cref="EfHatchComment.Options"/> is.</summary>
+    public string? Failing { get; set; }
+
+    /// <summary>Whether a build increment pushed <see cref="Sha"/>. Once set it stays set for the same sha.</summary>
+    public bool PushedByIncrement { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+
+    /// <summary>The checkout that took it, as it names itself.</summary>
+    [MaxLength(ClaimRequest.MaxRunnerLength)]
+    public required string Runner { get; set; }
+
+    /// <summary>The name of the credential it arrived under - a name and not an id, for the reason <see cref="EfHatchIssue.CreatedBy"/> is.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CheckedBy { get; set; }
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static string? WriteFailing(IReadOnlyList<FailingCheckDto> failing) =>
+        failing.Count == 0 ? null : JsonSerializer.Serialize(failing, Json);
+
+    /// <summary>The stored list, or empty. A row that will not parse reads as empty rather than throwing the verdict away.</summary>
+    public static IReadOnlyList<FailingCheckDto> ReadFailing(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<FailingCheckDto>>(stored, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -896,6 +1000,19 @@ public class EfHatchIssueEvent
     /// stopped conflicting, not for how often somebody looked.
     /// </summary>
     public const string MergeCheckChanged = "merge_check_changed";
+
+    /// <summary>
+    /// A runner's verdict on the build on the tip of the issue's branch changed -
+    /// see <see cref="EfHatchBuildCheck"/>. The payload carries the canonical
+    /// remote, because an issue may hold one verdict per repository, and
+    /// <c>from</c> and <c>to</c> as <c>{ verdict, sha, failing }</c> (<c>from</c>
+    /// is null for the first verdict on that repository; <c>failing</c> is the
+    /// names of the checks). Written when the verdict, the sha or the set of
+    /// failing names changes, so the trail says when a build started failing and
+    /// when it stopped. A verdict that repeats the stored one, and a mark that
+    /// only sets whether an increment pushed the sha, write none.
+    /// </summary>
+    public const string BuildCheckChanged = "build_check_changed";
 
     /// <summary>
     /// The operator took it off somebody - the same column cleared, and a

@@ -512,4 +512,191 @@ public sealed class LifecycleTests
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("check", StringComparison.Ordinal));
         Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check"));
     }
+
+    // ---- The build recheck and its judgement ----
+
+    private static readonly string BuildTip = new('b', 40);
+    private static readonly string PushedTip = new('e', 40);
+
+    private static RemoteHeads HeadsAt(string tip) =>
+        new("main", new Dictionary<string, string> { ["main"] = TrunkSha, ["aer-1-thing"] = tip });
+
+    /// <summary>The same two checkouts, over a project that binds both, holding the verdicts it is told to.</summary>
+    private static (Lifecycle Lifecycle, Checkouts.Choice Chosen, WorkDto Work) TwoBuilds(
+        Harness h, params BuildCheckDto[] builds)
+    {
+        var (lifecycle, chosen, _) = TwoRepositories(h);
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: false, matchedRemote: "https://example.test/two.git");
+
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/build-check", Fixtures.Build());
+        foreach (var path in new[] { "/checkouts/one", "/checkouts/two" }) h.Workspace.HeadsFor[path] = HeadsAt(BuildTip);
+
+        return (lifecycle, chosen, Fixtures.BuildWork("AER-1", builds, [one, two]));
+    }
+
+    [Fact]
+    public async Task A_build_recheck_across_two_repositories_reads_only_the_one_that_failed_and_fetches_its_logs()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(
+            h,
+            Fixtures.Build(BuildVerdicts.Passed, "example.test/one"),
+            Fixtures.Build(BuildVerdicts.Failed, "example.test/two", failing: ["web"]));
+        h.Forge.Reading = (path, _) => new ForgeAnswer(
+            new BuildRead(BuildVerdicts.Failed, [new FailingCheck("web", null, 7)]), null);
+        h.Forge.Excerpts["web"] = "boom";
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        Assert.Equal(["/checkouts/two " + BuildTip], h.Forge.Reads.Select(r => r).ToList());
+        Assert.Equal(["example.test/two"], h.Forge.Canonicals);
+        Assert.Equal(["web"], h.Forge.Logs);
+        Assert.False(found.Unknown);
+        Assert.True(found.Reported);
+
+        var repo = Assert.Single(found.StillFailing);
+        Assert.Equal("/checkouts/two", repo.Path);
+        Assert.Equal("boom", Assert.Single(repo.Failing).Excerpt);
+
+        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>();
+        Assert.Equal("https://example.test/two.git", put.Remote);
+        Assert.False(put.PushedByIncrement);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_does_not_fetch_and_reads_the_tip_from_origin_without_touching_the_tree()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+
+        await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        Assert.Equal(["heads /checkouts/one"], h.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_whose_tip_moved_reports_the_new_tips_build_and_says_there_is_nothing_to_fix_on_the_old()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Workspace.HeadsFor["/checkouts/one"] = HeadsAt(PushedTip);
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        Assert.Empty(found.StillFailing);
+        Assert.False(found.Unknown);
+        Assert.Equal(PushedTip, Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>().Sha);
+        Assert.Empty(h.Forge.Logs);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_of_an_ambiguous_branch_is_unknown_and_reads_nothing()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Workspace.HeadsFor["/checkouts/one"] = new RemoteHeads("main", new Dictionary<string, string>
+        {
+            ["main"] = TrunkSha, ["aer-1-thing"] = BuildTip, ["aer-1-other"] = PushedTip,
+        });
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        Assert.True(found.Unknown);
+        Assert.Empty(h.Forge.Reads);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check"));
+    }
+
+    [Fact]
+    public async Task A_build_judgement_marks_a_moved_tip_pending_and_pushed_and_says_nothing_for_one_that_stayed()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(
+            h,
+            Fixtures.Build(BuildVerdicts.Failed, "example.test/one"),
+            Fixtures.Build(BuildVerdicts.Failed, "example.test/two"));
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+        h.Wire.Replace("PUT", "/api/hatch/issues/AER-1/build-check", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.Build(BuildVerdicts.Pending), Fixtures.Json));
+        var before = h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check").Count;
+
+        h.Workspace.HeadsFor["/checkouts/one"] = HeadsAt(PushedTip);
+        var judged = await lifecycle.JudgeBuildAsync("AER-1", found, chosen, default);
+
+        Assert.True(judged.Pushed);
+        Assert.False(judged.Unknown);
+        var marked = h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check").Skip(before).Select(c => c.Read<BuildCheckRequest>()).ToList();
+        var mark = Assert.Single(marked);
+        Assert.Equal("https://example.test/one.git", mark.Remote);
+        Assert.Equal(PushedTip, mark.Sha);
+        Assert.Equal(BuildVerdicts.Pending, mark.Verdict);
+        Assert.True(mark.PushedByIncrement);
+    }
+
+    [Fact]
+    public async Task A_build_judgement_that_finds_every_tip_where_it_was_says_nothing_was_pushed()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        var judged = await lifecycle.JudgeBuildAsync("AER-1", found, chosen, default);
+
+        Assert.False(judged.Pushed);
+        Assert.False(judged.Unknown);
+    }
+
+    [Fact]
+    public async Task A_build_judgement_that_cannot_read_origin_is_unknown()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+        h.Workspace.HeadsFor["/checkouts/one"] = null;
+
+        var judged = await lifecycle.JudgeBuildAsync("AER-1", found, chosen, default);
+
+        Assert.False(judged.Pushed);
+        Assert.True(judged.Unknown);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_in_a_repository_the_runner_has_no_checkout_of_is_unknown_and_not_clear()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/elsewhere"));
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        // Not "no longer failing": that would send the pass straight back to the
+        // same issue.
+        Assert.True(found.Unknown);
+        Assert.Empty(found.StillFailing);
+        Assert.Empty(h.Forge.Reads);
+        Assert.Contains(h.Say.Complained, l => l.Contains("no checkout here holds the repository", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_build_recheck_for_a_project_that_binds_nothing_takes_any_failed_verdict_as_the_standing_checkouts()
+    {
+        using var h = new Harness();
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/build-check", Fixtures.Build());
+        h.Workspace.HeadsFor[h.Root] = HeadsAt(BuildTip);
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        // Another runner spelled the remote its own way.
+        var work = Fixtures.BuildWork("AER-1", [Fixtures.Build(BuildVerdicts.Failed, "other.example/o/r")]);
+
+        var found = await new Lifecycle(h.Runtime).RecheckBuildAsync(work, chosen, default);
+
+        Assert.False(found.Unknown);
+        Assert.Single(found.StillFailing);
+        Assert.Null(h.Forge.Canonicals.Single());
+    }
 }

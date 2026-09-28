@@ -164,7 +164,8 @@ public sealed class BoardCommands(Cli cli)
     ///
     /// <para>A conflict dispatch starts and ends in the same column, so an arrow
     /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
-    /// instead: <c>In Review  resolving conflicts with main</c>.</para>
+    /// instead: <c>In Review  resolving conflicts with main</c>. So does a build
+    /// dispatch: <c>In Review  fixing its failing build (api, CI)</c>.</para>
     /// </remarks>
     public static IReadOnlyList<string> Draw(IReadOnlyList<QueueEntryDto> queue)
     {
@@ -180,7 +181,9 @@ public sealed class BoardCommands(Cli cli)
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "
                 + (q.Blocked is { Length: > 0 } why
                     ? why
-                    : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue) : $"-> {q.ToStatus?.Name ?? "?"}"))
+                    : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)
+                    : q.Kind == WorkKinds.Build ? Builds.Words(q.Issue)
+                    : $"-> {q.ToStatus?.Name ?? "?"}"))
             .ToList();
     }
 }

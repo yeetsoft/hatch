@@ -114,6 +114,13 @@ public static class IssueProjection
             .GroupBy(m => m.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
 
+        var buildChecks = (await db.BuildChecks.AsNoTracking()
+                .Where(b => ids.Contains(b.IssueId))
+                .OrderBy(b => b.Canonical)
+                .ToListAsync(ct))
+            .GroupBy(b => b.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<BuildCheckDto>)g.Select(IssueBuildChecks.Project).ToList());
+
         // The directory rather than a join, because the identity is not in this
         // schema and could not be joined to (Modules/README.md). Memoized for
         // the life of the request, so a hundred issues cost the same two queries
@@ -152,7 +159,8 @@ public static class IssueProjection
                 issue.UpdatedAt,
                 claims.Project(ClaimSnapshot.Of(issue), now),
                 issue.Expedited,
-                mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : []);
+                mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
+                buildChecks.TryGetValue(issue.Id, out var builds) ? builds : []);
         });
     }
 

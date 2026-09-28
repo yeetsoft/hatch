@@ -56,6 +56,14 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/merge-check", request, ct);
 
     /// <summary>
+    /// What the build on the tip of one issue's branch came to in one repository -
+    /// see <see cref="BuildCheckRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<BuildCheckDto?> BuildCheckAsync(string key, BuildCheckRequest request, CancellationToken ct) =>
+        Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/build-check", request, ct);
+
+    /// <summary>
     /// The dispatch for one named issue.
     /// </summary>
     /// <param name="heldToken">

@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { isConflictPlaybook, transitionLabel } from './playbooks';
+import { isReviewPlaybook, transitionLabel } from './playbooks';
 
 const move = { fromStatusId: 3, toStatusId: 4, fromStatusName: 'In Progress', toStatusName: 'In Review' };
-const conflict = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
+const review = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
 
-describe('isConflictPlaybook', () => {
+describe('isReviewPlaybook', () => {
   it('is a row whose two ends are the same column', () => {
-    expect(isConflictPlaybook(conflict)).toBe(true);
+    expect(isReviewPlaybook(review)).toBe(true);
   });
 
   it('is not an ordinary move', () => {
-    expect(isConflictPlaybook(move)).toBe(false);
+    expect(isReviewPlaybook(move)).toBe(false);
   });
 });
 
@@ -19,7 +19,7 @@ describe('transitionLabel', () => {
     expect(transitionLabel(move)).toBe('In Progress to In Review');
   });
 
-  it('names the conflict playbook by its column and what it is for', () => {
-    expect(transitionLabel(conflict)).toBe('In Review conflicts');
+  it('names the review playbook by its column and what it is for', () => {
+    expect(transitionLabel(review)).toBe('In Review review');
   });
 });

@@ -58,6 +58,15 @@ public sealed record Runtime(
         throw new InvalidOperationException("no workspace was configured");
 
     /// <summary>
+    /// Where the build on a branch's tip is read from - the checkout's path, then
+    /// the board's canonical identity for the repository, null where the project
+    /// binds none. Replaceable so a test can say what a build came to without a
+    /// forge to ask.
+    /// </summary>
+    public Func<string, string?, IForge> Forge { get; init; } = (_, _) =>
+        throw new InvalidOperationException("no forge was configured");
+
+    /// <summary>
     /// How a repository this runner has no checkout of is cloned into <see
     /// cref="Hatch.Cli.Settings.Workspace"/> - remote, then path. Replaceable
     /// so a test can assert what a clone was asked for without a network to
@@ -87,6 +96,7 @@ public sealed record Runtime(
     public Runtime WithGit() => this with
     {
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
+        Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName)),
         MakeClone = (remote, path) => new GitClone(remote, path),
