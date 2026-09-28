@@ -166,6 +166,37 @@ export interface MergeCheck {
   checkedBy: string;
 }
 
+/** One check that failed. Mirrors FailingCheckDto. */
+export interface FailingCheck {
+  name: string;
+  /** Where its output is; null when the board was given no web address. */
+  url: string | null;
+}
+
+/** What the build on the issue's branch says in one repository. Mirrors
+    BuildCheckDto. */
+export interface BuildCheck {
+  /** The remote as the runner spelled it. */
+  remote: string;
+  /** The remote's canonical form - the verdict's identity within its issue. */
+  canonical: string;
+  branch: string;
+  /** Where the branch stood when the build was read. */
+  sha: string;
+  /** `passed`, `failed`, `pending` (checks are running, none has failed) or
+      `none` (the repository runs no checks on the sha). */
+  verdict: string;
+  /** The failed checks, sorted by name. Empty unless the verdict is `failed`. */
+  failing: FailingCheck[];
+  runner: string;
+  /** True once the runner that pushed this sha at the end of a build increment
+      has said so. */
+  pushedByIncrement: boolean;
+  /** When the board first saw this sha. */
+  shaSince: string;
+  checkedAt: string;
+}
+
 export interface Issue {
   key: string;
   projectId: number;
@@ -219,6 +250,10 @@ export interface Issue {
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */
   mergeChecks: MergeCheck[];
+  /** What a runner last read of the build on this issue's branch, one verdict
+      per repository. Empty until somebody has looked. Read through
+      `failedBuilds` - only a failed one is drawn. */
+  buildChecks: BuildCheck[];
 }
 
 /** An ordinary note, a question that needs deciding, the answer to one, or a
@@ -289,7 +324,8 @@ export type IssueEventKind =
   | 'message_delivered'
   | 'asked'
   | 'answered'
-  | 'imported';
+  | 'imported'
+  | 'build_check_changed';
 
 export interface IssueEvent {
   id: number;
@@ -701,6 +737,17 @@ export interface Review {
   pullRequestUrl: string;
 }
 
+/** An issue in review whose build fails. Mirrors FailingBuildDto. */
+export interface FailingBuild {
+  key: string;
+  title: string;
+  type: string;
+  /** Null when the issue has a branch and no pull request recorded. */
+  pullRequestUrl: string | null;
+  /** Only the repositories whose build failed. */
+  checks: BuildCheck[];
+}
+
 /** An issue in review whose branch has stopped merging. Mirrors ConflictDto. */
 export interface Conflict {
   key: string;
@@ -731,6 +778,10 @@ export interface Attention {
       column's board order, each with only the repositories that conflict. The
       loop's to fix, so never counted towards the badge - see `attentionCount`. */
   conflicts: Conflict[];
+  /** The review column's issues whose build fails, in that column's board
+      order, each with only the repositories that fail. The loop's to fix, so
+      never counted towards the badge - see `attentionCount`. */
+  failingBuilds: FailingBuild[];
 }
 
 // ---- Who is sitting here ----

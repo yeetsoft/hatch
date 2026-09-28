@@ -20,6 +20,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
+    public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -189,6 +190,18 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .WithMany(i => i.MergeChecks)
                 .HasForeignKey(m => m.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // The same, for the build: the failed checks are jsonb for the reason
+        // a question's options are.
+        modelBuilder.Entity<EfHatchBuildCheck>(e =>
+        {
+            e.HasOne(b => b.Issue)
+                .WithMany(i => i.BuildChecks)
+                .HasForeignKey(b => b.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(b => b.Failing).HasColumnType("jsonb");
         });
 
         base.OnModelCreating(modelBuilder);

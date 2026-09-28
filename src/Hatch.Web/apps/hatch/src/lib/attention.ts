@@ -25,6 +25,10 @@ export type AttentionTone = 'rest' | 'asking';
  * Nor `conflicts`. A branch that has stopped merging is the loop's to fix, and
  * one it cannot fix becomes a stall, which is a question, which is counted
  * here already. Listed beside the rest, and never lit for.
+ *
+ * Nor `failingBuilds`, for the same reason: a red build is the loop's to fix,
+ * and one it fixes and pushes again to a build that fails again becomes a
+ * question, which is counted here already.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
@@ -106,3 +110,6 @@ const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' :
 
 /** The conflicts section's empty state - one wording, like the questions'. */
 export const conflictEmptyWords = (): string => 'No branch in review has stopped merging.';
+
+/** The failing builds section's empty state - one wording, like the conflicts'. */
+export const failingBuildEmptyWords = (): string => 'No build in review is failing.';

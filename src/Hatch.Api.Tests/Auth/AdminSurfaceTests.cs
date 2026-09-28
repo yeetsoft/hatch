@@ -272,6 +272,12 @@ public class AdminSurfaceTests
         // wrong one costs a stall, which is a question. See MergeCheckController.
         "MergeCheckController.PutMergeCheck",
 
+        // The same call about the build on that branch, and Hatch-scoped for the
+        // same reason: a runner reads it from origin and writes it, and a
+        // verdict only an operator could enter would be one nobody ever
+        // entered. A wrong one costs a question. See BuildCheckController.
+        "BuildCheckController.PutBuildCheck",
+
         // A playbook's power routed through a different table, and cut the
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its

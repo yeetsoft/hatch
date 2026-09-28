@@ -843,6 +843,68 @@ a row an interval for as long as nothing changed. It is the same call a
 Every `IssueDto` carries its verdicts, ordered by canonical remote, read in one
 batched query for a list of issues.
 
+### Build check
+
+`EfHatchBuildCheck` — `IssueId`, `Remote`, `Canonical`, `Branch`, `Sha`,
+`ShaSince`, `Verdict`, `Failing`, `PushedByIncrement`, `CheckedAt`, `Runner`.
+What a runner read of the build on an issue's branch: whether the checks the
+repository runs on `Sha` passed. It is about a branch **and the sha it stood at**
+— a verdict on a sha that is no longer the branch's tip is a verdict on
+something else, so a different sha replaces the row's state whole. `Verdict` is
+one of four:
+
+| Verdict | Means |
+|---|---|
+| `passed` | Every check on the sha has finished, and none failed |
+| `failed` | At least one has finished and failed; `Failing` names them |
+| `pending` | Checks are queued or running, and none has failed yet |
+| `none` | The repository runs no checks on the sha, or nothing could be read. Neither a failure nor a pass |
+
+**One verdict per issue per repository**, unique on `(IssueId, Canonical)`, for
+the reason the [merge check](#merge-check) is. `Failing` is a `jsonb` list of
+`{ name, url }`, deduplicated by name and sorted, so the same failure listed in
+another order is not a change. A `url` that is not an absolute `http` or `https`
+address is stored as null rather than refusing the verdict: a key writes it and
+the issue page links it, and the check still failed. At most 100 checks; a name
+is 1–200 characters with no line break.
+
+`PUT /api/hatch/issues/{key}/build-check` writes it, and a key may. It is
+refused, in a sentence, for a remote that does not canonicalise, an unknown
+verdict, no branch, no sha, and `failed` with no failing checks (failing checks
+sent with any other verdict are ignored). An unknown key is a `404`; the issue's
+column is not checked.
+
+**`ShaSince` and `PushedByIncrement`.** `ShaSince` is when the board first saw
+the sha, and is kept while the sha stays the same. `PushedByIncrement` is true
+when the runner that pushed the sha at the end of a build increment said so; on
+the same sha it is the stored value *or* the request's, so a later poll that
+sends false cannot take it back, and a new sha starts again from the request.
+
+**A mark never lowers a concluded verdict.** Another runner's poll can read the
+build between the push and the mark, so the mark may arrive after `failed`. A
+request marked `PushedByIncrement` whose verdict is `pending`, on the sha the row
+holds, over `passed` or `failed`, takes the flag and keeps the verdict. Any other
+request stores what it says: a poll's own `pending` after a `failed` is a re-run.
+
+**A verdict that changes the stored one writes a `build_check_changed` event; a
+repeat writes none.** Changed means a different verdict, a different sha, or a
+different set of failing names. The payload is `{ remote, sha, from, to }`, each
+side `{ verdict, failing }` with `failing` the names. The mark alone writes none.
+
+**The failed-again question.** When a save moves the row into `failed` *and*
+`PushedByIncrement` — whichever of the two arrived last — the board asks, in the
+same save: a question by the caller whose body names the sha and the failing
+checks and says a build increment pushed it, offered the same two options
+(`leave it`, `try again`) as [an increment that does nothing](#when-an-increment-does-nothing), and an `asked` event.
+It is skipped when a question is already open on the issue, which is already the
+flag. A `failed` verdict on a sha no increment pushed asks nothing.
+
+Every `IssueDto` carries its build verdicts, ordered by canonical remote, and so
+does each row of `/work/review`. The attention panel lists the review column's
+issues with a `failed` verdict under *Builds that fail*, with only those
+verdicts, and does not count them towards the control: a failing build is the
+loop's to fix, and one it cannot fix becomes a question, which is counted.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -912,7 +974,7 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+`dependency_added`, `dependency_removed`, `merge_check_changed`, `build_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered`,
 `imported`.
 
@@ -1163,6 +1225,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event |
+| `/issues/{key}/build-check` | PUT | Keeps a runner's [verdict](#build-check) on the build of the issue's branch, for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch, no sha, `failed` with no failing checks, and limits on the checks; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event; a `failed` one on a sha an increment pushed asks a question |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |

@@ -41,6 +41,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<QueueEntryDto>))]
 [JsonSerializable(typeof(List<ReviewCheckDto>))]
 [JsonSerializable(typeof(MergeCheckDto))]
+[JsonSerializable(typeof(BuildCheckDto))]
 [JsonSerializable(typeof(ProjectRepositoryDto))]
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 
@@ -55,6 +56,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ClaimHeartbeatRequest))]
 [JsonSerializable(typeof(RunnerHeartbeatRequest))]
 [JsonSerializable(typeof(MergeCheckRequest))]
+[JsonSerializable(typeof(BuildCheckRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 

@@ -105,6 +105,15 @@ public static class Fixtures
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
             files, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>A build verdict as a runner would have put it, failed unless said otherwise.</summary>
+    public static BuildCheckDto Build(
+        string verdict = BuildVerdicts.Failed, string canonical = "example.com/o/r", bool pushedByIncrement = false,
+        params string[] failing) =>
+        new(
+            $"https://{canonical}.git", canonical, "aer-1-a-thing", new string('b', 40), verdict,
+            verdict == BuildVerdicts.Failed ? failing.Select(n => new FailingCheckDto(n, null)).ToList() : [],
+            "runner", pushedByIncrement, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>

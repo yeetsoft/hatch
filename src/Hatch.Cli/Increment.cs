@@ -511,12 +511,7 @@ public sealed class Increment(
                 await board.AskAsync(
                     report.Key,
                     $"An unattended increment left {report.Key} in \"{report.From}\" without moving it - what should happen to it now?",
-                    [
-                        new QuestionOptionDto("leave it",
-                            "It waits for you. Nothing is dispatched at it while this question is open, so answer once you have looked - or once you have moved it somewhere the loop does not reach."),
-                        new QuestionOptionDto("try again",
-                            "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
-                    ],
+                    StallQuestion.Options,
                     ct);
 
             report.Flag = waiting > 0 ? "waiting on a question" : "flagged";

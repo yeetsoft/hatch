@@ -841,6 +841,13 @@
   color: var(--warn-ink);
 }
 
+/* A failing check named in the build chip and linked to its output keeps the
+   chip's ink, underlined so it still reads as a link. */
+.hatch-chip-conflict a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* The pull request chip, which is the only chip that goes anywhere. It is a
    link, so it says so on hover and carries the primary ink rather than the
    muted grey the dates wear - a chip nobody can tell is clickable is a chip

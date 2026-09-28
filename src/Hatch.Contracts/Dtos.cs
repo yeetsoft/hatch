@@ -250,7 +250,8 @@ public record IssueDto(
     DateTimeOffset UpdatedAt,
     IssueClaimDto? Claim = null,
     bool Expedited = false,
-    IReadOnlyList<MergeCheckDto>? MergeChecks = null);
+    IReadOnlyList<MergeCheckDto>? MergeChecks = null,
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -547,11 +548,18 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// loop's to fix, and one it cannot fix becomes a stall, which is a question,
 /// which already lights the control.
 /// </param>
+/// <param name="FailingBuilds">
+/// The review column's issues whose build fails in at least one repository, in
+/// that column's board order. Not counted towards the badge, for the same
+/// reason: a failing build is the loop's to fix, and one it cannot fix becomes
+/// a question, which already lights the control.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
-    IReadOnlyList<ConflictDto> Conflicts);
+    IReadOnlyList<ConflictDto> Conflicts,
+    IReadOnlyList<FailingBuildDto> FailingBuilds);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -564,6 +572,18 @@ public record ConflictDto(
     string Type,
     string? PullRequestUrl,
     IReadOnlyList<MergeCheckDto> Checks);
+
+/// <summary>
+/// One issue in review whose build fails: what the panel draws, and the words
+/// that say which checks.
+/// </summary>
+/// <param name="Checks">Only the failed verdicts, one per repository, so a passing repository beside a failing one is not listed as a failure.</param>
+public record FailingBuildDto(
+    string Key,
+    string Title,
+    string Type,
+    string? PullRequestUrl,
+    IReadOnlyList<BuildCheckDto> Checks);
 
 // ---- The board ----
 
@@ -865,10 +885,12 @@ public record QueueEntryDto(
 /// standing checkout.
 /// </param>
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
+/// <param name="BuildChecks">Every build verdict it holds, one per repository. Absent from a board older than the runner reading it, which reads that as none.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
-    IReadOnlyList<MergeCheckDto> MergeChecks);
+    IReadOnlyList<MergeCheckDto> MergeChecks,
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
 
 // ---- Rollups ----
 
@@ -1264,6 +1286,88 @@ public record MergeCheckDto(
     DateTimeOffset CheckedAt,
     string Runner,
     string CheckedBy);
+
+/// <summary>
+/// What the build on an issue's branch says in one repository - the four things
+/// a runner can report. Spelled on the contract because both sides act on them:
+/// the runner writes one, and the board and the dispatcher read it.
+/// </summary>
+public static class BuildVerdicts
+{
+    /// <summary>Every check the repository runs on the branch's sha has finished, and none failed.</summary>
+    public const string Passed = "passed";
+
+    /// <summary>At least one check has finished and failed. The verdict names them.</summary>
+    public const string Failed = "failed";
+
+    /// <summary>Checks are queued or running on the sha, and none has failed yet. Nothing to say until they finish.</summary>
+    public const string Pending = "pending";
+
+    /// <summary>The repository runs no checks on the sha, or nothing could be read about them. Not a failure and not a pass.</summary>
+    public const string None = "none";
+
+    public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
+}
+
+/// <summary>One check that failed: its name, and where to read why.</summary>
+/// <param name="Name">The check as the repository's CI names it.</param>
+/// <param name="Url">Where its output is, when there is an http or https address to give. The board stores anything else as null.</param>
+public record FailingCheckDto(string Name, string? Url);
+
+/// <summary>
+/// The verdict on the build, as the runner reports it. Who took it is the
+/// credential's to say, and when is the board's, so the body names neither.
+/// </summary>
+/// <param name="Remote">The repository as the runner spells it. The board keys the verdict on its canonical form.</param>
+/// <param name="Branch">The issue's branch, and <paramref name="Sha"/> where it stood when the build was read.</param>
+/// <param name="Verdict">One of <see cref="BuildVerdicts"/>.</param>
+/// <param name="Failing">The checks that failed. Required for <c>failed</c> and ignored otherwise.</param>
+/// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+/// <param name="PushedByIncrement">
+/// True when this is the runner that pushed <paramref name="Sha"/> at the end of
+/// a build increment, saying so. Once the board holds it for a sha it stays: a
+/// later poll of the same sha cannot take it back.
+/// </param>
+public record BuildCheckRequest(
+    string Remote,
+    string Branch,
+    string Sha,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto>? Failing,
+    string Runner,
+    bool PushedByIncrement = false);
+
+/// <summary>One stored verdict: the build on the issue's branch in one repository.</summary>
+/// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
+/// <param name="ShaSince">When the board first saw <paramref name="Sha"/> - kept while the sha is the same, so it says how long a sha has been waiting on its build.</param>
+/// <param name="CheckedAt">When the board took the verdict.</param>
+public record BuildCheckDto(
+    string Remote,
+    string Canonical,
+    string Branch,
+    string Sha,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto> Failing,
+    string Runner,
+    bool PushedByIncrement,
+    DateTimeOffset ShaSince,
+    DateTimeOffset CheckedAt);
+
+/// <summary>
+/// The two answers offered under a question the loop raises against a ticket it
+/// could not move on - a stall, or a build that failed again. One wording, so
+/// the CLI that asks and the board that asks say the same thing.
+/// </summary>
+public static class StallQuestion
+{
+    public static readonly IReadOnlyList<QuestionOptionDto> Options =
+    [
+        new("leave it",
+            "It waits for you. Nothing is dispatched at it while this question is open, so answer once you have looked - or once you have moved it somewhere the loop does not reach."),
+        new("try again",
+            "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
+    ];
+}
 
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and

@@ -205,6 +205,50 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
     }
 
+    // ---- The failing build half ----
+
+    [Fact]
+    public async Task Attention_ListsTheReviewColumnsIssuesWhoseBuildFails_WithOnlyTheFailedVerdicts()
+    {
+        var h = await NewAsync();
+        var failing = await h.FileAsync("story", "red", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(failing, BuildVerdicts.Failed, remote: "forge.example/owner/one", names: ["test", "build"]);
+        await h.BuildAsync(failing, BuildVerdicts.Passed, remote: "forge.example/owner/two");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).FailingBuilds);
+
+        Assert.Equal(Key(failing), row.Key);
+        Assert.Equal("red", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        var check = Assert.Single(row.Checks);
+        Assert.Equal("forge.example/owner/one", check.Canonical);
+        Assert.Equal(["test", "build"], check.Failing.Select(f => f.Name));
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Pending)]
+    [InlineData(BuildVerdicts.None)]
+    public async Task Attention_SaysNothingAboutABuildThatIsNotFailed(string verdict)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, verdict);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).FailingBuilds);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAFailingBuildOnAnIssueThatIsNotInReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still being written", h.InProgress);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, names: ["build"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).FailingBuilds);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -389,6 +433,27 @@ public class AttentionControllerTests
                 CheckedAt = Now,
                 Runner = "box:/work/repo",
                 CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A runner's build verdict, written straight to the row for the reason <see cref="CheckAsync"/> is.</summary>
+        public async Task BuildAsync(
+            EfHatchIssue issue, string verdict, string[]? names = null, string remote = "forge.example/owner/repo")
+        {
+            Db.BuildChecks.Add(new EfHatchBuildCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = remote,
+                Branch = "ha-1-thing",
+                Sha = new string('2', 40),
+                ShaSince = Now,
+                Verdict = verdict,
+                Failing = EfHatchBuildCheck.WriteFailing((names ?? []).Select(n => new FailingCheckDto(n, null)).ToList()),
+                CheckedAt = Now,
+                Runner = "box:/work/repo",
             });
 
             await Db.SaveChangesAsync();

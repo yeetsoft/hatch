@@ -8,7 +8,7 @@ import {
   reviewEmptyWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, Question, Review } from '../types';
+import type { Attention, Conflict, FailingBuild, Question, Review } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -48,6 +48,7 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   inReviewWithoutPullRequest: 0,
   questions: [],
   conflicts: [],
+  failingBuilds: [],
   ...over,
 });
 
@@ -70,6 +71,21 @@ describe('attentionCount', () => {
     // The loop's to fix, and one it cannot fix becomes a stall - which is a
     // question, which is counted already.
     expect(attentionCount(attention({ conflicts: [conflict(), conflict({ key: 'AER-15' })] }))).toBe(0);
+  });
+
+  it('does not count a build that fails', () => {
+    // The loop's to fix, and one it cannot fix becomes a question, which is
+    // counted already.
+    const failing: FailingBuild = {
+      key: 'AER-16',
+      title: 'A story whose build is red',
+      type: 'story',
+      pullRequestUrl: null,
+      checks: [],
+    };
+
+    expect(attentionCount(attention({ failingBuilds: [failing, { ...failing, key: 'AER-17' }] }))).toBe(0);
+    expect(attentionTone(attention({ failingBuilds: [failing] }))).toBe('rest');
   });
 });
 
