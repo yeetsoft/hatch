@@ -186,6 +186,14 @@ public class AdminSurfaceTests
         "WorkController.GetNextWork",
         "WorkController.GetWork",
 
+        // The loop's own write, on the loop's own say-so: it carries an
+        // express issue past a column marked ExpressSkips with no session. It
+        // inherits the class's Hatch scope rather than a person-only route,
+        // because a key is exactly who calls a hop - see
+        // IssueExpressController and StatusesController.PutExpressSkips for
+        // the person-only edge that decides whether a hop exists at all.
+        "WorkController.HopWork",
+
         // The same walk as GetNextWork, reported instead of acted on. A read,
         // and one a key already holds every part of: it says nothing about the
         // board that `next` and `/issues` do not already say, only in one

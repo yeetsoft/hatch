@@ -822,6 +822,14 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// dispatches whose two ends are the same column, and which of them it is comes
 /// from what the board holds about the branch.
 /// </param>
+/// <param name="Hop">
+/// True where this issue is express, stands in a column marked
+/// <see cref="StatusDto.ExpressSkips"/>, and has no unanswered question - so
+/// the caller should carry it across itself, with
+/// <c>POST /api/hatch/work/{key}/hop</c>, and spawn nothing.
+/// <paramref name="Playbook"/> is always null on a hop, even where one covers
+/// the move, so no client can spawn a session for it by accident.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -833,7 +841,8 @@ public record WorkDto(
     string? Blocked,
     string? IssueUrl,
     string Kind = WorkKinds.Advance,
-    IReadOnlyList<CommentDto>? Messages = null);
+    IReadOnlyList<CommentDto>? Messages = null,
+    bool Hop = false);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only
@@ -892,12 +901,14 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// the same arguments, because it is the same walk.
 /// </param>
 /// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
+/// <param name="Hop">As on <see cref="WorkDto"/>.</param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
     string? Blocked,
-    string Kind = WorkKinds.Advance);
+    string Kind = WorkKinds.Advance,
+    bool Hop = false);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what
