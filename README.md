@@ -61,6 +61,22 @@ builds the CLI on demand if you have no binary yet:
 ./scripts/hatch.sh work       # one increment, unattended
 ```
 
+In PowerShell on Windows, [`scripts\hatch.ps1`](scripts/hatch.ps1) is the same
+door, and `.\scripts\hatch.ps1 go-to-work` the same supervisor: it rebuilds and
+comes back as the new build when the loop's own source changes.
+
+```
+.\scripts\hatch.ps1 board
+.\scripts\hatch.ps1 go-to-work
+```
+
+Windows client editions refuse scripts by default (execution policy
+`Restricted`). Run it once as
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\hatch.ps1 go-to-work`,
+or allow it for the account with
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. If Group Policy is what
+refuses, neither works and the policy is the thing to change.
+
 Or run the runner as a container instead of a local binary — see the
 `runner` service in [`compose.yaml`](compose.yaml) and
 [hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md):

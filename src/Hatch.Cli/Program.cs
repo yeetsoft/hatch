@@ -124,10 +124,10 @@ try
             TempDirectory: Path.GetTempPath(),
             Checkouts: checkouts)
         {
-            // Set by the supervisor in scripts/hatch.sh and by nobody else,
-            // which is how a runner started by hand knows there is nothing
-            // standing over it to build the new source and run it again. See
-            // docs/hatch.md, "What it stops for".
+            // Set by the supervisor in scripts/hatch.sh or scripts/hatch.ps1 and
+            // by nobody else, which is how a runner started by hand knows there
+            // is nothing standing over it to build the new source and run it
+            // again. See docs/hatch.md, "What it stops for".
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
         }.WithGit();
 
