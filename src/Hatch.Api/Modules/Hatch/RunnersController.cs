@@ -296,6 +296,7 @@ public class RunnersController(
         // whatever the first beat carried, the same as every later one.
         Remotes = Canonicalised(request.Remotes),
         Clones = request.Clones,
+        Mine = request.Mine,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
     };
 
@@ -328,6 +329,7 @@ public class RunnersController(
         // every other fact-vs-absent field on this contract already uses.
         if (request.Remotes is not null) row.Remotes = Canonicalised(request.Remotes);
         if (request.Clones is not null) row.Clones = request.Clones;
+        if (request.Mine is not null) row.Mine = request.Mine;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
     }
 

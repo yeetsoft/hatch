@@ -26,7 +26,8 @@ namespace Hatch.Api.Controllers;
 [ApiController]
 [Route("api/auth/keys")]
 [RequireAdmin]
-public class ApiKeysController(IAuthService auth, ILogger<ApiKeysController> logger) : ControllerBase
+public class ApiKeysController(
+    IAuthService auth, IActorDirectory actors, ICallerIdentity caller, ILogger<ApiKeysController> logger) : ControllerBase
 {
     /// <summary>
     /// Every key, newest first, revoked ones included. A revocation is a fact
@@ -68,7 +69,24 @@ public class ApiKeysController(IAuthService auth, ILogger<ApiKeysController> log
         if (scopes.FirstOrDefault(s => !ApiKeyScopes.IsKnown(s)) is { } unknown)
             return BadRequest($"\"{unknown}\" is not a scope - the scopes are {string.Join(", ", ApiKeyScopes.All)}");
 
-        var created = await auth.CreateApiKeyAsync(name, scopes.Distinct(StringComparer.Ordinal).ToList(), ct);
+        // No owner named defaults to whoever is minting it - the admin at the
+        // screen - or to nobody where the wall is off and there is no admin to
+        // default to. An owner that was named is checked against the same
+        // liveness a --mine pass will read it with later, so a key can never
+        // be minted pointed at a person who does not exist.
+        Guid? ownerPersonId;
+        if (request?.OwnerPersonId is { } named)
+        {
+            if (await actors.ResolveAsync(ActorKind.Person, named, ct) is null)
+                return BadRequest("that person does not exist");
+            ownerPersonId = named;
+        }
+        else
+        {
+            ownerPersonId = (await caller.PersonAsync(ct))?.Id;
+        }
+
+        var created = await auth.CreateApiKeyAsync(name, scopes.Distinct(StringComparer.Ordinal).ToList(), ownerPersonId, ct);
         if (created is null) return Conflict($"there is already a key called \"{name}\"");
 
         // A live credential has no business in a cache, anyone's.
@@ -86,4 +104,20 @@ public class ApiKeysController(IAuthService auth, ILogger<ApiKeysController> log
     [HttpPost("{id:guid}/revoke")]
     public async Task<IActionResult> RevokeKey(Guid id, CancellationToken ct) =>
         await auth.RevokeApiKeyAsync(id, ct) ? NoContent() : NotFound();
+
+    /// <summary>
+    /// Changes or clears whose tickets this key's <c>--mine</c> reaches. Only
+    /// an admin ever calls this - the class attribute already says so - and
+    /// deliberately never the key itself: a key that could set its own owner
+    /// could adopt anybody's tickets, which is the edge this whole feature is
+    /// built not to reopen.
+    /// </summary>
+    [HttpPut("{id:guid}/owner")]
+    public async Task<IActionResult> SetOwner(Guid id, [FromBody] ApiKeyOwnerRequest? request, CancellationToken ct)
+    {
+        if (request?.PersonId is { } personId && await actors.ResolveAsync(ActorKind.Person, personId, ct) is null)
+            return BadRequest("that person does not exist");
+
+        return await auth.SetApiKeyOwnerAsync(id, request?.PersonId, ct) ? NoContent() : NotFound();
+    }
 }

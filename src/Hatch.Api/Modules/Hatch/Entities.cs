@@ -1612,6 +1612,16 @@ public class EfHatchRunner
     public bool? Clones { get; set; }
 
     /// <summary>
+    /// Whether this runner was started with <c>do-my-work</c> or
+    /// <c>--mine</c> - working its owner's tickets only. A fact about the
+    /// running process, written on every beat like <see cref="Clones"/> and
+    /// <see cref="Remotes"/>, and shown rather than editable: unlike
+    /// <see cref="Under"/> it is not a page's to set on a runner that is
+    /// already going.
+    /// </summary>
+    public bool? Mine { get; set; }
+
+    /// <summary>
     /// The machine and checkout this runner runs from, <c>host:/path</c> - a
     /// fact about the running process, overwritten on every heartbeat that
     /// names one, the same as <see cref="Remotes"/>. It used to be

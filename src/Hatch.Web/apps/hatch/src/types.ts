@@ -1122,6 +1122,8 @@ export interface Runner {
   repositories: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
+  /** Whether this runner was started with do-my-work or --mine - working its owner's tickets only. */
+  mine: boolean | null;
   /** The machine and checkout this runner runs from, `host:/path` - drawn under
       the name now that the name is a character and not a path. Null from an
       older CLI that has not sent one yet. */
@@ -1199,6 +1201,12 @@ export interface AuthMe {
 
 // ---- API keys ----
 
+/** Whose tickets a key's `--mine` reaches. Mirrors ApiKeyOwnerDto. */
+export interface ApiKeyOwner {
+  id: string;
+  name: string;
+}
+
 /** One API key as the Admin page lists it. Mirrors ApiKeyDto. The secret is
     not here and never is: it exists once, in the response to the mint. */
 export interface ApiKey {
@@ -1210,6 +1218,8 @@ export interface ApiKey {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  /** Null for a key owned by nobody - never set, or its person since deleted. */
+  owner: ApiKeyOwner | null;
 }
 
 /** A freshly minted key. Mirrors ApiKeyMintedDto. */
@@ -1218,8 +1228,9 @@ export interface ApiKeyMinted {
   secret: string;
 }
 
-/** Mirrors CreateApiKeyRequest. */
+/** Mirrors CreateApiKeyRequest. Omitted `ownerPersonId` defaults to the admin minting it. */
 export interface ApiKeyCreateRequest {
   name: string;
   scopes: string[];
+  ownerPersonId?: string;
 }

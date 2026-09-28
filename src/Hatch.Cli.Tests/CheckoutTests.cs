@@ -203,7 +203,7 @@ public sealed class CheckoutTests : IDisposable
         {
             new RunnerDto(
                 wouldChoose, "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                "running", null, null, null, null, 90, [], null, "elsewhere:/some/other/tree"),
+                "running", null, null, null, null, 90, [], null, null, "elsewhere:/some/other/tree"),
         });
 
         var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);

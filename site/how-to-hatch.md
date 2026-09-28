@@ -271,7 +271,9 @@ account has left. Without one there is simply no battery.
    do by hand.
 4. **Leave it running.** `hatch go-to-work` with whatever bounds you want,
    a spend cap, an hour to stop at. The Runners page can pause it, stop it
-   after the increment in flight, or change its scope while it runs.
+   after the increment in flight, or change its scope while it runs. Sharing
+   the board with somebody else running their own agent on their own budget?
+   `hatch do-my-work` is the same loop, narrowed to just your own tickets.
 5. **Next morning**, the board says what moved, what stalled, and what it cost.
 
 ## Further reading

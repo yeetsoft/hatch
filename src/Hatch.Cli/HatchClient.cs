@@ -25,8 +25,19 @@ public readonly record struct Answer(HttpStatusCode? Status, string Body)
         : Status is { } code ? $"{(int)code}" : "the origin did not answer";
 }
 
-/// <summary>A call that failed in a way the caller had no answer for.</summary>
-public sealed class HatchException(string message) : Exception(message);
+/// <summary>
+/// A call that failed in a way the caller had no answer for.
+/// </summary>
+/// <param name="Status">
+/// The code the server answered with, or null when the request never reached
+/// one at all. What lets a catcher tell a <c>400</c> - the dispatcher refusing
+/// what was asked, which will never succeed by retrying - apart from a
+/// <c>500</c> or a dropped connection, which is ordinary weather.
+/// </param>
+public sealed class HatchException(string message, HttpStatusCode? status = null) : Exception(message)
+{
+    public HttpStatusCode? Status { get; } = status;
+}
 
 /// <summary>
 /// A body that is already JSON, sent as it was typed.
@@ -178,7 +189,7 @@ public sealed class HatchClient : IDisposable
     public async Task<T?> GetAsync<T>(string path, CancellationToken ct) where T : class
     {
         var answer = await Send(HttpMethod.Get, path, null, ct);
-        if (!answer.Ok) throw new HatchException(Refusal(answer, path));
+        if (!answer.Ok) throw new HatchException(Refusal(answer, path), answer.Status);
         if (answer.Body.Trim().Length == 0) return null;
 
         try
@@ -200,7 +211,7 @@ public sealed class HatchClient : IDisposable
         where T : class
     {
         var answer = await Send(method, path, body, ct);
-        if (!answer.Ok) throw new HatchException(Refusal(answer, path));
+        if (!answer.Ok) throw new HatchException(Refusal(answer, path), answer.Status);
         if (answer.Body.Trim().Length == 0) return null;
 
         return (T?)JsonSerializer.Deserialize(answer.Body, TypeInfo(typeof(T)));

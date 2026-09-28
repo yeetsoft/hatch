@@ -223,6 +223,32 @@ public sealed class BoardCommandsTests
         Assert.Contains("ancestorKey=AER-1", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query);
     }
 
+    [Fact]
+    public async Task Mine_is_sent_on_the_queue_read()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await new BoardCommands(h.Cli).QueueAsync(["--mine"], default);
+
+        Assert.Equal("hatch: nothing of yours is on the dispatcher's path", h.Said);
+        Assert.Contains("mine=true", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mine_and_an_ancestor_key_combine()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await new BoardCommands(h.Cli).QueueAsync(["--mine", "AER-1"], default);
+
+        Assert.Equal("hatch: nothing of yours under AER-1 is on the dispatcher's path", h.Said);
+        var query = h.Wire.To("GET", "/api/hatch/work/queue").Single().Query;
+        Assert.Contains("mine=true", query, StringComparison.Ordinal);
+        Assert.Contains("ancestorKey=AER-1", query, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Padded to the widest value in the answer rather than to a guessed width,
     /// since status names are rows the operator renames.

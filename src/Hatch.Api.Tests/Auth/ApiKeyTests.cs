@@ -4,6 +4,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Media;
+using Hatch.Api.Tests.Hatch;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -35,7 +36,7 @@ public class ApiKeyTests
     {
         var (service, db, _) = NewService();
 
-        var created = await service.CreateApiKeyAsync("Claude in VS Code", [ApiKeyScopes.Hatch], default);
+        var created = await service.CreateApiKeyAsync("Claude in VS Code", [ApiKeyScopes.Hatch], null, default);
 
         var row = await db.ApiKeys.AsNoTracking().SingleAsync();
         Assert.StartsWith(AuthTokens.ApiKeyPrefix, created!.Secret);
@@ -57,7 +58,7 @@ public class ApiKeyTests
     {
         var (service, db, _) = NewService();
 
-        var created = await service.CreateApiKeyAsync("Claude", [], default);
+        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
 
         var row = await db.ApiKeys.AsNoTracking().SingleAsync();
         Assert.DoesNotContain(created!.Secret, row.Prefix);
@@ -68,9 +69,9 @@ public class ApiKeyTests
     public async Task TwoKeys_CannotShareAName()
     {
         var (service, _, _) = NewService();
-        await service.CreateApiKeyAsync("Claude", [], default);
+        await service.CreateApiKeyAsync("Claude", [], null, default);
 
-        Assert.Null(await service.CreateApiKeyAsync("Claude", [], default));
+        Assert.Null(await service.CreateApiKeyAsync("Claude", [], null, default));
     }
 
     // ---- What the wall accepts ----
@@ -79,7 +80,7 @@ public class ApiKeyTests
     public async Task ALiveKey_Verifies()
     {
         var (service, _, _) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], default);
+        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
 
         var verified = await service.VerifyApiKeyAsync(created!.Secret, default);
 
@@ -90,7 +91,7 @@ public class ApiKeyTests
     public async Task ARevokedKey_StopsVerifying()
     {
         var (service, _, _) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], default);
+        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
 
         Assert.True(await service.RevokeApiKeyAsync(created!.Key.Id, default));
 
@@ -106,7 +107,7 @@ public class ApiKeyTests
     public async Task RevokingTwice_KeepsTheFirstTimestamp()
     {
         var (service, db, time) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [], default);
+        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
         await service.RevokeApiKeyAsync(created!.Key.Id, default);
 
         time.Advance(TimeSpan.FromHours(3));
@@ -122,7 +123,7 @@ public class ApiKeyTests
     public async Task AKeyNobodyMinted_DoesNotVerify(string? secret)
     {
         var (service, _, _) = NewService();
-        await service.CreateApiKeyAsync("Claude", [], default);
+        await service.CreateApiKeyAsync("Claude", [], null, default);
 
         Assert.Null(await service.VerifyApiKeyAsync(secret, default));
     }
@@ -136,7 +137,7 @@ public class ApiKeyTests
     public async Task LastUsed_IsWrittenAtMostOncePerThrottle()
     {
         var (service, db, time) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [], default);
+        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
 
         await service.VerifyApiKeyAsync(created!.Secret, default);
         time.Advance(TimeSpan.FromSeconds(5));
@@ -331,9 +332,10 @@ public class ApiKeyTests
         var minted = Value(await controller.CreateKey(new CreateApiKeyRequest("Claude", [ApiKeyScopes.Hatch]), default));
 
         Assert.Equal("hatch_ak_thesecret", minted.Secret);
-        var (name, scopes) = auth.KeysCreated.Single();
+        var (name, scopes, owner) = auth.KeysCreated.Single();
         Assert.Equal("Claude", name);
         Assert.Equal(["hatch"], scopes);
+        Assert.Null(owner);
 
         // And never again: the list carries the prefix and nothing more.
         var listed = Assert.Single(Value(await controller.ListKeys(default)));
@@ -391,6 +393,107 @@ public class ApiKeyTests
         var controller = NewKeysController(auth);
 
         Assert.IsType<NotFoundResult>(await controller.RevokeKey(Guid.NewGuid(), default));
+    }
+
+    // ---- Owner ----
+
+    /// <summary>With no owner named, the key belongs to whoever is minting it.</summary>
+    [Fact]
+    public async Task MintingWithNoOwnerNamed_DefaultsToTheAdminMintingIt()
+    {
+        var admin = new EfPerson { Id = Guid.NewGuid(), Name = "Nathan", Role = PersonRole.Admin, CreatedAt = Now, UpdatedAt = Now };
+        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
+        var actors = new StubActorDirectory();
+        actors.AddPerson(admin.Name, admin.Id);
+        var controller = NewKeysController(auth, actors, new StubCallerIdentity { Person = admin });
+
+        await controller.CreateKey(new CreateApiKeyRequest("Claude", []), default);
+
+        Assert.Equal(admin.Id, auth.KeysCreated.Single().OwnerPersonId);
+    }
+
+    /// <summary>With the wall off there is no admin to default to, so the key belongs to nobody rather than to a made-up person.</summary>
+    [Fact]
+    public async Task MintingWithNoOwnerNamed_AndNoAdmin_BelongsToNobody()
+    {
+        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
+        var controller = NewKeysController(auth);
+
+        await controller.CreateKey(new CreateApiKeyRequest("Claude", []), default);
+
+        Assert.Null(auth.KeysCreated.Single().OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task MintingWithAnOwnerNamed_UsesIt()
+    {
+        var ada = Guid.NewGuid();
+        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
+        var actors = new StubActorDirectory();
+        actors.AddPerson("Ada", ada);
+        var controller = NewKeysController(auth, actors);
+
+        await controller.CreateKey(new CreateApiKeyRequest("Claude", [], ada), default);
+
+        Assert.Equal(ada, auth.KeysCreated.Single().OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task MintingWithAnOwnerThatDoesNotExist_IsRefused()
+    {
+        var auth = new StubAuthService(null);
+        var controller = NewKeysController(auth);
+
+        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", [], Guid.NewGuid()), default);
+
+        Assert.Contains("does not exist", Reason(result.Result));
+        Assert.Empty(auth.KeysCreated);
+    }
+
+    [Fact]
+    public async Task TheOwnerCanBeChanged()
+    {
+        var ada = Guid.NewGuid();
+        var auth = new StubAuthService(null);
+        var actors = new StubActorDirectory();
+        actors.AddPerson("Ada", ada);
+        var controller = NewKeysController(auth, actors);
+        var id = Guid.NewGuid();
+
+        Assert.IsType<NoContentResult>(await controller.SetOwner(id, new ApiKeyOwnerRequest(ada), default));
+
+        Assert.Equal((id, ada), auth.OwnersSet.Single());
+    }
+
+    [Fact]
+    public async Task TheOwnerCanBeCleared()
+    {
+        var auth = new StubAuthService(null);
+        var controller = NewKeysController(auth);
+        var id = Guid.NewGuid();
+
+        Assert.IsType<NoContentResult>(await controller.SetOwner(id, new ApiKeyOwnerRequest(null), default));
+
+        Assert.Equal((id, (Guid?)null), auth.OwnersSet.Single());
+    }
+
+    [Fact]
+    public async Task SettingTheOwnerToSomebodyWhoDoesNotExist_IsRefused()
+    {
+        var controller = NewKeysController(new StubAuthService(null));
+
+        var result = await controller.SetOwner(Guid.NewGuid(), new ApiKeyOwnerRequest(Guid.NewGuid()), default);
+
+        Assert.Contains("does not exist", Reason(result));
+    }
+
+    [Fact]
+    public async Task SettingTheOwnerOfAKeyThatIsNotThere_Is404()
+    {
+        var auth = new StubAuthService(null) { SetOwnerResult = false };
+        var controller = NewKeysController(auth);
+
+        Assert.IsType<NotFoundResult>(await controller.SetOwner(Guid.NewGuid(), new ApiKeyOwnerRequest(null), default));
     }
 
     // ---- Harness ----
@@ -451,8 +554,9 @@ public class ApiKeyTests
     }
 
     /// <summary>A controller with a response to write headers onto - the mint sets no-store on one.</summary>
-    private static ApiKeysController NewKeysController(IAuthService auth) =>
-        new(auth, NullLogger<ApiKeysController>.Instance)
+    private static ApiKeysController NewKeysController(
+        IAuthService auth, IActorDirectory? actors = null, ICallerIdentity? caller = null) =>
+        new(auth, actors ?? new StubActorDirectory(), caller ?? new StubCallerIdentity(), NullLogger<ApiKeysController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

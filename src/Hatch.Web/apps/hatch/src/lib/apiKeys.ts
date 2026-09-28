@@ -47,5 +47,7 @@ export const dismissSecret = (): SecretPanel => null;
 
 export const scopesLabel = (scopes: string[]): string => (scopes.length === 0 ? 'none' : scopes.join(', '));
 
+export const ownerLabel = (owner: ApiKey['owner']): string => owner?.name ?? 'nobody';
+
 export const lastUsedLabel = (iso: string | null): string =>
   iso === null ? 'never' : new Date(iso).toLocaleString();

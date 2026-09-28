@@ -1,5 +1,7 @@
 using Hatch.Api.Ef;
+using Hatch.Api.Services.DeviceMapping;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Services.Auth;
 
@@ -84,6 +86,28 @@ public interface IActorDirectory
     /// HTTP context behind it at all, which is background work.
     /// </summary>
     Task<Actor?> MeAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Whose work this caller is doing - what a <c>--mine</c> dispatch pass
+    /// reads to decide which tickets are its own. The signed-in person; else
+    /// the calling key's owner, resolved live so a deleted person reads as
+    /// nobody; else, where the wall is off, the local person - including a
+    /// runner that named itself with <see cref="LocalCaller.RunnerHeader"/>,
+    /// which is not this method's answer even though it is <see cref="MeAsync"/>'s.
+    /// Null when none of those apply: a key that belongs to nobody, or the
+    /// wall is up and nothing authenticated the request.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="MeAsync"/> under another name, and the difference is the
+    /// whole reason this exists. <c>MeAsync</c> says who is <em>calling</em>,
+    /// which is what an audit trail wants - a runner is itself, not a stand-in
+    /// for whoever started it. This says whose tickets the caller works on,
+    /// which for a keyless runner in local mode is the person at the machine,
+    /// not the runner's own transient name - a runner is never assignable
+    /// (see the liveness remarks above), so it could never be "its own"
+    /// tickets in the first place.
+    /// </remarks>
+    Task<Actor?> PrincipalAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -92,7 +116,9 @@ public interface IActorDirectory
 /// resolves none - which is what lets every projection site ask without
 /// thinking about it.
 /// </summary>
-public class ActorDirectory(AppDbContext db, ICallerIdentity caller, TimeProvider time) : IActorDirectory
+public class ActorDirectory(
+    AppDbContext db, ICallerIdentity caller, TimeProvider time,
+    ISiteSettingsService settings, IOptions<AuthOptions> options) : IActorDirectory
 {
     private IReadOnlyList<Actor>? live;
 
@@ -153,5 +179,32 @@ public class ActorDirectory(AppDbContext db, ICallerIdentity caller, TimeProvide
             return new Actor(ActorKind.Key, key.Id, key.Name);
 
         return await caller.LocalAsync(ct);
+    }
+
+    /// <summary>
+    /// The person, the key's live owner, then - where the wall is off - the
+    /// local person by construction rather than by delegating to
+    /// <see cref="ICallerIdentity.LocalAsync"/>, whose third lane answers a
+    /// runner header with the runner's own transient name. See the interface
+    /// remarks for why that answer is right for <see cref="MeAsync"/> and
+    /// wrong for this.
+    /// </summary>
+    public async Task<Actor?> PrincipalAsync(CancellationToken ct)
+    {
+        if (await caller.PersonAsync(ct) is { } person)
+            return new Actor(ActorKind.Person, person.Id, person.Name);
+
+        if (await caller.ApiKeyAsync(ct) is { } key)
+            return key.OwnerPersonId is { } ownerId ? await ResolveAsync(ActorKind.Person, ownerId, ct) : null;
+
+        // LocalAsync's own gate already covers "the wall is off, there is a
+        // request, and neither branch above answered" - reused here as the
+        // presence check, and not for its answer: a runner header would make
+        // it a key, and this wants the person regardless.
+        if (await caller.LocalAsync(ct) is null) return null;
+
+        var configured = (await settings.GetAsync(ct)).LocalPersonName;
+        var name = LocalCaller.PersonNameOf(configured, options.Value.LocalPerson.Name);
+        return new Actor(ActorKind.Person, LocalCaller.PersonId, name);
     }
 }

@@ -26,11 +26,16 @@ public sealed class BoardCommands(Cli cli)
 
     public static readonly string[] QueueUsage =
     [
-        "usage: hatch queue [<ancestor key>]",
+        "usage: hatch queue [--mine] [<ancestor key>]",
         "",
         "  Every issue a dispatch pass would look at, in the order it looks, each",
         "  with the reason it would be folded past - or the transition it is clear",
         "  for. It spawns nothing and writes nothing.",
+        "",
+        "  --mine   what a --mine pass would take - only the caller's own tickets.",
+        "           Everything else is folded, naming whose it is: \"assigned to Ada,",
+        "           not to you\", or \"assigned to nobody - a --mine pass takes only",
+        "           your own\"",
         "",
         "  A row marked \"!\" is expedited: somebody said this one first, and the",
         "  pass considers every one of them before anything else, whatever column",
@@ -160,10 +165,17 @@ public sealed class BoardCommands(Cli cli)
     public async Task<int> QueueAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, QueueUsage);
-        if (args.Length > 1) return Usage.Refuse(cli.Say, "queue takes one ancestor key", QueueUsage);
 
-        var under = args.Length == 1 ? args[0] : null;
-        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones);
+        string? under = null;
+        var mine = false;
+        foreach (var arg in args)
+        {
+            if (arg == "--mine") mine = true;
+            else if (under is null && !arg.StartsWith('-')) under = arg;
+            else return Usage.Refuse(cli.Say, "queue takes [--mine] and one ancestor key", QueueUsage);
+        }
+
+        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine);
 
         // An empty board is a sentence and not a blank line: "there is nothing"
         // and "something went wrong and printed nothing" look identical
@@ -171,9 +183,13 @@ public sealed class BoardCommands(Cli cli)
         // to be unsure about.
         if (queue.Count == 0)
         {
-            cli.Say.Line(under is { Length: > 0 }
-                ? $"hatch: nothing under {under} is on the dispatcher's path"
-                : "hatch: nothing on the board is on the dispatcher's path");
+            cli.Say.Line(mine
+                ? under is { Length: > 0 }
+                    ? $"hatch: nothing of yours under {under} is on the dispatcher's path"
+                    : "hatch: nothing of yours is on the dispatcher's path"
+                : under is { Length: > 0 }
+                    ? $"hatch: nothing under {under} is on the dispatcher's path"
+                    : "hatch: nothing on the board is on the dispatcher's path");
             return 0;
         }
 

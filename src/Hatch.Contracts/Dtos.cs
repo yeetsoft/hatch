@@ -1554,6 +1554,7 @@ public static class RunnerStates
 /// on every beat rather than seeded once.
 /// </param>
 /// <param name="Clones">Whether this runner makes a clone for itself when it lacks one.</param>
+/// <param name="Mine">Whether this runner was started with `do-my-work` or `--mine` - working its owner's tickets only.</param>
 /// <param name="Where">
 /// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
 /// about the process, drawn under its name rather than as the name, now that
@@ -1575,6 +1576,7 @@ public record RunnerDto(
     int GoneAfterSeconds,
     string[] Repositories,
     bool? Clones,
+    bool? Mine,
     string? Where);
 
 /// <summary>
@@ -1612,6 +1614,7 @@ public record RunnerHeartbeatRequest(
     DateTimeOffset? UntilAt = null,
     IReadOnlyList<string>? Remotes = null,
     bool? Clones = null,
+    bool? Mine = null,
     string? Where = null);
 
 /// <summary>
