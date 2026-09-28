@@ -186,6 +186,11 @@ public class AdminSurfaceTests
         // answer instead of a hundred.
         "WorkController.GetQueue",
 
+        // The review column's branches and what the board holds about each, for
+        // a runner's poll. A read, and one that says strictly less than the
+        // issues do: the verdicts already ride IssueDto.
+        "WorkController.GetReview",
+
         // The read a meter is drawn from, Hatch-scoped like the rest of the
         // module: it says how far along a subtree is, which is exactly what a
         // key holder asking "what is left under this epic" is entitled to.

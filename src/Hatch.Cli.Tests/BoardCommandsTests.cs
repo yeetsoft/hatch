@@ -319,6 +319,46 @@ public sealed class BoardCommandsTests
         Assert.StartsWith("AER-1", h.Said);
     }
 
+    /// <summary>
+    /// A conflict dispatch starts and ends in one column, so an arrow would read
+    /// <c>In Review  -> In Review</c>. It says what it is instead, and names the
+    /// trunk the board's own verdict was taken against.
+    /// </summary>
+    [Fact]
+    public async Task A_conflict_row_says_it_is_resolving_conflicts_with_the_trunk_and_draws_no_arrow()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.ConflictRow("AER-14", trunk: "develop", "a.txt"),
+            Fixtures.Row("AER-2"),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            AER-14  [task]  In Review    resolving conflicts with develop
+            AER-2   [task]  In Progress  -> In Review
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task A_folded_row_in_review_prints_the_reason_and_not_the_conflict_words()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.ConflictRow("AER-14") with { Blocked = "its branch merges cleanly with main - nothing for an agent to do" },
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.EndsWith("its branch merges cleanly with main - nothing for an agent to do", h.Said);
+        Assert.DoesNotContain("resolving", h.Said);
+    }
+
     /// <summary>A row with no next column still says something rather than nothing.</summary>
     [Fact]
     public async Task A_row_with_nowhere_to_go_prints_a_question_mark_rather_than_an_empty_arrow()

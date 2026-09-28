@@ -136,7 +136,12 @@ public sealed class BranchEntry
 }
 
 /// <summary>What the end of an increment did to one checkout, as lines for the ticket.</summary>
-public sealed record Leaving(string Path, IReadOnlyList<string> Notes);
+/// <param name="Found">
+/// What origin's branch for the issue now comes to against the trunk, when the
+/// step fetched and so knows - null when it did not, because nothing is known
+/// then and nothing is to be reported.
+/// </param>
+public sealed record Leaving(string Path, IReadOnlyList<string> Notes, Verdict? Found = null);
 
 /// <summary>
 /// The rules about branch names, kept apart from git so they can be read - and
