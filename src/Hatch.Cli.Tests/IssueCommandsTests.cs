@@ -100,7 +100,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "expedite:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "expedite:", "express:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -115,6 +115,19 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("expedite: yes - this one goes first", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_when_the_issue_is_express()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Express = true });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("express:  yes - carried past a column marked to skip, with no session", h.Said);
     }
 
     /// <summary>

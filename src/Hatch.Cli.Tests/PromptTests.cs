@@ -194,6 +194,28 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void An_express_ticket_gets_its_own_section_before_where_it_ends()
+    {
+        var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", express: true));
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket is express", prompt, StringComparison.Ordinal);
+        Assert.Contains("no session runs and nothing is spent", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("## This ticket is express", StringComparison.Ordinal)
+            < prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal));
+
+        // The last line does not change for an express ticket.
+        Assert.Contains("AER-12 should be in \"In Review\" when you stop", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_ordinary_ticket_gets_no_express_section()
+    {
+        Assert.DoesNotContain("## This ticket is express", Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_hook_and_the_prompt_say_it_in_the_same_words()
     {
         var message = Fixtures.Message(7);

@@ -202,6 +202,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("Expedited")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("Express")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ModelOverride")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
@@ -564,6 +567,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("UntilAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Where")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.HasKey("Name");
 
                     b.ToTable("Runners", "hatch");
@@ -581,6 +588,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired()
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
+
+                    b.Property<bool>("ExpressSkips")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDeferred")
                         .HasColumnType("boolean");

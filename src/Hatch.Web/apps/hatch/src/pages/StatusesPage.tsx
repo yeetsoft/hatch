@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Button, Card, Field, PageHeader, Table } from '@hatch/ui';
-import { createStatus, deleteStatus, getStatuses, getWip, patchStatus, putWip } from '../api/client';
+import { createStatus, deleteStatus, getStatuses, getWip, patchStatus, putWip, setExpressSkips } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
 import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
@@ -100,6 +100,9 @@ export function StatusesPage() {
                   Deferred
                 </th>
                 <th title="Stories and bugs across the WIP columns count towards the limit above.">WIP</th>
+                <th title="An express issue standing here is carried on to the next column with no session, as long as it has no unanswered question. The terminal column is never entered.">
+                  Express skips
+                </th>
                 <th>Order</th>
                 <th />
               </tr>
@@ -152,6 +155,18 @@ export function StatusesPage() {
                       onChange={(e) =>
                         void act(() => putWip({ statusIds: toggled(section, statuses, status.id, e.target.checked) }))
                       }
+                    />
+                  </td>
+                  {/* Its own route rather than a field on the patch: writing it
+                      is closed to an API key, because express decides which
+                      gates the loop may pass unattended - see
+                      StatusesController.PutExpressSkips. */}
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.expressSkips}
+                      aria-label={`${status.name} is skipped by express work`}
+                      onChange={(e) => void act(() => setExpressSkips(status.id, e.target.checked))}
                     />
                   </td>
                   <td>

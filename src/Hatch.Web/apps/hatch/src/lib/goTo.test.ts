@@ -18,6 +18,7 @@ const card = (key: string, over: Partial<IssueCard> = {}): IssueCard => ({
   assignee: null,
   claim: null,
   expedited: false,
+  express: false,
   ...over,
 });
 
@@ -28,6 +29,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   isTerminal: false,
   isDeferred: false,
   isWip: false,
+  expressSkips: false,
   color: '#336699',
   ...over,
 });

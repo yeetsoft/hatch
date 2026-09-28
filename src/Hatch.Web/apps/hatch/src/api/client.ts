@@ -149,6 +149,16 @@ export const getWip = () => fetchJson<WipSection>('/api/hatch/wip');
 export const putWip = (request: WipSectionRequest) =>
   fetchJson<WipSection>('/api/hatch/wip', { method: 'PUT', ...asJson(request) });
 
+/** Which columns an express issue is carried past with no session. Its own
+    route rather than a field on the patch, and for the same reason the
+    express issue flag has one: writing it is closed to an API key - see
+    StatusesController.PutExpressSkips. */
+export const setExpressSkips = (id: number, expressSkips: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/express-skips`, {
+    method: 'PUT',
+    ...asJson({ expressSkips }),
+  });
+
 // ---- Issues ----
 
 // ---- Playbooks ----
@@ -228,6 +238,19 @@ export const setExpedited = (key: string, expedited: boolean) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/expedite`, {
     method: 'PUT',
     ...asJson({ expedited }),
+  });
+
+/** Carried past a column marked *Express skips* with no session. Its own
+    route rather than a field on the patch, and for the same reason expedite
+    has one: writing it is closed to an API key, because express decides
+    which gates the loop may pass unattended - see IssueExpressController.
+
+    The state is sent rather than a toggle, for the same reason `setExpedited`
+    sends one. */
+export const setExpress = (key: string, express: boolean) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/express`, {
+    method: 'PUT',
+    ...asJson({ express }),
   });
 
 /** Take a ticket back off a runner - the operator's clobber, with no token in

@@ -31,13 +31,15 @@ public sealed record ConfigCommand(
 {
     public static readonly string[] ConfigUsage =
     [
-        "usage: hatch config [--show | --origin <origin> | --key <key> | --repo <path>...",
-        "                     | --workspace <dir>]",
+        "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
+        "                     | --repo <path>... | --workspace <dir>]",
         "",
-        "  hatch config                    asks for the origin and the key, and writes them",
+        "  hatch config                    asks for the origin, the key and the runner",
+        "                                     name, and writes them",
         "  hatch config --show             says what is set, and which layer it came from",
         "  hatch config --origin <origin>  writes the origin alone, asking nothing",
         "  hatch config --key <key>        writes the key alone, asking nothing",
+        "  hatch config --runner <name>    what the board calls this checkout, asking nothing",
         "  hatch config --repo <path>      also serve this checkout, repeatable",
         "  hatch config --repo             ...alone, clears the checkouts a loop with no",
         "                                     checkout of its own would otherwise serve",
@@ -52,6 +54,13 @@ public sealed record ConfigCommand(
         "  just minted. It leaves the origin as it was, and needs one already set.",
         "  A key on a command line stays in shell history - the prompt above does",
         "  not, so prefer it on a machine other people can read.",
+        "",
+        "  --runner sets the name this checkout calls itself on the board - a",
+        "  character from the cast list by default, chosen once and kept from then",
+        "  on. Refused, with nothing written, if it is empty, too long, not plain",
+        "  ASCII, or already the name of a live runner elsewhere. Needs a checkout:",
+        "  a runner's name is a fact about one of them, not a setting that follows",
+        "  the person.",
         "",
         "  --repo writes HATCH_REPOS: the checkouts a loop with no checkout of its own",
         "  serves, beside whatever it is standing in. Each path is checked before the",
@@ -78,6 +87,12 @@ public sealed record ConfigCommand(
     public string ConfigPath { get; init; } = Settings.UserConfigPath();
 
     /// <summary>
+    /// <see cref="RunnerNames.Record"/>'s file. Named so a test can put one
+    /// somewhere that is not the machine's own.
+    /// </summary>
+    public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
+
+    /// <summary>
     /// How the written settings are proved. Replaced by a test, which has no
     /// origin to reach.
     /// </summary>
@@ -87,6 +102,18 @@ public sealed record ConfigCommand(
             using var client = new HatchClient(settings, runnerName);
             var board = await new Board(client).BoardAsync(ct);
             return board is null ? null : Columns.Named(board.Statuses);
+        };
+
+    /// <summary>
+    /// Every runner live on the board, so a typed name already spoken for is
+    /// refused rather than silently colliding. Replaced by a test, which has no
+    /// origin to reach.
+    /// </summary>
+    public Func<Settings, CancellationToken, Task<IReadOnlyList<RunnerDto>>> LiveRunners { get; init; } =
+        async (settings, ct) =>
+        {
+            using var client = new HatchClient(settings, "hatch-config");
+            return await new Board(client).RunnersAsync(ct);
         };
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
@@ -101,6 +128,8 @@ public sealed record ConfigCommand(
         if (args is ["--origin", var given]) return await OriginAsync(given, ct);
 
         if (args is ["--key", var givenKey]) return await KeyAsync(givenKey, ct);
+
+        if (args.Length > 0 && args[0] == "--runner") return await RunnerAsync(args, ct);
 
         if (args.Length > 0 && args[0] == "--repo") return Repo(args);
 
@@ -154,7 +183,38 @@ public sealed record ConfigCommand(
         In.Prompt($"claude CLI path, for `work` [{(claudeBin.Length > 0 ? claudeBin : "on PATH")}]: ");
         if (In.Line() is { Length: > 0 } typedBin) claudeBin = typedBin;
 
+        // Only in a checkout - a runner's name is a fact about one of them, and
+        // there is nothing here to name outside of one. RunnerName is already
+        // this checkout's chosen or recorded name (or HATCH_RUNNER's override),
+        // so Enter alone changes nothing and writes nothing new.
+        string? chosenRunner = null;
+        if (Root is { Length: > 0 } root)
+        {
+            In.Prompt($"What should the board call this runner? [{RunnerName}]: ");
+            var typedRunner = In.Line();
+
+            if (typedRunner is { Length: > 0 })
+            {
+                var candidate = typedRunner.Trim();
+                if (RunnerProblem(candidate) is { } problem)
+                {
+                    Say.Complain($"hatch: {problem}");
+                    return 1;
+                }
+
+                if (await HeldElsewhereAsync(candidate, origin, key, root, ct) is { } holder)
+                {
+                    Say.Complain($"hatch: {candidate} is already the runner on {holder} - pick another name");
+                    return 1;
+                }
+
+                chosenRunner = candidate;
+            }
+        }
+
         Write(origin, key, claudeBin, repos, workspace);
+
+        if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
         // Exported, not just set: this process is about to make the call below,
         // and a `work` spawned from here should not have to find the file again.
@@ -262,6 +322,90 @@ public sealed record ConfigCommand(
         Say.Line($"wrote {ConfigPath}");
 
         return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+    }
+
+    /// <summary>
+    /// This checkout's name, taken from the command line and written without a
+    /// question being asked - the mirror of <see cref="OriginAsync"/> and
+    /// <see cref="KeyAsync"/>, except that there is nothing else to carry
+    /// forward: a runner's name is the one thing this writes.
+    /// </summary>
+    /// <remarks>
+    /// A purely local filesystem fact once it is chosen, like <see cref="Repo"/> -
+    /// but choosing it needs the board, to skip a name already live elsewhere,
+    /// so this is async where <see cref="Repo"/> is not.
+    /// </remarks>
+    private async Task<int> RunnerAsync(string[] args, CancellationToken ct)
+    {
+        if (args is not ["--runner", var name])
+            return Usage.Refuse(Say, "config --runner takes one name", ConfigUsage);
+
+        if (Root is not { Length: > 0 } root)
+        {
+            Say.Complain("hatch: --runner names this checkout - run it inside one");
+            return 1;
+        }
+
+        var candidate = name.Trim();
+        if (RunnerProblem(candidate) is { } problem)
+        {
+            Say.Complain($"hatch: {problem}");
+            return 1;
+        }
+
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var origin = fold("HATCH_BASE").Value ?? "";
+        var key = fold("HATCH_KEY").Value ?? "";
+
+        if (await HeldElsewhereAsync(candidate, origin, key, root, ct) is { } holder)
+        {
+            Say.Complain($"hatch: {candidate} is already the runner on {holder} - pick another name");
+            return 1;
+        }
+
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), candidate);
+
+        Say.Line($"wrote {RunnersPath}");
+        return 0;
+    }
+
+    /// <summary>
+    /// What is wrong with a typed name, or null. The same four bounds the
+    /// server would eventually judge a heartbeat by - checked here so a bad
+    /// name is a sentence at the prompt rather than a 409 at the next beat.
+    /// </summary>
+    private static string? RunnerProblem(string name) => name switch
+    {
+        { Length: 0 } => "a name is required",
+        _ when name.Length > ClaimRequest.MaxRunnerLength =>
+            $"a name is at most {ClaimRequest.MaxRunnerLength} characters",
+        _ when !name.All(c => c < 128) => "a name is plain ASCII",
+        _ => null,
+    };
+
+    /// <summary>
+    /// The <c>where</c> of the live runner already holding this name elsewhere,
+    /// or null - this checkout's own row does not count, and neither does a
+    /// board that cannot be reached, the same read <see cref="Checkout.RunnerAsync"/>
+    /// makes of one.
+    /// </summary>
+    private async Task<string?> HeldElsewhereAsync(string name, string origin, string key, string root, CancellationToken ct)
+    {
+        if (origin.Length == 0) return null;
+
+        try
+        {
+            var where = Checkout.Where(Checkout.Host(), root);
+            var live = await LiveRunners(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+            return live.FirstOrDefault(r =>
+                    string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(r.Where, where, StringComparison.Ordinal))
+                ?.Where;
+        }
+        catch (HatchException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -417,6 +561,19 @@ public sealed record ConfigCommand(
 
         Say.Line($"file:             {ConfigPath}{exists}");
         Say.Line($"checkout:         {CheckoutEnvFile ?? "<not in one>"}");
+
+        var runnerFold = fold("HATCH_RUNNER");
+        if (runnerFold.Value is { Length: > 0 } explicitRunner)
+            Say.Line($"runner:           {explicitRunner}  (HATCH_RUNNER, {Where(runnerFold.From)})");
+        else if (Root is { Length: > 0 } root)
+        {
+            var recorded = RunnerNames.Record.Read(RunnersPath).GetValueOrDefault(Checkout.Canonical(root));
+            Say.Line(recorded is { Length: > 0 }
+                ? $"runner:           {recorded}  ({RunnersPath})"
+                : "runner:           <none yet - chosen the next time this checkout speaks to a board>");
+        }
+        else
+            Say.Line("runner:           <not in a checkout>");
 
         foreach (var name in Settings.FileNames)
         {

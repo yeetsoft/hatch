@@ -31,7 +31,8 @@ import { DEFAULT_FILTER, assigneeFacets, filterCards, isFiltering, revealType } 
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
 import { whereOnBoard } from '../lib/goTo';
-import { columnDroppableId, place, targetStatusId } from '../lib/place';
+import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
+import type { Placement } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
@@ -213,14 +214,23 @@ export function BoardPage() {
      so choosing somebody does not empty the list you chose them from. */
   const assignees = useMemo(() => assigneeFacets(cards ?? []), [cards]);
 
-  const onDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      setDragging(null);
-      setOver(null);
+  /**
+   * One move path for a drop and a press: apply it optimistically, send it,
+   * and raise what it earns - the close offer, and the chicklet with its
+   * Undo. Shared so the peek's status picker gets everything a drag gets.
+   *
+   * `fromStatusId` is the peek's alone: sent, a stale board gets the server's
+   * 409 sentence instead of silently overwriting a move the loop made while
+   * the peek sat open. A drag does not send one - see docs/hatch.md,
+   * *Rejected*, for why that stays a drag's own gesture.
+   *
+   * Throws on a refusal rather than catching it, so the two callers can
+   * answer differently: `onDragEnd` shows it on the board, `send` reloads and
+   * lets the peek show it instead.
+   */
+  const commit = useCallback(
+    async (placed: Placement, fromStatusId?: number) => {
       if (!board) return;
-
-      const placed = place(board.issues, visible, String(event.active.id), event.over ? String(event.over.id) : null);
-      if (!placed) return;
 
       // Read off every card rather than off `visible`, and before the repaint:
       // a card the filter is hiding is still work under this issue, one folded
@@ -247,20 +257,60 @@ export function BoardPage() {
           statusId: placed.statusId,
           afterKey: placed.afterKey,
           beforeKey: placed.beforeKey,
+          fromStatusId,
         });
         await reload();
         // After the reload, so the board the chicklet sits over already shows the move.
         if (move) moved(move);
         ask(offer);
-      } catch (err) {
-        // Nothing is asked here: a move the server refused closed nothing.
-        setError(message(err));
-        await reload();
       } finally {
         setMoving((n) => n - 1);
       }
     },
-    [board, visible, setBoard, setError, reload, ask, moved],
+    [board, setBoard, reload, ask, moved],
+  );
+
+  const onDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setDragging(null);
+      setOver(null);
+      if (!board) return;
+
+      const placed = place(board.issues, visible, String(event.active.id), event.over ? String(event.over.id) : null);
+      if (!placed) return;
+
+      try {
+        await commit(placed);
+      } catch (err) {
+        // Nothing is asked here: a move the server refused closed nothing.
+        setError(message(err));
+        await reload();
+      }
+    },
+    [board, visible, commit, setError, reload],
+  );
+
+  /** The peek's status picker, sending a card to a column by a press rather
+      than a drag. `fromStatusId` is the column the board currently holds the
+      card in, so a peek left open on a board the loop has since moved the
+      card on gets the server's refusal rather than overwriting it. */
+  const send = useCallback(
+    async (key: string, statusId: number) => {
+      if (!board) return;
+      const placed = sendTo(board.issues, key, statusId);
+      if (!placed) return;
+
+      const was = board.issues.find((i) => i.key === key)?.statusId;
+      try {
+        await commit(placed, was);
+      } catch (err) {
+        // Reloaded rather than shown here: this line is hidden behind the
+        // peek, and the rethrow is what lets the dialog show it instead.
+        await reload();
+        throw err;
+      }
+    },
+    [board, commit, reload],
   );
 
   // Undo on the board's own account: this listener is mounted only while the
@@ -440,8 +490,10 @@ export function BoardPage() {
       <IssuePeek
         card={peeked}
         status={peeked ? board.statuses.find((s) => s.id === peeked.statusId) : undefined}
+        statuses={board.statuses}
         directory={directory}
         onExpedited={() => void reload()}
+        onMove={send}
         onClose={closePeek}
       />
 

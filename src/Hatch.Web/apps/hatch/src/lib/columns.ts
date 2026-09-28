@@ -38,3 +38,29 @@ export const boardColumns = (statuses: Status[]): Status[] => statuses.filter((s
  */
 export const isSettled = (status: Status | undefined): boolean =>
   status ? status.isTerminal || status.isDeferred : false;
+
+/** The board's columns, and the shelf beside them - the two-part list every
+    status bar and status picker draws: the lanes in board order, then the
+    deferred columns set apart. */
+export function statusChoices(statuses: Status[]): { lanes: Status[]; shelf: Status[] } {
+  return { lanes: boardColumns(statuses), shelf: statuses.filter((s) => s.isDeferred) };
+}
+
+/**
+ * Where the keyboard lands when a picker opens on this column: one lane
+ * along the board, in the direction that makes Enter, Enter walk it forward.
+ *
+ * From the last lane there is nowhere further on, so it lands one lane back
+ * instead - and from a lane that is not on the board at all (deferred, or a
+ * column the picker's caller no longer recognises), it lands on the first
+ * lane, since there is no "next" to reason from. Null only when the board has
+ * no other lane to offer - a single-column board, or one with none at all.
+ */
+export function landingFocus(statuses: Status[], statusId: number): number | null {
+  const { lanes } = statusChoices(statuses);
+  const at = lanes.findIndex((s) => s.id === statusId);
+
+  if (at < 0) return lanes[0]?.id ?? null;
+  if (at < lanes.length - 1) return lanes[at + 1].id;
+  return lanes[at - 1]?.id ?? null;
+}

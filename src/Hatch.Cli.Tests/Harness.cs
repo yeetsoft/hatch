@@ -368,6 +368,7 @@ public sealed class Harness : IDisposable
             Say: Say,
             Root: Root,
             RunnerName: "test:/checkout",
+            Where: "test:/checkout",
             TempDirectory: Temp,
             Checkouts: [new CheckoutEntry(Root, "https://example.test/repo.git", Standing: true)],
             Heartbeat: heartbeat ?? Beat)
@@ -377,6 +378,10 @@ public sealed class Harness : IDisposable
             Self = () => Self,
             NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire)),
             MakeClone = Clone.Factory,
+            // A temp file rather than the real Settings.UserConfigPath() -
+            // otherwise every test that takes --repo would read and write the
+            // machine actually running the suite.
+            RunnersPath = Path.Combine(Temp, "runners"),
         };
     }
 

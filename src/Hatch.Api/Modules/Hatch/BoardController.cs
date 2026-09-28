@@ -26,7 +26,8 @@ public class BoardController(
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
-            .Select(s => new StatusDto(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color))
+            .Select(s => new StatusDto(
+                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips))
             .ToListAsync(ct);
 
         // Ordered by (StatusId, Expedited desc, Rank, Id) so the client can
@@ -69,6 +70,7 @@ public class BoardController(
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
                 i.Expedited,
+                i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -101,7 +103,8 @@ public class BoardController(
             waiting.GetValueOrDefault(i.Id),
             assignees[i.Id],
             claims.Project(i.Claim, now),
-            i.Expedited)).ToList();
+            i.Expedited,
+            i.Express)).ToList();
 
         return new BoardDto(statuses, cards);
     }

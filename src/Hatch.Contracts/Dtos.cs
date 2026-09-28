@@ -65,7 +65,9 @@ public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 /// whatever it was flagged, and it is <c>WipSectionDto.StatusIds</c> that
 /// answers the counted question. See <see cref="EfHatchStatus.IsWip"/>.
 /// </param>
-public record StatusDto(int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color);
+public record StatusDto(
+    int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
+    bool ExpressSkips = false);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
@@ -120,6 +122,14 @@ public record WipSectionDto(int? Limit, IReadOnlyList<string> Types, IReadOnlyLi
 /// A deferred or terminal column named here is refused with a sentence.
 /// </param>
 public record WipSectionRequest(string? Limit = null, IReadOnlyList<int>? StatusIds = null);
+
+/// <summary>
+/// Whether an express issue standing in this column is carried on to the next
+/// one with no session. One required boolean, for the reason
+/// <see cref="ExpressRequest"/> is: the same route both ticks and unticks it,
+/// and the caller says which it meant.
+/// </summary>
+public record ExpressSkipsRequest(bool ExpressSkips);
 
 // ---- Issues ----
 
@@ -189,7 +199,8 @@ public record IssueCardDto(
     int OpenQuestions = 0,
     AssigneeDto? Assignee = null,
     IssueClaimDto? Claim = null,
-    bool Expedited = false);
+    bool Expedited = false,
+    bool Express = false);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -299,7 +310,8 @@ public record IssueDto(
     IssueClaimDto? Claim = null,
     bool Expedited = false,
     IReadOnlyList<MergeCheckDto>? MergeChecks = null,
-    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null,
+    bool Express = false);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -782,6 +794,14 @@ public record AssigneeRequest(string? Kind, Guid? Id);
 public record ExpediteRequest(bool Expedited);
 
 /// <summary>
+/// Whether this issue is carried past a column marked <em>Express skips</em>
+/// with no session, as long as it has no unanswered question. One required
+/// boolean, for the same reason as <see cref="ExpediteRequest"/>: the same
+/// route both marks and unmarks, and the caller says which it meant.
+/// </summary>
+public record ExpressRequest(bool Express);
+
+/// <summary>
 /// The picker's rows and the answer to "who am I", in one read.
 /// </summary>
 /// <remarks>
@@ -851,6 +871,14 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// dispatches whose two ends are the same column, and which of them it is comes
 /// from what the board holds about the branch.
 /// </param>
+/// <param name="Hop">
+/// True where this issue is express, stands in a column marked
+/// <see cref="StatusDto.ExpressSkips"/>, and has no unanswered question - so
+/// the caller should carry it across itself, with
+/// <c>POST /api/hatch/work/{key}/hop</c>, and spawn nothing.
+/// <paramref name="Playbook"/> is always null on a hop, even where one covers
+/// the move, so no client can spawn a session for it by accident.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -862,7 +890,8 @@ public record WorkDto(
     string? Blocked,
     string? IssueUrl,
     string Kind = WorkKinds.Advance,
-    IReadOnlyList<CommentDto>? Messages = null);
+    IReadOnlyList<CommentDto>? Messages = null,
+    bool Hop = false);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only
@@ -921,12 +950,14 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// the same arguments, because it is the same walk.
 /// </param>
 /// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
+/// <param name="Hop">As on <see cref="WorkDto"/>.</param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
     string? Blocked,
-    string Kind = WorkKinds.Advance);
+    string Kind = WorkKinds.Advance,
+    bool Hop = false);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what
@@ -1505,6 +1536,11 @@ public static class RunnerStates
 /// on every beat rather than seeded once.
 /// </param>
 /// <param name="Clones">Whether this runner makes a clone for itself when it lacks one.</param>
+/// <param name="Where">
+/// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
+/// about the process, drawn under its name rather than as the name, now that
+/// <see cref="Name"/> is a character and not a path.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -1520,7 +1556,8 @@ public record RunnerDto(
     DateTimeOffset? UntilAt,
     int GoneAfterSeconds,
     string[] Repositories,
-    bool? Clones);
+    bool? Clones,
+    string? Where);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -1543,6 +1580,11 @@ public record RunnerDto(
 /// <see cref="ClaimRequest.MaxChatterLength"/> is truncated rather than
 /// refused.
 /// </param>
+/// <param name="Where">
+/// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
+/// about the process, written on every beat like <see cref="Remotes"/>. Absent
+/// from an older client, which is never refused on that account alone.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -1551,7 +1593,8 @@ public record RunnerHeartbeatRequest(
     decimal? MaxSpend = null,
     DateTimeOffset? UntilAt = null,
     IReadOnlyList<string>? Remotes = null,
-    bool? Clones = null);
+    bool? Clones = null,
+    string? Where = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat
