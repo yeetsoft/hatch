@@ -34,6 +34,28 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Every issue in the review column that this runner holds a checkout for,
+    /// and what the board holds about each one's branch - what the poll reads
+    /// before it asks git anything. Declares the checkouts the way the queue
+    /// does, and no more: a poll clones nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<ReviewCheckDto>> ReviewAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, CancellationToken ct)
+    {
+        var parts = DeclareParts(checkouts);
+        var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
+        return await Client.GetAsync<List<ReviewCheckDto>>($"/api/hatch/work/review{query}", ct) ?? [];
+    }
+
+    /// <summary>
+    /// A verdict on one issue's branch in one repository - see
+    /// <see cref="MergeCheckRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<MergeCheckDto?> MergeCheckAsync(string key, MergeCheckRequest request, CancellationToken ct) =>
+        Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/merge-check", request, ct);
+
+    /// <summary>
     /// The dispatch for one named issue.
     /// </summary>
     /// <param name="heldToken">

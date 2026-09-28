@@ -26,6 +26,19 @@ public sealed class IncrementReport
     /// <summary>The board says it ended where it started: an increment that did nothing.</summary>
     public bool Stalled { get; set; }
 
+    /// <summary>
+    /// A conflict increment, and origin's branch merges with the trunk now. Not a
+    /// stall, and not a move either: the ticket stays in review and that is the
+    /// right place for it.
+    /// </summary>
+    public bool Resolved { get; set; }
+
+    /// <summary>The trunk a conflict increment was about, for the words it is reported in.</summary>
+    public string? ConflictTrunk { get; set; }
+
+    /// <summary>The files a conflict increment left conflicting, when it did.</summary>
+    public IReadOnlyList<string> StillConflicting { get; set; } = [];
+
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
 
@@ -51,10 +64,27 @@ public sealed class IncrementReport
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
         Moved ? $"{From} -> {Ended}"
+        : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
+        : Stalled && StillConflicting.Count > 0
+            ? $"still conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled ? $"still in \"{Ended}\"{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Flag is { Length: > 0 } flag ? flag
         : "where it ended up is not known";
 }
+
+/// <summary>
+/// What a conflict increment needs that <see cref="Increment"/> has no git to
+/// find out: what the recheck just found, for the prompt, and the question asked
+/// again after the session, for the verdict.
+/// </summary>
+/// <remarks>
+/// A delegate rather than a workspace, so that <see cref="Increment"/> stays
+/// without git and a test scripts the answer without a fake tree. Both callers
+/// build it from their <see cref="Lifecycle"/>.
+/// </remarks>
+/// <param name="Found">The recheck that decided a session was worth spending - the prompt's facts.</param>
+/// <param name="Judge">Fetches and checks every checkout again, and reports what it finds to the board.</param>
+public sealed record ConflictRun(Rechecked Found, Func<CancellationToken, Task<Rechecked>> Judge);
 
 /// <summary>
 /// One increment: the header, the session, and what became of the ticket.
@@ -82,18 +112,22 @@ public sealed class Increment(
         Claim claim, CancellationToken ct,
         IReadOnlyList<string>? addDirs = null,
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
-        IReadOnlyList<BranchEntry>? branches = null)
+        IReadOnlyList<BranchEntry>? branches = null,
+        ConflictRun? conflict = null)
     {
         var report = new IncrementReport
         {
             Key = work.Issue.Key,
             From = work.FromStatus.Name,
             To = work.ToStatus?.Name ?? "?",
+            ConflictTrunk = conflict is null ? null : conflict.Found.Trunk ?? Conflicts.Trunk(work.Issue),
         };
         report.Ended = report.From;
 
         say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
-        say.Line($"hatch: {model}, effort {effort}, {report.From} -> {report.To}");
+        say.Line(conflict is null
+            ? $"hatch: {model}, effort {effort}, {report.From} -> {report.To}"
+            : $"hatch: {model}, effort {effort}, {report.From}, resolving conflicts with {report.ConflictTrunk}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) say.Line($"hatch:   {chose}");
         say.Line("");
 
@@ -111,7 +145,7 @@ public sealed class Increment(
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
         claim.OnLost = _ => stopping.Cancel();
 
-        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches);
+        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found);
         report.ExitCode = result.ExitCode;
         report.SessionId = facts.SessionId;
         report.Cost = facts.CostUsd;
@@ -140,8 +174,12 @@ public sealed class Increment(
         {
             var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
             report.Ended = later?.FromStatus.Name ?? report.From;
-            if (report.Ended == report.From) report.Stalled = true;
-            else report.Moved = true;
+
+            // A conflict increment is judged by the branch, below, and not by the
+            // column: it starts and ends in review, so "did not move" is what
+            // success looks like. The column is still read and still reported.
+            if (report.Ended != report.From) report.Moved = true;
+            else if (conflict is null) report.Stalled = true;
         }
         catch (HatchException e)
         {
@@ -151,6 +189,12 @@ public sealed class Increment(
             say.Complain(e.Message);
             report.Flag ??= "where it ended up is not known - the board did not answer";
         }
+
+        // The verdict on a conflict increment: the branch on origin, fetched now,
+        // asked of git again. Never when the lease was lost - the ticket is
+        // somebody else's by then, and what the board is told about its branch is
+        // theirs to say.
+        if (conflict is not null && claim.Lost is null) await JudgeAsync(report, conflict, ct);
 
         // Whatever the session asked for on its way out. This is the half of the
         // loop that makes asking worth doing: an unattended run's questions are
@@ -190,13 +234,63 @@ public sealed class Increment(
         return report;
     }
 
+    // ---- The verdict ----
+
+    /// <summary>
+    /// What became of a conflict, asked of git and not of the column.
+    /// </summary>
+    /// <remarks>
+    /// Three answers, and only one of them is a stall. Nothing conflicts any
+    /// more: resolved, and reported as such. Something still does: a stall,
+    /// flagged like any other, with the files named - a conflict nobody can
+    /// resolve costs one increment and not a night. And a check that could not be
+    /// made is neither: not knowing is not the same as knowing it went nowhere,
+    /// which is the rule the column read above follows too.
+    /// </remarks>
+    private async Task JudgeAsync(IncrementReport report, ConflictRun conflict, CancellationToken ct)
+    {
+        Rechecked judged;
+        try
+        {
+            judged = await conflict.Judge(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            say.Complain($"hatch: {report.Key} - could not check whether its branch still conflicts - {e.Message}");
+            report.Flag ??= "whether the branch still conflicts is not known - the check failed";
+            return;
+        }
+
+        report.ConflictTrunk = judged.Trunk ?? report.ConflictTrunk;
+
+        if (judged.Conflicts.Count > 0)
+        {
+            report.Stalled = true;
+            report.StillConflicting = judged.Files;
+            say.Line("");
+            say.Line($"hatch: {report.Key} still conflicts with {report.ConflictTrunk} in {judged.Files.Count} file(s): {string.Join(", ", judged.Files)}");
+            return;
+        }
+
+        if (judged.Unknown)
+        {
+            say.Complain($"hatch: {report.Key} - whether its branch still conflicts with {report.ConflictTrunk} could not be checked");
+            report.Flag ??= "whether the branch still conflicts is not known - the check could not be made";
+            return;
+        }
+
+        report.Resolved = true;
+        say.Line("");
+        say.Line($"hatch: {report.Key} conflicts with {report.ConflictTrunk} resolved");
+    }
+
     // ---- The session ----
 
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         RunFacts facts, Claim claim, CancellationToken ct,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        IReadOnlyList<BranchEntry>? branches)
+        IReadOnlyList<BranchEntry>? branches, Rechecked? conflict)
     {
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
@@ -205,7 +299,7 @@ public sealed class Increment(
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
         var request = new SessionRequest(
-            root, model, effort, Prompt.Compose(work, repositories, branches), quiet, addDirs, hooks?.Settings);
+            root, model, effort, Prompt.Compose(work, repositories, branches, conflict), quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
 
         await MarkSaidAsync(work, ct);
@@ -363,12 +457,19 @@ public sealed class Increment(
             return;
         }
 
-        var body =
-            $"""
-             An unattended increment ran here and left this issue where it found it:
-             still in "{report.From}", under a playbook moving {report.From} -> {report.To}. The
-             board is the report that counts, and it says nothing happened.
-             """;
+        var body = report.StillConflicting.Count > 0
+            ? $"""
+              An unattended increment ran here to resolve this branch's conflicts with
+              {report.ConflictTrunk}, and the branch on origin still conflicts with it. The
+              files that still conflict:
+
+              {string.Join('\n', report.StillConflicting.Select(f => $"- {f}"))}
+              """
+            : $"""
+              An unattended increment ran here and left this issue where it found it:
+              still in "{report.From}", under a playbook moving {report.From} -> {report.To}. The
+              board is the report that counts, and it says nothing happened.
+              """;
 
         body += report.SessionId is { Length: > 0 } session
             ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"

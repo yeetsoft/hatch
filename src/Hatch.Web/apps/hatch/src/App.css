@@ -1086,6 +1086,40 @@ input.hatch-inline-title-input {
   font-family: var(--mono);
 }
 
+/* The frame of the Monaco editor (components/MarkdownEditor.tsx), which draws
+   its own text and so is dressed here from the outside: the border, radius,
+   ground, hover and focus ring are `base.css`'s textarea rules restated for a
+   div, because a div matches none of them. `--r-ctl`, not `--r-in`: that is the
+   radius every input, select and textarea has; `--r-in` is for blocks nested in
+   a card. Font and line height are declared here because the component reads
+   them back off the host with getComputedStyle and hands them to Monaco - CSS
+   is the one source for them.
+
+   The height is inline, written by the component from what is in the editor,
+   and the ceiling is whatever `max-height` the site's class (`.hatch-grows`,
+   `.hatch-peek-box`) puts on this same element. */
+.hatch-md-editor {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.hatch-md-editor:hover:not(:focus-within) {
+  border-color: var(--line-strong);
+}
+
+.hatch-md-editor:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
 /* A box that grows with what is typed. The height is set by lib/useAutoGrow.ts,
    which measures the floor - the height the box opens at, whatever `rows` and
    the webfont make that - and leaves the ceiling here.
@@ -1452,8 +1486,19 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
-.hatch-comment-box textarea {
-  width: 100%;
+/* The answer to an open question: one line, the input across the card and the
+   button beside it - not a box with the button under it, which is what the
+   Comments box above is. */
+.hatch-answer-box {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.hatch-answer-box input {
+  flex: 1;
+  min-width: 0;
 }
 
 .hatch-events summary {
@@ -1908,20 +1953,14 @@ input.hatch-inline-title-input {
   white-space: nowrap;
 }
 
-/* The prompt, unfolded under its row. Full width and a monospace box, because
-   what is being edited is an instruction whose line breaks are load-bearing -
-   the agent reads it as written. */
+/* The prompt, unfolded under its row. The editor is full width and monospace on
+   its own (`.hatch-md-editor`): what is being edited is an instruction whose
+   line breaks are load-bearing - the agent reads it as written. */
 .hatch-playbook-prompt {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
-}
-
-.hatch-playbook-prompt textarea {
-  width: 100%;
-  font-family: var(--mono);
-  line-height: 1.5;
 }
 
 /* ---- Questions ----

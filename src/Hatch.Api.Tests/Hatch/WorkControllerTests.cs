@@ -584,16 +584,65 @@ public class WorkControllerTests
 
     // ---- Refusals ----
 
+    /// <summary>
+    /// Nothing is ever dispatched into a terminal column. An issue in review is
+    /// dispatched to review itself - there is something to do there, and only
+    /// the operator moves it on - so the sentence saying so is unreachable from
+    /// that column and stays for any other whose next column is terminal.
+    /// </summary>
     [Fact]
-    public async Task Work_RefusesToEnterATerminalColumn()
+    public async Task Work_NeverEntersATerminalColumn_AnIssueInReviewIsDispatchedToReview()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync("task", "ready for a verdict", h.Review);
 
         var work = Value(await h.Work.GetWork(Key(issue), null, default));
 
-        Assert.Equal("done", work.ToStatus!.Name);
-        Assert.Contains("only the operator", work.Blocked);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.Equal(work.FromStatus.Id, work.ToStatus.Id);
+        Assert.Equal(WorkKinds.Conflicts, work.Kind);
+        Assert.DoesNotContain("only the operator", work.Blocked);
+    }
+
+    [Fact]
+    public async Task Work_StillRefusesTheTerminalNextColumnForAnyOtherColumn()
+    {
+        // Two terminal columns, so the column before the second one is not the
+        // review column and its next column is terminal - which is the sentence
+        // the rest of the board keeps.
+        var h = await NewAsync();
+        var shipped = new EfHatchStatus { Name = "shipped", SortOrder = 50, IsTerminal = true };
+        var between = new EfHatchStatus { Name = "between", SortOrder = 45 };
+        h.Db.AddRange(shipped, between);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "waiting", between.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("shipped", work.ToStatus!.Name);
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("the next column is \"shipped\", and only the operator moves work there", work.Blocked);
+    }
+
+    /// <summary>
+    /// On a board with no terminal column the review column is the rightmost
+    /// one and is where work ends: it is not dispatched to itself, and there is
+    /// still nowhere for it to go.
+    /// </summary>
+    [Fact]
+    public async Task Work_DoesNotDispatchReviewToItselfWhenNoTerminalColumnStandsAfterIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "at the end of the board", h.Review);
+        h.Db.Statuses.Remove(await h.Db.Statuses.SingleAsync(s => s.Id == h.Done));
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Null(work.ToStatus);
+        Assert.Contains("nowhere for this to go", work.Blocked);
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.DoesNotContain(Key(issue), Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
     }
 
     [Fact]
@@ -961,16 +1010,20 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_LeavesOutTheColumnsWithNowhereToGo()
+    public async Task Queue_LeavesOutTheColumnsWithNowhereToGo_AndListsReview()
     {
         var h = await NewAsync();
         await h.FileAsync("story", "shipped", h.Done);
         var live = await h.FileAsync("story", "still going", h.Todo);
+        var up = await h.FileAsync("story", "up for review", h.Review);
 
         // Done is terminal, so the dispatcher never reaches it. An issue it
         // never reaches is not one the pass skipped, and shipped work is not a
-        // backlog.
-        Assert.Equal([Key(live)], Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+        // backlog. Review has somewhere to go - itself - so its issues are
+        // listed, each either a conflict to fix or a row saying why not.
+        Assert.Equal(
+            [Key(up), Key(live)],
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
     }
 
     /// <summary>
@@ -1173,26 +1226,32 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_NamesTheNextColumnBeingTerminal()
+    public async Task Queue_NamesTheNextColumnBeingTerminalForAColumnThatIsNotReview()
     {
         var h = await NewAsync();
-        await h.FileAsync("story", "awaiting the operator", h.Review);
+        h.Db.AddRange(
+            new EfHatchStatus { Name = "between", SortOrder = 45 },
+            new EfHatchStatus { Name = "shipped", SortOrder = 50, IsTerminal = true });
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "awaiting the operator", (await h.Db.Statuses.SingleAsync(s => s.Name == "between")).Id);
 
         Assert.Equal(
-            "the next column is \"done\", and only the operator moves work there",
+            "the next column is \"shipped\", and only the operator moves work there",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
     [Fact]
-    public async Task Queue_SaysTheBoardIsTheReasonBeforeItSaysThePlaybookIsMissing()
+    public async Task Queue_SaysTheVerdictBeforeItSaysThePlaybookIsMissing()
     {
         var h = await NewAsync();
-        await h.FileAsync("epic", "an epic the operator must judge", h.Review);
+        await h.FileAsync("epic", "an epic in review", h.Review);
 
-        // Both are true. The one that no edit can change is the one worth
-        // printing: writing a review-to-done playbook would not make this
-        // issue an agent's to move.
-        Assert.Contains("only the operator moves work there", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        // Both are true. A branch nobody has checked is the one worth
+        // printing: writing a conflict playbook would not make this issue an
+        // agent's to work until a runner has looked.
+        Assert.Equal(
+            "no runner has checked its branch against the trunk yet",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
     [Fact]
@@ -1221,6 +1280,442 @@ public class WorkControllerTests
             Assert.Equal(
                 board.Issues.Where(c => c.StatusId == column).Select(c => c.Key),
                 queue.Where(e => e.FromStatus.Id == column).Select(e => e.Issue.Key));
+    }
+
+    // ---- An issue in review ----
+
+    [Fact]
+    public async Task Review_AConflictedBranchIsClear_AndTheDispatchSaysConflicts()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "stopped merging", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+        Assert.Equal(entry.FromStatus.Id, entry.ToStatus!.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Null(work.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, work.Kind);
+        Assert.NotNull(work.Playbook);
+        Assert.Equal(MergeVerdicts.Conflicted, Assert.Single(work.Issue.MergeChecks!).Verdict);
+    }
+
+    [Fact]
+    public async Task Review_NoVerdictAtAllIsFoldedAsUnchecked()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.FileAsync("story", "nobody has looked", h.Review);
+
+        Assert.Equal(
+            "no runner has checked its branch against the trunk yet",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_TheUncheckedSentenceNamesTheBoundTrunk()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r", baseBranch: "develop");
+        await h.FileAsync("story", "nobody has looked", h.Review);
+
+        Assert.Equal(
+            "no runner has checked its branch against develop yet",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchIsFoldedAndNamesItsTrunk()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "still merges", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, trunk: "develop");
+
+        Assert.Equal(
+            "its branch merges cleanly with develop - nothing for an agent to do",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_NoBranchIsFolded()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "merged already", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.None);
+
+        Assert.Equal("no branch on origin is named for it", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_MoreThanOneBranchIsFolded_AndSaysWhatToDo()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "two candidates", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Ambiguous);
+
+        Assert.Equal(
+            "more than one branch on origin is named for it - delete the ones that are not its branch",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AMissingConflictPlaybookIsTheLastFold()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "stopped merging", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Equal(
+            "no playbook covers \"review\" to \"review\" for a story - add one on the Playbooks page",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AConflictPlaybookNarrowedToOtherTypesLeavesTheIssueFolded()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync(types: "bug");
+        var issue = await h.FileAsync("story", "stopped merging", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Contains("no playbook covers", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AnUnansweredQuestionOutranksTheConflict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "stopped merging, and asked", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        await h.AskAsync(issue, "which side should win?");
+
+        Assert.Contains("unanswered question", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AnotherRunnersClaimOutranksTheConflict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "being fixed", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        await h.ClaimAsync(issue);
+
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.DoesNotContain("checked", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AReadyDateInTheFutureOutranksTheConflict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var later = await h.FileAsync("story", "not yet", h.Review, readyAt: Now.AddDays(3));
+        await h.VerdictAsync(later, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Contains("not workable until", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_TheRepositoryFoldAppliesToAConflict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "stopped merging", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Only(await h.Work.GetQueue(0, null, remote: ["https://example.com/other.git"], standing: false, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_ADeclaredCheckoutOfTheRepositoryClearsTheFold()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "stopped merging", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], ct: default)).Blocked);
+    }
+
+    /// <summary>
+    /// Dependencies gate the move into the implementation column and nothing
+    /// else: a pull request that already exists is not held back by what its
+    /// ticket once waited on.
+    /// </summary>
+    [Fact]
+    public async Task Review_AnUnmetDependencyDoesNotHoldBackAConflict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var blocker = await h.FileAsync("story", "phase one", h.InProgress);
+        var issue = await h.FileAsync("story", "phase two, stopped merging", h.Review);
+        await h.DependsAsync(issue, blocker);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AVerdictForARepositoryTheProjectNoLongerBindsIsIgnored()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.BindRepositoryAsync("https://example.com/kept");
+        var issue = await h.FileAsync("story", "conflicts in a repository let go", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, remote: "https://example.com/let-go", files: ["a.txt"]);
+
+        // A verdict about something the project no longer binds is a fact about
+        // nothing anybody is asking about: as far as the board can tell, nobody
+        // has checked the repository it does bind.
+        Assert.Equal(
+            "no runner has checked its branch against the trunk yet",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AnIssueConflictsIfAnyOneOfItsRepositoriesDoes()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.BindRepositoryAsync("https://example.com/one");
+        await h.BindRepositoryAsync("https://example.com/two");
+        var issue = await h.FileAsync("story", "clean in one, conflicted in the other", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, remote: "https://example.com/one");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, remote: "https://example.com/two", files: ["a.txt"]);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AnUnboundProjectCountsEveryVerdict()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "no repositories bound", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, remote: "git@example.com:any/thing.git", files: ["a.txt"]);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_TheFirstClearConflictIsWhatNextReturns()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var clean = await h.FileAsync("story", "clean, and first in the column", h.Review, rank: 1024);
+        var conflicted = await h.FileAsync("story", "conflicted", h.Review, rank: 2048);
+        await h.VerdictAsync(clean, MergeVerdicts.Clean);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default));
+
+        Assert.Equal(Key(conflicted), next.Issue.Key);
+        Assert.Equal(WorkKinds.Conflicts, next.Kind);
+    }
+
+    [Fact]
+    public async Task Review_IsWalkedBeforeTheColumnsToItsLeft()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        await h.FileAsync("story", "ready to start", h.Todo);
+        var conflicted = await h.FileAsync("story", "conflicted", h.Review);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        // Rightmost first: whatever is furthest along is pushed over the line
+        // before anything new is opened.
+        Assert.Equal(Key(conflicted), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Kind_IsAdvanceForEveryOrdinaryMove_OnBothEndpoints()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ordinary", h.Todo);
+
+        Assert.Equal(WorkKinds.Advance, Only(await h.Work.GetQueue(0, null, default)).Kind);
+        Assert.Equal(WorkKinds.Advance, Value(await h.Work.GetWork(Key(issue), null, default)).Kind);
+        Assert.Equal(WorkKinds.Advance, Value(await h.Work.GetNextWork(0, null, null, default)).Kind);
+    }
+
+    // ---- The review read ----
+
+    [Fact]
+    public async Task ReviewRead_ListsTheIssuesInReview_WithTheirVerdictsAndRepositories()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+        await h.FileAsync("story", "still being written", h.InProgress);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
+
+        var row = Assert.Single(rows);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("git@example.com:o/r.git", Assert.Single(row.Repositories).MatchedRemote);
+        Assert.Equal(MergeVerdicts.Conflicted, Assert.Single(row.MergeChecks).Verdict);
+    }
+
+    /// <summary>
+    /// A verdict is a fact about a branch and not work: a claim, a question, a
+    /// ready date and a person's name all keep an issue out of the queue and
+    /// none of them keeps its branch from having a verdict.
+    /// </summary>
+    [Fact]
+    public async Task ReviewRead_IsNotNarrowedByAClaimAQuestionADateOrAnAssignee()
+    {
+        var h = await NewAsync();
+        var claimed = await h.FileAsync("story", "being worked", h.Review);
+        var asked = await h.FileAsync("story", "asked", h.Review);
+        var later = await h.FileAsync("story", "not yet", h.Review, readyAt: Now.AddDays(3));
+        var assigned = await h.FileAsync("story", "somebody's", h.Review);
+        await h.ClaimAsync(claimed);
+        await h.AskAsync(asked, "which side?");
+        await h.AssignAsync(assigned, personId: Guid.NewGuid());
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal(
+            [Key(claimed), Key(asked), Key(later), Key(assigned)],
+            rows.Select(r => r.Key).Order());
+    }
+
+    [Fact]
+    public async Task ReviewRead_LeavesOutWhatTheCallerHoldsNoCheckoutFor()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "bound elsewhere", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], true, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_GivesAnUnboundProjectToACallerWithAStandingCheckoutOnly()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "no repositories bound", h.Review);
+
+        Assert.Equal(Key(issue), Assert.Single(Value(await h.Work.GetReview(null, true, default))).Key);
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], false, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_AnswersNothingToACallerThatDeclaresNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "in review", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(null, null, default)));
+    }
+
+    /// <summary>
+    /// Not the clone allowance: a poll clones nothing, so a repository this
+    /// runner has never cloned is not one it can check.
+    /// </summary>
+    [Fact]
+    public async Task ReviewRead_TakesNoAccountOfARunnerThatWouldClone()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "bound elsewhere", h.Review);
+
+        // `clones` is not a parameter here at all - the declaration is the
+        // remotes and the standing checkout, and nothing else.
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], false, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_KeepsTheColumnsOwnOrderAndLeavesOutOtherColumns()
+    {
+        var h = await NewAsync();
+        var second = await h.FileAsync("story", "below", h.Review, rank: 2048);
+        var first = await h.FileAsync("story", "top", h.Review, rank: 1024);
+        await h.FileAsync("story", "shipped", h.Done);
+
+        Assert.Equal(
+            [Key(first), Key(second)],
+            Value(await h.Work.GetReview(null, true, default)).Select(r => r.Key));
+    }
+
+    // ---- The conflict playbook ----
+
+    [Fact]
+    public async Task Playbooks_AcceptTheReviewColumnNamingItself()
+    {
+        var h = await NewAsync();
+
+        var created = Assert.IsType<CreatedAtActionResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(h.Review, h.Review, [], "resolve it", "sonnet", "high"), default)).Result);
+
+        var dto = Assert.IsType<PlaybookDto>(created.Value);
+        Assert.Equal(dto.FromStatusId, dto.ToStatusId);
+    }
+
+    [Fact]
+    public async Task Playbooks_StillRefuseAnyOtherColumnNamingItself_AndSayWhichMay()
+    {
+        var h = await NewAsync();
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(h.Todo, h.Todo, [], "loop", "sonnet", "high"), default)).Result);
+
+        Assert.Equal(
+            "a playbook moves an issue between two columns - only the review column, \"review\", may name itself, and that row is the conflict playbook",
+            refused.Value);
+    }
+
+    [Fact]
+    public async Task Playbooks_RefuseAColumnThatDoesNotExistNamingItself()
+    {
+        var h = await NewAsync();
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(9999, 9999, [], "loop", "sonnet", "high"), default)).Result);
+
+        Assert.Equal("there is no column 9999", refused.Value);
+    }
+
+    [Fact]
+    public async Task Playbooks_TheReviewColumnIsMeasuredAfterARename()
+    {
+        var h = await NewAsync();
+        (await h.Db.Statuses.SingleAsync(s => s.Id == h.Review)).Name = "Waiting on Nathan";
+        await h.Db.SaveChangesAsync();
+
+        Assert.IsType<CreatedAtActionResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(h.Review, h.Review, [], "resolve it", "sonnet", "high"), default)).Result);
+    }
+
+    [Fact]
+    public async Task Playbooks_APatchCannotPointAnOrdinaryRowAtItsOwnColumn()
+    {
+        var h = await NewAsync();
+        var row = await h.Db.Playbooks.FirstAsync(p => p.FromStatusId == h.Todo);
+
+        var refused = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, h.Todo, null, null, null, null), default);
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
     }
 
     // ---- The claim ----
@@ -1617,6 +2112,45 @@ public class WorkControllerTests
                 Kind = EfHatchComment.Answer,
                 AnswersId = question.Id,
                 CreatedAt = Now,
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The conflict playbook: the review column to itself, for every type -
+        /// what the migration seeds, and what an operator deleting the row turns off.
+        /// </summary>
+        public async Task ConflictPlaybookAsync(string types = "")
+        {
+            Db.Playbooks.Add(Playbook(Review, Review, types, "sonnet"));
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A runner's verdict, written straight to the table - what the route
+        /// that takes them accepts and refuses is <see cref="MergeCheckControllerTests"/>'
+        /// business, and these tests are about what the dispatcher does with one.
+        /// </summary>
+        public async Task VerdictAsync(
+            EfHatchIssue issue, string verdict, string remote = "https://example.com/o/r", string trunk = "main",
+            params string[] files)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.MergeChecks.Add(new EfHatchMergeCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = trunk,
+                TrunkSha = new string('a', 40),
+                Verdict = verdict,
+                Branch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-thing" : null,
+                BranchSha = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
+                Files = files.Length == 0 ? null : string.Join('\n', files),
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
             });
 
             await Db.SaveChangesAsync();

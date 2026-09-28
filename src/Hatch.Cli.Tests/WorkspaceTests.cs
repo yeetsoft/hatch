@@ -42,7 +42,7 @@ public abstract class RepoFixture : IDisposable
         G(_work, "push", "--quiet", "origin", "main");
     }
 
-    protected Workspace Ws() => new(_work, "main", _said.Add, _complained.Add);
+    protected Workspace Ws() => new(_work, "main", _said.Add, _complained.Add, Run);
 
     /// <summary>A branch on origin, made from the trunk by somebody else.</summary>
     protected void Publish(string branch, string file, string content, bool reset = true)
@@ -106,7 +106,87 @@ public abstract class RepoFixture : IDisposable
         return output;
     }
 
+    /// <summary>
+    /// Every git these tests run: the fixture's, standing the repositories up and
+    /// looking at them afterwards, and the <see cref="Workspace"/> under test's,
+    /// handed in as its runner. What git does is the point here; how the host
+    /// process starts it is not.
+    /// </summary>
+    /// <remarks>
+    /// Through a shell kept open for the purpose, and not a process apiece,
+    /// because on macOS every <see cref="Process.Start()"/> from inside the test
+    /// host is a <c>fork()</c> of the host, and the kernel takes a few hundred
+    /// milliseconds over each - against a few from a small .NET program, or from
+    /// a shell. These classes are two dozen git calls a test, and they are what
+    /// the suite waits for: spawned one by one they took it past nine minutes.
+    /// A pool rather than one shell because the three classes run side by side.
+    /// Windows makes processes without forking, and keeps the plain spawn.
+    /// </remarks>
     private static (int Code, string Output, string Error) Run(string dir, string[] args)
+    {
+        if (OperatingSystem.IsWindows()) return Spawn(dir, args);
+
+        if (!Shells.TryTake(out var shell)) shell = new Shell();
+        var result = shell.Git(dir, args);
+        Shells.Add(shell);
+        return result;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentBag<Shell> Shells = [];
+
+    /// <summary>
+    /// One <c>sh</c>, fed a git command a line, each followed by a marker
+    /// carrying its exit code. Its standard error goes to a file, so the two
+    /// streams cannot interleave. It ends when the test host does and its
+    /// standard input closes.
+    /// </summary>
+    private sealed class Shell
+    {
+        private const string End = "hatch-test-shell-exit:";
+        private readonly Process _sh;
+        private readonly string _error = Path.Combine(Path.GetTempPath(), $"hatch-test-shell-{Guid.NewGuid():N}.err");
+
+        public Shell()
+        {
+            _sh = Process.Start(new ProcessStartInfo("/bin/sh")
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            })!;
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(_error);
+        }
+
+        public (int Code, string Output, string Error) Git(string dir, string[] args)
+        {
+            // Braced so that a cd that fails is redirected with the git it
+            // stands in for; the newline before the marker is there so that
+            // the marker starts a line whatever git printed last.
+            _sh.StandardInput.WriteLine(
+                $"{{ cd {Quote(dir)} && git {string.Join(' ', args.Select(Quote))}; }} </dev/null 2>{Quote(_error)}; " +
+                $"printf '\\n{End}%d\\n' $?");
+            _sh.StandardInput.Flush();
+
+            var output = new System.Text.StringBuilder();
+            while (true)
+            {
+                var line = _sh.StandardOutput.ReadLine()
+                    ?? throw new InvalidOperationException($"the shell running git {string.Join(' ', args)} exited");
+
+                if (line.StartsWith(End, StringComparison.Ordinal))
+                {
+                    output.Length--; // the newline printed before the marker
+                    return (int.Parse(line[End.Length..]), output.ToString(), File.ReadAllText(_error));
+                }
+
+                output.Append(line).Append('\n');
+            }
+        }
+
+        private static string Quote(string arg) => $"'{arg.Replace("'", "'\\''")}'";
+    }
+
+    private static (int Code, string Output, string Error) Spawn(string dir, string[] args)
     {
         var start = new ProcessStartInfo
         {
