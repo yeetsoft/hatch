@@ -221,9 +221,10 @@ export interface Issue {
   mergeChecks: MergeCheck[];
 }
 
-/** An ordinary note, a question that needs deciding, or the answer to one.
-    Mirrors EfHatchComment.Kind; the empty string is a note. */
-export type CommentKind = '' | 'question' | 'answer';
+/** An ordinary note, a question that needs deciding, the answer to one, or a
+    message to whichever session is working the issue. Mirrors
+    EfHatchComment.Kind; the empty string is a note. */
+export type CommentKind = '' | 'question' | 'answer' | 'message';
 
 /** One answer a question offers up front. Mirrors QuestionOptionDto. */
 export interface QuestionOption {
@@ -245,6 +246,12 @@ export interface Comment {
   /** The answers a question offers, or null on one asked in prose. */
   options: QuestionOption[] | null;
   createdAt: string;
+  /** When a message was put in front of a session, or null while it has not
+      been - and always null on any other kind. */
+  deliveredAt: string | null;
+  /** The runner that was holding the issue then, or whoever called where
+      nothing was. Null while undelivered. */
+  deliveredTo: string | null;
 }
 
 /** A question with whatever has been said back to it. Empty `answers` is what

@@ -44,6 +44,7 @@ namespace Hatch.Cli;
 
 // What is written.
 [JsonSerializable(typeof(CommentCreateRequest))]
+[JsonSerializable(typeof(MessageDeliverRequest))]
 [JsonSerializable(typeof(IssueMoveRequest))]
 [JsonSerializable(typeof(IssuePatchRequest))]
 [JsonSerializable(typeof(IssueDependencyRequest))]

@@ -823,15 +823,17 @@ batched query for a list of issues.
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
-`Options`, `CreatedAt`.
+`Options`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
-mind. Two are not, and those carry a `Kind`.
+mind. Three are not, and those carry a `Kind`.
 
 - A **question** (`Kind = "question"`) is an agent saying it cannot proceed
   without a decision that is not its to make.
 - An **answer** (`Kind = "answer"`) is that decision, bound to the question it
   settles by `AnswersId`.
+- A **message** (`Kind = "message"`) is something said to whichever session is
+  working the issue, written from the Claim panel.
 
 A question is a row rather than a heading in a comment body for the same reason
 a ready date is a column rather than a line saying "not until March": something
@@ -861,6 +863,23 @@ nobody kept, and the sentence the next agent's prompt carries is the same
 sentence a person reads six months later. A second column saying it in numbers
 is a second thing that can come to disagree with the first.
 
+**A message is not every comment, on purpose.** The server cannot tell an
+operator's comment from the session's own — both arrive on the same key under
+the same name — so delivering every comment would feed a session its own commit
+notes, and a note is often written for a reader six months on rather than for the
+agent now. The Claim box talks to the agent; the Comments box stays a note.
+
+`DeliveredAt` and `DeliveredTo` are null on everything but a message that has been
+read. **Read means put into a session's context**: the hook that printed it, or
+the runner that put it in a prompt, is what marks it, and nothing can prove the
+model acted on it. `DeliveredTo` is the live claim's runner, or the caller's name
+where nothing held the issue. They are written once, by `POST
+/issues/{key}/messages/deliver`, whose conditional `UPDATE` repeats "and still
+unread" in its `WHERE` — the way the claim closes its races
+([`IssueClaims.cs`](../src/Hatch.Api/Modules/Hatch/IssueClaims.cs)) — so two
+checks that race return a message once between them. Unread messages ride the
+dispatch as `WorkDto.Messages`.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -870,7 +889,8 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `asked`, `answered`,
+`dependency_added`, `dependency_removed`, `merge_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+names the comment and the runner), `asked`, `answered`,
 `imported`.
 
 Nothing renders this, and it has been written since the first release anyway,
@@ -1108,7 +1128,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written |
-| `/issues/{key}/comments` | GET, POST | POST carries the kind, the `answersId`, and a question's options |
+| `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
+| `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |

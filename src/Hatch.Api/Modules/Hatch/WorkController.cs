@@ -674,7 +674,8 @@ public class WorkController(
                 issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
                 await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
                 repos),
-            IssueUrl(issueDto.Key));
+            IssueUrl(issueDto.Key),
+            await IssueMessagesController.UnreadAsync(db, issue.Id, ct));
     }
 
     /// <summary>
