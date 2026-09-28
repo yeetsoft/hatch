@@ -129,14 +129,14 @@ hatch: ignoring "<NAME>" in <path> - not one of: HATCH_BASE HATCH_KEY HATCH_CLAU
 | `HATCH_RUNNER` | all three | What the board calls this runner. Default `<short hostname>:<checkout path>`, clipped to 240 characters from the front. |
 | `HATCH_HEARTBEAT` | environment only in practice | Seconds of session silence before the terminal prints a pulse. Default `20`; `0` turns it off; anything else invalid falls back to 20. Not on the file allow-list. |
 | `HATCH_ROOT` | environment | The checkout to work in. Default: walk upwards from the working directory. |
-| `HATCH_NIGHT_STATE` | environment | A path where a night's totals cross a restart. Set only by the supervisor in `scripts/hatch.sh`. Its absence is how the loop knows nothing could restart it. |
+| `HATCH_NIGHT_STATE` | environment | A path where a night's totals cross a restart. Set only by the supervisor in `scripts/hatch.sh` or `scripts\hatch.ps1`. Its absence is how the loop knows nothing could restart it. |
 | `PATH` | environment | Searched for `claude`; on Windows for `claude.exe`, `claude.cmd`, `claude`. Rewritten for the spawned session, below. |
 
 Variables the wrapper and the container read, not the binary:
 
 | Variable | Where | Meaning |
 |---|---|---|
-| `HATCH_RUNNER_BIN` | `scripts/hatch.sh` | A prebuilt `hatch` to run instead of building one. Must be executable. |
+| `HATCH_RUNNER_BIN` | `scripts/hatch.sh`, `scripts\hatch.ps1` | A prebuilt `hatch` to run instead of building one. Must be executable (in `hatch.ps1`, must exist: Windows has no execute bit). Run where it is, never copied. |
 | `HATCH_CHECKOUT` | `compose.yaml` | Host path mounted at `/checkout` in the container runner. |
 | `HATCH_RUNNER_NAME` | `compose.yaml` | The container runner's `HATCH_RUNNER`. Default `hatch-runner`. |
 | `HATCH_GIT_NAME`, `HATCH_GIT_EMAIL` | `compose.yaml` | Become `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` in the container. |
@@ -637,12 +637,12 @@ All through `git` in the checkout, in this order:
 Exit code 75 asks whatever started the loop to rebuild it and run it again.
 It is **armed only when** `--no-restart` is absent, `--once` is absent, and
 `HATCH_NIGHT_STATE` is set, which only the supervisor in `scripts/hatch.sh`
-does. Without a supervisor, including the container runner and any
+or `scripts\hatch.ps1` does. Without a supervisor, including the container runner and any
 `hatch go-to-work` typed by hand, restarts are disarmed and the loop is the
 build it started as.
 
-The loop's own source is `scripts/hatch.sh`, `src/Hatch.Cli` and
-`src/Hatch.Contracts` in the checkout, every file recursively excluding `bin`
+The loop's own source is `scripts/hatch.sh`, `scripts/hatch.ps1`,
+`src/Hatch.Cli` and `src/Hatch.Contracts` in the checkout, every file recursively excluding `bin`
 and `obj` segments, hashed together. A baseline is taken at start-up and is
 deliberately not carried across a restart, so a rebuild that failed does not
 ask again for the same change. Two triggers: the digest changed after a reset
@@ -662,6 +662,18 @@ to `dotnet build`, then to a message) and starts it again with `hatch:
 restarting`. Any other exit code is passed through. A failed build is never
 fatal: `carrying on with the binary that is there`. Its own traps exit 130 on
 interrupt and 143 on terminate.
+
+The PowerShell supervisor, `scripts\hatch.ps1 go-to-work`, does the same with
+`GetTempFileName` for the state file and `dotnet build --configuration Release`
+for the rebuild (there is no `make` on a typical Windows box). It runs the loop
+from a copy of the build under `%TEMP%`, because Windows will not overwrite a
+binary that is running and a session in the same checkout builds `src/Hatch.Cli`;
+a restart builds, makes a fresh copy, removes the old one, and says `hatch:
+restarting`. A rebuild that fails copies nothing and keeps the copy that was
+running. On Ctrl+C it waits for the loop to let go of its claim and exits 130,
+and on any ending it removes the state file and the copy. It is the version of
+the script that was started: a changed `hatch.ps1` takes effect the next time
+it is started.
 
 ### Stop conditions
 
@@ -739,9 +751,10 @@ mistake and says so.
 |---|---|---|
 | `git` | `go-to-work`'s workspace reset, and whatever the session does | Spawned directly for `rev-parse`, `fetch`, `symbolic-ref`, `ls-remote`, `status`, `stash push`, `rev-list`, `checkout -B`, `for-each-ref`, `branch --delete`. Missing git reads as a workspace that can never be reset. |
 | the `claude` CLI, logged in | `work`, `go-to-work` | Found on `PATH` or in `HATCH_CLAUDE_BIN`. |
-| .NET SDK 10 | only `scripts/hatch.sh` and `make build-hatch` inside a Hatch checkout | A downloaded binary needs no .NET at all. |
-| `make` | the supervisor's rebuild | Falls back to `dotnet build`, then to a message. |
+| .NET SDK 10 | only `scripts/hatch.sh`, `scripts\hatch.ps1` and `make build-hatch` inside a Hatch checkout | A downloaded binary needs no .NET at all. |
+| `make` | `scripts/hatch.sh`'s rebuild | Falls back to `dotnet build`, then to a message. `scripts\hatch.ps1` always uses `dotnet build`. |
 | bash 3.2 or newer | `scripts/hatch.sh` only | |
+| PowerShell 5.1 or newer | `scripts\hatch.ps1` only | Windows PowerShell or PowerShell 7. Where the execution policy refuses scripts, see `running-the-agent.md`. |
 | Docker | the board, and the container runner | |
 
 Not used anywhere: the GitHub CLI, Node, `jq`, `curl`, `python`, `openssl`.
