@@ -596,6 +596,37 @@ each card's `afterKey` is already home when it lands, and neighbours return in
 their old order — to the column it held, each naming the column the offer put
 it in. One that has moved since stays where it is, and the chicklet names it.
 
+#### Going to an issue
+
+`/` on the board opens a **console** over it: a prompt, and a list of the issues
+what is typed could mean, updating on every keystroke. Enter, or a click on a
+row, closes it and opens that issue's peek — the same one a click on the card
+opens — and rings the card on the board, scrolling it into view and opening its
+`+ N waiting` fold if it is in one. The ring stays while the peek is open and for
+about two seconds after, and goes at once when another card is clicked or a drag
+begins. The board is never filtered, reloaded or left.
+
+The shortcut belongs to the **board**, and steps aside for the same things Undo
+does, and a fourth: a text field (where `/` is a slash), an open dialog, a drag
+under way, and ⌘, Ctrl or Alt held. Escape, a click outside, or focus leaving
+closes it and gives focus back to where it was before `/`. While it is open, ⌘Z
+does not take back a move: to the rest of the board it is a dialog.
+
+**What matches, and in which order.** Digits alone list every issue whose number
+begins with them, lowest first — `11` is 11, 110, 111 and never 211 — and on a
+board with more than one project, by number first and project second, so every
+project's issue 1 comes before any issue 10. Anything else is a prefix of the
+key, compared on letters and digits alone and ignoring case, so `AER-3`,
+`aer-3` and `aer3` agree. Then come the issues whose title contains every typed
+word, in any order, by key. An issue is listed once, and at most 50 rows are
+drawn; the status line says how many matched.
+
+**Everything the board holds can be found**, including the issues the filter is
+hiding and the ones in a deferred column, which the board does not draw. A row
+whose card the filter hides says `[filtered]`. Taking one opens its peek and
+marks nothing: the filter, the folds and the scroll stay as the operator left
+them.
+
 #### Deferring an issue
 
 A deferred column ([Status](#status)) is reached from one place: the status bar

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
@@ -18,6 +18,7 @@ import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
+import { OmniBar } from '../components/OmniBar';
 import { StatusDot } from '../components/StatusPill';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -29,10 +30,11 @@ import { message } from '../lib/errors';
 import { DEFAULT_FILTER, assigneeFacets, filterCards, isFiltering, revealType } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
+import { whereOnBoard } from '../lib/goTo';
 import { columnDroppableId, place, targetStatusId } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
-import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
@@ -51,6 +53,11 @@ const PROJECT = 'project';
  *  bar's minute: most moves on this board are made by the loop, with nobody
  *  watching, and a read is a few cheap queries. */
 export const POLL_MS = 30 * 1000;
+
+/** How long the ring stays on a card the console found once its peek has
+ *  closed: long enough to see where the eye was sent, short enough not to look
+ *  like the card is selected. */
+export const FOUND_LINGER_MS = 2000;
 
 export function BoardPage() {
   // The card under the cursor and the column it is over, kept only for the
@@ -105,6 +112,33 @@ export function BoardPage() {
 
   /** The card a click opened a summary for. Null when the dialog is closed. */
   const [peeking, setPeeking] = useState<IssueCard | null>(null);
+
+  /* The console, and the card it found. `found` is a key, drawn as a ring; it
+     outlives the peek by FOUND_LINGER_MS. `pending` is the card a take has
+     chosen and not yet peeked, for the one render in which the board has
+     opened its fold and can be asked where the card is. */
+  const [going, setGoing] = useState(false);
+  const [found, setFound] = useState<string | null>(null);
+  const [pending, setPending] = useState<IssueCard | null>(null);
+  const linger = useRef<number | undefined>(undefined);
+  const stopLinger = useCallback(() => window.clearTimeout(linger.current), []);
+  useEffect(() => stopLinger, [stopLinger]);
+
+  // A click on a card is somewhere else to look: the ring is done.
+  const peek = useCallback(
+    (card: IssueCard) => {
+      stopLinger();
+      setFound(null);
+      setPeeking(card);
+    },
+    [stopLinger],
+  );
+
+  const closePeek = useCallback(() => {
+    setPeeking(null);
+    stopLinger();
+    linger.current = window.setTimeout(() => setFound(null), FOUND_LINGER_MS);
+  }, [stopLinger]);
 
   // The corner's chicklets: a drop raises one, and its Undo moves the card
   // back from wherever the operator is by then.
@@ -161,6 +195,7 @@ export function BoardPage() {
 
   const cards = board?.issues;
   const visible = useMemo(() => filterCards(cards ?? [], filter), [cards, filter]);
+  const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
      the deferred ones to offer them - and this is where they stop, so a parked
@@ -249,6 +284,46 @@ export function BoardPage() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [dragUnderway, undoNewest]);
 
+  /* `/` opens the console, on the same terms as Undo: not where text is being
+     typed, not under a dialog (the console is one to everything else), not
+     mid-drag. Mounted only while the board is the page on screen, which is what
+     keeps it off every other page. preventDefault keeps the slash out of the
+     prompt and Firefox's find bar shut. */
+  const hasBoard = board != null;
+  useEffect(() => {
+    if (dragUnderway || !hasBoard) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isGoToShortcut(e) || e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+
+      e.preventDefault();
+      setGoing(true);
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [dragUnderway, hasBoard]);
+
+  /* A take, one render on: the fold has opened and the card is in the DOM. Focus
+     it before the peek opens, so Modal records the card as its opener and gives
+     focus back to it. A card a refresh took off the board in between still gets
+     its peek. */
+  useLayoutEffect(() => {
+    if (!pending) return;
+
+    const card = document.querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(pending.key)}"]`);
+    if (card) {
+      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      card.focus({ preventScroll: true });
+      card.scrollIntoView({ block: 'center', inline: 'nearest', behavior: calm ? 'auto' : 'smooth' });
+    }
+
+    setPeeking(pending);
+    setPending(null);
+  }, [pending]);
+
   // An undo pressed anywhere moved a card this board is showing somewhere else.
   useEffect(() => onUndone(() => void reload()), [onUndone, reload]);
 
@@ -260,7 +335,23 @@ export function BoardPage() {
   // refresh. Keyed by key alone below, so the description is not fetched again.
   const peeked = peeking && (board.issues.find((i) => i.key === peeking.key) ?? peeking);
 
+  // Marks the card and peeks it - or, where the card is not on the board to be
+  // marked, peeks it and leaves the filter, the folds and the scroll alone.
+  const onTake = (card: IssueCard) => {
+    setGoing(false);
+    stopLinger();
+    if (whereOnBoard(card, visibleKeys, columns) === 'drawn') {
+      setFound(card.key);
+      setPending(card);
+    } else {
+      setFound(null);
+      setPeeking(card);
+    }
+  };
+
   const onDragStart = ({ active }: DragStartEvent) => {
+    stopLinger();
+    setFound(null);
     setDragging(board.issues.find((card) => card.key === String(active.id)) ?? null);
   };
 
@@ -317,7 +408,8 @@ export function BoardPage() {
                 hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
                 filtering={isFiltering(filter)}
                 dropping={dragging !== null && over === status.id}
-                onPeek={setPeeking}
+                found={found}
+                onPeek={peek}
               />
             ))}
           </div>
@@ -350,8 +442,18 @@ export function BoardPage() {
         status={peeked ? board.statuses.find((s) => s.id === peeked.statusId) : undefined}
         directory={directory}
         onExpedited={() => void reload()}
-        onClose={() => setPeeking(null)}
+        onClose={closePeek}
       />
+
+      {going && (
+        <OmniBar
+          cards={board.issues}
+          statuses={board.statuses}
+          visibleKeys={visibleKeys}
+          onTake={onTake}
+          onClose={() => setGoing(false)}
+        />
+      )}
 
       <CloseSubtreeDialog
         offer={closing.offer}
@@ -386,6 +488,7 @@ function Column({
   hidden,
   filtering,
   dropping,
+  found,
   onPeek,
 }: {
   status: Status;
@@ -395,6 +498,8 @@ function Column({
   filtering: boolean;
   /** A drag is in progress and this is the column it would land in. */
   dropping: boolean;
+  /** The key of the card the console found, on any column. */
+  found: string | null;
   onPeek: (card: IssueCard) => void;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
@@ -415,6 +520,11 @@ function Column({
   // would be the board arguing with what the operator just did.
   const waiting = status.isTerminal ? [] : cards.filter((c) => isWaiting(c.readyAt, now));
   const workable = cards.filter((c) => !waiting.includes(c));
+
+  // The found card is folded away: open the fold, so there is a card to ring.
+  // Adjusted during render, as IssuePeek does. It stays open once `found`
+  // clears, because the fold is the operator's.
+  if (found && !showWaiting && waiting.some((c) => c.key === found)) setShowWaiting(true);
   const shown = showWaiting ? [...workable, ...waiting] : workable;
 
   // Counted over `cards` and not over `shown`: the card that is owed an answer
@@ -447,6 +557,7 @@ function Column({
               card={card}
               waiting={waiting.includes(card)}
               terminal={status.isTerminal}
+              found={found === card.key}
               onPeek={onPeek}
             />
           ))}
