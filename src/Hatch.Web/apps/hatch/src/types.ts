@@ -285,6 +285,8 @@ export type IssueEventKind =
   | 'claim_released'
   | 'claim_cleared'
   | 'commented'
+  | 'messaged'
+  | 'message_delivered'
   | 'asked'
   | 'answered'
   | 'imported';

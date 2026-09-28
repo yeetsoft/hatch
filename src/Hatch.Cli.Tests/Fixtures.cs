@@ -62,7 +62,8 @@ public static class Fixtures
         IReadOnlyList<WorkRepositoryDto>? repositories = null,
         IssueDto? issue = null,
         string? issueUrl = null,
-        bool noLink = false) =>
+        bool noLink = false,
+        IReadOnlyList<CommentDto>? messages = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -72,7 +73,8 @@ public static class Fixtures
             Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
-            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}");
+            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
+            Messages: messages);
 
     public static WorkRepositoryDto Repository(
         string remote, string? canonical = null, string? baseBranch = null, bool primary = false,
@@ -84,6 +86,12 @@ public static class Fixtures
 
     public static CommentDto Comment(string body = "ok") =>
         new(1, "hatch", body, "comment", null, null, DateTimeOffset.UnixEpoch);
+
+    /// <summary>A message to the agent, unread unless it is told it was read.</summary>
+    public static CommentDto Message(
+        long id, string body = "use the other table", string author = "Nathan",
+        DateTimeOffset? deliveredAt = null, string? deliveredTo = null) =>
+        new(id, author, body, "message", null, null, DateTimeOffset.Parse("2026-09-28T03:00:00+00:00"), deliveredAt, deliveredTo);
 
     public static QuestionDto Question(long id, string key = "AER-1", string body = "Which way?", bool answered = false) =>
         new(

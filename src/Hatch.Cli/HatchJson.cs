@@ -54,4 +54,8 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(RunnerHeartbeatRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
+
+// What a hook prints for the session that ran it.
+[JsonSerializable(typeof(PostToolUseOutput))]
+[JsonSerializable(typeof(StopBlock))]
 internal sealed partial class HatchJson : JsonSerializerContext;

@@ -72,8 +72,22 @@ if (command == "config")
 
 if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missing))
 {
+    // A hook that fails is a session that is told so. Nothing to ask, nothing
+    // said: the message stays unread and a later step asks again.
+    if (command == "inbox") return 0;
+
     say.Complain(missing);
     return 1;
+}
+
+// Before the checkouts are discovered, because that says things - a stray
+// under HATCH_REPOS is a line on standard output - and a hook's standard output
+// is a document the session parses. `inbox` prints JSON or nothing.
+if (command == "inbox")
+{
+    using var hooked = new HatchClient(settings, Checkout.Runner(settings.Runner, Checkout.Host(), root ?? here));
+    return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System)
+        .RunAsync(rest, CancellationToken.None);
 }
 
 // The standing checkout, if there is one, then every checkout HATCH_REPOS
@@ -209,13 +223,17 @@ internal partial class Program
     /// works to, and <c>runner-claude-token</c> is the container entrypoint's
     /// own plumbing (containers/hatch-runner/entrypoint.sh). Naming it there
     /// would be telling every session in the house about a command that prints
-    /// a credential, for no work it could ever do with it. DocsContractTests
+    /// a credential, for no work it could ever do with it. <c>inbox</c> is what a
+    /// session's hooks call to be handed a message, and marks it read: a session
+    /// that knew of it could mark its operator's messages read without reading
+    /// them. DocsContractTests
     /// holds both halves of that: the rest are named in the block, and these
     /// are deliberately not.
     /// </remarks>
     public static readonly string[] Internal =
     [
         "runner-claude-token",
+        "inbox",
     ];
 
     /// <summary>
@@ -263,6 +281,10 @@ internal partial class Program
         "The one the container runner's entrypoint calls, and nobody types:",
         "",
         "  hatch runner-claude-token    the Claude token this Hatch holds, decoded",
+        "",
+        "And the one a session's hooks call, and nobody types:",
+        "",
+        "  hatch inbox AER-12 --hook stop    what was said to the session on it, marked read",
         "",
         "The two that spawn an agent, and the only two that need a checkout or a",
         "workspace to clone into - the one you are standing in, one named with --repo",

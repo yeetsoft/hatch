@@ -406,6 +406,11 @@ public sealed class WorkCommand(Runtime runtime)
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"hatch:   {chose}");
         runtime.Say.Line("");
 
+        // The prompt carries what was said to the agent, so it is read. Nothing
+        // here declares hooks: a person is in that session, and they can say
+        // it to the agent themselves.
+        await runtime.Increment().MarkSaidAsync(work, ct);
+
         return await runtime.Sessions.AttachAsync(
             new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches), Quiet: false, chosen.AddDirs),
             ct);

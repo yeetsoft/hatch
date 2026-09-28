@@ -1,0 +1,128 @@
+using System.Text;
+using System.Text.Json;
+
+namespace Hatch.Cli;
+
+/// <summary>
+/// The hooks that carry a message sent while a session works into its context,
+/// and the directory outside every checkout that they live in.
+/// </summary>
+/// <remarks>
+/// <para>A settings file handed to <c>claude --settings</c> rather than one
+/// written into the checkout, so that wiring this in leaves <c>git status</c>
+/// showing only what the session changed. The stamp that throttles the per-step
+/// check lives beside it for the same reason.</para>
+///
+/// <para>Two hooks, each ten seconds long: <c>PostToolUse</c> on every tool, to
+/// deliver at the session's next step, and <c>Stop</c>, to keep a session that is
+/// finishing going long enough to read what is waiting. Both run <c>hatch
+/// inbox</c>, which is this program.</para>
+/// </remarks>
+public sealed class SessionHooks : IDisposable
+{
+    /// <summary>What a hook is given before it is killed - comfortably more than <see cref="InboxCommand.CallSeconds"/>.</summary>
+    public const int TimeoutSeconds = 10;
+
+    private SessionHooks(string directory, string settings)
+    {
+        Directory = directory;
+        Settings = settings;
+    }
+
+    /// <summary>The directory made for one increment.</summary>
+    public string Directory { get; }
+
+    /// <summary>The settings file, to hand to <c>--settings</c>.</summary>
+    public string Settings { get; }
+
+    /// <summary>The file whose modification time is when a per-step check last asked.</summary>
+    public string Stamp => Path.Combine(Directory, "inbox.stamp");
+
+    /// <summary>
+    /// Makes the directory and writes the file, or answers null where it cannot.
+    /// A session without hooks still works its ticket; it is a message sent
+    /// mid-run that waits for the next session instead.
+    /// </summary>
+    /// <param name="temp">Where directories are made: <see cref="Path.GetTempPath"/> in a real run, and never inside a checkout.</param>
+    /// <param name="hatch">
+    /// What the hooks run. <see cref="Environment.ProcessPath"/> where this is a
+    /// binary called <c>hatch</c>, the bare word otherwise - the same rule
+    /// <see cref="Reach"/> uses for the session's <c>PATH</c>, and for the same
+    /// reason: the word only resolves where <c>Reach</c> made it.
+    /// </param>
+    public static SessionHooks? Write(string temp, string key, string hatch)
+    {
+        string? made = null;
+        try
+        {
+            made = Path.Combine(temp, $"hatch-hooks-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(made);
+            var hooks = new SessionHooks(made, Path.Combine(made, "settings.json"));
+
+            var run = $"{Quote(hatch)} inbox {Quote(key)} --hook";
+            File.WriteAllText(hooks.Settings, Json(
+                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)}",
+                $"{run} stop"));
+            return hooks;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            if (made is not null) TryDelete(made);
+            return null;
+        }
+    }
+
+    /// <summary>The command a hook runs for this binary, as it will be written.</summary>
+    public static string Binary(string? processPath) =>
+        Reach.OwnDirectory(processPath) is null ? "hatch" : processPath!;
+
+    private static string Json(string postToolUse, string stop)
+    {
+        // Written by hand, because the binary is trimmed and this is a shape
+        // known at compile time.
+        using var buffer = new MemoryStream();
+        using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        {
+            json.WriteStartObject();
+            json.WriteStartObject("hooks");
+            Hook(json, "PostToolUse", postToolUse, matcher: "*");
+            Hook(json, "Stop", stop, matcher: null);
+            json.WriteEndObject();
+            json.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    private static void Hook(Utf8JsonWriter json, string name, string command, string? matcher)
+    {
+        json.WriteStartArray(name);
+        json.WriteStartObject();
+        if (matcher is not null) json.WriteString("matcher", matcher);
+        json.WriteStartArray("hooks");
+        json.WriteStartObject();
+        json.WriteString("type", "command");
+        json.WriteString("command", command);
+        json.WriteNumber("timeout", TimeoutSeconds);
+        json.WriteEndObject();
+        json.WriteEndArray();
+        json.WriteEndObject();
+        json.WriteEndArray();
+    }
+
+    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    public void Dispose() => TryDelete(Directory);
+
+    private static void TryDelete(string directory)
+    {
+        try
+        {
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Left in the temporary directory, which is where it was made.
+        }
+    }
+}

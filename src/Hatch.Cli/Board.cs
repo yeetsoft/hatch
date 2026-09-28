@@ -130,6 +130,16 @@ public sealed class Board(HatchClient client)
             new CommentCreateRequest(body, Kind: "question", Options: options.Count > 0 ? options : null),
             ct);
 
+    /// <summary>
+    /// Marks messages to the agent read, and answers with the ones this call
+    /// marked - so a caller learns what it has to say, not what exists. Exactly
+    /// <paramref name="ids"/> when given, every unread one when null.
+    /// </summary>
+    public async Task<IReadOnlyList<CommentDto>> DeliverMessagesAsync(
+        string key, IReadOnlyList<long>? ids, CancellationToken ct) =>
+        await Client.PostAsync<List<CommentDto>>(
+            $"/api/hatch/issues/{key}/messages/deliver", new MessageDeliverRequest(ids), ct) ?? [];
+
     public Task<WorkLogEntryDto?> WorkLogAsync(string key, WorkLogEntryRequest entry, CancellationToken ct) =>
         Client.PostAsync<WorkLogEntryDto>($"/api/hatch/issues/{key}/work-log", entry, ct);
 
