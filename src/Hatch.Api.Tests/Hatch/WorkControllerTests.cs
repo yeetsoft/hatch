@@ -173,6 +173,147 @@ public class WorkControllerTests
         Assert.Equal("assigned to Ada - an unattended pass leaves a person's work alone", folded.Blocked);
     }
 
+    /// <summary>
+    /// "Mine held" (docs/hatch.md): plain `next`, without `mine`, still skips a
+    /// ticket assigned to the caller's own person exactly as it skips anybody
+    /// else's. This is the regression that would fail first if the mine fold
+    /// and the person-assignee fold were accidentally merged into one.
+    /// </summary>
+    [Fact]
+    public async Task NextWork_WithoutMine_StillSkipsATicketAssignedToTheCallersOwnPerson()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = ada;
+        var hers = await h.FileAsync("story", "Ada's own", h.Todo, rank: 1024);
+        var workable = await h.FileAsync("story", "nobody's", h.Todo, rank: 2048);
+        await h.AssignAsync(hers, personId: ada.Id);
+
+        Assert.Equal(Key(workable), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    // ---- --mine ----
+
+    [Fact]
+    public async Task Mine_TakesATicketAssignedToThePrincipal()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = ada;
+        var hers = await h.FileAsync("story", "Ada's own", h.Todo, rank: 1024);
+        await h.FileAsync("story", "nobody's", h.Todo, rank: 2048);
+        await h.AssignAsync(hers, personId: ada.Id);
+
+        Assert.Equal(Key(hers), Value(await h.Work.GetNextWork(0, null, null, null, null, null, true, default)).Issue.Key);
+    }
+
+    /// <summary>
+    /// The key still needs an owner for --mine to run at all (criterion 8) -
+    /// belonging to nobody is refused outright, even for a ticket the key
+    /// would otherwise reach through this second, additional match.
+    /// </summary>
+    [Fact]
+    public async Task Mine_TakesATicketAssignedToTheCallingKey()
+    {
+        var h = await NewAsync();
+        var claude = h.Actors.AddKey("Claude");
+        h.Actors.Me = claude;
+        h.Actors.Principal = h.Actors.AddPerson("Ada");
+        var its = await h.FileAsync("story", "the agent's own", h.Todo, rank: 1024);
+        await h.FileAsync("story", "nobody's", h.Todo, rank: 2048);
+        await h.AssignAsync(its, apiKeyId: claude.Id);
+
+        Assert.Equal(Key(its), Value(await h.Work.GetNextWork(0, null, null, null, null, null, true, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Mine_SkipsAnUnassignedTicketAndOneAssignedToSomebodyElse()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = h.Actors.AddPerson("Nathan");
+        var hers = await h.FileAsync("story", "Ada's own", h.Todo, rank: 1024);
+        var nobodys = await h.FileAsync("story", "nobody's", h.Todo, rank: 2048);
+        await h.AssignAsync(hers, personId: ada.Id);
+
+        var folded = Value(await h.Work.GetQueue(0, null, null, null, null, true, default));
+        Assert.Equal("assigned to Ada, not to you", folded.Single(e => e.Issue.Key == Key(hers)).Blocked);
+        Assert.Equal(
+            "assigned to nobody - a --mine pass takes only your own",
+            folded.Single(e => e.Issue.Key == Key(nobodys)).Blocked);
+    }
+
+    [Fact]
+    public async Task Mine_WithNoPrincipal_Is400WithTheSentence()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "workable", h.Todo);
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetNextWork(0, null, null, null, null, null, true, default)).Result);
+
+        Assert.Equal(
+            "this key belongs to nobody, so it has no tickets of its own - an admin sets its owner on the API Keys page",
+            refused.Value);
+    }
+
+    [Fact]
+    public async Task Work_ForANamedKey_IgnoresMineEvenWhenAssignedToSomebodyElse()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        var hers = await h.FileAsync("story", "Ada is on this", h.Todo, rank: 1024);
+        await h.AssignAsync(hers, personId: ada.Id);
+
+        // Somebody who names a ticket has already chosen it - `mine` is not a
+        // parameter `work/{key}` even reads.
+        Assert.Null(Value(await h.Work.GetWork(Key(hers), default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Mine_StillFoldsALiveClaimHeldBySomebodyElse()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = ada;
+        var hers = await h.FileAsync("story", "Ada's, but somebody else has it", h.Todo, rank: 1024);
+        await h.AssignAsync(hers, personId: ada.Id);
+        await h.ClaimAsync(hers, by: "Someone else");
+
+        var folded = Value(await h.Work.GetQueue(0, null, null, null, null, true, default))
+            .Single(e => e.Issue.Key == Key(hers));
+        Assert.NotNull(folded.Blocked);
+    }
+
+    [Fact]
+    public async Task Mine_StillFoldsAReadyDateNotYetArrived()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = ada;
+        var hers = await h.FileAsync("story", "Ada's, but not yet", h.Todo, rank: 1024, readyAt: Now.AddDays(3));
+        await h.AssignAsync(hers, personId: ada.Id);
+
+        var folded = Value(await h.Work.GetQueue(0, null, null, null, null, true, default))
+            .Single(e => e.Issue.Key == Key(hers));
+        Assert.Equal($"not workable until {IssueMoment.Format(hers.ReadyAt, hers.ReadyAtHasTime)}", folded.Blocked);
+    }
+
+    [Fact]
+    public async Task Mine_StillFoldsAnUnansweredQuestion()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Principal = ada;
+        var hers = await h.FileAsync("story", "Ada's, but somebody asked something", h.Todo, rank: 1024);
+        await h.AssignAsync(hers, personId: ada.Id);
+        await h.AskAsync(hers, "which approach?");
+
+        var folded = Value(await h.Work.GetQueue(0, null, null, null, null, true, default))
+            .Single(e => e.Issue.Key == Key(hers));
+        Assert.Contains("unanswered question", folded.Blocked);
+    }
+
     // ---- One corner of the board ----
 
     [Fact]

@@ -82,6 +82,16 @@ public class WorkController(
     /// repositories none of which match <paramref name="remote"/> is not
     /// folded on that account either.
     /// </param>
+    /// <param name="mine">
+    /// Narrows the pass to the caller's own tickets - assigned to the person it
+    /// works for, or to its own key - and folds every other one with a sentence
+    /// naming whose it is. "Its own" is read off the calling key's owner, never
+    /// off anything the caller says about itself (docs/hatch.md, "the one edge
+    /// that is deliberately cut"). A caller whose key belongs to nobody is
+    /// refused before anything is scanned. It narrows the candidates and
+    /// decides nothing else about them - the same contract <paramref
+    /// name="ancestorKey"/> carries.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -90,10 +100,11 @@ public class WorkController(
         [FromQuery] List<string>? remote = null,
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
+        [FromQuery] bool mine = false,
         CancellationToken ct = default)
     {
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, ct);
+        var scan = await ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -148,12 +159,13 @@ public class WorkController(
         [FromQuery] List<string>? remote = null,
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
+        [FromQuery] bool mine = false,
         CancellationToken ct = default)
     {
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await ScanAsync(offsetMinutes, ancestorKey, null, repos, ct);
+        var scan = await ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -247,7 +259,7 @@ public class WorkController(
     /// cost a query a row would be a scan nobody leaves running.
     /// </remarks>
     private async Task<Scan> ScanAsync(
-        int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos,
+        int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct)
     {
         var statuses = await OrderedStatusesAsync(ct);
@@ -273,7 +285,22 @@ public class WorkController(
         }
 
         var now = time.GetUtcNow();
-        var loop = new LoopScope(DayNumber(now, offsetMinutes), offsetMinutes);
+
+        // Resolved once for the pass, and only when asked: a plain scan has no
+        // reason to touch either. A caller whose key belongs to nobody is
+        // refused here, before anything is scanned, the same way an unknown
+        // ancestorKey is refused above.
+        Actor? principal = null;
+        Guid? callerKeyId = null;
+        if (mine)
+        {
+            principal = await actors.PrincipalAsync(ct);
+            if (await actors.MeAsync(ct) is { Kind: ActorKind.Key } me) callerKeyId = me.Id;
+            if (principal is null)
+                return Scan.Refused("this key belongs to nobody, so it has no tickets of its own - an admin sets its owner on the API Keys page");
+        }
+
+        var loop = new LoopScope(DayNumber(now, offsetMinutes), offsetMinutes, mine, principal, callerKeyId);
 
         // One instant for the whole pass. A scan in which the clock moved
         // between two rows could fold one card and not its neighbour for a
@@ -429,7 +456,14 @@ public class WorkController(
     /// caller's zone. Absent when somebody named a ticket by hand - see
     /// <see cref="Blocked"/>.
     /// </summary>
-    private sealed record LoopScope(long Today, int OffsetMinutes);
+    /// <param name="Mine">Whether this pass takes only the caller's own tickets.</param>
+    /// <param name="Principal">
+    /// Whose tickets "own" means, resolved once for the pass. Always non-null
+    /// when <paramref name="Mine"/> is true - <see cref="ScanAsync"/> refuses
+    /// the scan before this is ever constructed with one and the other not.
+    /// </param>
+    /// <param name="CallerKeyId">The calling key's own id, when the caller is a key - a ticket assigned to it is the caller's own too.</param>
+    private sealed record LoopScope(long Today, int OffsetMinutes, bool Mine, Actor? Principal, Guid? CallerKeyId);
 
     // ---- Which checkout the runner has ----
 
@@ -955,13 +989,29 @@ public class WorkController(
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
                 return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
 
-            // A person's name on a ticket takes it off the night shift, and
-            // only a person's: an issue assigned to a key is exactly the thing
-            // an agent should pick up, and one whose assignee no longer
-            // resolves is not assigned at all - the liveness rule reaching the
-            // dispatcher without a line of its own.
-            if (assignee?.Kind == ActorKind.Person)
+            if (loop.Mine)
+            {
+                // "Mine held" (docs/hatch.md): this is a new, separate fold
+                // beside the person-assignee one below, not a rewrite of it -
+                // plain go-to-work keeps skipping a person's own tickets
+                // exactly as it always has.
+                var isMine =
+                    (assignee is { Kind: ActorKind.Person } person && loop.Principal is { Kind: ActorKind.Person } p && person.Id == p.Id) ||
+                    (assignee is { Kind: ActorKind.Key } && assignee.Id == loop.CallerKeyId);
+                if (!isMine)
+                    return assignee is null
+                        ? "assigned to nobody - a --mine pass takes only your own"
+                        : $"assigned to {assignee.Name}, not to you";
+            }
+            else if (assignee?.Kind == ActorKind.Person)
+            {
+                // A person's name on a ticket takes it off the night shift, and
+                // only a person's: an issue assigned to a key is exactly the
+                // thing an agent should pick up, and one whose assignee no
+                // longer resolves is not assigned at all - the liveness rule
+                // reaching the dispatcher without a line of its own.
                 return $"assigned to {assignee.Name} - an unattended pass leaves a person's work alone";
+            }
         }
 
         if (waiting > 0)
