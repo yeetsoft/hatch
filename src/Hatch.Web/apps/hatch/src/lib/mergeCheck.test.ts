@@ -11,6 +11,7 @@ const check = (over: Partial<MergeCheck> = {}): MergeCheck => ({
   branch: 'aer-12-thing',
   branchSha: '2'.repeat(40),
   files: ['a.cs', 'b.cs', 'c.cs'],
+  holdsTrunk: false,
   checkedAt: '2026-09-09T12:00:00Z',
   runner: 'box:/work/repo',
   checkedBy: 'runner',

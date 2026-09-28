@@ -833,6 +833,9 @@ public class EfHatchMergeCheck
     /// <summary>The conflicted paths, newline-joined the way <see cref="EfHatchRunner.Remotes"/> is. Null when there are none.</summary>
     public string? Files { get; set; }
 
+    /// <summary>See <see cref="MergeCheckRequest.HoldsTrunk"/>. Null for <c>none</c> and <c>ambiguous</c>, and on a verdict stored before this field existed.</summary>
+    public bool? HoldsTrunk { get; set; }
+
     /// <summary>When the board took it. The board's clock, not the runner's, so verdicts from two machines are ordered by one.</summary>
     public required DateTimeOffset CheckedAt { get; set; }
 

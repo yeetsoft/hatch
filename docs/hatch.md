@@ -961,9 +961,9 @@ own. CI runs it on every pull request.
 ### Merge check
 
 `EfHatchMergeCheck` — `IssueId`, `Remote`, `Canonical`, `Trunk`, `TrunkSha`,
-`Branch?`, `BranchSha?`, `Verdict`, `Files`, `CheckedAt`, `Runner`, `CheckedBy`.
-What a runner found when it merged an issue's branch against the trunk, and the
-two refs it was looking at when it did. `Verdict` is one of four:
+`Branch?`, `BranchSha?`, `Verdict`, `Files`, `HoldsTrunk?`, `CheckedAt`, `Runner`,
+`CheckedBy`. What a runner found when it merged an issue's branch against the
+trunk, and the two refs it was looking at when it did. `Verdict` is one of four:
 
 | Verdict | Means |
 |---|---|
@@ -975,6 +975,14 @@ two refs it was looking at when it did. `Verdict` is one of four:
 `none` and `ambiguous` carry no branch and no sha, on purpose: there is no one
 branch to fingerprint, and the runner's poll keeps what it saw for those two in
 memory rather than asking the board for something that is not there.
+
+`HoldsTrunk` says whether the branch already had the trunk's tip - `true` when
+`git merge-base --is-ancestor` said so outright, `false` when it took a
+`merge-tree` merge to get there or when it is `conflicted`. `none` and
+`ambiguous` name no branch and so carry no answer, and a board that predates
+this field reads it as `null` too - *not said*, not *false* - and the poll
+rechecks a stored `clean` verdict once to fill it in even where nothing else
+about the branch has moved.
 
 **One verdict per issue per repository**, unique on `(IssueId, Canonical)`, where
 `Canonical` is [`RemoteIdentity.Canonical`](#repository) of the remote as the
@@ -1449,7 +1457,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
-| `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event |
+| `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody |

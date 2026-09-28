@@ -43,6 +43,19 @@ public class MergeCheckControllerTests
         Assert.Equal("forge.example/owner/repo", kept.Canonical);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task HoldsTrunk_RoundTripsOnAKeptVerdict(bool holdsTrunk)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(issue, Clean() with { HoldsTrunk = holdsTrunk }));
+
+        Assert.Equal(holdsTrunk, kept.HoldsTrunk);
+    }
+
     [Fact]
     public async Task AConflictedVerdict_NamesItsFiles()
     {
@@ -65,12 +78,13 @@ public class MergeCheckControllerTests
 
         // Even when the runner sends them: HA-41's poll keeps what it saw for
         // these two in memory and does not ask the board for a fingerprint.
-        var kept = Value(await h.PutAsync(issue, Clean() with { Verdict = verdict, Files = ["x.cs"] }));
+        var kept = Value(await h.PutAsync(issue, Clean() with { Verdict = verdict, Files = ["x.cs"], HoldsTrunk = true }));
 
         Assert.Equal(verdict, kept.Verdict);
         Assert.Null(kept.Branch);
         Assert.Null(kept.BranchSha);
         Assert.Empty(kept.Files);
+        Assert.Null(kept.HoldsTrunk);
     }
 
     // ---- Every refusal ----
@@ -318,6 +332,19 @@ public class MergeCheckControllerTests
         var now = await h.ReadAsync(issue.Key);
         Assert.Equal(was.UpdatedAt, now.UpdatedAt);
         Assert.Equal(was.StatusId, now.StatusId);
+    }
+
+    [Fact]
+    public async Task HoldsTrunkAlone_WritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Clean() with { HoldsTrunk = false });
+
+        await h.PutAsync(issue, Clean() with { HoldsTrunk = true });
+
+        Assert.Single(await h.EventsAsync(issue.Key));
+        Assert.True((await h.Db.MergeChecks.SingleAsync()).HoldsTrunk);
     }
 
     // ---- What every issue carries ----

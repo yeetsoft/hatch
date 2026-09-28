@@ -116,12 +116,12 @@ public static class Fixtures
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(
         string verdict = MergeVerdicts.Conflicted, string trunk = "main", string canonical = "example.com/o/r",
-        params string[] files) =>
+        bool? holdsTrunk = null, params string[] files) =>
         new(
             $"https://{canonical}.git", canonical, trunk, new string('a', 40), verdict,
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-a-thing" : null,
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
-            files, DateTimeOffset.UnixEpoch, "runner", "hatch");
+            files, holdsTrunk, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
     /// <summary>A build verdict as a runner would have put it, failed unless said otherwise. A failed one names <c>api</c> unless it is told what failed.</summary>
     public static BuildCheckDto Build(

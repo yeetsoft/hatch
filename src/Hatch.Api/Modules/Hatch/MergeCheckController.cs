@@ -85,6 +85,7 @@ public class MergeCheckController(
         var hasBranch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted;
         var branch = hasBranch ? request.Branch?.Trim() : null;
         var branchSha = hasBranch ? request.BranchSha?.Trim() : null;
+        var holdsTrunk = hasBranch ? request.HoldsTrunk : null;
         if (hasBranch && string.IsNullOrEmpty(branchSha))
             return BadRequest($"a {verdict} verdict names the sha the branch stood at");
         if (branch is { Length: > EfHatchMergeCheck.MaxRefLength })
@@ -144,6 +145,7 @@ public class MergeCheckController(
         row.TrunkSha = trunkSha;
         row.Branch = branch;
         row.BranchSha = branchSha;
+        row.HoldsTrunk = holdsTrunk;
         row.Verdict = verdict;
         row.Files = EfHatchMergeCheck.JoinFiles(files);
         row.CheckedAt = now;
@@ -178,5 +180,5 @@ public static class IssueMergeChecks
 {
     public static MergeCheckDto Project(EfHatchMergeCheck m) => new(
         m.Remote, m.Canonical, m.Trunk, m.TrunkSha, m.Verdict, m.Branch, m.BranchSha,
-        EfHatchMergeCheck.SplitFiles(m.Files), m.CheckedAt, m.Runner, m.CheckedBy);
+        EfHatchMergeCheck.SplitFiles(m.Files), m.HoldsTrunk, m.CheckedAt, m.Runner, m.CheckedBy);
 }

@@ -1381,6 +1381,12 @@ public static class MergeVerdicts
 /// <param name="Branch">The issue's branch, and <paramref name="BranchSha"/> where it stood. Absent for <c>none</c> and <c>ambiguous</c>, which carry neither.</param>
 /// <param name="Files">The conflicted paths. Required for <c>conflicted</c> and ignored otherwise.</param>
 /// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+/// <param name="HoldsTrunk">
+/// True when the branch already had the trunk's tip - <c>--is-ancestor</c>, not a
+/// merge that would work. False when it merges cleanly but does not yet hold it,
+/// or when it conflicts. Null for <c>none</c> and <c>ambiguous</c>, which name no
+/// branch.
+/// </param>
 public record MergeCheckRequest(
     string Remote,
     string Trunk,
@@ -1389,11 +1395,13 @@ public record MergeCheckRequest(
     string? Branch,
     string? BranchSha,
     IReadOnlyList<string>? Files,
-    string Runner);
+    string Runner,
+    bool? HoldsTrunk = null);
 
 /// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
 /// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
+/// <param name="HoldsTrunk">See <see cref="MergeCheckRequest.HoldsTrunk"/>.</param>
 /// <param name="CheckedAt">When the board took it.</param>
 /// <param name="CheckedBy">The name of the credential it arrived under.</param>
 public record MergeCheckDto(
@@ -1405,6 +1413,7 @@ public record MergeCheckDto(
     string? Branch,
     string? BranchSha,
     IReadOnlyList<string> Files,
+    bool? HoldsTrunk,
     DateTimeOffset CheckedAt,
     string Runner,
     string CheckedBy);
