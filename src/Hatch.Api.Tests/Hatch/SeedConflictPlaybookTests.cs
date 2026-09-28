@@ -10,6 +10,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// The stock conflict playbook is seeded once, where nobody has one, and takes
 /// nothing back that somebody has written.
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class SeedConflictPlaybookTests
 {
     /// <summary>

@@ -2340,7 +2340,9 @@ no key and no agent.
 
 Being cross-platform came along with it, and is worth naming because the shell
 was never going to be: `hatch.sh` is Bash 3.2 on purpose, for macOS, and a
-Windows operator had no runner at all.
+Windows operator had no runner at all. A Windows operator now has the program,
+and in a checkout `scripts\hatch.ps1`, the PowerShell twin of `hatch.sh`, as
+its door and its supervisor.
 
 Two things in the shell version existed only because it was a shell, and are
 gone rather than translated. The session id and the bill used to travel back
@@ -2399,7 +2401,11 @@ carry forward and nothing to come back as, so it replaces the shell rather than
 being watched by it. `go-to-work` is *run*, in a loop, because a process cannot
 exec itself into a newer build — relaunching the same binary relaunches the same
 code, and the new source has to be compiled by something that outlives the
-process being replaced. `hatch.sh` was already that something.
+process being replaced. `hatch.sh` was already that something, and
+`hatch.ps1` is the same something in PowerShell. It runs `work` and `go-to-work`
+from a copy of the build under the temp directory, because Windows will not
+overwrite a running binary and a session working a Hatch ticket builds
+`src/Hatch.Cli` in the same checkout.
 
 ### What it stops for
 
@@ -2438,11 +2444,13 @@ and comes back as the new version, and the terminal says which trigger fired
 rather than going quiet and back in a way that reads as a crash.
 
 The runner asks for it by exiting **75** (`EX_TEMPFAIL`, "try again", which
-collides with nothing else it answers with), and `hatch.sh` rebuilds it and runs
-it again. Two triggers, because the answer to which one on the ticket was both:
+collides with nothing else it answers with), and `hatch.sh` (or `hatch.ps1`)
+rebuilds it and runs it again. Two triggers, because the answer to which one on
+the ticket was both:
 
-- **Its own source changed on the trunk.** The set is `scripts/hatch.sh` and
-  everything under `src/Hatch.Cli` and `src/Hatch.Contracts` — the loop,
+- **Its own source changed on the trunk.** The set is `scripts/hatch.sh`,
+  `scripts/hatch.ps1` and everything under `src/Hatch.Cli` and
+  `src/Hatch.Contracts` — the loop,
   the wire records it is compiled against, and the script that resolves and
   launches it — hashed on disk rather than read out of git, since the files that
   are there are the files that run. The baseline is taken once at startup, and
@@ -2477,7 +2485,7 @@ spawned on that pass. It will not restart-loop on a build that failed: the
 supervisor says so and runs the version that is there, and that incarnation took
 its baseline from the source already on disk, so it does not ask again for the
 same change. And it will not restart at all under `--once`, under
-`--no-restart`, or when started by hand rather than through `hatch.sh` — the
+`--no-restart`, or when started by hand rather than through `hatch.sh` or `hatch.ps1` — the
 state path is what tells the runner somebody is standing over it, and a runner
 with nobody to rebuild it is the loop it started as.
 
@@ -2713,7 +2721,12 @@ its wall on and nothing to look at yet.
 
 In this repository, [`scripts/hatch.sh`](../scripts/hatch.sh) still answers to
 every one of these commands and hands them to the program, so nothing anybody
-has typed here stops working.
+has typed here stops working. In PowerShell it is
+[`scripts\hatch.ps1`](../scripts/hatch.ps1), and where the execution policy
+refuses scripts, `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\scripts\hatch.ps1 <command>` runs it anyway; `Set-ExecutionPolicy -Scope
+CurrentUser RemoteSigned` allows it for the account once. Group Policy outranks
+both, and if it is what refuses, it is the thing to change.
 
 `hatch work` reads `work/next`, then spawns a headless session with the
 playbook's prompt, model and effort. It prints the session id first and last

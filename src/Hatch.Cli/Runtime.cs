@@ -25,9 +25,10 @@ public sealed record Runtime(
 
     /// <summary>
     /// Where the night's running totals are handed from one incarnation of the
-    /// loop to the next. Set by the supervisor in <c>hatch.sh</c> and by nobody
-    /// else, so its absence is how the runner knows there is no supervisor
-    /// standing over it and therefore nothing to restart it.
+    /// loop to the next. Set by the supervisor in <c>scripts/hatch.sh</c> or
+    /// <c>scripts/hatch.ps1</c> and by nobody else, so its absence is how the
+    /// runner knows there is no supervisor standing over it and therefore
+    /// nothing to restart it.
     /// </summary>
     public string? NightStatePath { get; init; }
 

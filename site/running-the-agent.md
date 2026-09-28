@@ -40,7 +40,8 @@ revision it was built from, which is the same commit as the image serving the
 page. Put it on your `PATH` as `hatch` (`hatch.exe` on Windows); `chmod +x
 hatch` on macOS and Linux.
 
-Inside a checkout of Hatch itself, `./scripts/hatch.sh` reaches the same
+Inside a checkout of Hatch itself, `./scripts/hatch.sh` (or
+`.\scripts\hatch.ps1` in PowerShell on Windows) reaches the same
 commands and builds the CLI on demand with the .NET SDK. `make build-hatch`
 builds it once so every command after is fast, and `make publish-hatch`
 produces the four self-contained binaries the Runner page serves.
@@ -286,9 +287,17 @@ hatch go-to-work --no-restart         ...never
 **A `hatch` you started by hand has nothing standing over it**, so it is the
 loop it started as and these flags do nothing. This only matters when the
 board is about Hatch's own repository: there, `./scripts/hatch.sh go-to-work`
-is the supervisor. It catches the 75, runs `make build-hatch`, and starts the
-loop again with the night's totals carried forward, so a restart cannot
-outspend `--max-spend`. The container runner is a third case: it carries the
+(or `.\scripts\hatch.ps1 go-to-work` in PowerShell) is the supervisor. It
+catches the 75, runs `make build-hatch` (`dotnet build` in PowerShell), and
+starts the loop again with the night's totals carried forward, so a restart
+cannot outspend `--max-spend`.
+
+Windows client editions refuse scripts by default (execution policy
+`Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\scripts\hatch.ps1 go-to-work` runs it anyway, and `Set-ExecutionPolicy -Scope
+CurrentUser RemoteSigned` allows it for the account once; a clone carries no
+mark of the web, so `RemoteSigned` is enough. Group Policy outranks both: if it
+is what refuses, it is the thing to change, and no flag will get round it. The container runner is a third case: it carries the
 binary its image was built with, and a rebuild of the image is how it becomes
 a newer one.
 
