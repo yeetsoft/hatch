@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { conflictEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import { conflictEmptyWords, failingBuildEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import { buildWords } from '../lib/buildCheck';
 import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import type { Attention } from '../types';
@@ -8,7 +9,7 @@ import type { Attention } from '../types';
  * What the control hands over when it is pressed: the links that unblock the
  * loop, in the order somebody would work through them.
  *
- * All three sections are always drawn, empty state included. A panel whose sections
+ * All four sections are always drawn, empty state included. A panel whose sections
  * appeared and disappeared would be a panel whose shape has to be re-read every
  * time it opens - and the empty states are not filler here: one of them is the
  * only place in Hatch that says an issue has sat in review with nowhere to
@@ -17,6 +18,7 @@ import type { Attention } from '../types';
 export function AttentionPanel({ attention, now }: { attention: Attention | null; now: Date }) {
   const reviews = attention?.reviews ?? [];
   const conflicts = attention?.conflicts ?? [];
+  const failingBuilds = attention?.failingBuilds ?? [];
   const questions = attention?.questions ?? [];
 
   return (
@@ -76,6 +78,35 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
                   {c.checks.map((check) => (
                     <span key={check.canonical} className="hatch-attention-files" title={check.files.join('\n')}>
                       {conflictWords(check, c.checks.length > 1)}
+                    </span>
+                  ))}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h2 className="hatch-attention-heading">Builds that fail</h2>
+
+        {failingBuilds.length === 0 ? (
+          <p className="hatch-attention-empty">{failingBuildEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {failingBuilds.map((b) => (
+              <li key={b.key}>
+                {/* This tab, and to the issue, as the conflicts are: the loop
+                    is already at work on it, and the issue page links each
+                    failing check. */}
+                <Link className="hatch-attention-row" to={`/issues/${b.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{b.key}</span>
+                    <span className="hatch-attention-title">{b.title}</span>
+                  </span>
+                  {b.checks.map((check) => (
+                    <span key={check.canonical} className="hatch-attention-files">
+                      {buildWords(check, b.checks.length > 1)}
                     </span>
                   ))}
                 </Link>

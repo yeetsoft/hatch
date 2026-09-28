@@ -39,6 +39,20 @@ public sealed class IncrementReport
     /// <summary>The files a conflict increment left conflicting, when it did.</summary>
     public IReadOnlyList<string> StillConflicting { get; set; } = [];
 
+    /// <summary>
+    /// A build increment pushed a new tip to the branch. Not a stall, and not a
+    /// move either: the ticket stays in review, and the build on the new tip is
+    /// judged later, by the board.
+    /// </summary>
+    public bool FixPushed { get; set; }
+
+    /// <summary>The checks a build increment left failing on the tip it was sent to, when it did.</summary>
+    public IReadOnlyList<string> StillFailing { get; set; } = [];
+
+    /// <summary>The branch and the sha a build increment was sent to, for the words it is reported in.</summary>
+    public string? BuildBranch { get; set; }
+    public string? BuildSha { get; set; }
+
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
 
@@ -65,6 +79,9 @@ public sealed class IncrementReport
     public string Outcome =>
         Moved ? $"{From} -> {Ended}"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
+        : FixPushed ? "fix pushed, build pending"
+        : Stalled && StillFailing.Count > 0
+            ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
             ? $"still conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled ? $"still in \"{Ended}\"{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -113,7 +130,8 @@ public sealed class Increment(
         IReadOnlyList<string>? addDirs = null,
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
         IReadOnlyList<BranchEntry>? branches = null,
-        ConflictRun? conflict = null)
+        ConflictRun? conflict = null,
+        BuildRun? build = null)
     {
         var report = new IncrementReport
         {
@@ -125,9 +143,10 @@ public sealed class Increment(
         report.Ended = report.From;
 
         say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
-        say.Line(conflict is null
-            ? $"hatch: {model}, effort {effort}, {report.From} -> {report.To}"
-            : $"hatch: {model}, effort {effort}, {report.From}, resolving conflicts with {report.ConflictTrunk}");
+        say.Line(
+            conflict is not null ? $"hatch: {model}, effort {effort}, {report.From}, resolving conflicts with {report.ConflictTrunk}"
+            : build is not null ? $"hatch: {model}, effort {effort}, {report.From}, {Builds.Words(build.Found.Names)}"
+            : $"hatch: {model}, effort {effort}, {report.From} -> {report.To}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) say.Line($"hatch:   {chose}");
         say.Line("");
 
@@ -145,7 +164,7 @@ public sealed class Increment(
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
         claim.OnLost = _ => stopping.Cancel();
 
-        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found);
+        var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found, build?.Found);
         report.ExitCode = result.ExitCode;
         report.SessionId = facts.SessionId;
         report.Cost = facts.CostUsd;
@@ -175,11 +194,12 @@ public sealed class Increment(
             var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
             report.Ended = later?.FromStatus.Name ?? report.From;
 
-            // A conflict increment is judged by the branch, below, and not by the
-            // column: it starts and ends in review, so "did not move" is what
-            // success looks like. The column is still read and still reported.
+            // A conflict or a build increment is judged by the branch, below, and
+            // not by the column: it starts and ends in review, so "did not move"
+            // is what success looks like. The column is still read and still
+            // reported.
             if (report.Ended != report.From) report.Moved = true;
-            else if (conflict is null) report.Stalled = true;
+            else if (conflict is null && build is null) report.Stalled = true;
         }
         catch (HatchException e)
         {
@@ -195,6 +215,11 @@ public sealed class Increment(
         // somebody else's by then, and what the board is told about its branch is
         // theirs to say.
         if (conflict is not null && claim.Lost is null) await JudgeAsync(report, conflict, ct);
+
+        // The same for a build increment, and the same reason: what it did is on
+        // origin's branch. Whether that fixed the build is the board's to say,
+        // later, when the build on the new tip has run.
+        if (build is not null && claim.Lost is null) await JudgeBuildAsync(report, build, ct);
 
         // Whatever the session asked for on its way out. This is the half of the
         // loop that makes asking worth doing: an unattended run's questions are
@@ -284,13 +309,65 @@ public sealed class Increment(
         say.Line($"hatch: {report.Key} conflicts with {report.ConflictTrunk} resolved");
     }
 
+    /// <summary>
+    /// What became of a failing build, asked of origin's branch and not of the
+    /// column - and not of the build, which will not have run by the time the
+    /// session ends.
+    /// </summary>
+    /// <remarks>
+    /// Three answers, and only one of them is a stall. A new tip was pushed: a
+    /// fix, reported as one, with the build on it pending - the runner has
+    /// already told the board so, marked as a build increment's, so that if the
+    /// build fails again the board asks and no other agent is sent. The tip did
+    /// not move: a stall, flagged like any other with the checks named, so a build
+    /// nobody can fix costs one increment and not a night. And a tip that could
+    /// not be read is neither, which is the rule the column read follows too.
+    /// </remarks>
+    private async Task JudgeBuildAsync(IncrementReport report, BuildRun build, CancellationToken ct)
+    {
+        report.BuildBranch = build.Found.StillFailing.FirstOrDefault()?.Branch;
+        report.BuildSha = build.Found.StillFailing.FirstOrDefault()?.TipSha;
+
+        BuildJudged judged;
+        try
+        {
+            judged = await build.Judge(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            say.Complain($"hatch: {report.Key} - could not check whether a fix was pushed - {e.Message}");
+            report.Flag ??= "whether a fix was pushed is not known - the check failed";
+            return;
+        }
+
+        if (judged.Pushed)
+        {
+            report.FixPushed = true;
+            say.Line("");
+            say.Line($"hatch: {report.Key} fix pushed - the build on it is pending");
+            return;
+        }
+
+        if (judged.Unknown)
+        {
+            say.Complain($"hatch: {report.Key} - whether a fix was pushed could not be checked");
+            report.Flag ??= "whether a fix was pushed is not known - origin's branch could not be read";
+            return;
+        }
+
+        report.Stalled = true;
+        report.StillFailing = build.Found.Names;
+        say.Line("");
+        say.Line($"hatch: {report.Key} pushed nothing - its build still fails ({string.Join(", ", report.StillFailing)})");
+    }
+
     // ---- The session ----
 
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         RunFacts facts, Claim claim, CancellationToken ct,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        IReadOnlyList<BranchEntry>? branches, Rechecked? conflict)
+        IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build)
     {
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
@@ -299,7 +376,7 @@ public sealed class Increment(
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
         var request = new SessionRequest(
-            root, model, effort, Prompt.Compose(work, repositories, branches, conflict), quiet, addDirs, hooks?.Settings);
+            root, model, effort, Prompt.Compose(work, repositories, branches, conflict, build), quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
 
         await MarkSaidAsync(work, ct);
@@ -457,7 +534,15 @@ public sealed class Increment(
             return;
         }
 
-        var body = report.StillConflicting.Count > 0
+        var body = report.StillFailing.Count > 0
+            ? $"""
+              An unattended increment ran here to fix this branch's failing build, and the branch
+              on origin has not moved: {report.BuildBranch} is still at {report.BuildSha}, and the build on it
+              still fails. The checks that fail:
+
+              {string.Join('\n', report.StillFailing.Select(f => $"- {f}"))}
+              """
+            : report.StillConflicting.Count > 0
             ? $"""
               An unattended increment ran here to resolve this branch's conflicts with
               {report.ConflictTrunk}, and the branch on origin still conflicts with it. The
@@ -511,12 +596,7 @@ public sealed class Increment(
                 await board.AskAsync(
                     report.Key,
                     $"An unattended increment left {report.Key} in \"{report.From}\" without moving it - what should happen to it now?",
-                    [
-                        new QuestionOptionDto("leave it",
-                            "It waits for you. Nothing is dispatched at it while this question is open, so answer once you have looked - or once you have moved it somewhere the loop does not reach."),
-                        new QuestionOptionDto("try again",
-                            "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
-                    ],
+                    StallAnswers.Options(),
                     ct);
 
             report.Flag = waiting > 0 ? "waiting on a question" : "flagged";

@@ -95,6 +95,21 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
             .ToList();
 
-        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions, conflicts);
+        // The same for the build: listed with only its failed verdicts. Not
+        // counted towards the badge, as the conflicts are not.
+        var failed = (await db.BuildChecks.AsNoTracking()
+                .Where(b => reviewIds.Contains(b.IssueId) && b.Verdict == BuildVerdicts.Failed)
+                .OrderBy(b => b.Canonical)
+                .ToListAsync(ct))
+            .GroupBy(b => b.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<BuildCheckDto>)g.Select(IssueBuildChecks.Project).ToList());
+
+        var failingBuilds = inReview
+            .Where(i => failed.ContainsKey(i.Id))
+            .Select(i => new FailingBuildDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, failed[i.Id]))
+            .ToList();
+
+        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions, conflicts, failingBuilds);
     }
 }

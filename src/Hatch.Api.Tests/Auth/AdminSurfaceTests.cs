@@ -272,6 +272,11 @@ public class AdminSurfaceTests
         // wrong one costs a stall, which is a question. See MergeCheckController.
         "MergeCheckController.PutMergeCheck",
 
+        // The same for the build on the branch's tip: a fact about a sha that
+        // every runner reads the same way, and a wrong one costs a stall,
+        // which is a question. See BuildCheckController.
+        "BuildCheckController.PutBuildCheck",
+
         // A playbook's power routed through a different table, and cut the
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its
