@@ -241,4 +241,43 @@ public sealed class PickerTests
         Assert.Contains(picked.Busy, b => b.Contains("AER-3", StringComparison.Ordinal));
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-3/claim"));
     }
+
+    // ---- The hop ----
+
+    [Fact]
+    public async Task A_hop_row_takes_no_claim_and_calls_the_hop_route()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true) });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Equal("AER-1", picked.Hopped!.Key);
+        Assert.Equal("In Progress", picked.Hopped.From);
+        Assert.Equal("In Review", picked.Hopped.To);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_409_from_the_hop_route_walks_on_to_the_next_row()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true), Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", "/api/hatch/work/AER-1/hop", HttpStatusCode.Conflict, "\"AER-1 is not a hop\"");
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Contains(picked.Busy, b => b.Contains("AER-1", StringComparison.Ordinal));
+
+        await picked.Claim!.ReleaseAsync();
+    }
 }

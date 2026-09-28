@@ -165,6 +165,13 @@ public sealed class WorkCommand(Runtime runtime)
 
         if (Refuse(work)) return 2;
 
+        if (work.Hop)
+        {
+            runtime.Say.Line($"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
+            runtime.Say.Line("# express: carried across with no session");
+            return 0;
+        }
+
         var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
         if (chosen is null)
         {
@@ -248,6 +255,32 @@ public sealed class WorkCommand(Runtime runtime)
 
             if (Refuse(named)) return 2;
 
+            // Express, standing in a column marked to skip: carried across with
+            // no session, and nothing above this has taken a checkout or a
+            // claim yet, so there is nothing to undo.
+            if (named.Hop)
+            {
+                string? walkOn;
+                try
+                {
+                    (_, walkOn) = await runtime.Board.HopAsync(runtime.Checkouts, key, ct, clones);
+                }
+                catch (HatchException e)
+                {
+                    runtime.Say.Complain(e.Message);
+                    return 1;
+                }
+
+                if (walkOn is not null)
+                {
+                    runtime.Say.Complain($"hatch: {key} - {walkOn}");
+                    return 2;
+                }
+
+                runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  express, no session");
+                return 0;
+            }
+
             // Without a clone, so that the ordinary case - already matched, or
             // never going to match at all - refuses exactly as it always has,
             // before anything is claimed. Only a primary this runner could
@@ -324,6 +357,11 @@ public sealed class WorkCommand(Runtime runtime)
 
                 case Pick.Unreadable:
                     return 1;
+
+                case Pick.Hopped:
+                    var hop = picked.Hopped!;
+                    runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  express, no session");
+                    return 0;
             }
 
             if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };

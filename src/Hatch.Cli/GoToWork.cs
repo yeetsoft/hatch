@@ -726,16 +726,19 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (pass == Pass.Restarting) return true;
 
             // `--once` is the loop's own dry run against a board that is not a
-            // fixture: one pass, whatever it found, and out.
-            if (once)
+            // fixture: one pass, whatever it found, and out. A hop is not that
+            // pass - it spawns nothing and costs nothing, so `--once` waits for
+            // the pass that actually is one.
+            if (once && pass is not Pass.Hopped)
             {
                 tally.StopWhy = "--once, and the pass is done";
                 return false;
             }
 
             // An increment that ran is followed by the next one immediately. The
-            // interval is what to do when there was nothing to do.
-            if (pass is Pass.Worked or Pass.Asked or Pass.Cleared) continue;
+            // interval is what to do when there was nothing to do. A hop reads
+            // the board again straight away, the same as a cleared conflict.
+            if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
             if (!await NapAsync(interval, tally, ct)) return false;
         }
 
@@ -769,6 +772,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         /// longer offers it, so there is nothing to wait for.
         /// </summary>
         Asked,
+
+        /// <summary>
+        /// An express issue was carried across the column it stood in - see
+        /// docs/hatch.md, "The hop". No claim, no reset, no session, and no
+        /// tally: <c>--max-runs</c> and <c>--once</c> count sessions, and a hop
+        /// is not one - so the next pass is asked for at once, the same as
+        /// <see cref="Cleared"/>.
+        /// </summary>
+        Hopped,
     }
 
     /// <summary>
@@ -899,6 +911,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 line.Line = "the board did not answer";
                 runtime.Say.Complain($"hatch: the board did not answer - asking again in {interval}s");
                 return Pass.Waited;
+
+            case Pick.Hopped:
+                idle.Clear();
+                busy.Clear();
+                var hop = picked.Hopped!;
+                var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  express, no session";
+                line.Line = hopLine;
+                runtime.Say.Line($"hatch: {hopLine}");
+                return Pass.Hopped;
         }
 
         idle.Clear();

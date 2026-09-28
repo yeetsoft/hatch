@@ -37,14 +37,14 @@ public static class Fixtures
     public static IssueDto Issue(
         string key, string type = "task", string title = "A ticket", string description = "The brief.",
         string? modelOverride = null, string? effortOverride = null, string? parentKey = null,
-        bool expedited = false, string? pullRequestUrl = null) =>
+        bool expedited = false, string? pullRequestUrl = null, bool express = false) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
             StatusId: 3, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
             ReadyAt: null, DueAt: null, PullRequestUrl: pullRequestUrl,
             ModelOverride: modelOverride, EffortOverride: effortOverride, Assignee: null,
             CreatedBy: "somebody", CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
-            Expedited: expedited);
+            Expedited: expedited, Express: express);
 
     public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
         new(key, "AER", type, title, 3, 1000, null, null, null);
@@ -64,19 +64,21 @@ public static class Fixtures
         string? issueUrl = null,
         bool noLink = false,
         string kind = WorkKinds.Advance,
-        IReadOnlyList<CommentDto>? messages = null) =>
+        IReadOnlyList<CommentDto>? messages = null,
+        bool hop = false) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
             ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
-            Playbook: Playbook(),
+            Playbook: hop ? null : Playbook(),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
             IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
             Kind: kind,
-            Messages: messages);
+            Messages: messages,
+            Hop: hop);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
@@ -106,8 +108,10 @@ public static class Fixtures
         string? matchedRemote = null) =>
         new(remote, canonical ?? remote, baseBranch, primary, matchedRemote);
 
-    public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false) =>
-        new(Issue(key, expedited: expedited), Status(3, "In Progress"), Status(4, "In Review"), blocked);
+    public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false, bool hop = false) =>
+        new(
+            Issue(key, expedited: expedited, express: hop), Status(3, "In Progress"), Status(4, "In Review"), blocked,
+            Hop: hop);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(

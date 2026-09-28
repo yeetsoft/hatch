@@ -15,8 +15,9 @@ public sealed class IssueCommands(Cli cli)
         "",
         "  An expedited ticket says so: somebody marked it \"this one first\", and",
         "  the board and the dispatcher both reach for it before anything else.",
-        "  There is no verb here that sets one - the CLI holds a key, and that is",
-        "  a person's write.",
+        "  An express ticket says so too: standing in a column marked to skip, it",
+        "  is carried on with no session. There is no verb here that sets either -",
+        "  the CLI holds a key, and both are a person's write.",
     ];
 
     public static readonly string[] StartUsage =
@@ -83,6 +84,7 @@ public sealed class IssueCommands(Cli cli)
         // edges below are. Nearly every ticket is not expedited, and a line
         // saying so on every read of every one of them is a line nobody reads.
         if (issue.Expedited) cli.Say.Line("expedite: yes - this one goes first");
+        if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
         if (issue.ParentKey is { Length: > 0 } parent) cli.Say.Line($"parent:   {parent}");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");
         if (issue.DependsOnKeys.Count > 0) cli.Say.Line($"depends:  {string.Join(", ", issue.DependsOnKeys)}");

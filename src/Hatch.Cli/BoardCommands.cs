@@ -34,6 +34,9 @@ public sealed class BoardCommands(Cli cli)
         "  A row marked \"!\" is expedited: somebody said this one first, and the",
         "  pass considers every one of them before anything else, whatever column",
         "  each sits in.",
+        "",
+        "  A row marked \"(express, no session)\" is a hop: the loop carries it on",
+        "  itself with no session, rather than spawning one.",
     ];
 
     /// <summary>
@@ -69,7 +72,10 @@ public sealed class BoardCommands(Cli cli)
             var hurried = column.Count(i => i.Expedited);
             var first = hurried > 0 ? $"  ({hurried} expedited)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{first}");
+            var express = column.Count(i => i.Express);
+            var carried = express > 0 ? $"  ({express} express)" : "";
+
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{first}{carried}");
         }
 
         return 0;
@@ -110,7 +116,8 @@ public sealed class BoardCommands(Cli cli)
 
         var due = card.DueAt is { Length: > 0 } by ? $"  (due {by})" : "";
         var first = card.Expedited ? "  (expedited)" : "";
-        cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{due}");
+        var carried = card.Express ? "  (express)" : "";
+        cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{carried}{due}");
         return 0;
     }
 
@@ -183,6 +190,7 @@ public sealed class BoardCommands(Cli cli)
                     ? why
                     : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)
                     : q.Kind == WorkKinds.Build ? Builds.Words(q.Issue)
+                    : q.Hop ? $"-> {q.ToStatus?.Name ?? "?"}  (express, no session)"
                     : $"-> {q.ToStatus?.Name ?? "?"}"))
             .ToList();
     }

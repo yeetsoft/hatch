@@ -2343,21 +2343,28 @@ One pass, from the board to the release:
    the person-assignee fold — and answers with every row and the reason it was
    folded. It has already folded past everything under somebody else's live
    claim, so what comes back clear is a shortlist.
-2. **Claim the first clear row.** A `409` is an answer and not a fault: somebody
-   took it between the scan and the take, and the pass moves on to the next clear
-   row. Up to **five** attempts, because a board whose first five are all being
-   worked is a board where waiting an interval is the honest thing to do — and an
-   unbounded walk would take and release leases down a thousand-card column.
-   Five refusals is a **busy** board, reported in its own sentence, naming the
-   keys and who holds them. That is deliberately not the sentence an empty board
-   gets: one means wait a minute, and the other means the night is over.
-3. **Read the dispatch, by name.** `work/{key}?heldToken=…` and never
+2. **A clear row marked `Hop` is carried across, not claimed.** See [the
+   hop](#the-hop): `POST work/{key}/hop`, no claim, no workspace reset, no
+   spawn. One line is printed naming the issue and both columns, and the loop
+   reads the queue again straight away rather than going on to the next step of
+   this pass. A `409` here is an answer and not a fault, the same as the
+   claim's below, and the walk moves to the next clear row.
+3. **Claim the first clear row that is not a hop.** A `409` is an answer and not
+   a fault: somebody took it between the scan and the take, and the pass moves
+   on to the next clear row. Up to **five** attempts, because a board whose
+   first five are all being worked is a board where waiting an interval is the
+   honest thing to do — and an unbounded walk would take and release leases
+   down a thousand-card column. Five refusals is a **busy** board, reported in
+   its own sentence, naming the keys and who holds them. That is deliberately
+   not the sentence an empty board gets: one means wait a minute, and the other
+   means the night is over.
+4. **Read the dispatch, by name.** `work/{key}?heldToken=…` and never
    `work/next`, which would answer with the first clear row *as it stands now* —
    a different ticket from the one just claimed, once another runner's lease has
    folded the row. The token is what stops the runner's own lease folding its own
    dispatch. A dispatch that comes back blocked is a ticket that changed under
    us: the lease goes straight back, and the walk goes on.
-4. **Reset the workspace**, then spawn. In that order, and after the claim: a
+5. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
    would be a fetch spent on an increment that never happens. Two things are
    done at the spawn so that a message to the agent is heard:
@@ -2380,11 +2387,11 @@ One pass, from the board to the release:
      before it spawns. `work --dry-run` prints the heading and marks nothing.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
-5. **Heartbeat**, carrying the last line the runner printed — and only when it
+6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
    so carries nothing, which is what `--quiet` is.
-6. **Release**, however the increment ended.
+7. **Release**, however the increment ended.
 
 **A refused heartbeat ends the increment.** The lease expired underneath the run,
 was taken over, or was cleared by the operator; the session is stopped rather
@@ -2679,6 +2686,11 @@ So a stall is written on the ticket: a comment naming the session that ran and
 the transition it was trying to make — with the `claude --resume` command, since
 resuming the conversation is most of why a stall is worth recording rather than
 merely counting — and, if nothing is already open there, **a question**.
+
+**A hop is never a stall.** No session ran, so there is no session to name and
+nothing was spent on a ticket that did not move - the ticket did move, one
+column, and the runner never held a claim to have written anything on it. See
+[the hop](#the-hop).
 
 A question rather than a **flag field**, which was the obvious alternative and
 would have had to be taught three things a question already does: it blocks the
@@ -3296,7 +3308,10 @@ column, and either the reason the pass would fold past it or the transition it
 is clear for, in the dispatcher's order: every [expedited](#expedite) row first
 whatever column it sits in, then the rest, and inside each half the rightmost
 column first and the order the board itself draws that column in. An expedited
-row is marked, so a queue reordered by one says why. `hatch queue AER-1`
+row is marked, so a queue reordered by one says why. A clear row that is a
+[hop](#the-hop) reads `-> <column>  (express, no session)` in place of the bare
+arrow, so it reads differently from a row `go-to-work` would spawn a session
+for even though both print no reason to fold past. `hatch queue AER-1`
 scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical
