@@ -64,6 +64,11 @@ public class IssueClaimController(
         if (claims.IsLive(ClaimSnapshot.Of(issue), now))
             return Conflict(claims.Sentence(ClaimSnapshot.Of(issue), now));
 
+        // One runner per line of the tree: a live claim on an ancestor or a
+        // descendant refuses this one with the same kind of sentence.
+        if ((await claims.LineageAsync(db, now, ct)).Holder(issue.Id, null) is { } relative)
+            return Conflict(relative);
+
         var token = Guid.NewGuid();
         var actor = await caller.ActorNameAsync(ct);
 
@@ -78,6 +83,12 @@ public class IssueClaimController(
                 ? claims.Sentence(current, now)
                 : "somebody else claimed this first");
         }
+
+        // Take first, then look - see IssueClaims.ConfirmLineAsync for why the
+        // check above is not enough. A take that loses lets go and writes no
+        // event, so the trail never says a claim was taken that was not kept.
+        if (await claims.ConfirmLineAsync(db, issue.Id, token, now, ct) is { } lost)
+            return Conflict(lost);
 
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);

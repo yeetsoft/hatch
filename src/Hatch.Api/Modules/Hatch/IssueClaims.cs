@@ -77,8 +77,15 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// and in the dispatch <c>work/{key}</c> refuses. One method called three
     /// times, so a holder-shaped fold cannot come to read three ways.
     /// </summary>
-    public string Sentence(ClaimSnapshot claim, DateTimeOffset now) =>
-        $"{claim.ClaimedBy} is working this from {claim.Runner}, last heard from {Ago(claim.HeartbeatAt, now)}";
+    /// <param name="subject">
+    /// What is being worked, from the reader's side: <c>this</c> for the issue
+    /// itself, or a relative's key and where it sits, as in
+    /// <c>HA-12, above this,</c> with its own comma, since a clause set off by
+    /// commas needs one on each side - so the three shapes a fold can take are one
+    /// format string and cannot drift apart.
+    /// </param>
+    public string Sentence(ClaimSnapshot claim, DateTimeOffset now, string subject = "this") =>
+        $"{claim.ClaimedBy} is working {subject} from {claim.Runner}, last heard from {Ago(claim.HeartbeatAt, now)}";
 
     /// <summary>
     /// How long ago, at the resolution somebody reading a refusal at a terminal
@@ -96,6 +103,85 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
 
         var minutes = (int)since.TotalMinutes;
         return minutes == 1 ? "1 minute ago" : $"{minutes} minutes ago";
+    }
+
+    // ---- The line of the tree ----
+
+    /// <summary>
+    /// The board's tree and its live claims, read once and judged against one
+    /// instant - the input to <see cref="ClaimLineage.Holder"/>.
+    /// </summary>
+    /// <remarks>
+    /// Two <c>AsNoTracking</c> reads, the second of which is the negation of
+    /// the predicate <see cref="TryTakeAsync"/> writes under. The tree comes
+    /// out in <c>(Rank, Id)</c> order so that the children of each node are
+    /// already in the order the board draws them, which is the order
+    /// <see cref="ClaimLineage.Holder"/> names a holder in.
+    /// </remarks>
+    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = Cutoff(now);
+
+        var tree = await db.Issues.AsNoTracking()
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number })
+            .ToListAsync(ct);
+
+        var live = await db.Issues.AsNoTracking()
+            .Where(i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff)
+            .Select(i => new
+            {
+                i.Id,
+                Claim = new ClaimSnapshot(
+                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+            })
+            .ToListAsync(ct);
+
+        var parents = new Dictionary<long, long?>(tree.Count);
+        var keys = new Dictionary<long, string>(tree.Count);
+        var children = new Dictionary<long, List<long>>();
+
+        foreach (var row in tree)
+        {
+            parents[row.Id] = row.ParentId;
+            keys[row.Id] = IssueKey.Format(row.ProjectKey, row.Number);
+        }
+
+        foreach (var row in tree)
+        {
+            // A parent id pointing at nothing is a root, as it is in Rollup.
+            if (row.ParentId is not { } parent || !parents.ContainsKey(parent)) continue;
+
+            if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
+            siblings.Add(row.Id);
+        }
+
+        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim));
+    }
+
+    /// <summary>
+    /// Runs after a take has landed, and answers the sentence naming a relative
+    /// who holds a live claim - having let go of the new lease first - or null
+    /// where the line is clear and the take stands.
+    /// </summary>
+    /// <remarks>
+    /// Take first, then look. A conditional <c>UPDATE</c> fences one row and a
+    /// line of the tree is many, so two takes on a parent and its child from
+    /// one pre-claim state each write their own row and no <c>WHERE</c> can see
+    /// the other. Looking after the write does: whichever take looks second
+    /// sees the first. The worst case is that both look before either lets go
+    /// and both release, and the next pass tries again; two runners never both
+    /// keep a claim.
+    /// </remarks>
+    public async Task<string?> ConfirmLineAsync(
+        HatchContext db, long issueId, Guid token, DateTimeOffset now, CancellationToken ct)
+    {
+        var lineage = await LineageAsync(db, now, ct);
+        if (lineage.Holder(issueId, token) is not { } sentence) return null;
+
+        await TryReleaseAsync(db, issueId, token, ct);
+        return sentence;
     }
 
     // ---- The writes ----
@@ -220,4 +306,99 @@ public sealed record ClaimSnapshot(
         issue.ClaimHeartbeatAt,
         issue.ClaimChatter,
         issue.ClaimChatterAt);
+}
+
+
+/// <summary>
+/// Who is working what, along each line of the tree, judged against one
+/// instant. Answers the one question the dispatcher and the take both ask: does
+/// somebody hold a live claim on an ancestor or a descendant of this issue?
+/// </summary>
+/// <remarks>
+/// Ancestor or descendant, and nothing else. Siblings and cousins share no line
+/// - a parent's session builds what its children describe, and no other pair
+/// can duplicate each other.
+/// </remarks>
+public sealed class ClaimLineage
+{
+    /// <summary>A lineage with nobody in it, for a refused scan.</summary>
+    public static readonly ClaimLineage Empty = new(null, default, [], [], [], []);
+
+    private readonly IssueClaims? _claims;
+    private readonly DateTimeOffset _now;
+    private readonly Dictionary<long, long?> _parents;
+    private readonly Dictionary<long, string> _keys;
+    private readonly Dictionary<long, List<long>> _children;
+    private readonly Dictionary<long, ClaimSnapshot> _live;
+
+    internal ClaimLineage(
+        IssueClaims? claims, DateTimeOffset now,
+        Dictionary<long, long?> parents, Dictionary<long, string> keys,
+        Dictionary<long, List<long>> children, Dictionary<long, ClaimSnapshot> live)
+    {
+        _claims = claims;
+        _now = now;
+        _parents = parents;
+        _keys = keys;
+        _children = children;
+        _live = live;
+    }
+
+    /// <summary>
+    /// The sentence naming who is working a relative of this issue, or null.
+    /// </summary>
+    /// <param name="heldToken">
+    /// The caller's own token: a claim carrying it is the caller's and folds
+    /// nothing, up or down - a session holding a story must still be able to
+    /// read its own tasks.
+    /// </param>
+    /// <remarks>
+    /// One holder. Up first, nearest ancestor first, with a <c>seen</c> guard
+    /// for the same reason <c>DependencyGate.Unmet</c> has one; then down,
+    /// breadth-first in board order, so the nearest descendant is the one named.
+    /// The issue's own claim is not this method's business.
+    /// </remarks>
+    public string? Holder(long issueId, Guid? heldToken)
+    {
+        if (_claims is null || _live.Count == 0) return null;
+
+        var seen = new HashSet<long> { issueId };
+        long? at = _parents.GetValueOrDefault(issueId);
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (Named(id, heldToken, "above this") is { } above) return above;
+
+            at = _parents.GetValueOrDefault(id);
+        }
+
+        seen = [issueId];
+        var generation = new List<long> { issueId };
+
+        while (generation.Count > 0)
+        {
+            var next = new List<long>();
+
+            foreach (var id in generation)
+            foreach (var child in _children.TryGetValue(id, out var kids) ? kids : [])
+            {
+                if (!seen.Add(child)) continue;
+
+                if (Named(child, heldToken, "below this") is { } below) return below;
+
+                next.Add(child);
+            }
+
+            generation = next;
+        }
+
+        return null;
+    }
+
+    private string? Named(long id, Guid? heldToken, string where)
+    {
+        if (!_live.TryGetValue(id, out var claim) || claim.Token == heldToken) return null;
+
+        return _claims!.Sentence(claim, _now, $"{_keys.GetValueOrDefault(id, "an issue")}, {where},");
+    }
 }

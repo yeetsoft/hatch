@@ -2081,6 +2081,168 @@ public class WorkControllerTests
         Assert.Equal("elsewhere:/checkouts/two", drawn.Runner);
     }
 
+    // ---- One runner per line of the tree ----
+    //
+    // A claim holds its line: nobody else is dispatched at an ancestor or a
+    // descendant of an issue somebody is working. Siblings and cousins share no
+    // line and stay parallel.
+
+    private static string From() => "hatch is working";
+
+    private const string Where = "from somewhere:/checkouts/one, last heard from just now";
+
+    [Fact]
+    public async Task AStorysClaim_FoldsItsTask_AndThePassTakesSomethingElse()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        var free = await h.FileAsync("story", "elsewhere", h.Todo, rank: 3072);
+        await h.ClaimAsync(story);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            $"{From()} {Key(story)}, above this, {Where}",
+            queue.Single(e => e.Issue.Key == Key(task)).Blocked);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(free)).Blocked);
+        Assert.Equal(Key(free), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task ATasksClaim_FoldsItsStory_WithTheSentenceSayingBelow()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(task);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            $"{From()} {Key(task)}, below this, {Where}",
+            queue.Single(e => e.Issue.Key == Key(story)).Blocked);
+    }
+
+    [Fact]
+    public async Task AClaim_ReachesAtAnyDepth_InBothDirections()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Todo, rank: 1024);
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024, parentId: epic.Id);
+        var task = await h.FileAsync("task", "the task", h.Todo, rank: 1024, parentId: story.Id);
+
+        var epicClaim = await h.ClaimAsync(epic);
+        var down = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+        Assert.Equal($"{From()} {Key(epic)}, above this, {Where}", down.Blocked);
+
+        // Let go of the epic and hold the task instead: the epic, two levels up,
+        // is folded, and so is the story between.
+        epic.ClaimToken = null;
+        epic.ClaimHeartbeatAt = null;
+        await h.Db.SaveChangesAsync();
+        await h.ClaimAsync(task);
+
+        var up = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Equal($"{From()} {Key(task)}, below this, {Where}", up.Single(e => e.Issue.Key == Key(epic)).Blocked);
+        Assert.Equal($"{From()} {Key(task)}, below this, {Where}", up.Single(e => e.Issue.Key == Key(story)).Blocked);
+        Assert.NotEqual(Guid.Empty, epicClaim);
+    }
+
+    [Fact]
+    public async Task ASiblingsClaim_FoldsNothing()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var one = await h.FileAsync("task", "one", h.Todo, rank: 1024, parentId: story.Id);
+        var two = await h.FileAsync("task", "two", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(one);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(two)).Blocked);
+        Assert.Equal(Key(two), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task ACousinsClaim_FoldsNeitherTheCousinNorItsParent()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Done, rank: 1024);
+        var s1 = await h.FileAsync("story", "s1", h.Todo, rank: 1024, parentId: epic.Id);
+        var t1 = await h.FileAsync("task", "t1", h.Todo, rank: 1024, parentId: s1.Id);
+        var s2 = await h.FileAsync("story", "s2", h.Todo, rank: 2048, parentId: epic.Id);
+        var t2 = await h.FileAsync("task", "t2", h.Todo, rank: 2048, parentId: s2.Id);
+        await h.ClaimAsync(t1);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(s2)).Blocked);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(t2)).Blocked);
+        Assert.Contains("below this", queue.Single(e => e.Issue.Key == Key(s1)).Blocked);
+    }
+
+    [Fact]
+    public async Task ARelativesClaimOlderThanTheTtl_FoldsNothing()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "its runner died", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(story);
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        Assert.All(queue, e => Assert.Null(e.Blocked));
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task ANamedDispatch_IsRefusedByARelativesClaimToo()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "underway", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(story);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal($"{From()} {Key(story)}, above this, {Where}", work.Blocked);
+    }
+
+    [Fact]
+    public async Task AnIssueWithItsOwnClaim_PrintsItsOwnSentenceRatherThanARelatives()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(story, by: "one", runner: "somewhere:/checkouts/one");
+        await h.ClaimAsync(task, by: "two", runner: "elsewhere:/checkouts/two");
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "two is working this from elsewhere:/checkouts/two, last heard from just now",
+            queue.Single(e => e.Issue.Key == Key(task)).Blocked);
+        Assert.Equal(
+            "one is working this from somewhere:/checkouts/one, last heard from just now",
+            queue.Single(e => e.Issue.Key == Key(story)).Blocked);
+    }
+
+    [Fact]
+    public async Task AClaimRead_WithItsOwnToken_FoldsNeitherTheStoryNorItsTask()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        var token = await h.ClaimAsync(story);
+
+        // A session holding the story must still be able to read its own tasks.
+        Assert.Null(Value(await h.Work.GetWork(Key(story), token, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(task), token, default)).Blocked);
+        Assert.Equal(Key(story), Value(await h.Work.GetNextWork(0, null, token, default)).Issue.Key);
+    }
+
     // ---- One corner of the board, scanned ----
 
     [Fact]

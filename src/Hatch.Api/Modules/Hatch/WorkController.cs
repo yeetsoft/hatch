@@ -278,7 +278,7 @@ public class WorkController(
         // One instant for the whole pass. A scan in which the clock moved
         // between two rows could fold one card and not its neighbour for a
         // reason nobody could reconstruct afterwards.
-        var claimed = new ClaimGate(claims, now, heldToken);
+        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct));
 
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var open = await Questions.OpenCountsAsync(db, ct);
@@ -390,30 +390,37 @@ public class WorkController(
     /// whose own claim does not count as somebody else's.
     /// </summary>
     /// <remarks>
-    /// Built once per pass and once per named dispatch, out of rows the scan
-    /// already materialised: <c>ScanAsync</c> loads whole
-    /// <see cref="EfHatchIssue"/> entities, so the seven claim columns arrive
-    /// for free and this gate costs no query at all - unlike
-    /// <see cref="DependencyGate"/>, which is a table away.
+    /// Built once per pass and once per named dispatch. An issue's own claim
+    /// comes out of the rows the scan already materialised: <c>ScanAsync</c>
+    /// loads whole <see cref="EfHatchIssue"/> entities, so the seven claim
+    /// columns arrive for free. A relative's claim is the
+    /// <see cref="ClaimLineage"/>, two queries a pass rather than two a row -
+    /// the tree and the live claims, read against the same instant.
+    ///
+    /// <para>The issue's own claim is named first. The relative's is named only
+    /// where the issue has none live, so a fold that printed one sentence
+    /// yesterday prints the same one today.</para>
     /// </remarks>
-    private sealed record ClaimGate(IssueClaims? Claims, DateTimeOffset Now, Guid? HeldToken)
+    private sealed record ClaimGate(IssueClaims? Claims, DateTimeOffset Now, Guid? HeldToken, ClaimLineage Lineage)
     {
         /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Claims</c> is never null.</summary>
-        public static readonly ClaimGate None = new(null, default, null);
+        public static readonly ClaimGate None = new(null, default, null, ClaimLineage.Empty);
 
         /// <summary>
         /// The sentence naming who is working this right now, or null - which
         /// is a dead claim, no claim at all, or a live one this caller holds
-        /// itself.
+        /// itself. Failing all of that, who is working a line of the tree
+        /// through it: an ancestor, or a descendant, the caller does not hold.
         /// </summary>
         public string? Held(EfHatchIssue issue)
         {
             if (Claims is null) return null;
 
             var claim = ClaimSnapshot.Of(issue);
-            if (!Claims.IsLive(claim, Now)) return null;
+            if (Claims.IsLive(claim, Now))
+                return claim.Token == HeldToken ? null : Claims.Sentence(claim, Now);
 
-            return claim.Token == HeldToken ? null : Claims.Sentence(claim, Now);
+            return Lineage.Holder(issue.Id, HeldToken);
         }
     }
 
@@ -681,6 +688,7 @@ public class WorkController(
         if (issue is null) return NotFound();
 
         var statuses = await OrderedStatusesAsync(ct);
+        var now = time.GetUtcNow();
 
         // Its own gate rather than the scan's, because nothing scanned here -
         // built from the same rows and the same rule, so a named dispatch and a
@@ -690,7 +698,7 @@ public class WorkController(
             statuses,
             null,
             await DependencyGate.ForAsync(db, statuses, ct),
-            new ClaimGate(claims, time.GetUtcNow(), heldToken),
+            new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
             RepositoryDeclaration.From(remote, standing, clones),
             ct);
     }
@@ -856,7 +864,10 @@ public class WorkController(
     /// says <em>this is being worked right now</em>; everything after it is
     /// about whether the issue could be worked at all. Printing "no playbook
     /// covers this" about a ticket another runner is three minutes into is a
-    /// true sentence about the wrong thing.</para>
+    /// true sentence about the wrong thing. The claim may be a relative's: a
+    /// live claim on an ancestor or a descendant folds here too, in the same
+    /// place and for the same reason, because a parent's session builds what
+    /// its children describe.</para>
     ///
     /// <para>The issue's type is not in that list, and deliberately: which
     /// types a move applies to is the playbook row's to state, and a constant

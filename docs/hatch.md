@@ -767,6 +767,28 @@ nothing at all where the claim has expired, because the arithmetic is the
 server's and a card drawing a holder that stopped existing four hours ago is
 worse than a card drawing nothing.
 
+**A claim holds its line of the tree.** While anybody holds a live claim on an
+issue, nobody else may be dispatched at, or claim, any issue above it or below
+it, at any depth: a parent's session builds what its children describe, so two
+sessions on one line produce duplicate work and conflicting pull requests.
+*Level* here means ancestor or descendant — not depth in the tree and not issue
+type — so siblings and cousins are unaffected and run in parallel. The
+dispatcher folds a relative with the same sentence a claim on the issue itself
+prints, naming the relative (`Nathan is working AER-12, above this, from
+host:/path/to/checkout, last heard from 2 minutes ago`), and `POST …/claim`
+answers `409` with it. A relative's claim past its TTL folds nothing, exactly as
+an issue's own expired claim does.
+
+The take cannot fence this in its `WHERE`: a conditional `UPDATE` fences one row
+and a line of the tree is many, so a take on a parent and a take on its child
+from one pre-claim state each write a row of their own and neither can see the
+other. So **a take is made first and looked at after**: once its `UPDATE` lands
+it re-reads the line, and if a relative holds a live claim it lets go of the
+lease it just took and answers `409`, writing no event. Whichever take looks
+second sees the first. The worst case is that both look before either lets go
+and both release; the next pass tries again. Two runners never both keep a
+claim.
+
 **A claim is drawn where the work is looked at.** A claimed card carries a dot
 in its head row, green while the holder is being heard from and amber once it
 has gone quiet, with who holds it, from where and how long since a word on the
@@ -1685,7 +1707,10 @@ missing configuration:
    issue in review is fixed or left alone, and only the operator moves it on.
 5. Something else holds a live [claim](#claim) on it — *somebody is working this
    right now*, named with the runner it is being worked from and when it was
-   last heard from.
+   last heard from. The claim may be a relative's: one on an ancestor or a
+   descendant folds it too, in the same sentence with the relative's key and
+   *above this* or *below this* in place of *this*. Its own claim is named
+   first; a relative's only when it has none live.
 6. The issue holds an unanswered question — *it is waiting on a person, not on
    an agent*.
 7. The project's [repositories](#repository) match none of the remotes the
@@ -2026,6 +2051,9 @@ the sentence saying which one it failed is what `work/queue` reports:
    about a ticket another runner is three minutes into. A caller naming a claim
    token of its own with `?heldToken=` is not folded by its own lease:
    re-reading the dispatch for a ticket one already holds is not a conflict.
+   The claim may be a relative's — an ancestor's or a descendant's, at any
+   depth — and that folds too; a token of one's own frees the relatives it
+   holds as well as the issue.
 3. **Its ready date has arrived**, read against the caller's calendar day. A
    card folded off the board is not one to spend an increment on tonight.
 4. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
