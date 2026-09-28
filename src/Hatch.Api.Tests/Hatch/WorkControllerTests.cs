@@ -1525,6 +1525,107 @@ public class WorkControllerTests
         Assert.Equal(WorkKinds.Advance, Value(await h.Work.GetNextWork(0, null, null, default)).Kind);
     }
 
+    // ---- The review read ----
+
+    [Fact]
+    public async Task ReviewRead_ListsTheIssuesInReview_WithTheirVerdictsAndRepositories()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+        await h.FileAsync("story", "still being written", h.InProgress);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
+
+        var row = Assert.Single(rows);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("git@example.com:o/r.git", Assert.Single(row.Repositories).MatchedRemote);
+        Assert.Equal(MergeVerdicts.Conflicted, Assert.Single(row.MergeChecks).Verdict);
+    }
+
+    /// <summary>
+    /// A verdict is a fact about a branch and not work: a claim, a question, a
+    /// ready date and a person's name all keep an issue out of the queue and
+    /// none of them keeps its branch from having a verdict.
+    /// </summary>
+    [Fact]
+    public async Task ReviewRead_IsNotNarrowedByAClaimAQuestionADateOrAnAssignee()
+    {
+        var h = await NewAsync();
+        var claimed = await h.FileAsync("story", "being worked", h.Review);
+        var asked = await h.FileAsync("story", "asked", h.Review);
+        var later = await h.FileAsync("story", "not yet", h.Review, readyAt: Now.AddDays(3));
+        var assigned = await h.FileAsync("story", "somebody's", h.Review);
+        await h.ClaimAsync(claimed);
+        await h.AskAsync(asked, "which side?");
+        await h.AssignAsync(assigned, personId: Guid.NewGuid());
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal(
+            [Key(claimed), Key(asked), Key(later), Key(assigned)],
+            rows.Select(r => r.Key).Order());
+    }
+
+    [Fact]
+    public async Task ReviewRead_LeavesOutWhatTheCallerHoldsNoCheckoutFor()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "bound elsewhere", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], true, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_GivesAnUnboundProjectToACallerWithAStandingCheckoutOnly()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "no repositories bound", h.Review);
+
+        Assert.Equal(Key(issue), Assert.Single(Value(await h.Work.GetReview(null, true, default))).Key);
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], false, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_AnswersNothingToACallerThatDeclaresNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "in review", h.Review);
+
+        Assert.Empty(Value(await h.Work.GetReview(null, null, default)));
+    }
+
+    /// <summary>
+    /// Not the clone allowance: a poll clones nothing, so a repository this
+    /// runner has never cloned is not one it can check.
+    /// </summary>
+    [Fact]
+    public async Task ReviewRead_TakesNoAccountOfARunnerThatWouldClone()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.FileAsync("story", "bound elsewhere", h.Review);
+
+        // `clones` is not a parameter here at all - the declaration is the
+        // remotes and the standing checkout, and nothing else.
+        Assert.Empty(Value(await h.Work.GetReview(["https://example.com/other.git"], false, default)));
+    }
+
+    [Fact]
+    public async Task ReviewRead_KeepsTheColumnsOwnOrderAndLeavesOutOtherColumns()
+    {
+        var h = await NewAsync();
+        var second = await h.FileAsync("story", "below", h.Review, rank: 2048);
+        var first = await h.FileAsync("story", "top", h.Review, rank: 1024);
+        await h.FileAsync("story", "shipped", h.Done);
+
+        Assert.Equal(
+            [Key(first), Key(second)],
+            Value(await h.Work.GetReview(null, true, default)).Select(r => r.Key));
+    }
+
     // ---- The conflict playbook ----
 
     [Fact]

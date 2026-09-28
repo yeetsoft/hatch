@@ -110,6 +110,8 @@ public sealed class Lifecycle(Runtime runtime)
                 var left = runtime.Workspace(path, baseBranch).Leave(key, pullRequest);
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
+
+                if (left.Found is { } found) await ReportAsync(key, chosen, path, found, ct);
             }
 
             if (lines.Count == 0) return;
@@ -124,6 +126,43 @@ public sealed class Lifecycle(Runtime runtime)
             runtime.Say.Complain($"hatch: {key} - the tree could not be left tidy, or the ticket told - {e.Message}");
         }
     }
+
+    /// <summary>
+    /// What origin's branch now comes to, told to the board under the remote
+    /// this checkout is for - so a pull request that conflicts the moment it
+    /// opens is conflict work on the next pass and does not wait for the poll.
+    /// </summary>
+    /// <remarks>
+    /// Its own failure and no more: a verdict the board refused is a line, and
+    /// the tidy comment is still written.
+    /// </remarks>
+    /// <returns>Whether the board took it.</returns>
+    public async Task<bool> ReportAsync(
+        string key, Checkouts.Choice chosen, string path, Verdict verdict, CancellationToken ct)
+    {
+        var remote = RemoteFor(chosen, path);
+        if (remote is null) return false;
+
+        try
+        {
+            await runtime.Board.MergeCheckAsync(key, verdict.ToRequest(remote, runtime.RunnerName), ct);
+            return true;
+        }
+        catch (HatchException e)
+        {
+            runtime.Say.Complain($"hatch: {key} - the board would not take the verdict on its branch - {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The remote a verdict for this checkout is put under: the binding's own
+    /// spelling where the project binds it, and the standing checkout's origin
+    /// where it binds nothing. Null where there is nothing to report under.
+    /// </summary>
+    private string? RemoteFor(Checkouts.Choice chosen, string path) =>
+        chosen.Repositories.FirstOrDefault(r => r.Path == path)?.Remote
+        ?? runtime.Checkouts.FirstOrDefault(c => c.Path == path)?.Remote;
 
     private async Task<bool> HasPullRequestAsync(string key, CancellationToken ct)
     {

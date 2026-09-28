@@ -92,6 +92,11 @@ public static class Fixtures
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
             files, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
+    public static ReviewCheckDto Review(
+        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
+        new(key, repositories ?? [], checks);
+
     /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
     public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>
         new(

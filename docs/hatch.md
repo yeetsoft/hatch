@@ -1118,6 +1118,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next`, `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped) |
+| `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
@@ -1902,6 +1903,13 @@ up after it.
 
 ### What a runner does, in order
 
+Before every pass, and after the heartbeat, the loop **polls the branches in
+review** — see [checking the branches in
+review](#checking-the-branches-in-review). It is not a step of a pass and holds
+no claim; it is what keeps the board's verdicts on those branches current, so
+that the queue below can tell a conflict from a branch that merges cleanly. A
+runner that is paused polls nothing.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -2098,14 +2106,73 @@ last session left checked out.
   that commit to the branch. The push is a fast-forward or nothing — somebody
   pushing in between makes it refuse, and it is never forced — and no agent is
   involved when the merge is clean. A merge that conflicts lists the files on the
-  ticket and pushes nothing; turning that state into work for an agent is not
-  this step's job. This needs git 2.38 or later; an older one is said
-  once, on the terminal, and the step is skipped.
+  ticket and pushes nothing; turning that state into work for an agent is the
+  dispatcher's job, once the step has told the board — see below. This needs git
+  2.38 or later; an older one is said once, on the terminal, and the step is
+  skipped.
+- **What origin's branch now looks like is reported to the board**, wherever the
+  step fetched: a [merge check](#merge-check) for the branch, taken with the
+  same `merge-tree` and put under the checkout's remote. That covers every
+  outcome with one code path — clean at the new sha after a merge commit was
+  pushed, clean where the trunk was already in the branch, conflicted with the
+  files where the merge was refused, and no branch or more than one. A pull
+  request that conflicts the moment it opens is therefore conflict work on the
+  next pass, without waiting for the poll. Nothing is reported where nothing was
+  fetched, because nothing is known, and a verdict the board refuses is a line on
+  the terminal that does not stop the comment below being written.
 
 Everything found goes to the ticket in **one comment**, so a reviewer reads one
 thing. None of it fails the increment: a refused push — the forge, branch
 protection, somebody else's push landing first — is a line on the ticket, and so
 is a stash that would not go. The runner never pushes to the trunk.
+
+#### Checking the branches in review
+
+Whether a pull request still merges with the trunk is decided by **git, in the
+runner, and never by a prompt** — the [dispatcher](#the-issue-in-review-whose-branch-conflicts-with-the-trunk-is-dispatched-to-review)
+only reads what the runner reports. Once per interval, between the heartbeat and
+the pass, on an idle board and a busy one alike, the loop:
+
+1. asks `GET /api/hatch/work/review` for every issue in the review column that
+   this runner holds a checkout for, with the verdicts the board holds. It is
+   the same repository rule as the queue's without the clone allowance — a poll
+   clones nothing — and it is **not narrowed** by a claim, a question, a date or
+   an assignee, because a verdict is a fact about a branch and not work. A
+   repository this runner has never cloned is not polled by it, and the queue's
+   *no runner has checked its branch* is the honest answer for it;
+2. runs one `git ls-remote --heads origin` per checkout that has an issue to
+   check, and builds a **fingerprint** for each: the trunk's sha and every
+   branch the key claims, name and sha, sorted;
+3. **fetches only where a fingerprint changed** — once per checkout however many
+   of its issues moved — and then asks `git merge-tree` for each moved issue and
+   puts the verdict to the board. The tree is never touched: `ls-remote` and
+   `fetch` move no branch a worktree stands on, and `merge-tree --write-tree`
+   writes objects only.
+
+**Why it asks `ls-remote` first.** An idle loop that fetched every interval all
+night against a remote with nothing to say is the thing
+[the workspace](#the-workspace-between-increments) already says the loop does not
+do. One `ls-remote` is the whole cost of an interval in which nothing moved, and
+it says nothing and writes nothing.
+
+**Why the fingerprint is not "compare with the last verdict".** A merged pull
+request has no branch, and a verdict of `none` — like `ambiguous` — carries no
+branch sha, so the board's verdict cannot say whether anything moved. Comparing
+with it would fetch a merged branch's checkout every interval, and an in-review
+ticket whose pull request has merged is the commonest thing in the column. The
+runner instead remembers the fingerprint it took a verdict at, once the board
+took the verdict, and also trusts a stored `clean` or `conflicted` verdict whose
+trunk and branch shas equal what `ls-remote` printed, so a restarted loop does
+not fetch everything once for nothing. A verdict the board refused is not
+remembered, and is asked again next interval.
+
+The terminal hears about a verdict only when it changes — `hatch: HA-12
+conflicts with main (3 files)` — and an interval in which nothing moved prints
+nothing. Every failure is one line and nothing more: an origin that does not
+answer, a board that refuses a verdict or cannot be read, a git older than 2.38
+(said once per run, as the step above says it). None of them fails the pass,
+counts as a failed increment or ends the night, and a line that says what the
+last poll's did is not said again until something changes.
 
 ### When an increment does nothing
 

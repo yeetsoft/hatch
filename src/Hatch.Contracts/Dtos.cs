@@ -827,6 +827,28 @@ public record QueueEntryDto(
     string? Blocked,
     string Kind = WorkKinds.Advance);
 
+/// <summary>
+/// One issue in the review column that a runner holds a checkout for, and what
+/// the board holds about its branch - what the runner's poll is read from.
+/// </summary>
+/// <remarks>
+/// A fact about a branch and not work, so it is not narrowed by a claim, a
+/// question, a date or an assignee: an issue somebody else is working still has
+/// a branch, and whether it conflicts is still worth knowing.
+/// </remarks>
+/// <param name="Key">The issue's key.</param>
+/// <param name="Repositories">
+/// The project's bound repositories, each with <see cref="WorkRepositoryDto.MatchedRemote"/>
+/// set to the runner's own spelling where the runner has a checkout of it.
+/// Empty for a project that binds nothing, which is checked from the runner's
+/// standing checkout.
+/// </param>
+/// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
+public record ReviewCheckDto(
+    string Key,
+    IReadOnlyList<WorkRepositoryDto> Repositories,
+    IReadOnlyList<MergeCheckDto> MergeChecks);
+
 // ---- Rollups ----
 
 /// <summary>

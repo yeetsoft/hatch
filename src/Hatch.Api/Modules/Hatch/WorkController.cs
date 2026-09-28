@@ -169,6 +169,66 @@ public class WorkController(
             KindOf(r.From, r.To))).ToList();
     }
 
+    /// <summary>
+    /// Every issue in the review column that the caller holds a checkout of, and
+    /// what the board holds about each one's branch - what a runner's poll asks
+    /// before it asks git anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>It is not the queue. A verdict is a fact about a branch and not
+    /// work, so nothing narrows it: not <c>under</c>, not a claim, an open
+    /// question, a ready date or an assignee. An issue another runner is fixing
+    /// still has a branch, and a runner that only polled the issues it could
+    /// work would leave the board's verdict on the rest to go stale.</para>
+    ///
+    /// <para>What it does share with the queue is the repository rule, without
+    /// the clone allowance: a poll clones nothing, so a repository this runner
+    /// has never cloned is not one it can check, and the queue's <em>no runner
+    /// has checked</em> is the honest answer for it. A caller that declares
+    /// nothing holds no checkout at all, and is answered with nothing.</para>
+    /// </remarks>
+    [HttpGet("review")]
+    public async Task<ActionResult<IReadOnlyList<ReviewCheckDto>>> GetReview(
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        CancellationToken ct = default)
+    {
+        var repos = RepositoryDeclaration.From(remote, standing, null);
+        if (!repos.IsDeclared) return new List<ReviewCheckDto>();
+
+        var statuses = await OrderedStatusesAsync(ct);
+        if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewCheckDto>();
+
+        var inReview = await db.Issues
+            .Where(i => i.StatusId == review.Id)
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .ToListAsync(ct);
+
+        var held = inReview.Where(i => HoldsCheckout(i, repos)).ToList();
+        var verdicts = await MergeChecksAsync(held.Select(i => i.Id).ToList(), ct);
+
+        return held.Select(i => new ReviewCheckDto(
+            IssueKey.Format(i.Project!.Key, i.Number),
+            i.Project.Repositories
+                .OrderBy(r => r.SortOrder)
+                .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
+                .ToList(),
+            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeCheckController.Project).ToList()))
+            .ToList();
+    }
+
+    /// <summary>
+    /// <see cref="RepositoryFold"/>'s rule without the clone allowance: the
+    /// caller has a checkout the project's repositories match, or the project
+    /// binds nothing and the caller has a standing one.
+    /// </summary>
+    private static bool HoldsCheckout(EfHatchIssue issue, RepositoryDeclaration repos)
+    {
+        var bound = issue.Project!.Repositories;
+        return bound.Count == 0 ? repos.Standing : bound.Any(r => repos.Match(r.Canonical) is not null);
+    }
+
     // ---- The walk ----
 
     /// <summary>

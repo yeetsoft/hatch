@@ -276,4 +276,111 @@ public sealed class LifecycleTests
         Assert.Contains(h.Say.Said, l => l.Contains("## The branch", StringComparison.Ordinal));
         Assert.Empty(h.Wire.Calls.Where(c => c.Method != "GET"));
     }
+
+    // ---- What origin's branch now looks like ----
+
+    private static Verdict Found(string kind = MergeVerdicts.Conflicted) =>
+        new(kind, "main", new string('a', 40), "aer-1-thing", new string('b', 40), kind == MergeVerdicts.Conflicted ? ["a.txt"] : []);
+
+    private static List<Call> Verdicts(Harness h) => [.. h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check")];
+
+    [Fact]
+    public async Task What_leaving_found_is_put_under_the_checkouts_remote()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var put = Assert.Single(Verdicts(h)).Read<MergeCheckRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal(MergeVerdicts.Conflicted, put.Verdict);
+        Assert.Equal(["a.txt"], put.Files);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task A_bound_project_puts_it_under_the_bindings_own_remote_for_each_checkout()
+    {
+        using var h = new Harness();
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: false, matchedRemote: "https://example.test/two.git");
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", repositories: [one, two]), pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor["/checkouts/two"] = Found();
+
+        var runtime = h.Runtime with
+        {
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: false),
+            ],
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        Assert.Equal("https://example.test/two.git", Assert.Single(Verdicts(h)).Read<MergeCheckRequest>().Remote);
+    }
+
+    [Fact]
+    public async Task Nothing_found_reports_nothing()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+    }
+
+    /// <summary>
+    /// A verdict the board refuses is a line of its own, and the comment about
+    /// the tree is still written.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_verdict_still_writes_the_tidy_comment()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Reply("PUT", "/api/hatch/issues/AER-1/merge-check", HttpStatusCode.BadRequest, "\"no\"");
+        h.Workspace.FoundFor[h.Root] = Found();
+        h.Workspace.LeaveNotes.Add("something was left");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Single(Verdicts(h));
+        Assert.Single(Tidied(h));
+        Assert.Contains(h.Say.Complained, l => l.Contains("would not take the verdict", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_lost_lease_puts_nothing()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1", taken: true);
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found();
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+        Assert.Empty(h.Workspace.Left);
+    }
+
+    [Fact]
+    public async Task A_checkout_with_no_origin_and_nothing_to_report_under_is_left_alone()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Workspace.FoundFor[h.Root] = Found();
+
+        await new GoToWorkCommand(h.Runtime with { Checkouts = [new CheckoutEntry(h.Root, null, Standing: true)] })
+            .RunAsync(["--once"], default);
+
+        Assert.Empty(Verdicts(h));
+    }
 }

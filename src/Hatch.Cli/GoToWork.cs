@@ -633,6 +633,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var idle = new SaidOnce();
         var busy = new SaidOnce();
         var paused = new SaidOnce();
+        var poll = new Poll();
 
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
@@ -709,6 +710,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
             }
 
             paused.Clear();
+
+            // Between the heartbeat and the pass, and on every iteration - an
+            // idle loop and a busy one alike - so a pull request that stopped
+            // merging while a session was running is conflict work as soon as
+            // the next pass reads the board. It is timed by the interval and not
+            // by the iteration: a loop that finishes an increment and goes
+            // straight on asks git nothing more than one that waited.
+            await poll.RunAsync(runtime, interval, ct);
 
             var pass = await PassAsync(under, quiet, tally, idle, busy, interval, once, restart, line, ct);
             if (pass == Pass.Fatal) return false;
