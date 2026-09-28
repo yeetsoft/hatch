@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, ten tables.
+/// migration history, eleven tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -146,17 +146,6 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Cascade with the issue: a verdict about the branch of a ticket nobody
-        // kept is a row about nothing. No navigation on the issue - the
-        // projection reads the whole batch in one query and groups it.
-        modelBuilder.Entity<EfHatchMergeCheck>(e =>
-        {
-            e.HasOne(m => m.Issue)
-                .WithMany()
-                .HasForeignKey(m => m.IssueId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
         // Two places, because a spend cap is dollars and cents and the default
         // scale would refuse the number an operator types into the box.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.MaxSpend).HasPrecision(18, 2);
@@ -189,6 +178,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(r => r.Project)
                 .WithMany(p => p.Repositories)
                 .HasForeignKey(r => r.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A verdict is about an issue and means nothing without it, the same
+        // as its events: deleting the issue takes them.
+        modelBuilder.Entity<EfHatchMergeCheck>(e =>
+        {
+            e.HasOne(m => m.Issue)
+                .WithMany(i => i.MergeChecks)
+                .HasForeignKey(m => m.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

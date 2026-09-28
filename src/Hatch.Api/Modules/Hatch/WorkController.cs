@@ -214,7 +214,7 @@ public class WorkController(
                 .OrderBy(r => r.SortOrder)
                 .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
                 .ToList(),
-            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeCheckController.Project).ToList()))
+            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeChecks.Project).ToList()))
             .ToList();
     }
 

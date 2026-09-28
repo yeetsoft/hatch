@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hatch.Api.Modules.Hatch.Migrations
 {
     [DbContext(typeof(HatchContext))]
-    [Migration("20260928014725_MergeChecks")]
+    [Migration("20260928014759_MergeChecks")]
     partial class MergeChecks
     {
         /// <inheritdoc />
@@ -264,12 +264,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("Branch")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("BranchSha")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Canonical")
                         .IsRequired()
@@ -296,18 +296,19 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.Property<string>("Runner")
+                        .IsRequired()
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
                     b.Property<string>("Trunk")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("TrunkSha")
                         .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Verdict")
                         .IsRequired()
@@ -684,7 +685,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchMergeCheck", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
-                        .WithMany()
+                        .WithMany("MergeChecks")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -745,6 +746,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Comments");
 
                     b.Navigation("Events");
+
+                    b.Navigation("MergeChecks");
 
                     b.Navigation("WorkLog");
                 });

@@ -221,6 +221,14 @@ consuming app's own stylesheet, a `<Field>` specimen in the gallery would
 render a naked browser input, and a gallery that shows a component looking
 different from how it looks in the app is worse than no gallery.
 
+The controls it dresses are an enumerated list: text, email, number, password,
+datetime-local, search, date and time, an `<input>` with no `type` at all, and
+`select` and `textarea`. The list is enumerated rather than "every input but
+checkbox" so that a type the house has not considered arrives looking wrong and
+gets a decision. These controls share `--r-ctl` and a one-step-darker border on
+hover with buttons, and pad one pixel short of a button on the block axis so the
+two are the same height on a row.
+
 Two rules are deliberately **not** in `base.css`, and each app states its own:
 
 - **`p { margin: 0 }`.** An app laid out against the browser's default

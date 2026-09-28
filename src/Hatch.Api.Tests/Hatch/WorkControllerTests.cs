@@ -2106,6 +2106,7 @@ public class WorkControllerTests
                 BranchSha = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
                 Files = files.Length == 0 ? null : string.Join('\n', files),
                 CheckedAt = Now,
+                Runner = "host:/checkout",
                 CheckedBy = "runner",
             });
 

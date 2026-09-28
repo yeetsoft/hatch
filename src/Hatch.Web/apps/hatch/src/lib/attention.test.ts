@@ -8,7 +8,7 @@ import {
   reviewEmptyWords,
   waitedWords,
 } from './attention';
-import type { Attention, Question, Review } from '../types';
+import type { Attention, Conflict, Question, Review } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -34,29 +34,26 @@ const question = (over: Partial<Question> = {}): Question => ({
   ...over,
 });
 
+const conflict = (over: Partial<Conflict> = {}): Conflict => ({
+  key: 'AER-14',
+  title: 'A story whose branch stopped merging',
+  type: 'story',
+  pullRequestUrl: 'https://forge.example/pulls/14',
+  checks: [],
+  ...over,
+});
+
 const attention = (over: Partial<Attention> = {}): Attention => ({
   reviews: [],
   inReviewWithoutPullRequest: 0,
   questions: [],
+  conflicts: [],
   ...over,
 });
 
 describe('attentionCount', () => {
   it('counts the rows the panel would draw', () => {
     expect(attentionCount(attention({ reviews: [review(), review()], questions: [question()] }))).toBe(3);
-  });
-
-  /* A conflict is the loop's to fix, and one it cannot fix becomes a stall,
-     which is a question - already counted. Counting it here as well would light
-     the control for work nobody has been asked to do. */
-  it('does not count an issue in review whose branch conflicts', () => {
-    const conflicts = [
-      { key: 'AER-14', title: 'A story that stopped merging', type: 'story', pullRequestUrl: null, trunk: 'main', files: ['a'] },
-    ];
-
-    expect(attentionCount(attention({ conflicts }))).toBe(0);
-    expect(attentionTone(attention({ conflicts }))).toBe('rest');
-    expect(attentionLabel(attention({ conflicts }))).toBe('Nothing is waiting on you');
   });
 
   it('does not count an issue in review with no pull request', () => {
@@ -67,6 +64,12 @@ describe('attentionCount', () => {
 
   it('is zero before the first answer', () => {
     expect(attentionCount(null)).toBe(0);
+  });
+
+  it('does not count a branch that conflicts', () => {
+    // The loop's to fix, and one it cannot fix becomes a stall - which is a
+    // question, which is counted already.
+    expect(attentionCount(attention({ conflicts: [conflict(), conflict({ key: 'AER-15' })] }))).toBe(0);
   });
 });
 
@@ -87,6 +90,10 @@ describe('attentionTone', () => {
 
   it('stays resting for review issues that carry no pull request', () => {
     expect(attentionTone(attention({ inReviewWithoutPullRequest: 4 }))).toBe('rest');
+  });
+
+  it('stays resting for a branch that conflicts', () => {
+    expect(attentionTone(attention({ conflicts: [conflict()] }))).toBe('rest');
   });
 });
 
@@ -113,6 +120,10 @@ describe('attentionLabel', () => {
     expect(attentionLabel(null)).toBe('Nothing is waiting on you');
   });
 
+  it('says nothing is waiting when the only thing that has happened is a conflict', () => {
+    expect(attentionLabel(attention({ conflicts: [conflict()] }))).toBe('Nothing is waiting on you');
+  });
+
   it('says nothing is waiting when the only thing in review has no pull request', () => {
     expect(attentionLabel(attention({ inReviewWithoutPullRequest: 3 }))).toBe('Nothing is waiting on you');
   });
@@ -136,6 +147,12 @@ describe('reviewEmptyWords', () => {
     expect(reviewEmptyWords(attention({ inReviewWithoutPullRequest: 1 }))).toBe(
       '1 issue is in review with no pull request recorded.',
     );
+  });
+});
+
+describe('conflictEmptyWords', () => {
+  it('says no branch has stopped merging', () => {
+    expect(conflictEmptyWords()).toBe('No branch in review has stopped merging.');
   });
 });
 
@@ -172,11 +189,5 @@ describe('waitedWords', () => {
 
   it('falls back to a word rather than NaN on an unparseable instant', () => {
     expect(waitedWords('not a date', NOW)).toBe('waiting');
-  });
-});
-
-describe('conflictEmptyWords', () => {
-  it('says the loop has nothing of this kind to fix', () => {
-    expect(conflictEmptyWords()).toBe('No branch in review conflicts with the trunk.');
   });
 });

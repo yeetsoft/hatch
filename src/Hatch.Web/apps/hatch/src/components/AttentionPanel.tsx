@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { conflictEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
-import { conflictFileWords } from '../lib/mergeCheck';
+import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import type { Attention } from '../types';
 
@@ -8,7 +8,7 @@ import type { Attention } from '../types';
  * What the control hands over when it is pressed: the links that unblock the
  * loop, in the order somebody would work through them.
  *
- * Every section is always drawn, empty state included. A panel whose sections
+ * All three sections are always drawn, empty state included. A panel whose sections
  * appeared and disappeared would be a panel whose shape has to be re-read every
  * time it opens - and the empty states are not filler here: one of them is the
  * only place in Hatch that says an issue has sat in review with nowhere to
@@ -16,8 +16,8 @@ import type { Attention } from '../types';
  */
 export function AttentionPanel({ attention, now }: { attention: Attention | null; now: Date }) {
   const reviews = attention?.reviews ?? [];
-  const questions = attention?.questions ?? [];
   const conflicts = attention?.conflicts ?? [];
+  const questions = attention?.questions ?? [];
 
   return (
     <div className="hatch-attention-panel">
@@ -56,12 +56,8 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
         )}
       </section>
 
-      {/* Beside the pull requests and not counted with them: a conflict is the
-          loop's to fix, so it is shown and never lights the control. One the
-          loop cannot fix becomes a stall, and a stall is a question - which is
-          the section below, and does. */}
       <section className="hatch-attention-section">
-        <h2 className="hatch-attention-heading">Conflicting with the trunk</h2>
+        <h2 className="hatch-attention-heading">Branches that conflict</h2>
 
         {conflicts.length === 0 ? (
           <p className="hatch-attention-empty">{conflictEmptyWords()}</p>
@@ -69,14 +65,19 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
           <ul className="hatch-attention-rows">
             {conflicts.map((c) => (
               <li key={c.key}>
+                {/* This tab, and to the issue: the loop is already at work on
+                    it, so what a person wants from here is the page that says
+                    which files and what has happened so far. */}
                 <Link className="hatch-attention-row" to={`/issues/${c.key}`}>
                   <span className="hatch-attention-row-head">
                     <span className="hatch-attention-key">{c.key}</span>
                     <span className="hatch-attention-title">{c.title}</span>
                   </span>
-                  <span className="hatch-attention-url">
-                    {c.trunk}: {conflictFileWords(c.files)}
-                  </span>
+                  {c.checks.map((check) => (
+                    <span key={check.canonical} className="hatch-attention-files" title={check.files.join('\n')}>
+                      {conflictWords(check, c.checks.length > 1)}
+                    </span>
+                  ))}
                 </Link>
               </li>
             ))}

@@ -16,16 +16,15 @@ export type AttentionTone = 'rest' | 'asking';
 /**
  * How many rows the panel would draw.
  *
- * Reviews plus questions, and deliberately not `conflicts` and not
- * `inReviewWithoutPullRequest`. A conflict is the loop's to fix, and one it
- * cannot fix becomes a stall, which is a question, which is already counted
- * here.
- *
- * `inReviewWithoutPullRequest` is left out too.
+ * Reviews plus questions, and deliberately not `inReviewWithoutPullRequest`.
  * An issue standing in review with nowhere to review it is something a person
  * cannot act on from here, and a control that stayed lit for one would be a
  * control nobody reads after a week. It is said out loud in the section's empty
  * state instead - see `reviewEmptyWords`.
+ *
+ * Nor `conflicts`. A branch that has stopped merging is the loop's to fix, and
+ * one it cannot fix becomes a stall, which is a question, which is counted
+ * here already. Listed beside the rest, and never lit for.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
@@ -74,10 +73,6 @@ export function reviewEmptyWords(attention: Attention | null): string {
     : `${without} issues are in review with no pull request recorded.`;
 }
 
-/** The conflicts section's empty state. It is not counted towards anything, so
-    it is the only place that says the loop has nothing of this kind to fix. */
-export const conflictEmptyWords = (): string => 'No branch in review conflicts with the trunk.';
-
 /** The other section's empty state. One wording: a question either exists or it
     does not, and there is no second kind of nothing to tell apart. */
 export const questionEmptyWords = (): string => 'Nothing is waiting on an answer.';
@@ -108,3 +103,6 @@ export function waitedWords(askedAt: string, now: Date): string {
 
 /** `1 question`, `2 questions`. Every noun here takes a plain -s. */
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/** The conflicts section's empty state - one wording, like the questions'. */
+export const conflictEmptyWords = (): string => 'No branch in review has stopped merging.';

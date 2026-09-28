@@ -7,8 +7,8 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// What the loop is waiting on a person for: a pull request nobody has
-/// reviewed, and a question nobody has answered - and, listed but never
-/// counted, the pull requests whose branch has stopped merging.
+/// reviewed, and a question nobody has answered - and, listed beside them but
+/// not counted, the branches in review that have stopped merging.
 ///
 /// The nav strip draws it on every page, so it has to be one request rather
 /// than two. Two polls can be a poll interval apart, and a badge counting one
@@ -55,8 +55,15 @@ public class AttentionController(HatchContext db) : ControllerBase
             .Where(i => i.StatusId == review.Id)
             .OrderBy(i => i.Rank)
             .ThenBy(i => i.Id)
-            .Select(i => new InReview(
-                i.Id, i.ProjectId, i.Project!.Key, i.Number, i.Type, i.Title, i.PullRequestUrl))
+            .Select(i => new
+            {
+                i.Id,
+                ProjectKey = i.Project!.Key,
+                i.Number,
+                i.Type,
+                i.Title,
+                i.PullRequestUrl,
+            })
             .ToListAsync(ct);
 
         // Split rather than filtered twice: the ones without a link are not
@@ -69,69 +76,25 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!))
             .ToList();
 
-        return new AttentionDto(
-            reviews, inReview.Count - reviews.Count, questions, await ConflictsAsync(inReview, ct));
-    }
-
-    private sealed record InReview(
-        long Id, int ProjectId, string ProjectKey, int Number, string Type, string Title, string? PullRequestUrl);
-
-    /// <summary>
-    /// The issues in review whose branch no longer merges with the trunk, in
-    /// the order they were given - which is the column's.
-    /// </summary>
-    /// <remarks>
-    /// Where a project binds repositories only a verdict for one it still binds
-    /// counts, the same as the dispatcher's: a verdict about a repository the
-    /// project let go of is a fact about something nobody is asking about, and
-    /// listing it here would name work the loop will not do.
-    /// </remarks>
-    private async Task<IReadOnlyList<ConflictDto>> ConflictsAsync(
-        IReadOnlyList<InReview> inReview, CancellationToken ct)
-    {
-        if (inReview.Count == 0) return [];
-
-        var ids = inReview.Select(i => i.Id).ToList();
+        // The verdicts of the column's issues, one query for all of them. An
+        // issue conflicts if any repository's verdict says so, and it is listed
+        // with only those - a clean repository beside a conflicted one is not
+        // part of the sentence. Listed whether or not it carries a pull
+        // request: the branch conflicts either way.
+        var reviewIds = inReview.Select(i => i.Id).ToList();
         var conflicted = (await db.MergeChecks.AsNoTracking()
-                .Where(m => ids.Contains(m.IssueId) && m.Verdict == MergeVerdicts.Conflicted)
+                .Where(m => reviewIds.Contains(m.IssueId) && m.Verdict == MergeVerdicts.Conflicted)
                 .OrderBy(m => m.Canonical)
                 .ToListAsync(ct))
             .GroupBy(m => m.IssueId)
-            .ToDictionary(g => g.Key, g => g.ToList());
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
 
-        if (conflicted.Count == 0) return [];
+        var conflicts = inReview
+            .Where(i => conflicted.ContainsKey(i.Id))
+            .Select(i => new ConflictDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
+            .ToList();
 
-        var projectIds = inReview.Where(i => conflicted.ContainsKey(i.Id)).Select(i => i.ProjectId).Distinct().ToList();
-        var bound = (await db.ProjectRepositories.AsNoTracking()
-                .Where(r => projectIds.Contains(r.ProjectId))
-                .Select(r => new { r.ProjectId, r.Canonical })
-                .ToListAsync(ct))
-            .GroupBy(r => r.ProjectId)
-            .ToDictionary(g => g.Key, g => g.Select(r => r.Canonical).ToHashSet());
-
-        var conflicts = new List<ConflictDto>();
-
-        foreach (var i in inReview)
-        {
-            if (!conflicted.TryGetValue(i.Id, out var checks)) continue;
-
-            // A project that binds nothing counts every verdict, which is what
-            // the dispatcher does for an unbound project.
-            var counted = bound.TryGetValue(i.ProjectId, out var canonicals)
-                ? checks.Where(m => canonicals.Contains(m.Canonical)).ToList()
-                : checks;
-
-            if (counted.Count == 0) continue;
-
-            var files = counted
-                .SelectMany(m => m.Files?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [])
-                .Distinct()
-                .ToList();
-
-            conflicts.Add(new ConflictDto(
-                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, counted[0].Trunk, files));
-        }
-
-        return conflicts;
+        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions, conflicts);
     }
 }

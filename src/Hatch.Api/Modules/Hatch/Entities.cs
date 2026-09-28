@@ -278,14 +278,16 @@ public class EfHatchIssue
     /// <summary>
     /// Which parents each type may take. Advisory shape rather than a
     /// hierarchy: every issue may also have no parent at all, which is the
-    /// ordinary state of a freshly captured bug.
+    /// ordinary state of a freshly captured bug. A task may also hang directly
+    /// under an epic: the model permits more than the planning habit (an epic
+    /// takes stories, a story takes tasks) uses.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> LegalParentTypes =
         new Dictionary<string, string[]>
         {
             ["epic"] = ["epic"],
             ["story"] = ["epic"],
-            ["task"] = ["story", "bug"],
+            ["task"] = ["story", "bug", "epic"],
             ["bug"] = ["epic", "story"],
         };
 
@@ -574,6 +576,7 @@ public class EfHatchIssue
 
     public ICollection<EfHatchComment> Comments { get; set; } = [];
     public ICollection<EfHatchIssueEvent> Events { get; set; } = [];
+    public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
@@ -688,6 +691,87 @@ public class EfHatchComment
 }
 
 /// <summary>
+/// What a runner found when it merged an issue's branch against the trunk of
+/// one repository, and what it was looking at when it did.
+///
+/// One row per issue per repository, keyed on <see cref="Canonical"/>: a
+/// project may bind several repositories and a branch is entered in every
+/// checkout that has one, so a single verdict on the issue would let a clean
+/// repository overwrite a conflicted one. An issue conflicts if any of its rows
+/// does. A second write for the same pair replaces the first.
+/// </summary>
+/// <remarks>
+/// The shas are what make a verdict comparable: the branch is unchanged, and so
+/// is the verdict, for as long as both refs still name what they named here.
+/// <see cref="Verdict"/> <c>none</c> and <c>ambiguous</c> carry no branch and no
+/// sha - there is no one branch to name - and that is deliberate: the poll
+/// keeps what it saw for those two in memory rather than asking the board for a
+/// fingerprint of something that is not there.
+/// </remarks>
+[Table("MergeChecks")]
+[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
+public class EfHatchMergeCheck
+{
+    public const int MaxRemoteLength = EfHatchProjectRepository.MaxRemoteLength;
+    public const int MaxRefLength = 200;
+
+    /// <summary>Wide enough for a SHA-256 object name; a SHA-1 one is 40.</summary>
+    public const int MaxShaLength = 64;
+    public const int MaxVerdictLength = 16;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>The remote as the runner spelled it.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the identity, and the unique index's other half.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    /// <summary>The trunk the branch was merged against, and where it stood.</summary>
+    [MaxLength(MaxRefLength)]
+    public required string Trunk { get; set; }
+
+    [MaxLength(MaxShaLength)]
+    public required string TrunkSha { get; set; }
+
+    /// <summary>The issue's branch, and where it stood. Null for <c>none</c> and <c>ambiguous</c>.</summary>
+    [MaxLength(MaxRefLength)]
+    public string? Branch { get; set; }
+
+    [MaxLength(MaxShaLength)]
+    public string? BranchSha { get; set; }
+
+    /// <summary>One of <see cref="MergeVerdicts"/>.</summary>
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    /// <summary>The conflicted paths, newline-joined the way <see cref="EfHatchRunner.Remotes"/> is. Null when there are none.</summary>
+    public string? Files { get; set; }
+
+    /// <summary>When the board took it. The board's clock, not the runner's, so verdicts from two machines are ordered by one.</summary>
+    public required DateTimeOffset CheckedAt { get; set; }
+
+    /// <summary>The checkout that took it, as it names itself.</summary>
+    [MaxLength(ClaimRequest.MaxRunnerLength)]
+    public required string Runner { get; set; }
+
+    /// <summary>The name of the credential it arrived under - a name and not an id, for the reason <see cref="EfHatchIssue.CreatedBy"/> is.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CheckedBy { get; set; }
+
+    public static string? JoinFiles(IReadOnlyList<string> files) => files.Count == 0 ? null : string.Join('\n', files);
+
+    public static IReadOnlyList<string> SplitFiles(string? files) =>
+        files?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [];
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -724,15 +808,6 @@ public class EfHatchIssueEvent
     /// held - see <see cref="EfHatchIssue.PullRequestUrl"/>.
     /// </summary>
     public const string PullRequestChanged = "pull_request_changed";
-
-    /// <summary>
-    /// A runner's verdict on whether the issue's branch merges with the trunk
-    /// changed, in one repository: it started or stopped conflicting, or the
-    /// files that conflict are different. The payload carries the
-    /// <c>remote</c> and both sides. A verdict that repeats the stored one
-    /// writes nothing - see <see cref="EfHatchMergeCheck"/>.
-    /// </summary>
-    public const string MergeCheckChanged = "merge_check_changed";
 
     /// <summary>
     /// The issue was given to somebody, handed to somebody else, or taken off
@@ -785,6 +860,17 @@ public class EfHatchIssueEvent
 
     /// <summary>The holder let go of it, presenting the token it was given.</summary>
     public const string ClaimReleased = "claim_released";
+
+    /// <summary>
+    /// A runner's verdict on whether the issue's branch merges with the trunk
+    /// changed - see <see cref="EfHatchMergeCheck"/>. The payload carries the
+    /// canonical remote, because an issue may hold one verdict per repository,
+    /// and <c>from</c> and <c>to</c> as <c>{ verdict, files }</c> (<c>from</c> is
+    /// null for the first verdict on that repository). A verdict that repeats
+    /// the stored one writes none: the trail is for when a branch started and
+    /// stopped conflicting, not for how often somebody looked.
+    /// </summary>
+    public const string MergeCheckChanged = "merge_check_changed";
 
     /// <summary>
     /// The operator took it off somebody - the same column cleared, and a
@@ -1015,85 +1101,6 @@ public class EfHatchIssueDependency
     public required string CreatedBy { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
-}
-
-/// <summary>
-/// What a runner last found when it asked git whether an issue's branch still
-/// merges with the trunk - one row per issue per repository.
-///
-/// A row per repository because a project may bind several, and the runner
-/// enters the issue's branch in every checkout that has one: a branch that
-/// conflicts in one of two repositories is a conflicted issue, and a verdict
-/// that said so for the pair would have to say which. An unbound project's
-/// verdict is keyed on the canonical of the remote the runner spelled, like any
-/// other.
-/// </summary>
-/// <remarks>
-/// <para>The verdict is a fact about two shas and nothing else, which is what
-/// lets any two runners agree: it is taken with <c>git merge-tree</c>, needs no
-/// token, and reads the same on every forge. The shas are full, because the
-/// runner's poll compares them with what <c>git ls-remote</c> prints.</para>
-///
-/// <para><c>none</c> and <c>ambiguous</c> carry no branch sha. That is
-/// deliberate - they are not about one branch - and the poll keeps what it saw
-/// for those two in memory instead of asking the board for a fingerprint.</para>
-///
-/// <para>A verdict that says what the stored one said writes no event and moves
-/// only the shas, the time and the runner; one that changes writes
-/// <see cref="EfHatchIssueEvent.MergeCheckChanged"/>, so the trail says when a
-/// branch started and stopped conflicting without recording every poll.</para>
-/// </remarks>
-[Table("MergeChecks")]
-[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
-public class EfHatchMergeCheck
-{
-    public const int MaxRemoteLength = EfHatchProjectRepository.MaxRemoteLength;
-    public const int MaxRefLength = 255;
-    public const int ShaLength = 40;
-    public const int MaxVerdictLength = 16;
-
-    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public long Id { get; set; }
-
-    public required long IssueId { get; set; }
-    public EfHatchIssue? Issue { get; set; }
-
-    /// <summary>The remote as the runner spelled it.</summary>
-    [MaxLength(MaxRemoteLength)]
-    public required string Remote { get; set; }
-
-    /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - the matching identity, and the unique index's other half.</summary>
-    [MaxLength(MaxRemoteLength)]
-    public required string Canonical { get; set; }
-
-    [MaxLength(MaxRefLength)]
-    public required string Trunk { get; set; }
-
-    [MaxLength(ShaLength)]
-    public required string TrunkSha { get; set; }
-
-    /// <summary>One of <see cref="MergeVerdicts"/>.</summary>
-    [MaxLength(MaxVerdictLength)]
-    public required string Verdict { get; set; }
-
-    [MaxLength(MaxRefLength)]
-    public string? Branch { get; set; }
-
-    [MaxLength(ShaLength)]
-    public string? BranchSha { get; set; }
-
-    /// <summary>The conflicted files, newline-joined - stored the way <see cref="EfHatchRunner.Remotes"/> is. Null when there are none.</summary>
-    public string? Files { get; set; }
-
-    public required DateTimeOffset CheckedAt { get; set; }
-
-    /// <summary>The runner that took it, as it names itself on a claim.</summary>
-    [MaxLength(ClaimRequest.MaxRunnerLength)]
-    public string? Runner { get; set; }
-
-    /// <summary>The actor - the name of the key - that put it.</summary>
-    [MaxLength(Common.PersonName.MaxChars)]
-    public required string CheckedBy { get; set; }
 }
 
 /// <summary>

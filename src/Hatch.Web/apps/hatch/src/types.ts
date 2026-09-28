@@ -15,7 +15,7 @@ export const ISSUE_TYPES: IssueType[] = ['epic', 'story', 'task', 'bug'];
 export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   epic: ['epic'],
   story: ['epic'],
-  task: ['story', 'bug'],
+  task: ['story', 'bug', 'epic'],
   bug: ['epic', 'story'],
 };
 
@@ -144,6 +144,28 @@ export interface IssueClaim {
   ttlSeconds: number;
 }
 
+/** One runner's verdict on one repository. Mirrors MergeCheckDto. */
+export interface MergeCheck {
+  /** The remote as the runner spelled it. */
+  remote: string;
+  /** The remote's canonical form - the verdict's identity within its issue. */
+  canonical: string;
+  /** The trunk the branch was merged against, and where it stood. */
+  trunk: string;
+  trunkSha: string;
+  /** `clean`, `conflicted`, `none` (no unmerged branch on origin is named for
+      the issue) or `ambiguous` (more than one is). */
+  verdict: string;
+  /** The issue's branch and where it stood; null for `none` and `ambiguous`. */
+  branch: string | null;
+  branchSha: string | null;
+  /** The conflicted paths, sorted. Empty unless the verdict is `conflicted`. */
+  files: string[];
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
 export interface Issue {
   key: string;
   projectId: number;
@@ -193,31 +215,10 @@ export interface Issue {
       reaches and writable only by a person, through its own route - see
       IssueExpediteController. */
   expedited: boolean;
-  /** What each runner last found when it asked git whether this issue's branch
-      still merges with the trunk - one per repository, empty for an issue no
-      runner has looked at. Mirrors MergeCheckDto. */
-  mergeChecks?: MergeCheck[];
-}
-
-/** What a runner's `git merge-tree` said about a branch, and about which
-    repository. `clean` and `conflicted` are about one branch; `none` and
-    `ambiguous` say why there is no branch to judge. */
-export type MergeVerdict = 'clean' | 'conflicted' | 'none' | 'ambiguous';
-
-/** One repository's verdict on an issue's branch. Mirrors MergeCheckDto. */
-export interface MergeCheck {
-  remote: string;
-  canonical: string;
-  trunk: string;
-  trunkSha: string;
-  verdict: MergeVerdict;
-  branch: string | null;
-  branchSha: string | null;
-  /** The conflicted files; empty for every verdict but `conflicted`. */
-  files: string[];
-  checkedAt: string;
-  runner: string | null;
-  checkedBy: string;
+  /** What a runner last found when it merged this issue's branch against the
+      trunk, one verdict per repository. Empty until somebody has checked. Read
+      through `conflictedChecks` - only a conflicted one is drawn. */
+  mergeChecks: MergeCheck[];
 }
 
 /** An ordinary note, a question that needs deciding, or the answer to one.
@@ -269,7 +270,6 @@ export type IssueEventKind =
   | 'ready_changed'
   | 'due_changed'
   | 'pull_request_changed'
-  | 'merge_check_changed'
   | 'model_override_changed'
   | 'effort_override_changed'
   | 'dependency_added'
@@ -692,6 +692,16 @@ export interface Review {
   pullRequestUrl: string;
 }
 
+/** An issue in review whose branch has stopped merging. Mirrors ConflictDto. */
+export interface Conflict {
+  key: string;
+  title: string;
+  type: string;
+  /** Null when the issue has a branch and no pull request recorded. */
+  pullRequestUrl: string | null;
+  checks: MergeCheck[];
+}
+
 /** The two things that stop a night, read at one instant. Mirrors AttentionDto.
 
     One shape rather than two reads because the control's loudness is a single
@@ -708,22 +718,10 @@ export interface Attention {
   /** Every open question in the house, oldest first - the same list, order and
       definition of open the rest of Hatch uses. */
   questions: Question[];
-  /** The issues in that column whose branch no longer merges with the trunk, in
-      the column's order. Drawn as their own section and never counted towards
-      the badge - a conflict is the loop's to fix, and one it cannot fix becomes
-      a stall, which is a question, which already lights the control. Mirrors
-      ConflictDto. */
-  conflicts?: Conflict[];
-}
-
-/** One issue in review whose branch conflicts with the trunk. */
-export interface Conflict {
-  key: string;
-  title: string;
-  type: string;
-  pullRequestUrl: string | null;
-  trunk: string;
-  files: string[];
+  /** The review column's issues whose branch conflicts with the trunk, in that
+      column's board order, each with only the repositories that conflict. The
+      loop's to fix, so never counted towards the badge - see `attentionCount`. */
+  conflicts: Conflict[];
 }
 
 // ---- Who is sitting here ----
