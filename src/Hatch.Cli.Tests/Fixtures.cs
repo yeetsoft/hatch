@@ -62,17 +62,28 @@ public static class Fixtures
         IReadOnlyList<WorkRepositoryDto>? repositories = null,
         IssueDto? issue = null,
         string? issueUrl = null,
-        bool noLink = false) =>
+        bool noLink = false,
+        string kind = WorkKinds.Advance) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
-            ToStatus: to is null ? null : Status(4, to),
+            ToStatus: to is null ? null : Status(kind == WorkKinds.Conflicts ? 3 : 4, to),
             Playbook: Playbook(),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
-            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}");
+            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
+            Kind: kind);
+
+    /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
+    public static WorkDto ConflictWork(
+        string key, string trunk = "main", IReadOnlyList<MergeCheckDto>? checks = null,
+        IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        Work(
+            key, from: "In Review", to: "In Review", repositories: repositories,
+            issue: Issue(key) with { MergeChecks = checks ?? [MergeCheck(MergeVerdicts.Conflicted, trunk, files: "a.txt")] },
+            kind: WorkKinds.Conflicts);
 
     public static WorkRepositoryDto Repository(
         string remote, string? canonical = null, string? baseBranch = null, bool primary = false,

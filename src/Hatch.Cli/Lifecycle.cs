@@ -128,6 +128,58 @@ public sealed class Lifecycle(Runtime runtime)
     }
 
     /// <summary>
+    /// Whether the conflict that made this a conflict dispatch is still there,
+    /// asked of git against origin as it stands now - and told to the board.
+    /// </summary>
+    /// <remarks>
+    /// Called after the reset, which fetched, so the refs are current: the board's
+    /// verdict was read before the claim and the fetch, and may be minutes old.
+    /// It is the recheck that decides whether a session is spent, and it is one
+    /// call here so that the loop and <c>hatch work</c> cannot decide differently.
+    /// </remarks>
+    public Task<Rechecked> RecheckAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct) =>
+        CheckAllAsync(work, chosen, fetch: false, ct);
+
+    /// <summary>
+    /// The same question after the session, when it is the increment's verdict:
+    /// each checkout is fetched first, because the session pushed and the refs
+    /// have to be about origin's branch as it is now.
+    /// </summary>
+    public Task<Rechecked> JudgeAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct) =>
+        CheckAllAsync(work, chosen, fetch: true, ct);
+
+    private async Task<Rechecked> CheckAllAsync(WorkDto work, Checkouts.Choice chosen, bool fetch, CancellationToken ct)
+    {
+        var key = work.Issue.Key;
+        var verdicts = new List<Checked>();
+        var unknown = false;
+        var reported = true;
+
+        foreach (var (path, baseBranch) in chosen.Resets)
+        {
+            var workspace = runtime.Workspace(path, baseBranch);
+
+            if (fetch && !workspace.Fetch())
+            {
+                runtime.Say.Complain($"hatch: {key} - could not fetch from origin in {Path.GetFileName(path.TrimEnd('/', '\\'))}, so its branch was not checked");
+                unknown = true;
+                continue;
+            }
+
+            if (workspace.Check(key) is not { } verdict)
+            {
+                unknown = true;
+                continue;
+            }
+
+            verdicts.Add(new Checked(path, verdict));
+            if (!await ReportAsync(key, chosen, path, verdict, ct)) reported = false;
+        }
+
+        return new Rechecked(verdicts, unknown, reported);
+    }
+
+    /// <summary>
     /// What origin's branch now comes to, told to the board under the remote
     /// this checkout is for - so a pull request that conflicts the moment it
     /// opens is conflict work on the next pass and does not wait for the poll.

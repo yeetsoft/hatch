@@ -1932,7 +1932,9 @@ One pass, from the board to the release:
    us: the lease goes straight back, and the walk goes on.
 4. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
-   would be a fetch spent on an increment that never happens.
+   would be a fetch spent on an increment that never happens. For a conflict
+   dispatch the runner then **checks the branch again**, before it enters it —
+   see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
 5. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
@@ -2201,6 +2203,49 @@ for a choice something knows the answer to, and the whole content of a stall is
 that nothing here knows why it happened. A ticket that is already waiting on a
 question gets the comment and no second question — that question *is* the flag,
 usually raised by the session's own way out.
+
+#### A conflict increment is judged by the branch, not by the column
+
+An increment on an issue in review whose branch conflicts with the trunk starts
+and ends in the same column, so "the ticket is where it was" is what success
+looks like there, and the rule above would call every good one a stall. It is
+judged by the **verdict** instead — the answer git gives about the branch on
+origin — and it is the runner that asks, in the same code for the loop and for
+`hatch work`:
+
+- **Before anything is spawned**, after the claim and the reset, the runner
+  checks the branch again against the refs the reset just fetched, and reports
+  what it finds. The board's verdict was read before the claim and may be
+  minutes old. If the conflict has gone, nothing is spawned and no increment is
+  counted: the claim goes back, the verdict goes up as clean, and the loop reads
+  the board again at once — unless the board refused the verdict, which still
+  calls the issue conflicted, and a pass that went straight back would find it
+  again in a tight loop. A check that cannot be made — a git older than 2.38, a
+  fetch that failed — spawns nothing either, and the pass waits: a session
+  should not be spent on a merge that may not exist.
+- **The session starts on the issue's branch with the trunk merge in progress**,
+  exactly as [the branch step](#the-issues-branch) leaves it. Its prompt is the
+  conflict playbook, then the ticket — whose header reads `In Review (resolving
+  conflicts with <trunk>)` — then a `## The conflict` section naming, for each
+  repository that conflicts, the branch and the trunk with both shas and the
+  files. Those facts are the fresh verdicts the recheck just took, not the
+  board's.
+- **After the session and its work log**, the runner fetches, asks git again and
+  reports each verdict. Nothing conflicts: resolved, said as `HA-12 conflicts
+  with main resolved` on the terminal, in the tally and on the runner's row, and
+  not a stall. The column is still read and reported, and a session that moved
+  the ticket out of review is reported as having moved it — and judged by the
+  verdict all the same.
+- **Anything that still conflicts is a stall**, flagged like any other and with
+  the same question, but the comment says the branch still conflicts with the
+  trunk and lists the files, in place of "left this issue where it found it". A
+  conflict nobody can resolve costs **one increment and not a night**, for the
+  reason every stall does. A check that could not be made is *not known* and
+  not a stall — the rule the column read already follows — and nothing is
+  flagged on a guess.
+
+None of it runs when the lease was lost: the ticket is somebody else's by then,
+and what the board is told about its branch is theirs to say.
 
 ### Where the loop's rules live
 
