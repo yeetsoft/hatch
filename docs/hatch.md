@@ -182,7 +182,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`Color` (`#rrggbb`).
+`ExpressSkips`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -218,6 +218,19 @@ refuses to start anything sitting in one — *a person puts it back on the board
 not a pass* — and the rollup leaves deferred leaves out of every total, so an
 epic finished except for work nobody is going to do reads finished without
 claiming the shelved half shipped.
+
+`ExpressSkips` marks the columns an [express](#express) issue is carried past
+with no session — see [the hop](#the-hop). It is **not** a "whose column is
+this" flag: who works a column is still derived from the playbook matrix, for
+the reason [above](#status) — this box only says which columns an express
+issue is carried past, and says nothing about who works the columns on either
+side of it. Set only by a person, through its own route
+(`PUT /api/hatch/statuses/{id}/express-skips`), for the reason given under
+["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
+it decides which gates the loop may pass unattended, and a key that could tick
+it could carry its own ticket through the night with nobody reading it first.
+Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set
+it.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
@@ -442,6 +455,44 @@ the flag and sets it nowhere.
 read the same after a person row is deleted, and an API key's name goes in this
 column beside a human one — neither of which a `People` FK from a module schema
 could express.
+
+#### Express
+
+**One flag meaning *carry this past a column marked for it, with nobody reading
+it first*.** `Express` is a boolean on the issue, set by a person, and read by
+the dispatcher alone — see [the hop](#the-hop). Take an express issue standing
+in a column marked [`ExpressSkips`](#status), with no unanswered question, and
+the loop moves it one column right itself: no session, no model, nothing spent.
+
+**It is a gate-passer, not a sort key — the opposite shape from
+[expedite](#expedite).** Every fold an issue already meets still folds it: a
+live claim, a ready date in the future, a person's name on the ticket, an
+unanswered question, a missing repository or an unmet dependency all hold an
+express issue exactly as they hold any other. Express answers one question
+only — does this column still need a session — and changes nothing about
+order, on the board or in `hatch queue`.
+
+**It is taken from the parent at filing, and at no other time.** An issue
+created under an express parent is born express, whoever files it — a person
+or a key — and however: the New issue dialog, the child composer, or the API
+directly. Its `created` event names the parent it took the flag from. Filed
+under a parent that is not express, or under no parent, it is not express.
+**Reparenting never touches it**: moving an issue under an express parent does
+not mark it, and moving it away does not unmark it — the flag is a fact about
+how an issue came to exist, not one that follows a parent around. This is also
+why unmarking a parent leaves every child exactly as it was: the flag was
+copied once, at filing, and the two are unlinked from that moment on.
+
+Filed issues land in the leftmost column, Draft, which does not ship marked
+`ExpressSkips` — so an express epic's freshly filed stories wait there until
+the operator ticks Draft or moves them on by hand. That is deliberate: Draft is
+where ideas are written, and leaving it unticked is the safe default.
+
+Setting it is closed to an API key, the same cut as expedite; see [The one edge
+that is deliberately cut](#the-one-edge-that-is-deliberately-cut). It follows
+that there is no `hatch express` verb — the CLI authenticates with a key, so
+the terminal shows the flag (`board`, `queue`, `show`, `next`) and sets it
+nowhere.
 
 #### Issue numbering
 
@@ -1265,6 +1316,25 @@ route by the same means. Reading is open like the rest: `expedited` rides
 sent where it was sent. It follows that there is no `hatch expedite` verb — the
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
+
+**And so is express, both the issue's flag and the column's.** Express decides
+which gates the loop may pass *unattended* — a key that could set either could
+carry its own ticket through the night with nobody reading it first, the same
+kind of widening a playbook or an assignee would be. `PUT
+/api/hatch/issues/{key}/express` lives on its own controller
+(`IssueExpressController`) carrying no class-level scope, cut by the same
+means as expedite. The column half cannot ride `PATCH /api/hatch/statuses/{id}`
+— that route accepts the `hatch` scope on every action, so one more field on
+the ordinary status patch would have been a key ticking its own gate — so it
+gets its own action, `PUT /api/hatch/statuses/{id}/express-skips`, carrying a
+plain `[RequireRole(PersonRole.User)]` the way `ProjectsController.PutRepositories`
+does; the rest of `StatusesController`'s actions each carry the class-level
+attribute explicitly instead, because `RequireRoleAttribute` is
+`AllowMultiple = false` and a method-level attribute silently *replaces* a
+class-level one rather than tightening it. Reading both is open like the rest:
+`express` rides `IssueDto` and `IssueCardDto`, and `expressSkips` rides
+`StatusDto`. It follows that there is no `hatch express` verb, the same as
+expedite.
 
 One related edge is **not** cut, and is stated rather than papered over:
 **nothing stops a key answering its own question.** A key is what

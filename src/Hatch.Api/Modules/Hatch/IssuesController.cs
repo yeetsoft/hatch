@@ -159,6 +159,7 @@ public class IssuesController(
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
                 i.Expedited,
+                i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -184,7 +185,8 @@ public class IssuesController(
                 // docstring exists to prevent.
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct),
                 Claim: claims.Project(i.Claim, now),
-                Expedited: i.Expedited));
+                Expedited: i.Expedited,
+                Express: i.Express));
 
         return cards;
     }
@@ -220,6 +222,11 @@ public class IssuesController(
             var parent = await ResolveParentAsync(request.ParentKey, project.Id, request.Type, null, ct);
             if (parent.Error is { } error) return BadRequest(error);
 
+            // Taken from the parent at filing, and at no other time: an issue
+            // created under an express parent is born express, whoever files
+            // it and however - see EfHatchIssue.Express.
+            var expressFrom = parent.Issue?.Express == true ? parent.Issue : null;
+
             var issue = new EfHatchIssue
             {
                 ProjectId = project.Id,
@@ -234,6 +241,7 @@ public class IssuesController(
                 ReadyAtHasTime = readyAt?.HasTime ?? false,
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
+                Express = expressFrom is not null,
                 CreatedBy = actor,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -244,7 +252,12 @@ public class IssuesController(
             // fails here rather than writing a second AER-12 - and the unique
             // index on (ProjectId, Number) is the backstop under that.
             project.NextIssueNumber++;
-            issue.Events.Add(Event(actor, EfHatchIssueEvent.Created, new { type = issue.Type, title = issue.Title }, now));
+            issue.Events.Add(Event(
+                actor, EfHatchIssueEvent.Created,
+                expressFrom is null
+                    ? new { type = issue.Type, title = issue.Title }
+                    : new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(expressFrom, ct) },
+                now));
             db.Issues.Add(issue);
 
             try
