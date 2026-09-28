@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import { conflictEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import type { Attention } from '../types';
 
@@ -7,7 +8,7 @@ import type { Attention } from '../types';
  * What the control hands over when it is pressed: the links that unblock the
  * loop, in the order somebody would work through them.
  *
- * Both sections are always drawn, empty state included. A panel whose sections
+ * All three sections are always drawn, empty state included. A panel whose sections
  * appeared and disappeared would be a panel whose shape has to be re-read every
  * time it opens - and the empty states are not filler here: one of them is the
  * only place in Hatch that says an issue has sat in review with nowhere to
@@ -15,6 +16,7 @@ import type { Attention } from '../types';
  */
 export function AttentionPanel({ attention, now }: { attention: Attention | null; now: Date }) {
   const reviews = attention?.reviews ?? [];
+  const conflicts = attention?.conflicts ?? [];
   const questions = attention?.questions ?? [];
 
   return (
@@ -48,6 +50,35 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
                       no opinion about whose forge an operator uses. */}
                   <span className="hatch-attention-url">{pullRequestWords(r.pullRequestUrl)}</span>
                 </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h2 className="hatch-attention-heading">Branches that conflict</h2>
+
+        {conflicts.length === 0 ? (
+          <p className="hatch-attention-empty">{conflictEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {conflicts.map((c) => (
+              <li key={c.key}>
+                {/* This tab, and to the issue: the loop is already at work on
+                    it, so what a person wants from here is the page that says
+                    which files and what has happened so far. */}
+                <Link className="hatch-attention-row" to={`/issues/${c.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{c.key}</span>
+                    <span className="hatch-attention-title">{c.title}</span>
+                  </span>
+                  {c.checks.map((check) => (
+                    <span key={check.canonical} className="hatch-attention-files" title={check.files.join('\n')}>
+                      {conflictWords(check, c.checks.length > 1)}
+                    </span>
+                  ))}
+                </Link>
               </li>
             ))}
           </ul>

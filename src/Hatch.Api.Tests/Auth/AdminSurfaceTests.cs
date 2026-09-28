@@ -253,6 +253,14 @@ public class AdminSurfaceTests
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
 
+        // A runner's verdict on whether an issue's branch merges with the
+        // trunk, and Hatch-scoped for the reason the claim is: the caller is a
+        // machine, and a verdict only an operator could enter would be one
+        // nobody ever entered. It is a fact about two refs that every runner
+        // computes the same way, not a statement about an agent's budget; a
+        // wrong one costs a stall, which is a question. See MergeCheckController.
+        "MergeCheckController.PutMergeCheck",
+
         // A playbook's power routed through a different table, and cut the
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its

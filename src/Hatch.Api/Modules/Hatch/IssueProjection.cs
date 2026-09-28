@@ -30,9 +30,9 @@ public static class IssueProjection
     /// number *per issue*.
     /// </summary>
     /// <remarks>
-    /// The five things an <see cref="IssueDto"/> needs beyond its own row -
+    /// The six things an <see cref="IssueDto"/> needs beyond its own row -
     /// its project's key, its parent's key, its children's keys, what it waits
-    /// on and what waits on it - are each one query for the whole batch. That is
+    /// on, what waits on it and its merge verdicts - are each one query for the whole batch. That is
     /// what makes a whole-board read affordable: <see cref="WorkController"/>'s scan projects every issue the
     /// dispatcher would consider, and a per-row parent lookup would turn one
     /// answer into a few hundred round trips.
@@ -104,6 +104,16 @@ public static class IssueProjection
             .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g
                 .Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList());
 
+        // The verdicts of the batch, one query for all of it: a fixed number
+        // of reads however many issues are scanned, like the edges above. Ordered
+        // by canonical remote so the list a page draws is stable between reads.
+        var mergeChecks = (await db.MergeChecks.AsNoTracking()
+                .Where(m => ids.Contains(m.IssueId))
+                .OrderBy(m => m.Canonical)
+                .ToListAsync(ct))
+            .GroupBy(m => m.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
+
         // The directory rather than a join, because the identity is not in this
         // schema and could not be joined to (Modules/README.md). Memoized for
         // the life of the request, so a hundred issues cost the same two queries
@@ -141,7 +151,8 @@ public static class IssueProjection
                 issue.CreatedAt,
                 issue.UpdatedAt,
                 claims.Project(ClaimSnapshot.Of(issue), now),
-                issue.Expedited);
+                issue.Expedited,
+                mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : []);
         });
     }
 

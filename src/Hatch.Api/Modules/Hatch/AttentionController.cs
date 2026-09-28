@@ -7,7 +7,8 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// What the loop is waiting on a person for: a pull request nobody has
-/// reviewed, and a question nobody has answered.
+/// reviewed, and a question nobody has answered - and, listed beside them but
+/// not counted, the branches in review that have stopped merging.
 ///
 /// The nav strip draws it on every page, so it has to be one request rather
 /// than two. Two polls can be a poll interval apart, and a badge counting one
@@ -45,7 +46,7 @@ public class AttentionController(HatchContext db) : ControllerBase
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions);
+            return new AttentionDto([], 0, questions, []);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -56,6 +57,7 @@ public class AttentionController(HatchContext db) : ControllerBase
             .ThenBy(i => i.Id)
             .Select(i => new
             {
+                i.Id,
                 ProjectKey = i.Project!.Key,
                 i.Number,
                 i.Type,
@@ -74,6 +76,25 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!))
             .ToList();
 
-        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions);
+        // The verdicts of the column's issues, one query for all of them. An
+        // issue conflicts if any repository's verdict says so, and it is listed
+        // with only those - a clean repository beside a conflicted one is not
+        // part of the sentence. Listed whether or not it carries a pull
+        // request: the branch conflicts either way.
+        var reviewIds = inReview.Select(i => i.Id).ToList();
+        var conflicted = (await db.MergeChecks.AsNoTracking()
+                .Where(m => reviewIds.Contains(m.IssueId) && m.Verdict == MergeVerdicts.Conflicted)
+                .OrderBy(m => m.Canonical)
+                .ToListAsync(ct))
+            .GroupBy(m => m.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
+
+        var conflicts = inReview
+            .Where(i => conflicted.ContainsKey(i.Id))
+            .Select(i => new ConflictDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
+            .ToList();
+
+        return new AttentionDto(reviews, inReview.Count - reviews.Count, questions, conflicts);
     }
 }
