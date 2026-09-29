@@ -163,4 +163,70 @@ public sealed class StreamRenderTests
         Assert.Equal("s-1", facts.SessionId);
         Assert.Contains(lines, l => l.StartsWith("hatch: session", StringComparison.Ordinal));
     }
+
+    // ---- Live tokens, for the readout ----
+
+    [Fact]
+    public void TokensSoFar_SumsTheFourCountsOverEveryMessageSeen()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.AssistantUsage("msg-1", input: 10, output: 20, cacheCreate: 30, cacheRead: 40)).ToList();
+        render.Read(Fixtures.AssistantUsage("msg-2", input: 1, output: 2, cacheCreate: 3, cacheRead: 4)).ToList();
+
+        Assert.Equal(110, render.TokensSoFar);
+    }
+
+    [Fact]
+    public void TokensSoFar_CountsOneMessageOnceHoweverManyTimesItsUsageIsRepeated()
+    {
+        // A message with a thinking block and two tool calls carries the same
+        // usage on every content block - three copies of one message, and one
+        // message's worth of tokens.
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+        var repeated = Fixtures.AssistantUsage("msg-1", input: 10, output: 20, cacheCreate: 0, cacheRead: 0);
+
+        render.Read(repeated).ToList();
+        render.Read(repeated).ToList();
+        render.Read(repeated).ToList();
+
+        Assert.Equal(30, render.TokensSoFar);
+    }
+
+    // ---- The account's usage windows, for the readout and the closing banner ----
+
+    [Fact]
+    public void ARateLimitEvent_DrawsNoLineButUpdatesUsage()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        var lines = render.Read(Fixtures.RateLimitEvent(("five_hour", 0.63, 1790657400), ("seven_day", 0.39, 1791032400))).ToList();
+
+        Assert.Empty(lines);
+        Assert.Equal(2, render.Usage.Count);
+        Assert.Contains(render.Usage, w => w.Label == "Session" && w.Utilization == 0.63);
+        Assert.Contains(render.Usage, w => w.Label == "Weekly" && w.Utilization == 0.39);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1790657400), render.Usage.First(w => w.Label == "Session").ResetsAt);
+    }
+
+    [Fact]
+    public void AWindowTheSourceHasNoNameFor_IsLabelledWeeklyModel()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.RateLimitEvent(("seven_day_opus", 0.2, null))).ToList();
+
+        Assert.Equal("Weekly (model)", Assert.Single(render.Usage).Label);
+    }
+
+    [Fact]
+    public void ALaterReading_ReplacesTheEarlierOneRatherThanAddingToIt()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.RateLimitEvent(("five_hour", 0.1, null))).ToList();
+        render.Read(Fixtures.RateLimitEvent(("five_hour", 0.9, null))).ToList();
+
+        Assert.Equal(0.9, Assert.Single(render.Usage).Utilization);
+    }
 }
