@@ -3,7 +3,9 @@ namespace Hatch.Cli;
 /// <summary>
 /// The loop's look at every branch in review: whether it still merges with the
 /// trunk, asked of git, and what the build on its tip came to, asked of the
-/// runner's own <c>gh</c> - both told to the board.
+/// runner's own <c>gh</c> - both told to the board. Alongside it, for every
+/// checkout with an origin whether or not anything of its is in review, the
+/// build on the trunk's own tip (HA-95).
 /// </summary>
 /// <remarks>
 /// <para><b>An idle loop must not fetch all night.</b> So the poll asks
@@ -35,6 +37,19 @@ namespace Hatch.Cli;
 /// cannot read builds says so once and reads nothing, and nothing about it fails
 /// the merge half, a pass or a night.</para>
 ///
+/// <para><b>The trunk half runs whether or not anything is in review.</b> The
+/// merge and build halves above visit only a checkout whose review issues name
+/// it, because their targets come from <c>/api/hatch/work/review</c> - a quiet
+/// board would otherwise never have its trunk read at all. So, separately,
+/// every checkout <see cref="Runtime.Checkouts"/> holds that has an origin gets
+/// its trunk's build read the same way the branch half reads a tip's, reusing
+/// the <c>ls-remote</c> heads the review half already took where there were
+/// any. A trunk carries no issue for its verdict to ride in on, so the board's
+/// stored trunk verdicts are read once a poll, and matched to a checkout by the
+/// remote it spells - a project's canonical for it once the board has told
+/// this runner one, else null - the same fallback the branch half's <c>where
+/// the project binds one, else the remote it spelled</c> is.</para>
+///
 /// <para>It runs between passes on the loop's one thread, so it never overlaps
 /// a session, and touches no worktree or index, so the tree stays on the trunk.
 /// Nothing in it ends a night: every failure is one line, and a line that says
@@ -47,6 +62,7 @@ public sealed class Poll
 
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
+    private readonly Dictionary<string, string> _seenTrunk = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
@@ -129,6 +145,12 @@ public sealed class Poll
             }
         }
 
+        // Remembered so the trunk half below can reuse the ls-remote a
+        // checkout's review issues already took, rather than asking origin a
+        // second time for the same answer - null for a checkout origin did
+        // not answer for, so the trunk half knows not to ask again either.
+        var headsByPath = new Dictionary<string, RemoteHeads?>();
+
         foreach (var ((path, baseBranch), issues) in targets)
         {
             // Between checkouts, where a fetch has just taken however long it
@@ -141,8 +163,11 @@ public sealed class Poll
             if (workspace.Heads() is not { } heads)
             {
                 complain($"hatch: origin did not answer for {name}, so its branches in review were not checked");
+                headsByPath[path] = null;
                 continue;
             }
+
+            headsByPath[path] = heads;
 
             // The merge half, and then the build half whatever it did: a build
             // that is still pending is asked about again on a branch that has
@@ -150,6 +175,11 @@ public sealed class Poll
             await CheckMergesAsync(runtime, complain, path, name, workspace, heads, issues, ct);
             await ReadBuildsAsync(runtime, complain, path, name, heads, issues, ct);
         }
+
+        // The trunk half: every checkout with an origin, whether or not
+        // anything of its is in review - a repository's trunk is nobody's
+        // issue, and a quiet board must not go all night without it.
+        await ReadTrunksAsync(runtime, complain, headsByPath, ct);
     }
 
     /// <summary>The merge half for one checkout: fetch once if anything moved, and report the verdicts that are due.</summary>
@@ -299,6 +329,138 @@ public sealed class Poll
         {
             complain($"hatch: could not read builds in {name} - {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// The trunk half: for every checkout with an origin, read the build on its
+    /// trunk's tip unless something already vouches for it, and report what it
+    /// came to. A trunk is nobody's issue, so its verdicts are matched by
+    /// remote and trunk name rather than ridden in on a review row, and read
+    /// once for the whole poll rather than once per checkout.
+    /// </summary>
+    /// <remarks>
+    /// Copies <see cref="ReadBuildsAsync"/>'s rules for when to ask again - see
+    /// <see cref="ConcludedTrunk"/> - and, like it, throws nothing out of the
+    /// poll: a forge or a board that cannot answer is one line per checkout and
+    /// the rest are left alone this interval.
+    /// </remarks>
+    private async Task ReadTrunksAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyDictionary<string, RemoteHeads?> headsByPath,
+        CancellationToken ct)
+    {
+        var checkouts = runtime.Checkouts.Where(c => c.Remote is not null).ToList();
+        if (checkouts.Count == 0) return;
+
+        IReadOnlyList<TrunkBuildDto> stored;
+        try
+        {
+            stored = await runtime.Board.TrunkBuildsAsync(ct);
+        }
+        catch (HatchException e)
+        {
+            complain($"hatch: could not read the board's trunk builds - {e.Message}");
+            return;
+        }
+
+        foreach (var checkout in checkouts)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = Path.GetFileName(checkout.Path.TrimEnd('/', '\\'));
+
+            try
+            {
+                RemoteHeads? heads;
+                if (!headsByPath.TryGetValue(checkout.Path, out heads))
+                {
+                    heads = runtime.Workspace(checkout.Path, runtime.Settings.BaseBranch).Heads();
+                    if (heads is null)
+                    {
+                        complain($"hatch: origin did not answer for {name}, so its trunk build was not checked");
+                        continue;
+                    }
+                }
+
+                // Null either because origin did not answer for a checkout the
+                // review half already tried, or because this trunk has no
+                // branch of that name on origin - the first is already said,
+                // and the second has nothing to build.
+                if (heads?.TrunkSha is not { } sha) continue;
+
+                if (_seenTrunk.TryGetValue(checkout.Path, out var seen) && seen == sha) continue;
+
+                var matched = stored.FirstOrDefault(t => t.Remote == checkout.Remote && t.Trunk == heads.Trunk);
+
+                if (VouchesTrunk(matched, sha))
+                {
+                    _seenTrunk[checkout.Path] = sha;
+                    continue;
+                }
+
+                var answer = await runtime.Forge(checkout.Path, matched?.Canonical).ReadAsync(sha, ct);
+                if (answer.Read is not { } read)
+                {
+                    if (answer.Why is { } why) complain($"hatch: could not read the trunk build in {name} - {why}");
+                    continue;
+                }
+
+                TrunkBuildDto? kept;
+                try
+                {
+                    kept = await runtime.Board.TrunkBuildAsync(
+                        new TrunkBuildRequest(
+                            checkout.Remote!, heads.Trunk, sha, read.Verdict,
+                            read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),
+                            runtime.RunnerName),
+                        ct);
+                }
+                catch (HatchException e)
+                {
+                    // Not remembered: a verdict the board refused is asked
+                    // again next interval.
+                    complain($"hatch: the board would not take the trunk build in {name} - {e.Message}");
+                    continue;
+                }
+
+                var concluded = kept is not null
+                    ? ConcludedTrunk(kept)
+                    : read.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
+                if (concluded) _seenTrunk[checkout.Path] = sha;
+
+                if (matched is null || matched.Sha != sha || matched.Verdict != read.Verdict)
+                    runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)}");
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                complain($"hatch: could not read the trunk build in {name} - {e.Message}");
+            }
+        }
+    }
+
+    /// <summary>The trunk equivalent of <see cref="VouchesBuild"/>.</summary>
+    private static bool VouchesTrunk(TrunkBuildDto? stored, string sha) =>
+        stored is not null && stored.Sha == sha && ConcludedTrunk(stored);
+
+    /// <summary>The trunk equivalent of <see cref="Concluded"/>.</summary>
+    private static bool ConcludedTrunk(TrunkBuildDto check) => check.Verdict switch
+    {
+        BuildVerdicts.Passed or BuildVerdicts.Failed => true,
+        BuildVerdicts.None => check.CheckedAt - check.ShaSince >= NoneWindow,
+        _ => false,
+    };
+
+    /// <summary>The trunk equivalent of <see cref="BuildWords"/>: <c>main build on 1a2b3c4 failed (api, CI)</c>.</summary>
+    private static string TrunkWords(string trunk, string sha, BuildRead read)
+    {
+        var at = sha.Length > 7 ? sha[..7] : sha;
+
+        return read.Verdict switch
+        {
+            BuildVerdicts.Failed => $"{trunk} build on {at} failed ({string.Join(", ", read.Failing.Select(f => f.Name))})",
+            BuildVerdicts.Passed => $"{trunk} build on {at} passed",
+            BuildVerdicts.Pending => $"{trunk} build on {at} is still running",
+            _ => $"{trunk} build on {at} - no checks ran",
+        };
     }
 
     /// <summary>

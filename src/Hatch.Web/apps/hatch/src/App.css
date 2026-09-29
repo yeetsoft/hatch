@@ -3098,6 +3098,12 @@ button.hatch-option.chosen {
   background: var(--warn-ink);
 }
 
+/* A red trunk is the one pill that stands for something already on fire -
+   danger, where the other two are neutral or warning tones. */
+.hatch-attention-pill-trunk {
+  background: var(--danger);
+}
+
 /* The panel: a dropdown anchored under the control, not a modal. What it holds
    is a short list of links back into the board, and a modal's overlay would dim
    the board behind them. */
@@ -3203,6 +3209,40 @@ button.hatch-option.chosen {
 .hatch-attention-row:hover,
 .hatch-attention-row:focus-visible {
   background: var(--primary-bg);
+}
+
+/* A trunk build's row is a container, not one anchor - several links and a
+   button inside it each take their own click, so hovering the row itself
+   highlights nothing. */
+.hatch-attention-row-plain:hover {
+  background: none;
+}
+
+.hatch-attention-sha {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-attention-checks {
+  font-size: var(--t-micro);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hatch-attention-row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hatch-attention-row-error {
+  margin: 0;
+  font-size: var(--t-micro);
+  color: var(--danger);
 }
 
 .hatch-attention-row-head {

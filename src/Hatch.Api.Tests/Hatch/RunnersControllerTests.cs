@@ -39,6 +39,31 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task TheHeartbeatAnswer_NamesWhoTheRunnerWorksFor()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal("Nathan", instruction.For);
+    }
+
+    [Fact]
+    public async Task AKeyWithNoOwner_FallsBackToTheKeysOwnName()
+    {
+        var h = await NewAsync(program: true);
+
+        // The stub key is called "hatch", and nobody has set it an owner - the
+        // directory's principal is null, the same as an admin never having
+        // visited the API Keys page.
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal("hatch", instruction.For);
+    }
+
+    [Fact]
     public async Task ASecondHeartbeat_MovesTheClockAndNotTheFirstSighting()
     {
         var h = await NewAsync();
@@ -607,6 +632,7 @@ public class RunnersControllerTests
         public required HatchContext Db { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
+        public required StubActorDirectory Actors { get; init; }
 
         public async Task<IssueDto> FileAsync(string title = "a thing") =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", title, null, null, null, null), default));
@@ -685,13 +711,16 @@ public class RunnersControllerTests
             }
             : new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
 
+        var actors = new StubActorDirectory();
+
         return new Harness
         {
-            Runners = new RunnersController(db, runners, claims, caller, time),
+            Runners = new RunnersController(db, runners, claims, caller, actors, time),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,
+            Actors = actors,
         };
     }
 

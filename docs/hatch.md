@@ -1138,6 +1138,44 @@ Every `IssueDto` carries its build verdicts, ordered by canonical remote, read i
 one batched query for a list of issues. A board that predates them omits the
 field, and readers take that as none.
 
+### Trunk build
+
+`EfHatchTrunkBuild` — `Remote`, `Canonical`, `Trunk`, `Sha`, `ShaSince`,
+`Verdict`, `Failing` (`jsonb`), `CheckedAt`, `Runner`, `CheckedBy`, `BugIssueId?`.
+The same fact as a [build check](#build-check), but about the tip of a
+repository's trunk rather than an issue's branch — a trunk build is nobody's
+issue, so it is not keyed on one. `Verdict` is the same four
+([above](#build-check)), by the same rules: a check run or a commit status
+fails the same way, a pending build carries whatever has already failed, and a
+runner asks about `none` again until ten minutes after `ShaSince`.
+
+**One verdict per repository per trunk**, unique on `(Canonical, Trunk)`: two
+projects may bind one repository with different base branches, and a single
+verdict would let one project's trunk overwrite another's. A second write for
+the same pair replaces the first.
+
+`BugIssueId` is the bug the Human half's *File a bug* button filed while this
+trunk was failing (HA-95) — nullable, `SetNull` on the issue's own delete. It
+stays attached across new failing shas, because a fix that fails again is the
+same outage, and is cleared the moment a verdict for the pair is `passed`, so
+the next failure offers the button again.
+
+`PUT /api/hatch/trunk-builds` writes a verdict and a key may, for the reason it
+may write a build check — the caller is a runner, and a verdict only a person
+could enter would be one nobody entered. It takes the same refusals the build
+check's write does (an uncanonicalisable remote, an unknown verdict, no trunk,
+no sha, `failed` with no failing checks, an over-long or broken check name, an
+over-limit runner), naming the trunk rather than the branch. **No event, and no
+question**: there is no issue to write either on, and a trunk's failure is a
+person's row in the attention panel rather than a stall a session is asked
+about. `GET /api/hatch/trunk-builds` answers every stored verdict, ordered by
+canonical then trunk — the runner's poll reads it once a poll, since a trunk
+carries no issue for the verdict to ride in on.
+
+The runner's poll ([below](#checking-the-branches-in-review)) reads the build on
+every checkout's trunk whether or not anything of its is in review, so a quiet
+board is not a poll that never gets there.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -1425,6 +1463,19 @@ sent where it was sent. It follows that there is no `hatch expedite` verb — th
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
 
+**And so is filing the bug a failing trunk's button offers (HA-95).** The bug
+`POST /api/hatch/trunk-builds/{id}/bug` files is expedited from the moment it
+exists, so a key that could press the button could put a ticket of its own
+choosing at the front of the night the same way a key that could expedite
+directly could. `TrunkBuildBugController` therefore carries no class-level
+attribute either, cut by the same means as expedite; filing itself goes
+through `IssuesController.CreateIssueAsync`'s internal, expedited-aware
+overload, so the bug's number, rank, first column and `created` event are the
+ordinary ones and the flag is set in the same save rather than a second write
+after. Reading the trunk builds themselves stays Hatch-scoped, the way reading
+a build check is: a verdict about a sha is a fact any runner reads the same
+way, whichever repository it binds.
+
 **A key's owner is cut the same way, and for the reason the assignee edge
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
@@ -1513,11 +1564,14 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
+| `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
+| `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
+| `/trunk-builds/{id}/bug` | POST | **Person only** — no class-level scope, the way expedite is cut. Files the bug a failing trunk's *File a bug* button asks for (HA-95), expedited, in the project that binds the repository, in the board's first column — see [what is waiting on you](#what-is-waiting-on-you). `409` once the row is no longer failing; `400` naming the Projects page when no project binds it; a second call answers the bug already filed rather than filing another |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -1652,9 +1706,9 @@ has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
-The panel draws two groups, in this order: **Human** — pull requests to
-review, then questions to answer — and **Agent** — branches that conflict,
-then builds that fail. A pull request only ever appears under one of the two:
+The panel draws two groups, in this order: **Human** — trunk builds that fail,
+then pull requests to review, then questions to answer — and **Agent** —
+branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both.
@@ -1697,6 +1751,12 @@ answer worth having, and it is the one it gives most of the time.
                     "files": ["src/a.cs", "src/b.cs"], ... } ] }
   ],
   "reviewsHeldBack": 1,
+  "trunkBuilds": [
+    { "id": 7, "remote": "git@forge.example:owner/repo.git", "canonical": "forge.example/owner/repo",
+      "trunk": "main", "sha": "1a2b3c4d5e...", "verdict": "failed",
+      "failing": [ { "name": "CI", "url": "https://forge.example/checks/CI" } ],
+      "bugIssueKey": null }
+  ],
   "exhaustedRunners": [
     { "name": "host:/checkouts/one", "where": "host:/checkouts/one", "exhaustedUntil": "2026-09-28T23:40:00Z" }
   ]
@@ -1721,6 +1781,39 @@ Neither half restates a rule that already lives somewhere:
   `/questions` answers with — `Questions.Open`, a question with nothing pointing
   at it — so the count on the bar and the badge on a board card cannot
   disagree.
+
+### The trunk build that fails
+
+`trunkBuilds` is the fifth list, and the one build-shaped thing here that
+**does** light the control. It is every stored [trunk build](#trunk-build)
+that is `failed`, or `pending` with a check that has already failed, ordered by
+canonical then trunk, whether or not there is a review column at all — a
+repository's trunk is checked whether or not anything of its is in review, and
+the section reads it the same way. The panel draws it first in the Human half,
+as *Trunk builds that fail*, naming the trunk as the runner reported it and the
+repository, the short sha, and every failing check as a link that opens its
+job in a new tab.
+
+**It counts, unlike a branch's conflict or its failing build**, because the
+reasoning that keeps those two quiet does not hold here: nothing is dispatched
+at a trunk, so a failing one has no agent already on it. It sits exactly as it
+is until a person presses **File a bug**, which is what the badge exists to
+surface.
+
+Each row carries a button, unless it already carries a bug's key as a link in
+its place — `POST /api/hatch/trunk-builds/{id}/bug`, person-only, the same cut
+[expedite](#the-one-edge-that-is-deliberately-cut) takes, because the bug it
+files is expedited and expedite is a person's call. It is filed in the shape a
+bug against a failing trunk was always filed by hand, from the forge's own
+page: a bug, titled *Build failing on &lt;trunk&gt;*, described with the
+repository, the sha and a link to each failing check, expedited, in the board's
+first column — in the project that binds the repository as its primary,
+lowest project id first, else the lowest-id project that binds it at all, else
+refused naming the Projects page.
+The bug stays attached across new failing shas — a fix that fails again is the
+same outage — and is let go the moment a later build on the trunk passes, so
+the next failure offers the button again. A second press, or a second person,
+gets the bug already filed rather than a second one.
 
 ### The branch in review that has stopped merging
 
@@ -1752,9 +1845,9 @@ it.
 is the review column's issues whose [build check](#build-check) says `failed`,
 or `pending` with a check that has already failed, in at least one repository,
 in the column's own board order, each with only the repositories that are
-failing. The panel draws it as *Builds that fail*, after the conflicts, and the
-issue page draws a chip beside the pull request's naming the failing checks,
-each linked — marked as still running while the verdict is `pending`.
+failing. The panel draws it as *Branch builds that fail*, after the conflicts,
+and the issue page draws a chip beside the pull request's naming the failing
+checks, each linked — marked as still running while the verdict is `pending`.
 
 The reasoning is the conflicts' own: the loop fixes a failing build, and one it
 cannot fix becomes a question, which already lights the control. Counting it as
@@ -2908,6 +3001,24 @@ API budget:
 The terminal hears about a build only when it changes — `hatch: HA-12 build on
 1a2b3c4 failed (api, CI)`.
 
+**The trunk's own build, whether or not anything is in review.** Both halves
+above run only for a checkout that holds an issue in review, because their
+targets come from `/api/hatch/work/review` — a repository nobody happens to be
+reviewing a branch of is never visited, and a quiet board goes all night
+without its trunk read at all. A repository's trunk is nobody's issue, so once
+per checkout that has an origin, the poll reads the build on its tip the same
+way — reusing the `ls-remote` heads a checkout's review issues already took,
+where there were any, so a checkout with something in review costs no second
+one — and puts a [trunk build](#trunk-build) to the board. It follows the same
+rules asking `gh` again: `passed` and `failed` are asked once, `pending` every
+interval, `none` until ten minutes after `ShaSince`, and a forge or a board
+that cannot answer is one line per checkout. `GET /api/hatch/trunk-builds`
+answers every stored trunk verdict once a poll, and the runner matches its own
+checkout against it by the remote it spells until the board's canonical form
+for that pair is known. The terminal hears about a change the same way —
+`hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
+an issue.
+
 ### When an increment does nothing
 
 The one failure mode of an unattended loop that is dangerous rather than merely
@@ -3463,6 +3574,76 @@ See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
 [when an increment does nothing](#when-an-increment-does-nothing) for what
 sets this in the first place.
+
+### The console
+
+`go-to-work`, `do-my-work` and `hatch work` wrap every increment in a banner and,
+at an interactive terminal, pin a readout to the bottom of it — see HA-120 for
+the operator's brief and the reasoning behind each choice below.
+
+**The banners are in every log, terminal or not.** Before a session is spawned,
+`🥚🥚🥚🥚🥚 STARTING WORK ON <KEY>` opens it, naming the issue's title and type,
+what the increment is for (a move, a conflict, or a failing build), the model
+and effort — with the line saying the issue chose them, where it did — and the
+runner's name with which increment of the night this is. When the increment is
+over, a glyph row closes it: `🐣` where the ticket moved, a conflict was
+resolved, or a fix was pushed; `🥚` where it did not move; `🍳` where the
+session exited badly, was interrupted, or lost its lease before the end — that
+glyph outranks the other two, however the board reads afterward. Under it, the
+outcome in the tally's own words, a `Took` line with wall-clock time, tokens,
+cost and turns, and the account's usage where there is one. A figure that never
+arrived reads `not reported`, never `0` — a session interrupted deep enough to
+lose its own read-back (`Increment.RunAsync`'s own `catch
+(OperationCanceledException)`) still returns a report so its banner can close.
+Nothing is printed for a pass that spawns no session — an express hop, a
+conflict or a failing build that had already cleared, a ticket waiting to be
+told which branch. Plain text, no colour, no cursor movement: a redirected log,
+including the container runner's `docker logs`, reads exactly like a terminal's
+scrollback.
+
+**The readout is pinned to the bottom, not the top**, and only where output is
+an interactive terminal — never redirected, never `TERM=dumb`, and never
+`hatch work -i`, whose terminal belongs to the session a person is sitting in.
+Bottom rather than top because that needs no terminal mode at all: a scroll
+region left set by a runner killed outright (a second Ctrl-C, `kill -9`) would
+leave a terminal that scrolls wrongly until somebody types `reset`, where a
+footer erased and redrawn around every line — the way a build tool draws a
+progress bar — leaves at most one stale copy in the scrollback and nothing to
+repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
+under the same lock every streamed and printed line already goes through, so a
+clock tick can never land mid-line; what it draws is a pure function of a
+snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
+a running increment and the idle loop between them both write to.
+
+While an increment runs, its first row names the issue — key, title, the move
+or conflict or build it is for, and its address — and the second says whether
+the agent is alive: elapsed time, tokens spent so far, and how long it has been
+quiet with what it was last inside of (`quiet 2m14s — Bash  make test-api`),
+turning the warn colour past two minutes and the danger one past ten. One row
+follows per usage window the session's own stream reports — see below — each a
+20-cell bar, a percentage and a reset time. Last is the runner's own row: its
+character name, the person it works for (from the heartbeat's `for`, HA-122),
+how many increments this loop has run and for how long, counted across the
+loop's own restarts the way the closing tally already counts them, what the
+night has spent, and any bound it will stop at. Between increments the runner's
+row stays and one more appears, saying why nothing is being worked and when the
+loop looks again. Colour drops under `NO_COLOR`; every row is clipped to the
+terminal's own width, read fresh on each draw, so a resize clips rather than
+scrambles it. On exit for any reason the runner can catch — the night ending,
+Ctrl-C, a restart onto a newer build — the footer is erased and the closing
+tally prints below the last banner, as it always has.
+
+**The usage bars read the session's own stream, not Hatch's battery** — asked
+and answered on HA-120: every session's `stream-json` carries a
+`rate_limit_event` naming `unifiedWindows.five_hour` (labelled `Session`) and
+`seven_day` (`Weekly`), plus a per-model weekly window for accounts that have
+one, labelled `Weekly (model)` since it arrives with no name of its own. That is
+the account this runner's sessions actually spend — right for a friend's
+`do-my-work` on their own subscription, and it needs no token pasted into this
+Hatch's Settings page. The reading updates while a session streams and holds
+its last value between increments; a quiet run, or one that ends before the
+first such event, has none, and the readout and the closing banner alike simply
+draw no usage line rather than complain.
 
 ## The level above the board
 

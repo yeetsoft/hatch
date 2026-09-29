@@ -254,6 +254,10 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
+        // No tally here - this is one increment, not a night - so the readout's
+        // runner row shows this one and nothing carried from a restart.
+        runtime.Readout.SetRunner(new RunnerSnapshot(runtime.RunnerName, beat.Instruction?.For, 1, TimeSpan.Zero, 0m, null));
+
         var clones = runtime.Settings.Workspace is not null;
 
         WorkDto work;
@@ -480,7 +484,7 @@ public sealed class WorkCommand(Runtime runtime)
             }
 
             var owned = true;
-            UsageLimitInfo? limit = null;
+            IncrementReport? report = null;
             try
             {
                 if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
@@ -489,20 +493,27 @@ public sealed class WorkCommand(Runtime runtime)
                 // with: the report is where "it went badly" is said, and a shell
                 // that treated a hard ticket as a broken command would be one more
                 // thing an operator has to work around.
-                var report = await runtime.Increment().RunAsync(
+                report = await runtime.Increment().RunAsync(
                     work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
-                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)));
+                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                    runnerName: runtime.RunnerName, incrementNumber: 1);
                 owned = !report.LostLease;
-                limit = report.UsageLimitResetAt is { } resetAt
-                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
-                    : null;
                 return 0;
             }
             finally
             {
                 owned &= claim.Lost is null;
+                var limit = report?.UsageLimitResetAt is { } resetAt
+                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                    : null;
                 await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit);
+
+                // Every opening banner has a closing one - null only for the
+                // attach path, which prints its own header and has no report to
+                // close with; a person is sitting at that session.
+                if (report is not null)
+                    runtime.Say.Lines(Banner.Closing(report, Readout.OneLine(runtime.Readout.Snapshot().UsageWindows)));
             }
         }
         finally

@@ -74,6 +74,22 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/build-check", request, ct);
 
     /// <summary>
+    /// Every trunk verdict the board holds, read once per poll and matched
+    /// locally against each checkout - a trunk is nobody's issue, so there is
+    /// no issue to ride the verdict in on the way the branch checks do.
+    /// </summary>
+    public async Task<IReadOnlyList<TrunkBuildDto>> TrunkBuildsAsync(CancellationToken ct) =>
+        await Client.GetAsync<List<TrunkBuildDto>>("/api/hatch/trunk-builds", ct) ?? [];
+
+    /// <summary>
+    /// What the build on the tip of one repository's trunk came to - see
+    /// <see cref="TrunkBuildRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<TrunkBuildDto?> TrunkBuildAsync(TrunkBuildRequest request, CancellationToken ct) =>
+        Client.WriteAsync<TrunkBuildDto>(HttpMethod.Put, "/api/hatch/trunk-builds", request, ct);
+
+    /// <summary>
     /// The dispatch for one named issue.
     /// </summary>
     /// <param name="heldToken">

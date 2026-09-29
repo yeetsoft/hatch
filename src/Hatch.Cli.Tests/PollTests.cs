@@ -20,6 +20,7 @@ public sealed class PollTests
 
     private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
     private static string PutBuild(string key) => $"/api/hatch/issues/{key}/build-check";
+    private const string TrunkBuilds = "/api/hatch/trunk-builds";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -54,6 +55,20 @@ public sealed class PollTests
         public Rig Keeps(string key, BuildCheckDto held)
         {
             H.Wire.Replace("PUT", PutBuild(key), HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board says it holds for every trunk, in place of the default settled one the harness stubs.</summary>
+        public Rig StoresTrunks(params TrunkBuildDto[] rows)
+        {
+            H.Wire.Replace("GET", TrunkBuilds, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(rows, Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board answers a trunk verdict with: the row it now holds.</summary>
+        public Rig KeepsTrunk(TrunkBuildDto held)
+        {
+            H.Wire.Replace("PUT", TrunkBuilds, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
             return this;
         }
 
@@ -554,14 +569,18 @@ public sealed class PollTests
     }
 
     [Fact]
-    public async Task An_empty_column_is_one_read_and_nothing_else()
+    public async Task An_empty_column_is_one_read_and_the_trunk_still_gets_checked()
     {
         using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
 
         await rig.RunAsync();
 
-        Assert.Single(rig.H.Wire.Calls);
-        Assert.Empty(rig.H.Workspace.Calls);
+        // The review read, and the trunk half's own - which runs whether or
+        // not anything is in review, so a quiet board is not a poll that never
+        // gets there.
+        Assert.Equal(2, rig.H.Wire.Calls.Count);
+        Assert.Equal([$"heads {rig.H.Root}"], rig.H.Workspace.Calls);
         Assert.Empty(rig.H.Say.Said);
         Assert.Empty(rig.H.Say.Complained);
     }
@@ -893,6 +912,196 @@ public sealed class PollTests
         // The merge half says it could not compare; the build needs no trunk.
         Assert.Single(rig.H.Forge.Reads);
         Assert.Contains("origin has no main", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    // ---- The trunk's own build (HA-100) ----
+
+    /// <summary>A checkout with an origin and nothing in review, whose trunk is at the default sha with nothing stored about it.</summary>
+    private static Rig NoStoredTrunk()
+    {
+        var rig = new Rig().Board();
+        rig.StoresTrunks();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_trunk_nobody_has_checked_is_read_and_reported_even_with_nothing_in_review()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Trunk}"], rig.H.Forge.Reads);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(Trunk, put.Sha);
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.Equal(["CI"], put.Failing!.Select(f => f.Name));
+        Assert.Equal("test:/checkout", put.Runner);
+
+        Assert.Contains($"hatch: main build on {Trunk[..7]} failed (CI)", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task Only_checkouts_with_an_origin_have_their_trunk_checked()
+    {
+        using var rig = new Rig().Board();
+        rig.StoresTrunks();
+        var runtime = rig.H.Runtime with
+        {
+            Clock = rig.Clock,
+            Checkouts = [new CheckoutEntry(rig.H.Root, null, Standing: true)],
+        };
+
+        await rig.Poll.RunAsync(runtime, Interval, default);
+
+        Assert.Empty(rig.H.Wire.To("GET", TrunkBuilds));
+        Assert.Empty(rig.H.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task The_trunk_half_reuses_the_heads_the_review_half_already_took()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"));
+        rig.StoresTrunks();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+
+        await rig.RunAsync();
+
+        Assert.Equal(1, rig.Count("heads"));
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Failed)]
+    public async Task A_concluded_trunk_build_is_asked_about_once_however_many_intervals_pass(string verdict)
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = verdict == BuildVerdicts.Failed ? Failed() : Read(verdict);
+        rig.KeepsTrunk(Fixtures.TrunkBuild(verdict, failing: verdict == BuildVerdicts.Failed ? ["api"] : []));
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+        Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds));
+    }
+
+    [Fact]
+    public async Task A_runner_that_restarts_does_not_ask_again_about_a_trunk_build_the_board_already_holds()
+    {
+        using var rig = new Rig().Board();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", TrunkBuilds));
+    }
+
+    [Fact]
+    public async Task A_pending_trunk_build_is_asked_about_again_next_interval()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Pending);
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Pending));
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_trunk_none_is_asked_about_again_until_ten_minutes_after_the_board_first_heard_of_the_sha_and_then_not()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = Read(BuildVerdicts.None);
+        var heard = new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero);
+        TrunkBuildDto None(int minutes) =>
+            Fixtures.TrunkBuild(BuildVerdicts.None, sha: Trunk, shaSince: heard) with { CheckedAt = heard.AddMinutes(minutes) };
+
+        rig.KeepsTrunk(None(0));
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        rig.KeepsTrunk(None(9));
+        await rig.Later(60).RunAsync();
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+
+        rig.KeepsTrunk(None(10));
+        await rig.Later(60).RunAsync();
+        Assert.Equal(3, rig.H.Forge.Reads.Count);
+
+        await rig.Later(60).RunAsync();
+        Assert.Equal(3, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_moved_trunk_tip_is_read_again()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Passed));
+
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(Moved);
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Passed, sha: Moved));
+        await rig.Later().RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Trunk}", $"{rig.H.Root} {Moved}"], rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_answer_the_trunk_is_one_line_and_reports_nothing()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Forge.Answer = new ForgeAnswer(null, "gh is not installed");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", TrunkBuilds));
+        Assert.Contains("gh is not installed", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_board_that_would_not_take_the_trunk_build_is_a_line_and_is_asked_again_next_interval()
+    {
+        using var rig = NoStoredTrunk();
+        rig.H.Wire.Replace("PUT", TrunkBuilds, HttpStatusCode.NotFound, "\"no route\"");
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+        Assert.Single(rig.H.Say.Complained);
+        Assert.Contains("would not take the trunk build", rig.H.Say.Complained[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_board_that_cannot_answer_for_trunk_builds_is_one_line_and_the_review_half_still_works()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"));
+        rig.H.Wire.Replace("GET", TrunkBuilds, HttpStatusCode.NotFound, "\"no route\"");
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
+        Assert.Contains("could not read the board's trunk builds", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
     }
 
     [Fact]

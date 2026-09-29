@@ -229,6 +229,15 @@ public class AdminSurfaceTests
         // rather than about the house.
         "UtilizationController.Get",
 
+        // The build on a repository's trunk, Hatch-scoped for the reason
+        // BuildCheckController is: a key may read and write it, the same as a
+        // branch's build check - it is a fact about a sha that any runner reads
+        // the same way. Filing the bug it can surface is a separate, person-only
+        // route - see TrunkBuildBugController, and PersonOnly below.
+        "TrunkBuildController.GetTrunkBuilds",
+        "TrunkBuildController.PutTrunkBuild",
+        "TrunkBuildBugController.PostBug",
+
         // Who is at the browser, so the nav strip can say so and know the
         // role. Guarded like the rest of the module, and Hatch-scoped for
         // consistency: a key reads as nobody and gets a 204.
@@ -461,6 +470,11 @@ public class AdminSurfaceTests
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",
         "RunnerController.Download",
+
+        // The bug a failing trunk's button files is expedited, and expedite is
+        // a person's call - see IssueExpediteController above and
+        // TrunkBuildBugController's own header for why.
+        "TrunkBuildBugController.PostBug",
     ];
 
     private static readonly string[] UserOutsideHatch =
