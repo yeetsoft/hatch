@@ -3526,8 +3526,16 @@ with nobody to rebuild it is the loop it started as.
 Three things that look like reasons to stop are not. **A lost lease** is the
 loop working correctly on a busy board — the ticket went to a runner already
 further into it — and does not count toward the three. **A board that did not
-answer** is a minute of bad network, and a loop that ended on one is a loop
-somebody has to sit with. And **a busy board** is a wait, not an ending: every
+answer** rides the gap out on its own: every call retries, backing off, for up
+to `HATCH_RETRY_SECONDS` (90s by default, `0` for exactly one attempt) before
+it is even read as a failure — so a deploy with no health check costs the loop
+nothing it would not have spent anyway. The one exception is a claim's own
+heartbeat: one that keeps failing for longer than `StallLapseSeconds`
+altogether — whether every beat in that stretch failed outright, or each spent
+its own retry budget and still failed — gives up on its own, sets `Lost` and
+stops the session exactly as a `409` does, on the understanding that a lease
+gone quiet that long is one the board's own rule may already have let
+somebody else take. And **a busy board** is a wait, not an ending: every
 candidate being worked elsewhere is a report, and it is deliberately not the
 sentence an empty board gets.
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Cli.Tests;
 
@@ -49,6 +50,55 @@ public sealed class IncrementTests
         // not fold its own dispatch.
         Assert.Contains($"heldToken={token}", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-116: a minute of Hatch not answering costs nothing. Two blips on the
+    /// post-session read - a 503 and a 502 - are ridden out inside
+    /// <see cref="HatchClient.Send"/> itself, so the increment never even sees
+    /// a failure: it reads as moved, with no stall comment and no flag, exactly
+    /// as if the outage had never happened.
+    /// </summary>
+    [Fact]
+    public async Task A_post_session_read_that_fails_twice_then_answers_still_reads_as_moved()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Once("GET", "/api/hatch/work/AER-1", HttpStatusCode.ServiceUnavailable);
+        h.Wire.Once("GET", "/api/hatch/work/AER-1", HttpStatusCode.BadGateway);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        // Advances the fake clock past the backoff the two blips cost - real
+        // milliseconds spent polling so the call's own seconds never have to
+        // be.
+        for (var i = 0; i < 10 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(15));
+        }
+
+        var report = await running;
+
+        Assert.True(report.Moved);
+        Assert.Equal("In Progress -> In Review", report.Outcome);
+        Assert.Null(report.Flag);
+        Assert.Equal(3, h.Wire.Count("GET", "/api/hatch/work/AER-1"));
+
+        // A stall comment here would flag another runner's increment as ours,
+        // exactly as it does today for a read that answers on the first try -
+        // there is nothing here for anybody to see.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }

@@ -193,9 +193,9 @@ public static class Fixtures
             Turns: 12, CostUsd: cost, InputTokens: tokens, OutputTokens: 0, CacheCreationTokens: 0,
             CacheReadTokens: 0, TotalTokens: tokens, Models: []);
 
-    public static string Taken(Guid token, int ttlSeconds = 300) =>
+    public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
         JsonSerializer.Serialize(
-            new ClaimTakenDto(token, "hatch", DateTimeOffset.UnixEpoch, ttlSeconds), Json);
+            new ClaimTakenDto(token, "hatch", DateTimeOffset.UnixEpoch, ttlSeconds, stallLapseSeconds), Json);
 
     // ---- The events a session emits ----
 
