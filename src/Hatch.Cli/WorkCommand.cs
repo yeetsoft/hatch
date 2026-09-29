@@ -254,45 +254,32 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
+        // No tally here - this is one increment, not a night - so the readout's
+        // runner row shows this one and nothing carried from a restart.
+        runtime.Readout.SetRunner(new RunnerSnapshot(runtime.RunnerName, beat.Instruction?.For, 1, TimeSpan.Zero, 0m, null));
+
         var clones = runtime.Settings.Workspace is not null;
 
-        WorkDto work;
-        Claim claim;
-        Checkouts.Choice chosen;
+        WorkDto? work = null;
+        Claim? claim = null;
+        Checkouts.Choice? chosen = null;
 
-        if (key is { Length: > 0 })
+        // Set once a real, headless increment starts - so a catch below that
+        // never reaches a report can still ask what `claude --resume` would
+        // take. Null for an attached session, which is a person's to resume.
+        Increment? increment = null;
+
+        try
         {
-            // A live claim held by somebody else comes back as `blocked`
-            // carrying the server's sentence, so a ticket another runner is
-            // working refuses here and nothing is spawned.
-            WorkDto? named;
-            try
+            if (key is { Length: > 0 })
             {
-                named = await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones);
-            }
-            catch (HatchException e)
-            {
-                runtime.Say.Complain(e.Message);
-                return 1;
-            }
-
-            if (named is null)
-            {
-                runtime.Say.Complain($"hatch: {key} - there is nothing to do here");
-                return 2;
-            }
-
-            if (Refuse(named)) return 2;
-
-            // Express, standing in a column marked to skip: carried across with
-            // no session, and nothing above this has taken a checkout or a
-            // claim yet, so there is nothing to undo.
-            if (named.Hop)
-            {
-                string? walkOn;
+                // A live claim held by somebody else comes back as `blocked`
+                // carrying the server's sentence, so a ticket another runner is
+                // working refuses here and nothing is spawned.
+                WorkDto? named;
                 try
                 {
-                    (_, walkOn) = await runtime.Board.HopAsync(runtime.Checkouts, key, ct, clones);
+                    named = await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones);
                 }
                 catch (HatchException e)
                 {
@@ -300,109 +287,149 @@ public sealed class WorkCommand(Runtime runtime)
                     return 1;
                 }
 
-                if (walkOn is not null)
+                if (named is null)
                 {
-                    runtime.Say.Complain($"hatch: {key} - {walkOn}");
+                    runtime.Say.Complain($"hatch: {key} - there is nothing to do here");
                     return 2;
                 }
 
-                runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  express, no session");
-                return 0;
-            }
+                if (Refuse(named)) return 2;
 
-            // Without a clone, so that the ordinary case - already matched, or
-            // never going to match at all - refuses exactly as it always has,
-            // before anything is claimed. Only a primary this runner could
-            // still clone its way to needs the claim first.
-            var preclaim = Checkouts.Choose(named.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
-            if (preclaim is null && runtime.Settings.Workspace is null)
-            {
-                runtime.Say.Complain(Changed(key));
-                return 2;
-            }
-
-            // The race between that read and this take, which the server
-            // decides and this only reports.
-            var (taken, refused) = await Claim.TakeAsync(
-                runtime.Board.Client, key, runtime.RunnerName, ct, runtime.Heartbeat);
-            if (taken is null)
-            {
-                runtime.Say.Complain($"hatch: {key} - {refused?.Sentence ?? "the claim was refused"}");
-                return 2;
-            }
-
-            Checkouts.Choice resolvedChoice;
-            if (preclaim is not null)
-            {
-                resolvedChoice = preclaim;
-            }
-            else
-            {
-                // Only now, with the lease already held: a checkout cloned for
-                // a ticket nobody ends up spending is a checkout somebody
-                // else's increment would have to notice and clean up.
-                var resolved = Clones.Resolve(
-                    named, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch,
-                    runtime.Settings.Workspace, runtime.MakeClone);
-                runtime = runtime with { Checkouts = resolved.Checkouts };
-
-                if (resolved.Failed is { } failure)
+                // Express, standing in a column marked to skip: carried across with
+                // no session, and nothing above this has taken a checkout or a
+                // claim yet, so there is nothing to undo.
+                if (named.Hop)
                 {
-                    await taken.ReleaseAsync();
-                    await runtime.Board.CommentAsync(
-                        key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
-                    runtime.Say.Complain(
-                        $"hatch: {key} - could not clone {failure.Remote} into {failure.Path}: {failure.Error}");
-                    return 2;
+                    string? walkOn;
+                    try
+                    {
+                        (_, walkOn) = await runtime.Board.HopAsync(runtime.Checkouts, key, ct, clones);
+                    }
+                    catch (HatchException e)
+                    {
+                        runtime.Say.Complain(e.Message);
+                        return 1;
+                    }
+
+                    if (walkOn is not null)
+                    {
+                        runtime.Say.Complain($"hatch: {key} - {walkOn}");
+                        return 2;
+                    }
+
+                    runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  express, no session");
+                    return 0;
                 }
 
-                if (resolved.Chosen is not { } fromClone)
+                // Without a clone, so that the ordinary case - already matched, or
+                // never going to match at all - refuses exactly as it always has,
+                // before anything is claimed. Only a primary this runner could
+                // still clone its way to needs the claim first.
+                var preclaim = Checkouts.Choose(named.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
+                if (preclaim is null && runtime.Settings.Workspace is null)
                 {
-                    await taken.ReleaseAsync();
                     runtime.Say.Complain(Changed(key));
                     return 2;
                 }
 
-                resolvedChoice = fromClone;
+                // The race between that read and this take, which the server
+                // decides and this only reports.
+                var (taken, refused) = await Claim.TakeAsync(
+                    runtime.Board.Client, key, runtime.RunnerName, ct, runtime.Heartbeat);
+                if (taken is null)
+                {
+                    runtime.Say.Complain($"hatch: {key} - {refused?.Sentence ?? "the claim was refused"}");
+                    return 2;
+                }
+
+                Checkouts.Choice resolvedChoice;
+                try
+                {
+                    if (preclaim is not null)
+                    {
+                        resolvedChoice = preclaim;
+                    }
+                    else
+                    {
+                        // Only now, with the lease already held: a checkout cloned for
+                        // a ticket nobody ends up spending is a checkout somebody
+                        // else's increment would have to notice and clean up.
+                        var resolved = Clones.Resolve(
+                            named, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch,
+                            runtime.Settings.Workspace, runtime.MakeClone);
+                        runtime = runtime with { Checkouts = resolved.Checkouts };
+
+                        if (resolved.Failed is { } failure)
+                        {
+                            await taken.ReleaseAsync();
+
+                            // Best-effort: the claim is already let go of either way.
+                            try
+                            {
+                                await runtime.Board.CommentAsync(
+                                    key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
+                            }
+                            catch (Exception e) when (e is HatchException or OperationCanceledException)
+                            {
+                                runtime.Say.Complain($"hatch: {key} - could not tell the board that {failure.Remote} could not be cloned - {e.Message}");
+                            }
+
+                            runtime.Say.Complain(
+                                $"hatch: {key} - could not clone {failure.Remote} into {failure.Path}: {failure.Error}");
+                            return 2;
+                        }
+
+                        if (resolved.Chosen is not { } fromClone)
+                        {
+                            await taken.ReleaseAsync();
+                            runtime.Say.Complain(Changed(key));
+                            return 2;
+                        }
+
+                        resolvedChoice = fromClone;
+                    }
+                }
+                catch (Exception)
+                {
+                    await taken.ReleaseAsync();
+                    throw;
+                }
+
+                (work, claim, chosen) = (named, taken, resolvedChoice);
             }
-
-            (work, claim, chosen) = (named, taken, resolvedChoice);
-        }
-        else
-        {
-            // The same walk the loop uses, so one rule picks a ticket wherever
-            // a ticket is picked.
-            var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
-
-            switch (picked.Outcome)
+            else
             {
-                case Pick.Idle:
-                    await runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct);
-                    return 2;
+                // The same walk the loop uses, so one rule picks a ticket wherever
+                // a ticket is picked.
+                var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
 
-                case Pick.Busy:
-                    runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
-                    return 2;
+                switch (picked.Outcome)
+                {
+                    case Pick.Idle:
+                        await runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct);
+                        return 2;
 
-                case Pick.Unreadable:
-                    return 1;
+                    case Pick.Busy:
+                        runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
+                        return 2;
 
-                case Pick.Refused:
-                    runtime.Say.Complain(picked.Refusal ?? "hatch: the board refused this pass");
-                    return 1;
+                    case Pick.Unreadable:
+                        return 1;
 
-                case Pick.Hopped:
-                    var hop = picked.Hopped!;
-                    runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  express, no session");
-                    return 0;
+                    case Pick.Refused:
+                        runtime.Say.Complain(picked.Refusal ?? "hatch: the board refused this pass");
+                        return 1;
+
+                    case Pick.Hopped:
+                        var hop = picked.Hopped!;
+                        runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  express, no session");
+                        return 0;
+                }
+
+                if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
+                (work, claim, chosen) = (picked.Work!, picked.Claim!, picked.Chosen!);
             }
 
-            if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
-            (work, claim, chosen) = (picked.Work!, picked.Claim!, picked.Chosen!);
-        }
-
-        try
-        {
             // What the server decided, unless a flag says otherwise. The
             // playbook's model is already the effective value - an issue
             // carrying its own has had it folded in there - so a flag beats an
@@ -479,31 +506,76 @@ public sealed class WorkCommand(Runtime runtime)
                 return 2;
             }
 
-            var owned = true;
+            // False until a branch below says otherwise, rather than true until
+            // one says not: an exception thrown out of either branch is neither
+            // a finished attach nor a report to read `LostLease` off, and
+            // defaulting to "owned" would have the `finally` below write a tidy
+            // comment and push a pending merge for an increment that never
+            // finished.
+            var owned = false;
+            IncrementReport? report = null;
             try
             {
-                if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
+                if (attach)
+                {
+                    var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
+                    owned = true;
+                    return code;
+                }
 
                 // Zero for an increment that happened, whatever the session exited
                 // with: the report is where "it went badly" is said, and a shell
                 // that treated a hard ticket as a broken command would be one more
                 // thing an operator has to work around.
-                var report = await runtime.Increment().RunAsync(
+                increment = runtime.Increment();
+                report = await increment.RunAsync(
                     work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
-                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)));
+                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                    runnerName: runtime.RunnerName, incrementNumber: 1);
                 owned = !report.LostLease;
                 return 0;
             }
             finally
             {
                 owned &= claim.Lost is null;
-                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None);
+                var limit = report?.UsageLimitResetAt is { } resetAt
+                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                    : null;
+                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit);
+
+                // Every opening banner has a closing one - null only for the
+                // attach path, which prints its own header and has no report to
+                // close with; a person is sitting at that session.
+                if (report is not null)
+                    runtime.Say.Lines(Banner.Closing(report, Readout.OneLine(runtime.Readout.Snapshot().UsageWindows)));
             }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // One failed increment, not an unhandled crash: whatever stage this
+            // was in - picking, claiming, the reset, the recheck, the branch
+            // switch, or the session itself - the tree has already gone back to
+            // the trunk by now, by the same `finally` that runs on every other
+            // way out of the inner try above, or was never moved off it to
+            // begin with. A ticket picked by the walk rather than named names
+            // itself through the claim it had already taken when it fell over.
+            var ticketKey = work?.Issue.Key ?? (e as PickFailedException)?.Key ?? key;
+            var cause = e is PickFailedException { InnerException: { } inner } ? inner : e;
+            var why = $"{cause.GetType().Name}: {cause.Message}";
+
+            runtime.Say.Complain(ticketKey is { Length: > 0 }
+                ? $"hatch: {ticketKey} - the runner failed, and is letting it go - {why}"
+                : $"hatch: the runner failed, before a ticket was settled on - {why}");
+
+            if (ticketKey is { Length: > 0 })
+                await LetGo.CommentAsync(runtime.Board, runtime.Say, ticketKey, why, increment?.SessionId, CancellationToken.None);
+
+            return 1;
         }
         finally
         {
-            await claim.ReleaseAsync();
+            if (claim is not null) await claim.ReleaseAsync();
         }
     }
 

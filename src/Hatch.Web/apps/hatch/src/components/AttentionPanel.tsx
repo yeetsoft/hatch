@@ -1,19 +1,27 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '@hatch/ui';
+import { fileTrunkBuildBug } from '../api/client';
 import {
   buildIconTone,
   buildIconWords,
   conflictEmptyWords,
   failingBuildEmptyWords,
   questionEmptyWords,
+  resetWords,
   reviewEmptyWords,
+  trunkBuildEmptyWords,
+  trunkBuildHead,
   trunkIconTone,
   trunkIconWords,
   waitedWords,
 } from '../lib/attention';
 import { buildWords } from '../lib/buildCheck';
+import { message } from '../lib/errors';
 import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
-import type { Attention } from '../types';
+import { useIssueConfirmations } from '../lib/useIssueConfirmations';
+import type { Attention, TrunkBuild } from '../types';
 
 /**
  * The build icon: a plain dot, coloured and named for one of the three build
@@ -56,28 +64,146 @@ function TrunkIcon({ holdsTrunk, trunk }: { holdsTrunk: boolean | null; trunk: s
 }
 
 /**
+ * One failing trunk: the trunk and repository as the runner reported them, the
+ * short sha, every failing check as a link, and either the button that files
+ * a bug or the bug already filed.
+ *
+ * A container and not one anchor, unlike every other row in this panel -
+ * several of its links and its button each need their own click, where a
+ * pull request or a conflict row is one destination the whole row goes to.
+ */
+function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => void }) {
+  const [filing, setFiling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { confirm } = useIssueConfirmations();
+
+  async function fileBug() {
+    setFiling(true);
+    setError(null);
+    try {
+      const created = await fileTrunkBuildBug(build.id);
+      confirm(created);
+      onFiled();
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setFiling(false);
+    }
+  }
+
+  return (
+    <div className="hatch-attention-row hatch-attention-row-plain">
+      <span className="hatch-attention-row-head">
+        <span className="hatch-attention-key">{trunkBuildHead(build)}</span>
+        <span className="hatch-attention-sha">{build.sha.slice(0, 10)}</span>
+      </span>
+
+      <span className="hatch-attention-checks">
+        {build.failing.map((check, i) => (
+          <span key={check.name}>
+            {i > 0 && ', '}
+            {/* Out of Hatch and into the forge, so a new tab - the panel
+                somebody was reading should still be here when they come back. */}
+            {check.url ? (
+              <a href={check.url} target="_blank" rel="noreferrer noopener">
+                {check.name}
+              </a>
+            ) : (
+              check.name
+            )}
+          </span>
+        ))}
+      </span>
+
+      <span className="hatch-attention-row-actions">
+        {build.bugIssueKey ? (
+          <Link to={`/issues/${build.bugIssueKey}`}>{build.bugIssueKey}</Link>
+        ) : (
+          <Button variant="primary" loading={filing} onClick={() => void fileBug()}>
+            File a bug
+          </Button>
+        )}
+      </span>
+
+      {error && <p className="hatch-attention-row-error">{error}</p>}
+    </div>
+  );
+}
+
+/**
  * What the control hands over when it is pressed: the links that unblock the
  * loop, in the order somebody would work through them - grouped into what a
  * person has to act on (Human) and what the loop is already on (Agent), so a
  * pull request held back by a conflict or a failed build never reads as
  * something waiting on a person.
  *
- * All four sections are always drawn, empty state included. A panel whose sections
+ * All five sections are always drawn, empty state included. A panel whose sections
  * appeared and disappeared would be a panel whose shape has to be re-read every
  * time it opens - and the empty states are not filler here: one of them is the
  * only place in Hatch that says an issue has sat in review with nowhere to
  * review it.
  */
-export function AttentionPanel({ attention, now }: { attention: Attention | null; now: Date }) {
+export function AttentionPanel({
+  attention,
+  now,
+  reload,
+}: {
+  attention: Attention | null;
+  now: Date;
+  /** Re-reads the attention, so a row that just filed a bug shows its key for everybody who has the panel open. */
+  reload: () => Promise<void>;
+}) {
   const reviews = attention?.reviews ?? [];
   const conflicts = attention?.conflicts ?? [];
   const failingBuilds = attention?.failingBuilds ?? [];
   const questions = attention?.questions ?? [];
+  const exhaustedRunners = attention?.exhaustedRunners ?? [];
+  const trunkBuilds = attention?.trunkBuilds ?? [];
 
   return (
     <div className="hatch-attention-panel">
+      {/* Unlike the four groups below, drawn only when it has rows: this is an
+          alert about a condition that ends by itself, and nothing has to be
+          pressed for it to disappear - see runners.ts and the ticket this
+          shipped with. */}
+      {exhaustedRunners.length > 0 && (
+        <section className="hatch-attention-section hatch-attention-section-exhausted">
+          <h3 className="hatch-attention-heading">Out of Claude usage</h3>
+
+          <ul className="hatch-attention-rows">
+            {exhaustedRunners.map((r) => (
+              <li key={r.name}>
+                <Link className="hatch-attention-row" to="/runners">
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{r.name}</span>
+                    {r.where && <span className="hatch-attention-title">{r.where}</span>}
+                  </span>
+                  <span className="hatch-attention-files">{resetWords(r.exhaustedUntil, now)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="hatch-attention-group">
         <h2 className="hatch-attention-group-heading">Human</h2>
+
+        <section className="hatch-attention-section">
+          <h3 className="hatch-attention-heading">Trunk builds that fail</h3>
+
+          {trunkBuilds.length === 0 ? (
+            <p className="hatch-attention-empty">{trunkBuildEmptyWords()}</p>
+          ) : (
+            <ul className="hatch-attention-rows">
+              {trunkBuilds.map((t) => (
+                <li key={t.id}>
+                  <TrunkBuildRow build={t} onFiled={() => void reload()} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="hatch-attention-section">
           <h3 className="hatch-attention-heading">Pull requests to review</h3>
@@ -178,7 +304,7 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
         </section>
 
         <section className="hatch-attention-section">
-          <h3 className="hatch-attention-heading">Builds that fail</h3>
+          <h3 className="hatch-attention-heading">Branch builds that fail</h3>
 
           {failingBuilds.length === 0 ? (
             <p className="hatch-attention-empty">{failingBuildEmptyWords()}</p>

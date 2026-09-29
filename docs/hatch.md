@@ -1167,6 +1167,44 @@ Every `IssueDto` carries its build verdicts, ordered by canonical remote, read i
 one batched query for a list of issues. A board that predates them omits the
 field, and readers take that as none.
 
+### Trunk build
+
+`EfHatchTrunkBuild` — `Remote`, `Canonical`, `Trunk`, `Sha`, `ShaSince`,
+`Verdict`, `Failing` (`jsonb`), `CheckedAt`, `Runner`, `CheckedBy`, `BugIssueId?`.
+The same fact as a [build check](#build-check), but about the tip of a
+repository's trunk rather than an issue's branch — a trunk build is nobody's
+issue, so it is not keyed on one. `Verdict` is the same four
+([above](#build-check)), by the same rules: a check run or a commit status
+fails the same way, a pending build carries whatever has already failed, and a
+runner asks about `none` again until ten minutes after `ShaSince`.
+
+**One verdict per repository per trunk**, unique on `(Canonical, Trunk)`: two
+projects may bind one repository with different base branches, and a single
+verdict would let one project's trunk overwrite another's. A second write for
+the same pair replaces the first.
+
+`BugIssueId` is the bug the Human half's *File a bug* button filed while this
+trunk was failing (HA-95) — nullable, `SetNull` on the issue's own delete. It
+stays attached across new failing shas, because a fix that fails again is the
+same outage, and is cleared the moment a verdict for the pair is `passed`, so
+the next failure offers the button again.
+
+`PUT /api/hatch/trunk-builds` writes a verdict and a key may, for the reason it
+may write a build check — the caller is a runner, and a verdict only a person
+could enter would be one nobody entered. It takes the same refusals the build
+check's write does (an uncanonicalisable remote, an unknown verdict, no trunk,
+no sha, `failed` with no failing checks, an over-long or broken check name, an
+over-limit runner), naming the trunk rather than the branch. **No event, and no
+question**: there is no issue to write either on, and a trunk's failure is a
+person's row in the attention panel rather than a stall a session is asked
+about. `GET /api/hatch/trunk-builds` answers every stored verdict, ordered by
+canonical then trunk — the runner's poll reads it once a poll, since a trunk
+carries no issue for the verdict to ride in on.
+
+The runner's poll ([below](#checking-the-branches-in-review)) reads the build on
+every checkout's trunk whether or not anything of its is in review, so a quiet
+board is not a poll that never gets there.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -1503,6 +1541,19 @@ sent where it was sent. It follows that there is no `hatch expedite` verb — th
 CLI authenticates with a key, so the terminal *shows* the flag on `board`,
 `queue` and `show` and sets it nowhere.
 
+**And so is filing the bug a failing trunk's button offers (HA-95).** The bug
+`POST /api/hatch/trunk-builds/{id}/bug` files is expedited from the moment it
+exists, so a key that could press the button could put a ticket of its own
+choosing at the front of the night the same way a key that could expedite
+directly could. `TrunkBuildBugController` therefore carries no class-level
+attribute either, cut by the same means as expedite; filing itself goes
+through `IssuesController.CreateIssueAsync`'s internal, expedited-aware
+overload, so the bug's number, rank, first column and `created` event are the
+ordinary ones and the flag is set in the same save rather than a second write
+after. Reading the trunk builds themselves stays Hatch-scoped, the way reading
+a build check is: a verdict about a sha is a fact any runner reads the same
+way, whichever repository it binds.
+
 **A key's owner is cut the same way, and for the reason the assignee edge
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
@@ -1591,11 +1642,14 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
+| `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
+| `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
+| `/trunk-builds/{id}/bug` | POST | **Person only** — no class-level scope, the way expedite is cut. Files the bug a failing trunk's *File a bug* button asks for (HA-95), expedited, in the project that binds the repository, in the board's first column — see [what is waiting on you](#what-is-waiting-on-you). `409` once the row is no longer failing; `400` naming the Projects page when no project binds it; a second call answers the bug already filed rather than filing another |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -1730,9 +1784,9 @@ has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
-The panel draws two groups, in this order: **Human** — pull requests to
-review, then questions to answer — and **Agent** — branches that conflict,
-then builds that fail. A pull request only ever appears under one of the two:
+The panel draws two groups, in this order: **Human** — trunk builds that fail,
+then pull requests to review, then questions to answer — and **Agent** —
+branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both.
@@ -1774,7 +1828,16 @@ answer worth having, and it is the one it gives most of the time.
       "checks": [ { "canonical": "forge.example/owner/repo", "trunk": "main",
                     "files": ["src/a.cs", "src/b.cs"], ... } ] }
   ],
-  "reviewsHeldBack": 1
+  "reviewsHeldBack": 1,
+  "trunkBuilds": [
+    { "id": 7, "remote": "git@forge.example:owner/repo.git", "canonical": "forge.example/owner/repo",
+      "trunk": "main", "sha": "1a2b3c4d5e...", "verdict": "failed",
+      "failing": [ { "name": "CI", "url": "https://forge.example/checks/CI" } ],
+      "bugIssueKey": null }
+  ],
+  "exhaustedRunners": [
+    { "name": "host:/checkouts/one", "where": "host:/checkouts/one", "exhaustedUntil": "2026-09-28T23:40:00Z" }
+  ]
 }
 ```
 
@@ -1796,6 +1859,39 @@ Neither half restates a rule that already lives somewhere:
   `/questions` answers with — `Questions.Open`, a question with nothing pointing
   at it — so the count on the bar and the badge on a board card cannot
   disagree.
+
+### The trunk build that fails
+
+`trunkBuilds` is the fifth list, and the one build-shaped thing here that
+**does** light the control. It is every stored [trunk build](#trunk-build)
+that is `failed`, or `pending` with a check that has already failed, ordered by
+canonical then trunk, whether or not there is a review column at all — a
+repository's trunk is checked whether or not anything of its is in review, and
+the section reads it the same way. The panel draws it first in the Human half,
+as *Trunk builds that fail*, naming the trunk as the runner reported it and the
+repository, the short sha, and every failing check as a link that opens its
+job in a new tab.
+
+**It counts, unlike a branch's conflict or its failing build**, because the
+reasoning that keeps those two quiet does not hold here: nothing is dispatched
+at a trunk, so a failing one has no agent already on it. It sits exactly as it
+is until a person presses **File a bug**, which is what the badge exists to
+surface.
+
+Each row carries a button, unless it already carries a bug's key as a link in
+its place — `POST /api/hatch/trunk-builds/{id}/bug`, person-only, the same cut
+[expedite](#the-one-edge-that-is-deliberately-cut) takes, because the bug it
+files is expedited and expedite is a person's call. It is filed in the shape a
+bug against a failing trunk was always filed by hand, from the forge's own
+page: a bug, titled *Build failing on &lt;trunk&gt;*, described with the
+repository, the sha and a link to each failing check, expedited, in the board's
+first column — in the project that binds the repository as its primary,
+lowest project id first, else the lowest-id project that binds it at all, else
+refused naming the Projects page.
+The bug stays attached across new failing shas — a fix that fails again is the
+same outage — and is let go the moment a later build on the trunk passes, so
+the next failure offers the button again. A second press, or a second person,
+gets the bug already filed rather than a second one.
 
 ### The branch in review that has stopped merging
 
@@ -1827,9 +1923,9 @@ it.
 is the review column's issues whose [build check](#build-check) says `failed`,
 or `pending` with a check that has already failed, in at least one repository,
 in the column's own board order, each with only the repositories that are
-failing. The panel draws it as *Builds that fail*, after the conflicts, and the
-issue page draws a chip beside the pull request's naming the failing checks,
-each linked — marked as still running while the verdict is `pending`.
+failing. The panel draws it as *Branch builds that fail*, after the conflicts,
+and the issue page draws a chip beside the pull request's naming the failing
+checks, each linked — marked as still running while the verdict is `pending`.
 
 The reasoning is the conflicts' own: the loop fixes a failing build, and one it
 cannot fix becomes a question, which already lights the control. Counting it as
@@ -1866,6 +1962,37 @@ The control keeps itself current on a sixty-second poll and on
 fails leaves the last answer drawn and says nothing at all. The bar is not
 where a fetch failure gets announced.
 
+### Runners out of Claude usage
+
+`exhaustedRunners` is the fifth list, and the one that lights a **dot** rather
+than growing a pill: it is not a count of anything to fix, only a fact about
+an account, so it does not touch `attentionCount` or `attentionTone`. Each
+entry is a runner's name, its `host:/path`, and when it expects to reset —
+every runner still being heard from whose own heartbeat says it is out of
+usage (see [Runners on the board](#runners-on-the-board)), soonest reset
+first. A runner that has gone quiet is not listed even if its last-known reset
+time has not passed: silence beats everything else this endpoint says about a
+row.
+
+The panel draws this section **above** *Human*, and only when it has rows -
+unlike the four above it, which always draw something. This one is an alert
+about a condition that ends by itself, and the report this shipped from asked
+for it to disappear the moment it does, which it does on its own: a runner
+whose reset instant has passed, or one that has stopped heartbeating, simply
+is not in the list the next time the panel polls - nothing has to notice and
+nothing is written. The dot on the nav control's glyph does not change its
+width or its review-and-question pills, and its accessible name gains a phrase
+like "1 runner is out of Claude usage". Each row links to the Runners page,
+where the same runner's own row reads `Out of usage until 7:40pm`, in the
+viewer's own time zone - unless it has stopped heartbeating, which still reads
+*Gone* regardless of what its last heartbeat said.
+
+Nothing a person presses sets or clears any of this - there is no button for
+it anywhere. Only a runner's own heartbeat says it is out of usage, and a loop
+heartbeat that says it is not clears the board's record at once - which is how
+a person overrides the wait: restarting the loop by hand starts a fresh night
+that carries nothing forward, and its first heartbeat clears whatever the
+board remembered.
 
 ## The leaderboard
 
@@ -2014,7 +2141,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Nine refusals**, and two of them are rules of the whole loop rather than
+**Ten refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -2049,13 +2176,19 @@ missing configuration:
 8. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written. Only that move: a pull request that
    already exists is not held back by what its ticket once waited on.
-9. It is in review and there is nothing for an agent to do on its branch: it
-   neither conflicts with the trunk nor has a build that failed on its current
-   tip — because it merges cleanly and its build passes, is still running, was
-   not read on that tip or has no checks, because it has no branch on origin
-   (one already merged counts as none), because more than one branch is named
-   for it, or because no runner has checked yet. See [the review
-   dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
+9. The move is into the [WIP section](#wip), and the section has no room for
+   it: the load — not counting this issue — is already at or over the limit.
+   Said after the dependency, which needs other work to land, and before the
+   verdict below, which needs nothing at all once a branch is clean — a full
+   section needs other work to leave. The load is always the board's own,
+   whatever `ancestorKey` narrows the candidates to.
+10. It is in review and there is nothing for an agent to do on its branch: it
+    neither conflicts with the trunk nor has a build that failed on its current
+    tip — because it merges cleanly and its build passes, is still running, was
+    not read on that tip or has no checks, because it has no branch on origin
+    (one already merged counts as none), because more than one branch is named
+    for it, or because no runner has checked yet. See [the review
+    dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, one last check before the ordinary refusal: is
 this a [hop](#the-hop)? An issue that is [express](#express) and stands in a
@@ -2253,6 +2386,11 @@ housekeeping and is not: a ready date is a decision about scheduling, while an
 edge is a fact about the work, so `work/{key}` refuses on one too. Somebody who
 disagrees takes the edge off, which is one press.
 
+A full [WIP section](#wip) is not here either, for the same reason. The limit
+is a fact about the board, as a claim is, so `work/{key}` is refused by it in
+the same sentence a pass is. Overriding it is not a loop policy to set — it is
+done on the board, by moving the card in.
+
 **`?mine=true` is a third, and separate, policy** — a further narrowing rather
 than a rewrite of the second: plain `next`/`queue` still skip every ticket
 assigned to a person, including the caller's own, exactly as above.
@@ -2297,13 +2435,15 @@ second loop that happens to agree with it — two walks that could disagree abou
 the order of the board is precisely the bug this endpoint exists to expose.
 
 Every fold therefore lives in one place and in one order, most fundamental
-first: a next column that is terminal, then a ready date, then an unanswered
-question, then a repository this runner lacks, an unmet dependency, and — for an
-issue in review — the verdict on its branch, then [the hop](#the-hop), and last
-the missing playbook — last because it is only worth saying about an issue that
-is otherwise a candidate. The one that is the *loop's* policy rather than a
-fact about an issue is asked only when the pass is asking, so `work/{key}`
-still ignores it.
+first: a terminal or deferred column, nowhere to go, a next column that is
+terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
+question, a repository this runner lacks, an unmet dependency, a full [WIP
+section](#wip), and — for an issue in review — the verdict on its branch, then
+[the hop](#the-hop), and last the missing playbook — last because it is only
+worth saying about an issue that is otherwise a candidate. The two that are the
+*loop's* policy rather than a fact about an issue — the ready date and the
+assignee — are asked only when the pass is asking, so `work/{key}` still
+ignores them.
 
 **A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
 that is express, stands in a column marked `ExpressSkips`, and clears every
@@ -2437,9 +2577,9 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Ten conditions, the last one a way out of the ninth rather than one more gate.
-An issue is the loop's to pick up when it meets every one before it, and the
-sentence saying which one it failed is what `work/queue` reports:
+Eleven conditions, the last one a way out of the tenth rather than one more
+gate. An issue is the loop's to pick up when it meets every one before it, and
+the sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
@@ -2479,7 +2619,15 @@ sentence saying which one it failed is what `work/queue` reports:
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **In review, its branch conflicts with the trunk or its build failed.** An
+8. **The [WIP section](#wip) has room for it**, when the move is into it: the
+   load, not counting this issue, is below the limit. Said after the dependency
+   above, which needs other work to land, and before the verdict below, which
+   needs nothing at all once a branch is clean — a full section needs other
+   work to leave. The load is always the board's own, whatever `ancestorKey`
+   narrows the candidates to, and the limit is a fact about the board rather
+   than the loop's policy: `work/{key}` is refused by it too, and overriding it
+   is done on the board, by moving the card in.
+9. **In review, its branch conflicts with the trunk or its build failed.** An
    issue in the review column is the loop's only when a [merge check](#merge-check)
    says `conflicted`, or — on a branch that merges cleanly — when the
    [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -2488,26 +2636,26 @@ sentence saying which one it failed is what `work/queue` reports:
    on this tip, no checks, no branch, more than one branch and an unchecked one
    are what `hatch queue` prints. A clean branch that has merely fallen behind
    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-9. **A playbook covers that transition for that type — or it does not need
-   one.** Without one there is nothing to say to the session — and a column no
-   playbook leads out of is exactly [how a column becomes the
-   operator's](#status), which is why the absence is a fold rather than an
-   error. **This is also where the issue's type is decided**, and the only
-   place: a type an unattended run does not pick up is a type no row names for
-   that move, said in the words that name the fix.
-10. **Unless it does not need a session at all.** An issue that is
+10. **A playbook covers that transition for that type — or it does not need
+    one.** Without one there is nothing to say to the session — and a column no
+    playbook leads out of is exactly [how a column becomes the
+    operator's](#status), which is why the absence is a fold rather than an
+    error. **This is also where the issue's type is decided**, and the only
+    place: a type an unattended run does not pick up is a type no row names for
+    that move, said in the words that name the fix.
+11. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the ninth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the tenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository or a dependency, only from
-    needing a playbook.
+    date, an assignee, a question, a repository, a dependency or a full
+    section, only from needing a playbook.
 
-Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and `work/{key}`
-asks them too. The tenth is as well, and `work/{key}` answers it the same way
-`work/queue` does: `WorkDto.Hop`. The other two are the loop's policy and are
-asked only when the pass is asking; see [one more, on `next`
+Eight of them — 1, 2, 5, 6, 7, 8, 9 and 10 — are facts about the issue, and
+`work/{key}` asks them too. The eleventh is as well, and `work/{key}` answers
+it the same way `work/queue` does: `WorkDto.Hop`. The other two are the loop's
+policy and are asked only when the pass is asking; see [one more, on `next`
 alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
@@ -2851,6 +2999,15 @@ thing. None of it fails the increment: a refused push — the forge, branch
 protection, somebody else's push landing first — is a line on the ticket, and so
 is a stash that would not go. The runner never pushes to the trunk.
 
+**The one exception is a session that ran out of Claude usage** (below): before
+any of the above runs, its tree is committed — untracked files included — onto
+the issue's branch (cut first if the tree was still on the trunk) and pushed to
+`origin`, no force. That is the one place a runner pushes a session's own work
+for it, because a session that cannot say whether it is finished never gets to
+say whether it is fit to publish either. `Leave` then runs exactly as above and
+finds a clean tree, and the ticket gets the usage-limit comment described below
+instead of the ordinary tidy-up note.
+
 #### Checking the branches in review
 
 Whether a pull request still merges with the trunk is decided by **git, in the
@@ -2945,6 +3102,24 @@ API budget:
 The terminal hears about a build only when it changes — `hatch: HA-12 build on
 1a2b3c4 failed (api, CI)`.
 
+**The trunk's own build, whether or not anything is in review.** Both halves
+above run only for a checkout that holds an issue in review, because their
+targets come from `/api/hatch/work/review` — a repository nobody happens to be
+reviewing a branch of is never visited, and a quiet board goes all night
+without its trunk read at all. A repository's trunk is nobody's issue, so once
+per checkout that has an origin, the poll reads the build on its tip the same
+way — reusing the `ls-remote` heads a checkout's review issues already took,
+where there were any, so a checkout with something in review costs no second
+one — and puts a [trunk build](#trunk-build) to the board. It follows the same
+rules asking `gh` again: `passed` and `failed` are asked once, `pending` every
+interval, `none` until ten minutes after `ShaSince`, and a forge or a board
+that cannot answer is one line per checkout. `GET /api/hatch/trunk-builds`
+answers every stored trunk verdict once a poll, and the runner matches its own
+checkout against it by the remote it spells until the board's canonical form
+for that pair is known. The terminal hears about a change the same way —
+`hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
+an issue.
+
 ### When an increment does nothing
 
 The one failure mode of an unattended loop that is dangerous rather than merely
@@ -2962,6 +3137,28 @@ merely counting — and, if nothing is already open there, **a question**.
 nothing was spent on a ticket that did not move - the ticket did move, one
 column, and the runner never held a claim to have written anything on it. See
 [the hop](#the-hop).
+
+**Neither is a usage limit.** A session that ends because the Claude account it
+ran under hit its usage limit is read from what it said on its way out — the
+reported sentence is `You've hit your session limit · resets 7:40pm
+(America/New_York)`, and the same read handles an hour with no minutes, a
+weekly limit that names a date, and an unknown zone (falls back to UTC rather
+than giving up). A time with no date is the next occurrence of that clock time
+after the session ended, in the named zone; a limit the session named but whose
+time could not be parsed at all is treated as an hour away, and both the
+terminal and the ticket say so. No stall comment is written and no question is
+opened — the ticket is left exactly where the session left it, with no flag
+blocking the next dispatch — because nothing here is wrong with the ticket. The
+terminal says the runner is out of Claude usage and the reset time it read, and
+after [the tree is pushed](#leaving-the-tree), the ticket gets one comment: that
+the runner ran out of usage, when it expects to resume, the branch and sha that
+were pushed (or that there was nothing to push), and the `claude --resume`
+command. The night's tally counts it as **interrupted**, a third list beside
+*moved* and *stalled* — not a failure, and not one of the three in a row that end
+a night, the same treatment a lost lease gets and for the same reason: this is
+the loop working correctly against a spent account, not a broken increment. See
+[runners on the board](#runners-on-the-board) for what a runner does about the
+account itself.
 
 A question rather than a **flag field**, which was the obvious alternative and
 would have had to be taught three things a question already does: it blocks the
@@ -3262,7 +3459,16 @@ except the last one:
   not a reason to stop; a ticket can be wrong and a test can be flaky, and the
   next ticket is a different question. Three in a row is something else:
   whatever is broken is broken for every ticket, and the loop is now spending
-  money to prove it.
+  money to prove it. An exception anywhere in a pass — picking, claiming,
+  preparing the tree, the session, judging it, or tidying up — is one failed
+  increment and nothing more: the claim is let go of, the ticket is told why
+  in a comment naming the error, the tree goes back to the trunk, and the loop
+  goes on to its next pass. It feeds this same count rather than a list of its
+  own, so the list of things that end a night does not grow. **A usage limit
+  is not one of the three** — see
+  [when an increment does nothing](#when-an-increment-does-nothing) — and
+  neither is [the wait that follows one](#runners-on-the-board): the loop is
+  spending nothing while it waits, so there is nothing there to fail.
 - **A workspace that cannot be made current** — the other one nobody asks for,
   and the only condition that ends a night without an increment having failed. A
   tree that will not reset is a tree every ticket would be built wrong on, and
@@ -3452,6 +3658,99 @@ not say it was alive would leave a page that could only ever be empty. The write
 does not, for the reason the [playbooks](#playbooks) are closed to one — an
 agent that could raise its own `--max-spend` could raise its own budget, and a
 loop with no end is exactly what the bounds exist to prevent.
+
+**`exhaustedUntil` is a fact a runner reports about its own Claude account,
+never a person's to set.** There is no control for it on the page and no field
+on `PATCH` — only a heartbeat writes it, as a tri-state carried beside the
+instant itself: absent leaves the row's own record alone (an older CLI, or
+`hatch work`'s one-off beat, neither of which knows anything about the account
+it ran under), a heartbeat that says *out* sets it, and a loop heartbeat that
+says it is *not* clears it at once. `go-to-work` sends the tri-state
+explicitly on every beat, so its own restart carries a wait across (below) and
+a person overriding the wait by starting a fresh loop by hand clears the board's
+record on that loop's first heartbeat, the same way a fresh night carries none
+of the other bounds forward either. The Runners page draws such a row as *Out
+of usage until 7:40pm*, in the viewer's own time zone — unless the row has
+already gone quiet, which still reads *Gone* regardless of what the last
+heartbeat said, the same rule the rest of this table already follows: silence
+beats every other fact about a row. Nothing sweeps this either — a reset that
+has passed is arithmetic against `ExhaustedUntil` at the moment somebody asks,
+the same lazy expiry the horizons above use.
+
+See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
+that feeds the attention panel's dot, and
+[when an increment does nothing](#when-an-increment-does-nothing) for what
+sets this in the first place.
+
+### The console
+
+`go-to-work`, `do-my-work` and `hatch work` wrap every increment in a banner and,
+at an interactive terminal, pin a readout to the bottom of it — see HA-120 for
+the operator's brief and the reasoning behind each choice below.
+
+**The banners are in every log, terminal or not.** Before a session is spawned,
+`🥚🥚🥚🥚🥚 STARTING WORK ON <KEY>` opens it, naming the issue's title and type,
+what the increment is for (a move, a conflict, or a failing build), the model
+and effort — with the line saying the issue chose them, where it did — and the
+runner's name with which increment of the night this is. When the increment is
+over, a glyph row closes it: `🐣` where the ticket moved, a conflict was
+resolved, or a fix was pushed; `🥚` where it did not move; `🍳` where the
+session exited badly, was interrupted, or lost its lease before the end — that
+glyph outranks the other two, however the board reads afterward. Under it, the
+outcome in the tally's own words, a `Took` line with wall-clock time, tokens,
+cost and turns, and the account's usage where there is one. A figure that never
+arrived reads `not reported`, never `0` — a session interrupted deep enough to
+lose its own read-back (`Increment.RunAsync`'s own `catch
+(OperationCanceledException)`) still returns a report so its banner can close.
+Nothing is printed for a pass that spawns no session — an express hop, a
+conflict or a failing build that had already cleared, a ticket waiting to be
+told which branch. Plain text, no colour, no cursor movement: a redirected log,
+including the container runner's `docker logs`, reads exactly like a terminal's
+scrollback.
+
+**The readout is pinned to the bottom, not the top**, and only where output is
+an interactive terminal — never redirected, never `TERM=dumb`, and never
+`hatch work -i`, whose terminal belongs to the session a person is sitting in.
+Bottom rather than top because that needs no terminal mode at all: a scroll
+region left set by a runner killed outright (a second Ctrl-C, `kill -9`) would
+leave a terminal that scrolls wrongly until somebody types `reset`, where a
+footer erased and redrawn around every line — the way a build tool draws a
+progress bar — leaves at most one stale copy in the scrollback and nothing to
+repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
+under the same lock every streamed and printed line already goes through, so a
+clock tick can never land mid-line; what it draws is a pure function of a
+snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
+a running increment and the idle loop between them both write to.
+
+While an increment runs, its first row names the issue — key, title, the move
+or conflict or build it is for, and its address — and the second says whether
+the agent is alive: elapsed time, tokens spent so far, and how long it has been
+quiet with what it was last inside of (`quiet 2m14s — Bash  make test-api`),
+turning the warn colour past two minutes and the danger one past ten. One row
+follows per usage window the session's own stream reports — see below — each a
+20-cell bar, a percentage and a reset time. Last is the runner's own row: its
+character name, the person it works for (from the heartbeat's `for`, HA-122),
+how many increments this loop has run and for how long, counted across the
+loop's own restarts the way the closing tally already counts them, what the
+night has spent, and any bound it will stop at. Between increments the runner's
+row stays and one more appears, saying why nothing is being worked and when the
+loop looks again. Colour drops under `NO_COLOR`; every row is clipped to the
+terminal's own width, read fresh on each draw, so a resize clips rather than
+scrambles it. On exit for any reason the runner can catch — the night ending,
+Ctrl-C, a restart onto a newer build — the footer is erased and the closing
+tally prints below the last banner, as it always has.
+
+**The usage bars read the session's own stream, not Hatch's battery** — asked
+and answered on HA-120: every session's `stream-json` carries a
+`rate_limit_event` naming `unifiedWindows.five_hour` (labelled `Session`) and
+`seven_day` (`Weekly`), plus a per-model weekly window for accounts that have
+one, labelled `Weekly (model)` since it arrives with no name of its own. That is
+the account this runner's sessions actually spend — right for a friend's
+`do-my-work` on their own subscription, and it needs no token pasted into this
+Hatch's Settings page. The reading updates while a session streams and holds
+its last value between increments; a quiet run, or one that ends before the
+first such event, has none, and the readout and the closing banner alike simply
+draw no usage line rather than complain.
 
 ## The level above the board
 

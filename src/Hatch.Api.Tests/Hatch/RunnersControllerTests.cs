@@ -39,6 +39,31 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task TheHeartbeatAnswer_NamesWhoTheRunnerWorksFor()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal("Nathan", instruction.For);
+    }
+
+    [Fact]
+    public async Task AKeyWithNoOwner_FallsBackToTheKeysOwnName()
+    {
+        var h = await NewAsync(program: true);
+
+        // The stub key is called "hatch", and nobody has set it an owner - the
+        // directory's principal is null, the same as an admin never having
+        // visited the API Keys page.
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal("hatch", instruction.For);
+    }
+
+    [Fact]
     public async Task ASecondHeartbeat_MovesTheClockAndNotTheFirstSighting()
     {
         var h = await NewAsync();
@@ -174,6 +199,48 @@ public class RunnersControllerTests
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
         Assert.False((await h.OneAsync()).Mine);
+    }
+
+    // ---- Out of Claude usage ----
+
+    [Fact]
+    public async Task ExhaustedUntil_IsSetClearedAndLeftAloneTheSameWayMineIs()
+    {
+        var h = await NewAsync();
+        var resetAt = Now.AddHours(2);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+
+        // A loop heartbeat that says it is not out clears it at once.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: false));
+        Assert.Null((await h.OneAsync()).ExhaustedUntil);
+
+        // And absent - an older CLI, or hatch work's single beat - leaves
+        // whatever the row already said alone.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task ExhaustedUntil_IsSeededOnANewRow()
+    {
+        var h = await NewAsync();
+        var resetAt = Now.AddHours(1);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task ExhaustedUntil_IsNotSomethingAPersonPatches()
+    {
+        // No field on the request at all - it is a fact a runner reports about
+        // itself, never a person's to set from the page.
+        Assert.DoesNotContain(
+            typeof(RunnerPatchRequest).GetProperties(), p => p.Name == "ExhaustedUntil" || p.Name == "Exhausted");
     }
 
     // ---- Where it runs ----
@@ -565,6 +632,7 @@ public class RunnersControllerTests
         public required HatchContext Db { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
+        public required StubActorDirectory Actors { get; init; }
 
         public async Task<IssueDto> FileAsync(string title = "a thing") =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", title, null, null, null, null), default));
@@ -643,13 +711,16 @@ public class RunnersControllerTests
             }
             : new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
 
+        var actors = new StubActorDirectory();
+
         return new Harness
         {
-            Runners = new RunnersController(db, runners, claims, caller, time),
+            Runners = new RunnersController(db, runners, claims, caller, actors, time),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,
+            Actors = actors,
         };
     }
 

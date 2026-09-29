@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention } from '../types';
+import type { Attention, TrunkBuild } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -16,11 +16,11 @@ export type AttentionTone = 'rest' | 'asking';
 /**
  * How many rows the panel would draw.
  *
- * Reviews plus questions, and deliberately not `inReviewWithoutPullRequest`.
- * An issue standing in review with nowhere to review it is something a person
- * cannot act on from here, and a control that stayed lit for one would be a
- * control nobody reads after a week. It is said out loud in the section's empty
- * state instead - see `reviewEmptyWords`.
+ * Reviews plus questions plus trunk builds, and deliberately not
+ * `inReviewWithoutPullRequest`. An issue standing in review with nowhere to
+ * review it is something a person cannot act on from here, and a control that
+ * stayed lit for one would be a control nobody reads after a week. It is said
+ * out loud in the section's empty state instead - see `reviewEmptyWords`.
  *
  * Nor `conflicts`. A branch that has stopped merging is the loop's to fix, and
  * one it cannot fix becomes a stall, which is a question, which is counted
@@ -28,10 +28,15 @@ export type AttentionTone = 'rest' | 'asking';
  *
  * Nor `failingBuilds`, for the same reason: the loop fixes a failing build, and
  * one it cannot fix becomes a question.
+ *
+ * `trunkBuilds` is different, and does count: nothing dispatches at a trunk, so
+ * a failing one has no agent already on it the way a failing branch build
+ * does - it sits until a person presses *File a bug*, which is exactly what
+ * the badge exists to surface.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
-  return attention.reviews.length + attention.questions.length;
+  return attention.reviews.length + attention.questions.length + (attention.trunkBuilds?.length ?? 0);
 }
 
 /** Loud only when there is something a person can act on. Nothing read yet is
@@ -44,17 +49,23 @@ export const attentionTone = (attention: Attention | null): AttentionTone =>
  * What the control is called, in words - which is the whole of what a screen
  * reader gets, and half of what makes the loud state legible without colour.
  *
- * `2 pull requests to review, 1 question to answer`, either half dropped when
- * it is empty, and one sentence at rest. Pluralised on both halves, because
- * `1 pull requests` read out loud is the kind of thing that makes somebody stop
- * trusting the rest of the sentence.
+ * `1 trunk build failing, 2 pull requests to review, 1 question to answer`,
+ * any part dropped when it is empty, and one sentence at rest. Pluralised on
+ * every part, because `1 pull requests` read out loud is the kind of thing
+ * that makes somebody stop trusting the rest of the sentence.
  */
 export function attentionLabel(attention: Attention | null): string {
   if (attention === null) return 'Nothing is waiting on you';
 
+  const trunkBuilds = attention.trunkBuilds?.length ?? 0;
+
   const parts: string[] = [];
+  if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
   if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
+
+  const exhausted = attention.exhaustedRunners?.length ?? 0;
+  if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of Claude usage`);
 
   return parts.length > 0 ? parts.join(', ') : 'Nothing is waiting on you';
 }
@@ -122,6 +133,38 @@ export const conflictEmptyWords = (): string => 'No branch in review has stopped
 
 /** The failing builds section's empty state - one wording, like the conflicts'. */
 export const failingBuildEmptyWords = (): string => 'No build in review is failing.';
+
+/** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
+export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
+
+/**
+ * `main in forge.example/owner/repo` - the trunk as the runner reported it,
+ * and the repository. Nothing here knows what a trunk is called: a label that
+ * only ever read `main` would be a fact about exactly one installation.
+ */
+export const trunkBuildHead = (build: TrunkBuild): string => `${build.trunk} in ${build.canonical}`;
+
+/**
+ * `resets 7:40pm` today, `resets Tuesday at 7:40pm` within the week, `resets
+ * Oct 5 at 7:40pm` otherwise - the same escalation a person reads a date with,
+ * naming only as much of it as is not already obvious from today.
+ */
+export function resetWords(exhaustedUntil: string, now: Date): string {
+  const at = new Date(exhaustedUntil);
+  if (Number.isNaN(at.getTime())) return 'resets at an unknown time';
+
+  const clock = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+  if (sameDay(at, now)) return `resets ${clock}`;
+
+  const days = Math.floor((startOfDay(at).getTime() - startOfDay(now).getTime()) / 86_400_000);
+  if (days > 0 && days < 7) return `resets ${at.toLocaleDateString(undefined, { weekday: 'long' })} at ${clock}`;
+
+  return `resets ${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${clock}`;
+}
+
+const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const sameDay = (a: Date, b: Date): boolean => startOfDay(a).getTime() === startOfDay(b).getTime();
 
 // ---- The two icons on a row under Pull requests to review ----
 

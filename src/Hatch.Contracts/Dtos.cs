@@ -696,13 +696,35 @@ public record ReviewDto(
 /// Held back because a red build or a conflict is not ready for a person, and
 /// the loop is already on it. Defaults to zero so an older client still reads.
 /// </param>
+/// <param name="TrunkBuilds">
+/// Every repository's trunk whose latest build failed, or is still running
+/// with a check that has already failed - a person's to fix, unlike
+/// <paramref name="FailingBuilds"/>, because no agent owns a trunk. Ordered by
+/// canonical, then trunk. Defaults to null so an older client still reads.
+/// </param>
+/// <param name="ExhaustedRunners">
+/// Every runner that is still being heard from and is out of Claude usage,
+/// soonest reset first. Not counted towards the badge, which is a dot rather
+/// than a pill - see <see cref="AttentionDto"/>'s remarks. Defaults to empty so
+/// an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
     IReadOnlyList<ConflictDto> Conflicts,
     IReadOnlyList<FailingBuildDto>? FailingBuilds = null,
-    int ReviewsHeldBack = 0);
+    int ReviewsHeldBack = 0,
+    IReadOnlyList<TrunkBuildDto>? TrunkBuilds = null,
+    IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null);
+
+/// <summary>
+/// One runner out of Claude usage, for the top of the attention panel.
+/// </summary>
+/// <param name="Name">What the runner calls itself - the same string the Runners page keys on.</param>
+/// <param name="Where">The machine and checkout it runs from, <c>host:/path</c>, or null when it never said.</param>
+/// <param name="ExhaustedUntil">When it expects to reset.</param>
+public record ExhaustedRunnerDto(string Name, string? Where, DateTimeOffset ExhaustedUntil);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -1600,6 +1622,46 @@ public record BuildCheckDto(
     string CheckedBy);
 
 /// <summary>
+/// A trunk's build verdict, as the runner reports it - the same fact as
+/// <see cref="BuildCheckRequest"/>, but about a repository's trunk rather than
+/// an issue's branch, because a trunk build is nobody's issue. Who took it is
+/// the credential's to say, and when is the board's, so the body names neither.
+/// </summary>
+/// <param name="Remote">The repository as the runner spells it. The board keys the verdict on its canonical form.</param>
+/// <param name="Trunk">The trunk's name, as the runner's own workspace reported it.</param>
+/// <param name="Verdict">One of <see cref="BuildVerdicts"/>.</param>
+/// <param name="Failing">The checks that failed. Required for <c>failed</c> and ignored otherwise.</param>
+/// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+public record TrunkBuildRequest(
+    string Remote,
+    string Trunk,
+    string Sha,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto>? Failing,
+    string Runner);
+
+/// <summary>One stored trunk verdict: the build on the tip of one repository's trunk.</summary>
+/// <param name="Remote">The remote as the runner spelled it.</param>
+/// <param name="Canonical">The remote's canonical form - the verdict's identity across every project, not only one issue's.</param>
+/// <param name="ShaSince">When the board first heard about <paramref name="Sha"/>. What ten minutes of asking again about <c>none</c> is counted from.</param>
+/// <param name="CheckedAt">When the board took it.</param>
+/// <param name="CheckedBy">The name of the credential it arrived under.</param>
+/// <param name="BugIssueKey">The bug filed while this trunk was failing, or null when none is attached yet - see HA-95.</param>
+public record TrunkBuildDto(
+    long Id,
+    string Remote,
+    string Canonical,
+    string Trunk,
+    string Sha,
+    DateTimeOffset ShaSince,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto> Failing,
+    DateTimeOffset CheckedAt,
+    string Runner,
+    string CheckedBy,
+    string? BugIssueKey);
+
+/// <summary>
 /// The stall guard's two answers, in its words. A question the board opens for a
 /// build that failed again on the agent's own fix offers the same two, so they
 /// live here and neither side spells them.
@@ -1696,6 +1758,11 @@ public static class RunnerStates
 /// about the process, drawn under its name rather than as the name, now that
 /// <see cref="Name"/> is a character and not a path.
 /// </param>
+/// <param name="ExhaustedUntil">
+/// This runner's own Claude account ran out of usage, and this is when it
+/// expects to reset - null on an ordinary runner. A fact this runner reports
+/// about itself, never a person's to set.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -1713,7 +1780,8 @@ public record RunnerDto(
     string[] Repositories,
     bool? Clones,
     bool? Mine,
-    string? Where);
+    string? Where,
+    DateTimeOffset? ExhaustedUntil = null);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -1741,6 +1809,15 @@ public record RunnerDto(
 /// about the process, written on every beat like <see cref="Remotes"/>. Absent
 /// from an older client, which is never refused on that account alone.
 /// </param>
+/// <param name="Exhausted">
+/// This runner's own account ran out of Claude usage - or, sent false, it is
+/// not. Absent (an older CLI, or <c>hatch work</c>'s single beat, which knows
+/// nothing about the account it ran under) leaves whatever the row already
+/// says alone. A <c>DateTimeOffset?</c> alone cannot tell "leave alone" from
+/// "clear", so this carries the tri-state and <see cref="ExhaustedUntil"/>
+/// carries the value.
+/// </param>
+/// <param name="ExhaustedUntil">When the account resets, read only when <see cref="Exhausted"/> is true.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -1751,7 +1828,9 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<string>? Remotes = null,
     bool? Clones = null,
     bool? Mine = null,
-    string? Where = null);
+    string? Where = null,
+    bool? Exhausted = null,
+    DateTimeOffset? ExhaustedUntil = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat
@@ -1763,12 +1842,21 @@ public record RunnerHeartbeatRequest(
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
 /// </remarks>
+/// <param name="For">
+/// The person this runner works for, resolved the same way a <c>--mine</c>
+/// dispatch pass is: the calling key's owner, or the local person where the
+/// wall is off. A key with no owner falls back to the key's own name, the same
+/// fallback the claim's own "for &lt;name&gt;" already makes. Absent from a
+/// Hatch too old to answer with it, which the console reads the same way as
+/// a key belonging to nobody.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
     int? MaxRuns,
     decimal? MaxSpend,
-    DateTimeOffset? UntilAt);
+    DateTimeOffset? UntilAt,
+    string? For = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

@@ -1,5 +1,12 @@
 namespace Hatch.Cli;
 
+/// <summary>
+/// What a session said on its way out, when it ended because its Claude
+/// account ran out of usage - everything <see cref="Lifecycle.LeaveAsync"/>
+/// needs to push what it left and write the one comment about it.
+/// </summary>
+public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, string? SessionId);
+
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
 /// <param name="Asked">Somebody has to say which branch, the question is on the ticket, and nothing is to be spawned.</param>
@@ -90,7 +97,12 @@ public sealed class Lifecycle(Runtime runtime)
     /// increment, and nothing is pushed for it. The trees still go back to the
     /// trunk, because a restart between increments must build from there.
     /// </param>
-    public async Task LeaveAsync(WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct)
+    /// <param name="limit">
+    /// The session ended on a usage limit - push what it left onto the issue's
+    /// branch first, and write the one comment the story asks for instead of
+    /// the ordinary tidy-up note.
+    /// </param>
+    public async Task LeaveAsync(WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct, UsageLimitInfo? limit = null)
     {
         var key = work.Issue.Key;
         var lines = new List<string>();
@@ -103,6 +115,11 @@ public sealed class Lifecycle(Runtime runtime)
                 return;
             }
 
+            var pushed = new List<(string Path, LimitPushed Result)>();
+            if (limit is not null)
+                foreach (var (path, baseBranch) in chosen.Resets)
+                    pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(key, work.Issue.Title)));
+
             var pullRequest = await HasPullRequestAsync(key, ct);
 
             foreach (var (path, baseBranch) in chosen.Resets)
@@ -112,6 +129,12 @@ public sealed class Lifecycle(Runtime runtime)
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
 
                 if (left.Found is { } found) await ReportAsync(key, chosen, path, found, ct);
+            }
+
+            if (limit is not null)
+            {
+                await runtime.Board.CommentAsync(key, UsageLimitBody(limit, chosen, pushed, lines), ct);
+                return;
             }
 
             if (lines.Count == 0) return;
@@ -125,6 +148,39 @@ public sealed class Lifecycle(Runtime runtime)
             // left is housekeeping that the next reset does as well.
             runtime.Say.Complain($"hatch: {key} - the tree could not be left tidy, or the ticket told - {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// The one comment a usage limit writes: that it happened, when the runner
+    /// expects to resume, the branch and sha that were pushed (or why not, per
+    /// checkout), and the session to rejoin.
+    /// </summary>
+    private static string UsageLimitBody(
+        UsageLimitInfo limit, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
+    {
+        var body = limit.ResetKnown
+            ? $"This runner ran out of Claude usage. It expects to resume at {UsageLimit.Clock(limit.ResetAt)}."
+            : "This runner ran out of Claude usage, and the reset time it gave could not be read - "
+              + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt)}.";
+
+        body += "\n\n" + string.Join('\n', pushed.Select(p =>
+        {
+            var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(p.Path.TrimEnd('/', '\\'))}: " : "";
+            return p.Result.Outcome switch
+            {
+                LimitPush.Pushed => $"- {where}{p.Result.Branch} was pushed, now at {p.Result.Sha}.",
+                LimitPush.Nothing => $"- {where}nothing to push - the tree matched what origin already had.",
+                _ => $"- {where}{(p.Result.Branch is { Length: > 0 } b ? $"{b} " : "")}would not push - {p.Result.Why}; the work stays on this machine.",
+            };
+        }));
+
+        if (tidyLines.Count > 0) body += "\n\n" + string.Join('\n', tidyLines);
+
+        body += limit.SessionId is { Length: > 0 } session
+            ? $"\n\nJoin it with\n\n    claude --resume {session}"
+            : "\n\nThere is no session to resume: the run ended before it said what its id was.";
+
+        return body;
     }
 
     /// <summary>

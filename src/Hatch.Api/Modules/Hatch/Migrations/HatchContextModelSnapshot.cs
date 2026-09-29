@@ -530,6 +530,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool?>("Clones")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("ExhaustedUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -621,6 +624,71 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsUnique();
 
                     b.ToTable("Statuses", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchTrunkBuild", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("BugIssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CheckedBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Failing")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Remote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Runner")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Sha")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("ShaSince")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Trunk")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Verdict")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BugIssueId");
+
+                    b.HasIndex("Canonical", "Trunk")
+                        .IsUnique();
+
+                    b.ToTable("TrunkBuilds", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWipLimit", b =>
@@ -845,6 +913,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchTrunkBuild", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "BugIssue")
+                        .WithMany()
+                        .HasForeignKey("BugIssueId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BugIssue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWorkLogEntry", b =>

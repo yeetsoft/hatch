@@ -144,6 +144,67 @@ public sealed class PickerTests
         await picked.Claim!.ReleaseAsync();
     }
 
+    /// <summary>Throws instead of ever answering - what a clone this walk cannot even attempt looks like.</summary>
+    private sealed class ThrowingClone : IClone
+    {
+        public string? Run() => throw new InvalidOperationException("git could not start");
+    }
+
+    [Fact]
+    public async Task Clones_Resolve_throwing_after_the_take_releases_the_claim_once()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var picker = new Picker(
+            h.Board, "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, (_, _) => new ThrowingClone());
+
+        var failed = await Assert.ThrowsAsync<PickFailedException>(
+            () => picker.PickAsync(null, 0, default, Harness.Beat));
+        Assert.Equal("AER-1", failed.Key);
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    [Fact]
+    public async Task A_refused_comment_after_a_failed_clone_does_not_stop_the_walk()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/comments", HttpStatusCode.InternalServerError, "boom");
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        h.Clone.Error = "could not clone";
+
+        var picker = new Picker(
+            h.Board, "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, h.Clone.Factory);
+
+        var picked = await picker.PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Single(picked.CloneFailures!);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_board_that_will_not_answer_is_neither_idle_nor_busy()
     {

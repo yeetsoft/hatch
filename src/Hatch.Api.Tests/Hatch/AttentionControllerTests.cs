@@ -575,6 +575,142 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Questions);
     }
 
+    // ---- Runners out of usage ----
+
+    [Fact]
+    public async Task Attention_ListsALiveRunnerOutOfUsage()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(2));
+
+        var exhausted = Value(await h.Attention.GetAttention(default)).ExhaustedRunners;
+
+        var row = Assert.Single(exhausted!);
+        Assert.Equal("host:/checkouts/one", row.Name);
+        Assert.Equal(h.Time.GetUtcNow().AddHours(2), row.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListOneWhoseResetHasPassed()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(-1));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).ExhaustedRunners!);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListOneThatHasGoneQuiet()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync(
+            "host:/checkouts/one", h.Time.GetUtcNow().AddHours(2), lastSeenAt: h.Time.GetUtcNow().AddDays(-1));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).ExhaustedRunners!);
+    }
+
+    [Fact]
+    public async Task Attention_OrdersExhaustedRunnersBySoonestResetFirst()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/late", h.Time.GetUtcNow().AddHours(5));
+        await h.RunnerAsync("host:/checkouts/soon", h.Time.GetUtcNow().AddHours(1));
+
+        Assert.Equal(
+            ["host:/checkouts/soon", "host:/checkouts/late"],
+            Value(await h.Attention.GetAttention(default)).ExhaustedRunners!.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task Attention_ListsExhaustedRunnersEvenOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(2));
+
+        var exhausted = Value(await h.Attention.GetAttention(default)).ExhaustedRunners;
+
+        Assert.Single(exhausted!);
+    }
+
+    // ---- The trunk half (HA-95) ----
+
+    [Fact]
+    public async Task Attention_ListsAFailedTrunkBuild()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api", "CI"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+
+        Assert.Equal("main", row.Trunk);
+        Assert.Equal("forge.example/owner/repo", row.Canonical);
+        Assert.Equal(["api", "CI"], row.Failing.Select(f => f.Name));
+        Assert.Null(row.BugIssueKey);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAPendingTrunkBuildThatAlreadyCarriesAFailingCheck()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Pending, failing: ["api"]);
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.None)]
+    public async Task Attention_DoesNotListAPassedOrANoneTrunkBuild(string verdict)
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(verdict);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListAPendingTrunkBuildWithNothingFailedYet()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Pending);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_CarriesTheAttachedBugsKey()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "Build failing on main", h.Inbox);
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"], bugIssueId: bug.Id);
+
+        Assert.Equal(Key(bug), Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!).BugIssueKey);
+    }
+
+    [Fact]
+    public async Task Attention_OrdersTrunkBuildsByCanonicalThenTrunk()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/repo", trunk: "release");
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/repo", trunk: "main");
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/another");
+
+        var rows = Value(await h.Attention.GetAttention(default)).TrunkBuilds!;
+
+        Assert.Equal(
+            [("forge.example/owner/another", "main"), ("forge.example/owner/repo", "main"), ("forge.example/owner/repo", "release")],
+            rows.Select(r => (r.Canonical, r.Trunk)));
+    }
+
+    [Fact]
+    public async Task Attention_ListsAFailedTrunkBuild_EvenOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
     // ---- The gate ----
 
     [Fact]
@@ -598,6 +734,7 @@ public class AttentionControllerTests
     {
         public required HatchContext Db { get; init; }
         public required AttentionController Attention { get; init; }
+        public required Microsoft.Extensions.Time.Testing.FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -606,6 +743,22 @@ public class AttentionControllerTests
 
         private int next = 1;
         private int nextRepoOrder = 1;
+
+        /// <summary>A runner row, placed directly - this is not RunnersController's own heartbeat rules to pin.</summary>
+        public async Task RunnerAsync(string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null)
+        {
+            Db.Runners.Add(new EfHatchRunner
+            {
+                Name = name,
+                Kind = "loop",
+                FirstSeenAt = Time.GetUtcNow(),
+                LastSeenAt = lastSeenAt ?? Time.GetUtcNow(),
+                State = "running",
+                Where = $"host:/checkouts/{name}",
+                ExhaustedUntil = exhaustedUntil,
+            });
+            await Db.SaveChangesAsync();
+        }
 
         /// <summary>
         /// An issue placed directly. These tests are about which column an
@@ -696,6 +849,31 @@ public class AttentionControllerTests
             });
 
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A trunk verdict, written straight to the row - the same reason <see cref="BuildAsync"/> is.</summary>
+        public async Task<EfHatchTrunkBuild> TrunkAsync(
+            string verdict, string[]? failing = null, string remote = "forge.example/owner/repo", string trunk = "main",
+            string? sha = null, long? bugIssueId = null)
+        {
+            var row = new EfHatchTrunkBuild
+            {
+                Remote = remote,
+                Canonical = remote,
+                Trunk = trunk,
+                Sha = sha ?? new string('2', 40),
+                ShaSince = Now,
+                Verdict = verdict,
+                Failing = EfHatchBuildCheck.WriteFailing((failing ?? []).Select(n => new FailingCheckDto(n)).ToList()),
+                CheckedAt = Now,
+                Runner = "box:/work/repo",
+                CheckedBy = "runner",
+                BugIssueId = bugIssueId,
+            };
+
+            Db.TrunkBuilds.Add(row);
+            await Db.SaveChangesAsync();
+            return row;
         }
 
         /// <summary>
@@ -792,10 +970,14 @@ public class AttentionControllerTests
         db.AddRange(project, inbox, todo, doing, review, done);
         await db.SaveChangesAsync();
 
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db),
+            Attention = new AttentionController(db, runners, time),
+            Time = time,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -818,10 +1000,14 @@ public class AttentionControllerTests
         db.AddRange(project, done);
         await db.SaveChangesAsync();
 
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db),
+            Attention = new AttentionController(db, runners, time),
+            Time = time,
             ProjectId = project.Id,
             Inbox = done.Id,
             Todo = done.Id,

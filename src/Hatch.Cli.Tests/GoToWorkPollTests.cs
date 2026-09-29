@@ -128,6 +128,31 @@ public sealed class GoToWorkPollTests
     }
 
     [Fact]
+    public async Task An_exhausted_runner_polls_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        InReview(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, null, null, null));
+
+        Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }
+            .Write(h.Supervised.NightStatePath));
+
+        using var interrupting = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "1", "--restart-after", "0"], interrupting.Token);
+        await Harness.Eventually(() => h.Wire.To("POST", Beat).Count >= 2, "an exhausted runner to heartbeat twice");
+        await interrupting.CancelAsync();
+        await running;
+
+        Assert.Empty(h.Wire.To("GET", Review));
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+
+        // The one exception: the wait's own self-check keeps this checkout
+        // current, so it may hold a "prepare" call - never an "enter".
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("enter ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_verdict_the_board_refuses_does_not_end_the_night_or_count_as_a_failed_increment()
     {
         using var h = new Harness();

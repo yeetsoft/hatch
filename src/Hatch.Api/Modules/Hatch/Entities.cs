@@ -956,6 +956,81 @@ public class EfHatchBuildCheck
 }
 
 /// <summary>
+/// What the build on the tip of a repository's trunk came to - the same fact as
+/// <see cref="EfHatchBuildCheck"/>, but keyed on the repository and its trunk
+/// rather than on an issue's branch, because a trunk build is nobody's issue.
+///
+/// One row per repository per trunk, keyed on <see cref="Canonical"/> and
+/// <see cref="Trunk"/>: two projects may bind one repository with different
+/// base branches, and a single verdict would let one project's trunk overwrite
+/// another's. A second write for the same pair replaces the first.
+/// </summary>
+/// <remarks>
+/// The sha is what makes a verdict comparable, for the reason
+/// <see cref="EfHatchBuildCheck"/>'s is - a verdict about any other sha says
+/// nothing about the trunk as it stands now. <see cref="BugIssueId"/> is the
+/// bug filed while this trunk was failing (HA-95): it stays attached across new
+/// failing shas, because a fix that fails again is the same outage, and is let
+/// go the moment a build on this trunk passes, so the next failure offers the
+/// button again.
+/// </remarks>
+[Table("TrunkBuilds")]
+[Index(nameof(Canonical), nameof(Trunk), IsUnique = true)]
+public class EfHatchTrunkBuild
+{
+    public const int MaxRemoteLength = EfHatchBuildCheck.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchBuildCheck.MaxRefLength;
+    public const int MaxShaLength = EfHatchBuildCheck.MaxShaLength;
+    public const int MaxVerdictLength = EfHatchBuildCheck.MaxVerdictLength;
+    public const int MaxFailing = EfHatchBuildCheck.MaxFailing;
+    public const int MaxCheckNameLength = EfHatchBuildCheck.MaxCheckNameLength;
+    public const int MaxCheckUrlLength = EfHatchBuildCheck.MaxCheckUrlLength;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The remote as the runner spelled it.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    /// <summary><see cref="RemoteIdentity.Canonical"/> of <see cref="Remote"/> - half of the unique index.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    /// <summary>The trunk's name, as the runner's workspace reported it - the other half of the unique index.</summary>
+    [MaxLength(MaxRefLength)]
+    public required string Trunk { get; set; }
+
+    /// <summary>The trunk's tip that the verdict is about.</summary>
+    [MaxLength(MaxShaLength)]
+    public required string Sha { get; set; }
+
+    /// <summary>When the board first heard about <see cref="Sha"/>. Kept across writes for the same sha; the board's clock, as <see cref="CheckedAt"/> is.</summary>
+    public required DateTimeOffset ShaSince { get; set; }
+
+    /// <summary>One of <see cref="BuildVerdicts"/>.</summary>
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    /// <summary>The failing checks as <c>[{ name, url }]</c>, sorted by name. jsonb, as <see cref="EfHatchBuildCheck.Failing"/> is.</summary>
+    public string? Failing { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+
+    /// <summary>The checkout that took it, as it names itself.</summary>
+    [MaxLength(ClaimRequest.MaxRunnerLength)]
+    public required string Runner { get; set; }
+
+    /// <summary>The name of the credential it arrived under - a name and not an id, for the reason <see cref="EfHatchIssue.CreatedBy"/> is.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CheckedBy { get; set; }
+
+    /// <summary>The bug filed while this trunk was failing, or null when none is attached - see this type's own summary.</summary>
+    public long? BugIssueId { get; set; }
+    public EfHatchIssue? BugIssue { get; set; }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -1650,4 +1725,14 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxNameLength)]
     public string? Where { get; set; }
+
+    /// <summary>
+    /// This runner's own account ran out of Claude usage, and this is when it
+    /// expects to reset - a fact about the process, like <see cref="Mine"/>,
+    /// never a person's to set. A heartbeat that names one writes it; a loop
+    /// heartbeat that says it is not out clears it at once, which is the only
+    /// way it ever clears other than the value expiring by arithmetic at read
+    /// time, the same lazy expiry the rest of this table uses.
+    /// </summary>
+    public DateTimeOffset? ExhaustedUntil { get; set; }
 }

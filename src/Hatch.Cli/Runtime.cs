@@ -25,6 +25,12 @@ public sealed record Runtime(
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 
     /// <summary>
+    /// What a pinned readout would draw, kept current whether or not a
+    /// terminal is actually drawing one - see <see cref="ReadoutState"/>.
+    /// </summary>
+    public ReadoutState Readout { get; init; } = new();
+
+    /// <summary>
     /// Where a checkout's chosen name is recorded - <see cref="RunnerNames.Record"/>'s
     /// file, beside <see cref="Settings.UserConfigPath"/>. Replaceable so a test
     /// reads and writes its own temp file rather than the machine's.
@@ -46,7 +52,7 @@ public sealed record Runtime(
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
 
-    public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts, TempDirectory);
+    public Increment Increment() => new(Board, Sessions, Settings, Say, Checkouts, Readout, TempDirectory);
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back

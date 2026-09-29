@@ -36,6 +36,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   maxSpend: null,
   untilAt: null,
   goneAfterSeconds: GONE_AFTER,
+  exhaustedUntil: null,
   ...over,
 });
 
@@ -75,6 +76,25 @@ describe('runnerActivity', () => {
   it('names the ticket in the words on the row', () => {
     expect(activityWords(runner({ claimKey: 'AER-12' }), NOW)).toBe('Working AER-12');
     expect(activityWords(runner(), NOW)).toBe('Idle');
+  });
+
+  it('is exhausted when the runner says its account is out of Claude usage', () => {
+    expect(runnerActivity(runner({ exhaustedUntil: at(3_600_000) }), NOW)).toBe('exhausted');
+  });
+
+  it('is exhausted before what it was asked to do, because a fact beats a request', () => {
+    expect(runnerActivity(runner({ exhaustedUntil: at(3_600_000), state: 'paused' }), NOW)).toBe('exhausted');
+    expect(runnerActivity(runner({ exhaustedUntil: at(3_600_000), state: 'stopping' }), NOW)).toBe('exhausted');
+  });
+
+  it('is gone rather than exhausted once it has stopped heartbeating, because silence beats everything', () => {
+    expect(runnerActivity(runner({ exhaustedUntil: at(3_600_000), lastSeenAt: at(-GONE_AFTER * 1000 - 1000) }), NOW)).toBe(
+      'gone',
+    );
+  });
+
+  it('names the reset time in the words on the row', () => {
+    expect(activityWords(runner({ exhaustedUntil: '2026-09-08T23:40:00Z' }), NOW)).toMatch(/^Out of usage until /);
   });
 });
 

@@ -36,7 +36,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/runners")]
 public class RunnersController(
-    HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
+    HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
+    TimeProvider time) : ControllerBase
 {
     /// <summary>
     /// Every runner that has spoken to this Hatch lately, most recently heard
@@ -122,6 +123,8 @@ public class RunnersController(
             return Conflict($"{runner} is already the runner on {existing} - hatch config gives this checkout another name");
         }
 
+        var forName = await ForNameAsync(ct);
+
         if (row is null)
         {
             db.Runners.Add(row = Seed(runner, kind, line, request, now));
@@ -129,7 +132,7 @@ public class RunnersController(
             try
             {
                 await db.SaveChangesAsync(ct);
-                return Runners.Instruct(row);
+                return Runners.Instruct(row, forName);
             }
             catch (DbUpdateException)
             {
@@ -147,7 +150,21 @@ public class RunnersController(
         Touch(row, kind, line, now, request);
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row);
+        return Runners.Instruct(row, forName);
+    }
+
+    /// <summary>
+    /// Who this heartbeat's caller works for - the same resolution a
+    /// <c>--mine</c> dispatch pass takes, so "whose runner is this" and "whose
+    /// tickets does <c>--mine</c> reach" can never disagree. A key with no
+    /// owner falls back to the key's own name, the fallback the claim's own
+    /// "for &lt;name&gt;" already makes.
+    /// </summary>
+    private async Task<string?> ForNameAsync(CancellationToken ct)
+    {
+        if ((await actors.PrincipalAsync(ct))?.Name is { Length: > 0 } name) return name;
+
+        return (await caller.ApiKeyAsync(ct))?.Name;
     }
 
     /// <summary>
@@ -298,6 +315,7 @@ public class RunnersController(
         Clones = request.Clones,
         Mine = request.Mine,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
+        ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
     };
 
     /// <summary>
@@ -331,6 +349,13 @@ public class RunnersController(
         if (request.Clones is not null) row.Clones = request.Clones;
         if (request.Mine is not null) row.Mine = request.Mine;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+
+        // A tri-state of its own: absent leaves the row's own record alone (an
+        // older CLI, or hatch work's single beat, neither of which knows
+        // anything about the account it ran under), true sets it, false clears
+        // it at once - the one way a loop overrides its own past heartbeat.
+        if (request.Exhausted == true) row.ExhaustedUntil = request.ExhaustedUntil;
+        else if (request.Exhausted == false) row.ExhaustedUntil = null;
     }
 
     /// <summary>

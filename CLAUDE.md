@@ -93,6 +93,10 @@ reading the terminal, and that the next increment starts the moment yours ends.
   before you stop rather than leaving it for whoever runs next. A ticket for a
   repository this loop does not have is folded past, with the reason, rather
   than dispatched — so nothing here is ever spawned in the wrong checkout.
+  **The one exception is running out of Claude usage mid-session**: you do not
+  get to say whether what you left is fit to publish, so the loop commits it —
+  untracked files included — onto your issue's branch and pushes it for you,
+  then says so on the ticket along with when it expects you back.
 - **Leave the ticket somewhere new.** An increment that ends with the ticket in
   the column it started in is a *stall*: the loop comments, opens a question
   against the issue, and moves on — and nothing further is dispatched there
@@ -138,8 +142,9 @@ Work on the loop itself — `src/Hatch.Cli`, `scripts/hatch.sh`,
 night: when its own source changes on the trunk, the loop rebuilds and comes
 back as the new version.
 
-The five conditions that make an issue actionable live on the server, and
-[`docs/hatch.md`](docs/hatch.md) has them with the reasoning behind each.
+The conditions that make an issue actionable live on the server, and
+[`docs/hatch.md`](docs/hatch.md#what-makes-an-issue-actionable) lists them with
+the reasoning behind each.
 
 ### When a decision is not yours to make
 

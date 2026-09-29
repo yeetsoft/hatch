@@ -8,12 +8,15 @@ import {
   conflictEmptyWords,
   failingBuildEmptyWords,
   questionEmptyWords,
+  resetWords,
   reviewEmptyWords,
+  trunkBuildEmptyWords,
+  trunkBuildHead,
   trunkIconTone,
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, Question, Review } from '../types';
+import type { Attention, Conflict, ExhaustedRunner, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -48,6 +51,29 @@ const conflict = (over: Partial<Conflict> = {}): Conflict => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/14',
   checks: [],
+  ...over,
+});
+
+const exhaustedRunner = (over: Partial<ExhaustedRunner> = {}): ExhaustedRunner => ({
+  name: 'here:/checkouts/one',
+  where: 'here:/checkouts/one',
+  exhaustedUntil: new Date(NOW.getTime() + 3_600_000).toISOString(),
+  ...over,
+});
+
+const trunkBuild = (over: Partial<TrunkBuild> = {}): TrunkBuild => ({
+  id: 1,
+  remote: 'https://forge.example/owner/repo.git',
+  canonical: 'forge.example/owner/repo',
+  trunk: 'main',
+  sha: '1111111111111111111111111111111111111111',
+  shaSince: ago(60_000),
+  verdict: 'failed',
+  failing: [{ name: 'CI', url: null }],
+  checkedAt: ago(0),
+  runner: 'box:/work/repo',
+  checkedBy: 'runner',
+  bugIssueKey: null,
   ...over,
 });
 
@@ -98,6 +124,24 @@ describe('attentionCount', () => {
     expect(attentionCount(attention({ reviews: [], reviewsHeldBack: 3 }))).toBe(0);
     expect(attentionCount(attention({ reviews: [review()], reviewsHeldBack: 3 }))).toBe(1);
   });
+
+  it('does not count a runner out of Claude usage, and stays resting for it', () => {
+    // A dot, not a pill: see the control's own remarks.
+    const exhausted = attention({ exhaustedRunners: [exhaustedRunner()] });
+
+    expect(attentionCount(exhausted)).toBe(0);
+    expect(attentionTone(exhausted)).toBe('rest');
+  });
+
+  it('counts a failing trunk build, unlike a branch conflict or a failing branch build', () => {
+    // No agent owns a trunk, so a failing one has nobody already on it - the
+    // one build-shaped thing in this panel that does light the control.
+    expect(attentionCount(attention({ trunkBuilds: [trunkBuild(), trunkBuild({ id: 2 })] }))).toBe(2);
+  });
+
+  it('reads an absent trunkBuilds as none, for a board that predates it', () => {
+    expect(attentionCount(attention({ trunkBuilds: undefined }))).toBe(0);
+  });
 });
 
 describe('attentionTone', () => {
@@ -121,6 +165,10 @@ describe('attentionTone', () => {
 
   it('stays resting for a branch that conflicts', () => {
     expect(attentionTone(attention({ conflicts: [conflict()] }))).toBe('rest');
+  });
+
+  it('asks as soon as one trunk build is failing', () => {
+    expect(attentionTone(attention({ trunkBuilds: [trunkBuild()] }))).toBe('asking');
   });
 });
 
@@ -153,6 +201,34 @@ describe('attentionLabel', () => {
 
   it('says nothing is waiting when the only thing in review has no pull request', () => {
     expect(attentionLabel(attention({ inReviewWithoutPullRequest: 3 }))).toBe('Nothing is waiting on you');
+  });
+
+  it('names a failing trunk build first, pluralised on its own count', () => {
+    expect(attentionLabel(attention({ trunkBuilds: [trunkBuild()] }))).toBe('1 trunk build failing');
+    expect(attentionLabel(attention({ trunkBuilds: [trunkBuild(), trunkBuild({ id: 2 })] }))).toBe(
+      '2 trunk builds failing',
+    );
+  });
+
+  it('combines all three parts, trunk builds first', () => {
+    expect(
+      attentionLabel(attention({ trunkBuilds: [trunkBuild()], reviews: [review()], questions: [question()] })),
+    ).toBe('1 trunk build failing, 1 pull request to review, 1 question to answer');
+  });
+
+  it('adds a runner out of Claude usage as its own phrase, singular and plural', () => {
+    expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner()] }))).toBe(
+      '1 runner is out of Claude usage',
+    );
+    expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner(), exhaustedRunner()] }))).toBe(
+      '2 runners are out of Claude usage',
+    );
+  });
+
+  it('joins it onto the human halves rather than replacing them', () => {
+    expect(attentionLabel(attention({ reviews: [review()], exhaustedRunners: [exhaustedRunner()] }))).toBe(
+      '1 pull request to review, 1 runner is out of Claude usage',
+    );
   });
 });
 
@@ -196,6 +272,22 @@ describe('reviewEmptyWords', () => {
 describe('failingBuildEmptyWords', () => {
   it('says no build is failing', () => {
     expect(failingBuildEmptyWords()).toBe('No build in review is failing.');
+  });
+});
+
+describe('trunkBuildEmptyWords', () => {
+  it('says no trunk build is failing', () => {
+    expect(trunkBuildEmptyWords()).toBe('No trunk build is failing.');
+  });
+});
+
+describe('trunkBuildHead', () => {
+  it('names the trunk as the runner reported it, and the repository', () => {
+    expect(trunkBuildHead(trunkBuild())).toBe('main in forge.example/owner/repo');
+  });
+
+  it('never hardcodes a trunk name', () => {
+    expect(trunkBuildHead(trunkBuild({ trunk: 'trunk', canonical: 'example.test/o/r' }))).toBe('trunk in example.test/o/r');
   });
 });
 
@@ -285,5 +377,29 @@ describe('trunkIconTone', () => {
   it('is muted when behind, and muted when not checked - the words tell those apart', () => {
     expect(trunkIconTone(false)).toBe('muted');
     expect(trunkIconTone(null)).toBe('muted');
+  });
+});
+
+describe('resetWords', () => {
+  it('names just the clock for later today', () => {
+    const soon = new Date(NOW.getTime() + 60_000).toISOString();
+    const words = resetWords(soon, NOW);
+
+    expect(words).toMatch(/^resets \d{1,2}:\d{2}/);
+    expect(words).not.toContain(' at ');
+  });
+
+  it('names the weekday within the week', () => {
+    const within = new Date(NOW.getTime() + 3 * 86_400_000).toISOString();
+    expect(resetWords(within, NOW)).toMatch(/^resets [A-Za-z]+ at \d{1,2}:\d{2}/);
+  });
+
+  it('names the date beyond a week', () => {
+    const later = new Date(NOW.getTime() + 30 * 86_400_000).toISOString();
+    expect(resetWords(later, NOW)).toMatch(/^resets [A-Za-z]{3} \d{1,2} at \d{1,2}:\d{2}/);
+  });
+
+  it('is unknown for a time that cannot be read', () => {
+    expect(resetWords('not a date', NOW)).toBe('resets at an unknown time');
   });
 });

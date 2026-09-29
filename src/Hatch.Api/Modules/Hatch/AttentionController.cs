@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/attention")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class AttentionController(HatchContext db) : ControllerBase
+public class AttentionController(HatchContext db, Runners runners, TimeProvider time) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -42,11 +42,25 @@ public class AttentionController(HatchContext db) : ControllerBase
         // question is waiting on somebody wherever its issue happens to stand.
         var questions = await Questions.ProjectAsync(db, Questions.Open(db), ct);
 
+        var exhausted = await ExhaustedRunnersAsync(ct);
+
+        // A repository's trunk is nobody's issue, so this does not wait on
+        // there being a review column at all - a person's row here even on a
+        // board too short to have one. The same failing rule the branch builds
+        // use: a check that has failed counts while the rest are still running.
+        var trunkBuilds = (await db.TrunkBuilds.AsNoTracking()
+                .Where(t => t.Verdict == BuildVerdicts.Failed || (t.Verdict == BuildVerdicts.Pending && t.Failing != null))
+                .Include(t => t.BugIssue).ThenInclude(i => i!.Project)
+                .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
+                .ToListAsync(ct))
+            .Select(TrunkBuildProjection.Project)
+            .ToList();
+
         // A board too short to have a review column has nothing in review, and
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, []);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -176,6 +190,29 @@ public class AttentionController(HatchContext db) : ControllerBase
         var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
             && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
 
-        return new AttentionDto(reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack);
+        return new AttentionDto(
+            reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted);
+    }
+
+    /// <summary>
+    /// Every runner out of Claude usage that is still being heard from, soonest
+    /// reset first. Nothing sweeps this: a reset that has passed, or a runner
+    /// that has gone quiet, simply is not in the list the next time somebody
+    /// asks - the same lazy expiry the rest of <see cref="Runners"/> uses.
+    /// </summary>
+    private async Task<IReadOnlyList<ExhaustedRunnerDto>> ExhaustedRunnersAsync(CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+
+        var candidates = await db.Runners.AsNoTracking()
+            .Where(r => r.ExhaustedUntil != null)
+            .Select(r => new { r.Name, r.Where, r.LastSeenAt, r.ExhaustedUntil })
+            .ToListAsync(ct);
+
+        return candidates
+            .Where(r => r.ExhaustedUntil!.Value > now && runners.IsHere(r.LastSeenAt, now))
+            .OrderBy(r => r.ExhaustedUntil)
+            .Select(r => new ExhaustedRunnerDto(r.Name, r.Where, r.ExhaustedUntil!.Value))
+            .ToList();
     }
 }

@@ -215,6 +215,30 @@ export interface BuildCheck {
   checkedBy: string;
 }
 
+/** One stored trunk verdict: the build on the tip of one repository's trunk. Mirrors TrunkBuildDto. */
+export interface TrunkBuild {
+  id: number;
+  /** The remote as the runner spelled it. */
+  remote: string;
+  /** The remote's canonical form - the verdict's identity across every project, not only one issue's. */
+  canonical: string;
+  /** The trunk's name, as the runner's own workspace reported it. */
+  trunk: string;
+  /** The trunk's tip that the verdict is about. */
+  sha: string;
+  /** When the board first heard about `sha`. */
+  shaSince: string;
+  /** `passed`, `failed`, `pending` or `none`. */
+  verdict: string;
+  /** The checks that failed; empty unless the verdict is `failed` or a `pending` one already carries some. */
+  failing: FailingCheck[];
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+  /** The bug filed while this trunk was failing, or null when none is attached yet - see HA-95. */
+  bugIssueKey: string | null;
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
@@ -892,6 +916,25 @@ export interface Attention {
       pull request never appears in both halves. Held back because a red build
       or a conflict is not ready for a person, and the loop is already on it. */
   reviewsHeldBack: number;
+  /** Every repository's trunk whose latest build failed, or is still running
+      with a check that has already failed - a person's to fix, unlike
+      `failingBuilds`, because no agent owns a trunk. Ordered by canonical,
+      then trunk. Absent from a board that predates it. */
+  trunkBuilds?: TrunkBuild[];
+  /** Every runner still being heard from that is out of Claude usage, soonest
+      reset first. Not counted towards the badge - it lights a dot instead, see
+      `attentionCount`'s remarks. Absent from a board that predates it. */
+  exhaustedRunners?: ExhaustedRunner[];
+}
+
+/** One runner out of Claude usage, for the top of the attention panel. */
+export interface ExhaustedRunner {
+  /** What it calls itself - the same string the Runners page keys on. */
+  name: string;
+  /** The machine and checkout it runs from, `host:/path`, or null when it never said. */
+  where: string | null;
+  /** When it expects to reset. */
+  exhaustedUntil: string;
 }
 
 // ---- Who is sitting here ----
@@ -1177,6 +1220,10 @@ export interface Runner {
       Hatch:RunnerGoneAfterSeconds, carried the way a claim carries its TTL, so
       nothing here has to decide for itself what quiet means. */
   goneAfterSeconds: number;
+  /** This runner's own Claude account ran out of usage, and this is when it
+      expects to reset - a fact it reports about itself, never a person's to
+      set. Null on an ordinary runner, or one that has since cleared it. */
+  exhaustedUntil: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

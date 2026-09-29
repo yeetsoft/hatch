@@ -96,11 +96,16 @@ public sealed class Runners(IOptions<HatchOptions> options)
         runner.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
         runner.Clones,
         runner.Mine,
-        runner.Where);
+        runner.Where,
+        runner.ExhaustedUntil);
 
-    /// <summary>What the loop reads back off its own heartbeat: the row's operator half, and nothing else.</summary>
-    public static RunnerInstructionDto Instruct(EfHatchRunner runner) =>
-        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt);
+    /// <summary>
+    /// What the loop reads back off its own heartbeat: the row's operator half,
+    /// plus who it works for - a fact about the caller and not about the row,
+    /// so it is handed in rather than read off <paramref name="runner"/>.
+    /// </summary>
+    public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName) =>
+        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName);
 
     /// <summary>
     /// One line at most, trimmed and capped - <see cref="IssueClaimController"/>'s

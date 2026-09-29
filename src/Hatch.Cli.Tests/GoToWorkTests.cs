@@ -225,6 +225,85 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("increment(s) in", StringComparison.Ordinal));
     }
 
+    // ---- A pass that fails lets its ticket go and the night goes on (HA-115) ----
+
+    [Fact]
+    public async Task A_tree_that_cannot_be_prepared_lets_the_ticket_go_and_the_loop_takes_the_next_one()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+
+        // Both clear at first. The board would not really offer AER-1 straight
+        // back the moment its claim was released, so the swap below - made the
+        // instant the first reset falls over - stands in for that: what matters
+        // to this test is what the loop does next, not how the board gets there.
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        // Only the first reset throws - a git command that failed outright,
+        // rather than the ordinary Reset.Never a bad tree answers with.
+        var thrown = false;
+        h.Workspace.Watching = () =>
+        {
+            if (!thrown)
+            {
+                thrown = true;
+                h.Workspace.PrepareThrows = new InvalidOperationException("git blew up");
+                h.Wire.Replace(
+                    "GET", Queue, HttpStatusCode.OK,
+                    System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+            }
+            else h.Workspace.PrepareThrows = null;
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Sessions.Spawned);
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("git blew up", comment.Body);
+        Assert.Contains(h.Say.Complained, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("git blew up", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_session_runner_that_throws_lets_the_ticket_go_and_puts_the_tree_back_on_the_trunk()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("the CLI fell over", comment.Body);
+
+        // Back on the trunk - the same door a lost lease leaves through.
+        Assert.Contains($"return {h.Root}", h.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task Three_failed_passes_in_a_row_end_the_night_the_same_way_three_failed_sessions_do()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+        Assert.Equal(3, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
+        Assert.Equal(3, h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Count);
+    }
+
     // ---- More than one checkout in play ----
 
     private static (CheckoutEntry Primary, CheckoutEntry Other, WorkRepositoryDto[] Repositories) TwoCheckouts(Harness h)
@@ -663,6 +742,68 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
     }
 
+    // ---- A usage limit's own wait ----
+
+    [Fact]
+    public async Task Source_changed_during_the_wait_restarts_the_loop_and_carries_the_instant_forward()
+    {
+        using var h = new Harness();
+
+        // The change lands where the wait's own self-check reads it - the very
+        // first pass through the wait, since nothing has been checked yet.
+        h.Workspace.Watching = () => h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+
+        var resetAt = DateTimeOffset.UtcNow.AddHours(1);
+        Assert.True(new NightState { ExhaustedUntil = resetAt }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(
+            GoToWorkCommand.RestartExitCode,
+            await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        // No ticket was ever picked up: the restart came from the wait itself.
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("the loop's own source changed", StringComparison.Ordinal));
+
+        // And the incarnation coming back is still out of usage until the same
+        // instant - a restart is the middle of the wait, not the end of it.
+        var carried = NightState.Read(h.NightState);
+        Assert.NotNull(carried);
+        Assert.Equal(resetAt, carried.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task Stopping_from_the_board_ends_the_wait_rather_than_carrying_it_through()
+    {
+        using var h = new Harness();
+        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+
+        Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("the board asked this runner to stop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_until_earlier_than_the_reset_ends_the_night_at_until()
+    {
+        using var h = new Harness();
+
+        // The reset is an hour out; --until is a second out - carried directly
+        // rather than typed, so the test is not chasing a minute boundary.
+        Assert.True(new NightState
+        {
+            ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1),
+            UntilAt = DateTimeOffset.UtcNow.AddSeconds(1),
+        }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("has come", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task An_age_of_zero_turns_the_backstop_off_and_a_negative_one_is_refused()
     {
@@ -1001,5 +1142,37 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Clone.Requested);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    // ---- The banners and the readout's facts (HA-121, HA-122) ----
+
+    [Fact]
+    public async Task An_increment_opens_and_closes_with_a_banner_and_the_readout_learns_who_it_works_for()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        // Not --once: that sends one heartbeat and reads nothing back, which is
+        // no place to see the "for" name arrive. MaxRuns echoes the flag this
+        // process started with, the way a real server's first-seen seed does -
+        // folding back a bare null would clear the cap this test relies on to
+        // end the loop.
+        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+            new RunnerInstructionDto("running", null, 1, null, null, "Nathan"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+
+        // OneTicket's own stub answers the same "In Review" for the picked
+        // ticket and for the reread, so this increment is a stall rather than a
+        // move - the glyph logic itself has its own tests in BannerTests.cs;
+        // this one is only about the wiring, that a banner opened and closed
+        // and that the readout heard who the runner works for.
+        Assert.Contains(h.Say.Said, l => l.StartsWith("🥚🥚🥚🥚🥚 STARTING WORK ON AER-1", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("STOPPING WORK ON AER-1", StringComparison.Ordinal));
+
+        var snapshot = h.Runtime.Readout.Snapshot();
+        Assert.Equal("Nathan", snapshot.Runner.ForName);
+        Assert.Equal(1, snapshot.Runner.NightRuns);
+        Assert.Null(snapshot.Increment);
     }
 }

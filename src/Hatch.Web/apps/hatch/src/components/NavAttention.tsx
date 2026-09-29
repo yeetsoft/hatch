@@ -29,7 +29,7 @@ const SIZE = 24;
  * the board behind a list of links back into it.
  */
 export function NavAttention() {
-  const attention = useAttention();
+  const { attention, reload } = useAttention();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const container = useRef<HTMLDivElement>(null);
@@ -38,6 +38,8 @@ export function NavAttention() {
   const label = attentionLabel(attention);
   const reviews = attention?.reviews.length ?? 0;
   const questions = attention?.questions.length ?? 0;
+  const exhausted = attention?.exhaustedRunners?.length ?? 0;
+  const trunkBuilds = attention?.trunkBuilds?.length ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +87,14 @@ export function NavAttention() {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <Robot lit={tone === 'asking'} />
+        <span className="hatch-attention-glyph-wrap">
+          <Robot lit={tone === 'asking'} />
+          {/* A dot, not a pill: a runner out of usage is not a count of
+              anything to fix, so it never changes the control's width or its
+              review-and-question pills - only the accessible name above does
+              that, with a phrase of its own. */}
+          {exhausted > 0 && <span className="hatch-attention-dot" aria-hidden="true" />}
+        </span>
 
         {tone === 'rest' ? (
           <span className="hatch-attention-word">Clear</span>
@@ -95,13 +104,14 @@ export function NavAttention() {
                 legible without colour, and the accessible name above says the
                 same thing in words. A pill per non-empty section, so an empty
                 half takes no room rather than showing a zero. */}
+            {trunkBuilds > 0 && <span className="hatch-attention-pill hatch-attention-pill-trunk">{trunkBuilds}</span>}
             {reviews > 0 && <span className="hatch-attention-pill hatch-attention-pill-review">{reviews}</span>}
             {questions > 0 && <span className="hatch-attention-pill hatch-attention-pill-question">{questions}</span>}
           </span>
         )}
       </button>
 
-      {open && <AttentionPanel attention={attention} now={now} />}
+      {open && <AttentionPanel attention={attention} now={now} reload={reload} />}
     </div>
   );
 }

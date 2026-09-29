@@ -22,6 +22,19 @@ public sealed class RunFacts
 
     /// <summary>The whole work log entry, or null on a run that ended before it could report.</summary>
     public WorkLogEntryRequest? Result { get; set; }
+
+    /// <summary>
+    /// The result event's own <c>result</c> field, raw - what <see cref="UsageLimit"/>
+    /// reads, because a limit's sentence is not always inside the work-log fence
+    /// <see cref="Result"/> was parsed out of.
+    /// </summary>
+    public string? ResultText { get; set; }
+
+    /// <summary>
+    /// The last thing the assistant said, for a run that ended before a result
+    /// event arrived at all - the one place a limit hit mid-stream shows up.
+    /// </summary>
+    public string? LastAssistantText { get; set; }
 }
 
 /// <summary>
@@ -46,6 +59,22 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     private long _thinking;
     private long _said;
+    private readonly HashSet<string> _counted = [];
+
+    /// <summary>
+    /// The four counts added up, over every assistant message seen so far in
+    /// this session - the live version of the figure the work log eventually
+    /// answers with, read by the readout while the session is still running.
+    /// </summary>
+    public long TokensSoFar { get; private set; }
+
+    /// <summary>
+    /// The account's usage windows, out of the session's own stream - the
+    /// latest <c>rate_limit_event</c> seen, or empty before the first one
+    /// arrives. See HA-124 and the decisions on HA-120: this is the account
+    /// this runner's sessions actually spend, not Hatch's own battery.
+    /// </summary>
+    public IReadOnlyList<UsageWindow> Usage { get; private set; } = [];
 
     /// <summary>The lines one event turns into, in order. Empty for the events that draw nothing.</summary>
     public IEnumerable<string> Read(string raw)
@@ -71,8 +100,46 @@ public sealed partial class StreamRender(string root, RunFacts facts)
             "assistant" => Assistant(e),
             "user" => Failures(e),
             "result" => Result(e),
+            "rate_limit_event" => RateLimit(e),
             _ => [],
         };
+    }
+
+    /// <summary>
+    /// Draws nothing - the account's usage is read by the readout and the
+    /// closing banner, not printed into the transcript. Not an iterator, so
+    /// <see cref="Usage"/> is current the moment this returns, whether or not
+    /// the caller enumerates the (always empty) result.
+    /// </summary>
+    private IEnumerable<string> RateLimit(JsonElement e)
+    {
+        if (e.TryGetProperty("rate_limit_info", out var info) &&
+            info.TryGetProperty("unifiedWindows", out var windows) && windows.ValueKind == JsonValueKind.Object)
+        {
+            Usage = windows.EnumerateObject()
+                .Select(w => new UsageWindow(Label(w.Name), Double(w.Value, "utilization") ?? 0, ResetsAt(w.Value)))
+                .ToList();
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// The two windows the source is known to report, and the label for
+    /// anything else it sends - a per-model weekly window, which arrives with
+    /// no display name of its own. See the decisions on HA-120.
+    /// </summary>
+    private static string Label(string key) => key switch
+    {
+        "five_hour" => "Session",
+        "seven_day" => "Weekly",
+        _ => "Weekly (model)",
+    };
+
+    private static DateTimeOffset? ResetsAt(JsonElement e)
+    {
+        var seconds = Long(e, "resetsAt");
+        return seconds > 0 ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
     }
 
     private IEnumerable<string> Init(JsonElement e)
@@ -103,6 +170,8 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     private IEnumerable<string> Assistant(JsonElement e)
     {
+        Count(e);
+
         foreach (var part in Content(e))
         {
             switch (Text(part, "type"))
@@ -111,13 +180,34 @@ public sealed partial class StreamRender(string root, RunFacts facts)
                     yield return $"  ⏺ {Text(part, "name")}  {Summarise(part)}";
                     break;
 
-                case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 }:
+                case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 } text:
+                    facts.LastAssistantText = text;
                     yield return "";
                     foreach (var said in (Text(part, "text") ?? "").ReplaceLineEndings("\n").Split('\n'))
                         yield return said;
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// One message's usage, added in once. The stream repeats a message's
+    /// <c>usage</c> on every content block it carries - a message with a
+    /// thinking block and two tool calls arrives with the same usage three
+    /// times - so a message already counted, by its id, is skipped rather than
+    /// summed again.
+    /// </summary>
+    private void Count(JsonElement e)
+    {
+        if (!e.TryGetProperty("message", out var message)) return;
+
+        var id = Text(message, "id");
+        if (id is null || !_counted.Add(id)) return;
+
+        if (!message.TryGetProperty("usage", out var usage)) return;
+
+        TokensSoFar += Long(usage, "input_tokens") + Long(usage, "output_tokens")
+            + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
     }
 
     /// <summary>
@@ -155,8 +245,10 @@ public sealed partial class StreamRender(string root, RunFacts facts)
         facts.SessionId = id;
         if (cost is { } spent) facts.CostUsd = spent;
 
-        var (title, summary) = WorkLog(Text(e, "result") ?? "");
+        var resultText = Text(e, "result") ?? "";
+        var (title, summary) = WorkLog(resultText);
 
+        facts.ResultText = resultText;
         facts.Result = new WorkLogEntryRequest(
             SessionId: id,
             StartedAt: default,
@@ -326,6 +418,12 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     private static decimal? Decimal(JsonElement e, string name) =>
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)
+            ? number
+            : null;
+
+    private static double? Double(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
             ? number
             : null;
 }

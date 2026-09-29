@@ -167,14 +167,18 @@ public sealed class WorkCommandTests
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
         Bookkeeping(h, "AER-1");
 
         h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("the CLI fell over", comment.Body);
+        Assert.Contains("hatch: AER-1", h.Say.Complained.Last());
     }
 
     [Fact]
@@ -477,6 +481,28 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.Contains("2 question(s) are waiting on you", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_full_WIP_section_is_one_digest_line_however_many_rows_it_folds()
+    {
+        using var h = new Harness();
+        const string sentence =
+            "the WIP section is full - 2 of 2 stories and bugs are in it - nothing more is pulled in until something leaves";
+
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-1", sentence),
+            Fixtures.Row("AER-2", sentence),
+            Fixtures.Row("AER-3", sentence),
+            Fixtures.Row("AER-4", "AER-2 has not merged"),
+        });
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("4 issue(s) were on the dispatcher's path", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains($"3  {sentence}", StringComparison.Ordinal));
+    }
+
     // ---- --workspace: cloning what the board binds (HA-19) ----
 
     [Fact]
@@ -538,6 +564,37 @@ public sealed class WorkCommandTests
         Assert.Contains("could not clone", body, StringComparison.Ordinal);
         Assert.Contains("fatal: repository not found", body, StringComparison.Ordinal);
         Assert.Contains(h.Say.Complained, l => l.Contains("could not clone", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_clone_that_throws_still_releases_the_lease_and_the_command_exits_1()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        runtime = runtime with { MakeClone = (_, _) => new ThrowingClone() };
+
+        Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("git could not start", comment.Body);
+    }
+
+    private sealed class ThrowingClone : IClone
+    {
+        public string? Run() => throw new InvalidOperationException("git could not start");
     }
 
     [Fact]
