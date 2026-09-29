@@ -24,7 +24,7 @@
    CSS into every app, and only this app writes prose. */
 
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
-import { useTheme } from '@hatch/ui';
+import { Button, useTheme } from '@hatch/ui';
 import { clientLogger } from '../lib/clientLogger';
 import { normalizeEol } from '../lib/text';
 import { clampedHeight, parseCeiling, useAutoGrow } from '../lib/useAutoGrow';
@@ -77,6 +77,10 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     !coarse && loaded ? { monaco: loaded, handoff: null } : null,
   );
   const [wanted, setWanted] = useState(!props.deferred);
+  // Chrome remembers a failed dynamic import for the life of the page, so a
+  // second attempt cannot succeed where the first didn't: this is what stays
+  // true until a reload, not a retry flag.
+  const [failed, setFailed] = useState(false);
   const plain = useRef<PlainHandle>(null);
 
   useEffect(() => {
@@ -87,14 +91,17 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
         if (live) setReady({ monaco, handoff: plain.current?.capture() ?? null });
       },
       // The textarea it is still showing works; say why it never changed.
-      (e: unknown) => clientLogger.error('The editor failed to load', { message: String(e) }),
+      (e: unknown) => {
+        clientLogger.error('The editor failed to load', { message: String(e) });
+        if (live) setFailed(true);
+      },
     );
     return () => {
       live = false;
     };
   }, [coarse, wanted, ready]);
 
-  if (!ready) return <PlainEditor {...props} handle={plain} onWanted={() => setWanted(true)} />;
+  if (!ready) return <PlainEditor {...props} handle={plain} onWanted={() => setWanted(true)} failed={failed} />;
   return <MonacoEditor {...props} monaco={ready.monaco} handoff={ready.handoff} />;
 }
 
@@ -108,7 +115,8 @@ function PlainEditor({
   ariaLabel,
   handle,
   onWanted,
-}: MarkdownEditorProps & { handle: Ref<PlainHandle>; onWanted: () => void }) {
+  failed,
+}: MarkdownEditorProps & { handle: Ref<PlainHandle>; onWanted: () => void; failed: boolean }) {
   const ref = useAutoGrow(value);
   useFocusFromLabel(ref, () => ref.current?.focus());
 
@@ -122,17 +130,28 @@ function PlainEditor({
   }));
 
   return (
-    <textarea
-      ref={ref}
-      className={`hatch-description-editor${className ? ` ${className}` : ''}`}
-      rows={rows}
-      value={value}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      onChange={(e) => onChange(e.target.value)}
-      onFocus={onWanted}
-      onPointerEnter={onWanted}
-    />
+    <>
+      <textarea
+        ref={ref}
+        className={`hatch-description-editor${className ? ` ${className}` : ''}`}
+        rows={rows}
+        value={value}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={onWanted}
+        onPointerEnter={onWanted}
+      />
+      {/* The box still works - this says why it is plain, and offers the only
+          thing that can fix it: Chrome's memory of the failed fetch outlives
+          the page, so a reload is the retry. */}
+      {failed && (
+        <p className="hatch-md-editor__failed">
+          The editor didn&rsquo;t load. Hatch may have been updated since this page was opened.{' '}
+          <Button onClick={() => window.location.reload()}>Reload</Button>
+        </p>
+      )}
+    </>
   );
 }
 

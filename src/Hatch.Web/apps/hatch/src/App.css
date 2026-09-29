@@ -1362,6 +1362,18 @@ input.hatch-inline-title-input {
   box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
+/* The line under a textarea that missed the editor (components/MarkdownEditor.tsx).
+   At the field-hint register, like `.hatch-field__hint` - muted, not danger,
+   because the box the operator is looking at still works. */
+.hatch-md-editor__failed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 /* A box that grows with what is typed. The height is set by lib/useAutoGrow.ts,
    which measures the floor - the height the box opens at, whatever `rows` and
    the webfont make that - and leaves the ceiling here.

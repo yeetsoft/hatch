@@ -8,6 +8,15 @@
    editor into whatever chunk it sits in. Nothing enforces this: oxlint has no
    rule for it, so it is said here. (`import type` is fine; it is erased.)
 
+   This chunk must import nothing the page's own chunk also imports. A `lib/`
+   helper shared with the page - say `editorTheme.ts` reaching for `lib/color.ts`
+   - would be hoisted into the entry chunk, and this chunk's only import
+   (Vite's preload helper) would stop being the whole story: Rolldown would add
+   a second import naming the shared chunk, and that chunk's name follows the
+   entry's, which is exactly the coupling vite.config.ts's `codeSplitting`
+   group exists to break for the preload helper alone. `editorChunk.test.ts` is
+   the guard that catches it.
+
    Not the bare `monaco-editor`: its entry registers ~80 languages, the
    TypeScript, CSS, HTML and JSON services and a language-server client, none of
    which a comment box wants. `editor.api` is the core with no contributions,
