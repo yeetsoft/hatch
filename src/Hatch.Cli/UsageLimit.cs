@@ -66,12 +66,18 @@ public static partial class UsageLimit
 
         var wall = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0, DateTimeKind.Unspecified);
         var utc = TimeZoneInfo.ConvertTimeToUtc(wall, zone);
-        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero), ResetKnown: true);
+        var offset = zone.GetUtcOffset(utc);
+        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true);
     }
 
-    /// <summary>7:40pm, lowercase, the way a terminal or a ticket says a reset time.</summary>
+    /// <summary>
+    /// 7:40pm, lowercase, the way a terminal or a ticket says a reset time - in
+    /// the zone the session itself reported, carried on <paramref name="at"/>'s
+    /// own offset rather than whatever zone the runner's machine happens to sit
+    /// in, so the same sentence comes back regardless of where this runs.
+    /// </summary>
     public static string Clock(DateTimeOffset at) =>
-        at.ToLocalTime().ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
+        at.ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
 
     private static bool TryHour(Match match, out int hour24, out int minute)
     {
