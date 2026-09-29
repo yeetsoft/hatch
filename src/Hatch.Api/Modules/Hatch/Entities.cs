@@ -1720,4 +1720,14 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxNameLength)]
     public string? Where { get; set; }
+
+    /// <summary>
+    /// This runner's own account ran out of Claude usage, and this is when it
+    /// expects to reset - a fact about the process, like <see cref="Mine"/>,
+    /// never a person's to set. A heartbeat that names one writes it; a loop
+    /// heartbeat that says it is not out clears it at once, which is the only
+    /// way it ever clears other than the value expiring by arithmetic at read
+    /// time, the same lazy expiry the rest of this table uses.
+    /// </summary>
+    public DateTimeOffset? ExhaustedUntil { get; set; }
 }

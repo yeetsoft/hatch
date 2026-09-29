@@ -315,6 +315,7 @@ public class RunnersController(
         Clones = request.Clones,
         Mine = request.Mine,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
+        ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
     };
 
     /// <summary>
@@ -348,6 +349,13 @@ public class RunnersController(
         if (request.Clones is not null) row.Clones = request.Clones;
         if (request.Mine is not null) row.Mine = request.Mine;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+
+        // A tri-state of its own: absent leaves the row's own record alone (an
+        // older CLI, or hatch work's single beat, neither of which knows
+        // anything about the account it ran under), true sets it, false clears
+        // it at once - the one way a loop overrides its own past heartbeat.
+        if (request.Exhausted == true) row.ExhaustedUntil = request.ExhaustedUntil;
+        else if (request.Exhausted == false) row.ExhaustedUntil = null;
     }
 
     /// <summary>
