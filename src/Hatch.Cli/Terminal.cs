@@ -61,16 +61,22 @@ public sealed class LiveTerminal : Terminal, IDisposable
     private int _footerLines;
     private bool _stopped;
 
-    public LiveTerminal(ReadoutState state, TimeProvider clock, bool color)
+    /// <param name="tickEvery">
+    /// How often the clock redraws on its own, with nothing printed - twice a
+    /// second by default, fast enough that a clock reads as ticking (criterion
+    /// 13 asks for at least once a second) and slow enough that redrawing a
+    /// handful of lines is not something anybody could call load. A test
+    /// gives it a tick nothing it does could ever wait for, so a slow machine
+    /// scheduling this thread late can never fire the timer mid-assertion and
+    /// write to whatever <see cref="Console.Out"/> happens to be by then.
+    /// </param>
+    public LiveTerminal(ReadoutState state, TimeProvider clock, bool color, TimeSpan? tickEvery = null)
     {
         _state = state;
         _clock = clock;
         _color = color;
 
-        // Twice a second: fast enough that a clock reads as ticking (criterion
-        // 13 asks for at least once a second), slow enough that redrawing a
-        // handful of lines is not something anybody could call load.
-        var every = TimeSpan.FromMilliseconds(500);
+        var every = tickEvery ?? TimeSpan.FromMilliseconds(500);
         _timer = new Timer(_ => Tick(), null, every, every);
     }
 

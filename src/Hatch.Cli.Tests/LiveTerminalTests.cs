@@ -73,7 +73,7 @@ public sealed class LiveTerminalTests
         Console.SetOut(capturedOut);
         try
         {
-            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false);
+            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1));
             live.Complain("uh oh");
         }
         finally
@@ -93,7 +93,7 @@ public sealed class LiveTerminalTests
         Console.SetOut(captured);
         try
         {
-            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false);
+            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1));
             act(live);
         }
         finally
