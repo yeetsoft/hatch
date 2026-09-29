@@ -118,6 +118,43 @@ public sealed class HatchClientTests
         Assert.Contains("403 - the key is good and this route is not one it may take", thrown.Message);
     }
 
+    // ---- The catch-all, and a structured body's own sentence ----
+
+    /// <summary>
+    /// The WIP <c>409</c>'s <c>{ error, load, limit }</c> prints as the
+    /// sentence alone, not the JSON it arrived as.
+    /// </summary>
+    [Fact]
+    public async Task A_409_carrying_error_load_and_limit_prints_the_sentence_and_not_the_json()
+    {
+        using var wire = new Wire();
+        wire.Reply(
+            "POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.Conflict,
+            """{"error":"the WIP section is full - 2 of 2 stories and bugs are in it","load":2,"limit":2}""");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.PostAsync<IssueDto>(
+                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+
+        Assert.Equal("hatch: 409 - the WIP section is full - 2 of 2 stories and bugs are in it", thrown.Message);
+    }
+
+    /// <summary>A bare-string 409, as every other refusal in the house still is, prints exactly as before.</summary>
+    [Fact]
+    public async Task A_bare_string_409_prints_as_before()
+    {
+        using var wire = new Wire();
+        wire.Reply("POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.Conflict, "\"AER-1 is in Done now - nothing moved\"");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.PostAsync<IssueDto>(
+                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+
+        Assert.Equal("hatch: 409 - \"AER-1 is in Done now - nothing moved\"", thrown.Message);
+    }
+
     /// <summary>
     /// A connection that never happened is a different thing from a refusal, and
     /// every caller treats it as one - the difference matters most to the

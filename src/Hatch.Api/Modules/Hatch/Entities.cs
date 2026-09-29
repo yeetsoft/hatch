@@ -1098,6 +1098,18 @@ public class EfHatchIssueEvent
     /// <summary>A question was answered. The payload names which one.</summary>
     public const string Answered = "answered";
 
+    /// <summary>
+    /// A move into a full WIP section was let through because a person said
+    /// <em>move anyway</em> - see <see cref="WipGate"/>.
+    /// Written beside <see cref="StatusChanged"/> by the same save, actor and
+    /// instant, with payload <c>{ limit, load, to }</c> where <c>load</c> is the
+    /// load the move left, counting the card itself (so a 5-of-5 refusal that is
+    /// overridden writes "6 of 5"). Written only when the move would otherwise
+    /// have been refused - an override on a move that had room, or on an issue
+    /// already counted, writes nothing.
+    /// </summary>
+    public const string WipOverridden = "wip_overridden";
+
     public const string Imported = "imported";
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]

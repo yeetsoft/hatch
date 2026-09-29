@@ -159,6 +159,30 @@ public class WipTests
         Assert.Equal(h.ToDo, board.Issues[0].StatusId);
     }
 
+    // ---- The sentence ----
+
+    [Fact]
+    public void TwoTypes_ReadAsBothJoinedWithAnd()
+    {
+        Assert.Equal(
+            "the WIP section is full - 2 of 2 stories and bugs are in it",
+            Wip.Sentence(2, 2, ["story", "bug"]));
+    }
+
+    [Fact]
+    public void OneType_ReadsAsJustThatOnePluralised()
+    {
+        Assert.Equal("the WIP section is full - 5 of 5 stories are in it", Wip.Sentence(5, 5, ["story"]));
+    }
+
+    [Fact]
+    public void ThreeTypes_ReadWithAnOxfordComma()
+    {
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories, bugs, and tasks are in it",
+            Wip.Sentence(1, 1, ["story", "bug", "task"]));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);

@@ -53,13 +53,15 @@ These are absences on purpose, and each one is cheap to add later if the
 absence starts to hurt:
 
 - **No status-transition rules.** Any column to any column; we trust ourselves.
-  The one asymmetry in the flow is not a rule in the database — it is that an
-  agent is never dispatched *into* a terminal column (see
-  [the dispatcher](#the-dispatcher)). The second thing that could be mistaken
-  for one is [closing a subtree](#closing-a-subtree), and it is not a rule
-  either: it is a question the browser asks a person after a move has already
-  committed. Nothing is forbidden by it and nothing is required — the answer is
-  the operator's, and "leave them" is one of the two. Nor is
+  The one rule in the whole flow is a speed bump rather than a wall: a move
+  into a full [WIP](#wip) section is refused, and a person may always step over
+  it by saying *move anyway*. The second asymmetry is not a rule in the
+  database either — it is that an agent is never dispatched *into* a terminal
+  column (see [the dispatcher](#the-dispatcher)). The third thing that could be
+  mistaken for one is [closing a subtree](#closing-a-subtree), and it is not a
+  rule either: it is a question the browser asks a person after a move has
+  already committed. Nothing is forbidden by it and nothing is required — the
+  answer is the operator's, and "leave them" is one of the two. Nor is
   `fromStatusId` on a move: it is a precondition on what the caller last saw,
   not a rule about which columns may follow which.
 - **No granular permissions.** Reaching Hatch at all means trusted to do
@@ -841,6 +843,21 @@ Where `board.wip` is null there is no band at all: nothing here asks about a
 drop into a full section or refuses one, either - that is the server's `409`,
 shown the way any refused drop is.
 
+**The refusal.** A move whose `from` is outside the section and whose `to` is
+inside is refused with `409` while the load is at or over the limit - a move
+within the section or out of it, a task or an epic, and an issue already
+counted (inside the section, or outside it on a live claim headed in) are
+never refused. The body is `{ error, load, limit }` (`WipRefusalDto`), `error`
+the sentence and `load` the count *before* the move - the same `409` from
+`POST /issues/{key}/move`, `PATCH /issues/{key}` and `POST /issues/bulk`
+alike, and every door (the board, the issue page, the CLI, the bulk page)
+prints the same sentence. A person may say *move anyway* (`wipOverride: true`
+on a move or a patch; bulk takes no override), which writes `wip_overridden`
+beside `status_changed` - see [Issue event](#issue-event). Overriding is a
+person's call and not an agent's: a key or a keyless runner sending
+`wipOverride: true` is refused with `403`, whatever the load and even where no
+limit is set.
+
 ### Claim
 
 Seven nullable columns on the issue row — `ClaimToken`, `ClaimedBy`,
@@ -1180,7 +1197,13 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`dependency_added`, `dependency_removed`, `merge_check_changed`, `build_check_changed`, `commented`, `messaged`, `message_delivered` (the payload
+`expedited_changed`, `express_changed`, `dependency_added`,
+`dependency_removed`, `claim_taken`, `claim_released`, `claim_cleared`,
+`merge_check_changed`, `build_check_changed`, `wip_overridden` (a move into a
+full [WIP](#wip) section, let through because a person said *move anyway* -
+payload `{ limit, load, to }`, `load` counting the card itself, written beside
+`status_changed` only when the move would otherwise have been refused),
+`commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered`,
 `imported`.
 
@@ -1457,9 +1480,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, statusIds? }`, the bulk rule throughout: `limit` is a string (`""` clears it, a whole number of one or more sets it), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: the section's limit, counted types, status ids, load and claimed-inbound part, or `null` where no column is flagged or no limit is set (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
-| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt` |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL |
-| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written |
+| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section is a per-key failure, named in `failures` |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section anyway, `409` (`WipRefusalDto`) otherwise, `403` from a key or a keyless runner |
+| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section is the same, unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |

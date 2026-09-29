@@ -1,4 +1,4 @@
-import { HttpError } from '../lib/errors';
+import { HttpError, refusalSentence } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
   ApiKey,
@@ -82,32 +82,10 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/**
- * What a failed request says out loud.
- *
- * Hatch's refusals are written to be read: "AER still has 3 issues in it",
- * "a story hangs under an epic, not a task". Reporting "DELETE /api/hatch/…
- * failed: 409" instead throws away the only sentence that says what to do
- * about it.
- *
- * Falls back to the status line when the body is not a sentence - empty, HTML,
- * a ProblemDetails blob, or long enough to be a stack trace - because one of
- * those under a text input is worse than nothing.
- */
+/** What a failed request says out loud - see `refusalSentence`. */
 async function failureMessage(res: Response, method: string, path: string): Promise<string> {
   const fallback = `${method} ${path} failed: ${res.status} ${res.statusText}`;
-
-  try {
-    const body = (await res.text()).trim();
-    if (body === '' || body.length > 300) return fallback;
-
-    // A bare string body arrives JSON-quoted; anything structured is left to
-    // the fallback rather than guessed at.
-    const parsed: unknown = body.startsWith('"') ? JSON.parse(body) : body;
-    return typeof parsed === 'string' && parsed !== '' && !parsed.startsWith('<') ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
+  return refusalSentence(await res.text(), fallback);
 }
 
 const asJson = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
