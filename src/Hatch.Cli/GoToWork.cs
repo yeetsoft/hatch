@@ -1048,75 +1048,89 @@ public sealed class GoToWorkCommand(Runtime runtime)
         string? under, bool quiet, bool mine, Tally tally,
         SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct)
     {
-        var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
-        var now = runtime.Clock.GetUtcNow();
+        // Hoisted so the catch below - which has to cover picking, claiming,
+        // preparing the tree, the session, judging it and tidying up, in one
+        // net - can say which ticket failed and put its tree back, however far
+        // this pass got before it did.
+        Claim? claim = null;
+        WorkDto? work = null;
+        Checkouts.Choice? chosen = null;
+        Lifecycle? lifecycle = null;
+        Increment? increment = null;
+        var entered = false;
 
-        // A clone this walk could not make - recorded exactly as a failed spawn
-        // would be, so three of them in a row end the night the same way three
-        // broken increments do. Declared on the next read either way: the
-        // checkouts a clone attempt grew survive past a candidate it gave up on.
-        foreach (var failed in picked.CloneFailures ?? []) tally.Record(failed);
-        if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
-
-        switch (picked.Outcome)
-        {
-            case Pick.Idle:
-                busy.Clear();
-                line.Line = "nothing on the board is an agent's to move";
-                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                await SayQuietlyAsync(idle, now, interval, once,
-                    digest: string.Join('\n', Digest.Of(picked.Queue)),
-                    still: "hatch: still nothing an agent may move",
-                    inFull: () => runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct));
-                return Pass.Waited;
-
-            case Pick.Busy:
-                idle.Clear();
-                line.Line = "every issue an agent could take is being worked elsewhere";
-                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                await SayQuietlyAsync(busy, now, interval, once,
-                    digest: string.Join('\n', picked.Busy),
-                    still: "hatch: every issue an agent could take is still being worked elsewhere",
-                    inFull: () =>
-                    {
-                        runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
-                        return Task.CompletedTask;
-                    });
-                return Pass.Waited;
-
-            case Pick.Unreadable:
-                // The client already said what went wrong, in a sentence. This
-                // says what is going to happen about it.
-                line.Line = "the board did not answer";
-                runtime.Say.Complain($"hatch: the board did not answer - asking again in {interval}s");
-                return Pass.Waited;
-
-            case Pick.Refused:
-                // A 400 is the dispatcher saying this will never succeed as
-                // asked - today, a --mine pass whose key belongs to nobody.
-                // The same path "the workspace could not be reset" takes:
-                // nothing was spawned, so this ends the night without going
-                // through the three-failures tally.
-                line.Line = "the board refused this pass";
-                tally.StopWhy = picked.Refusal;
-                return Pass.Fatal;
-
-            case Pick.Hopped:
-                idle.Clear();
-                busy.Clear();
-                var hop = picked.Hopped!;
-                var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  express, no session";
-                line.Line = hopLine;
-                runtime.Say.Line($"hatch: {hopLine}");
-                return Pass.Hopped;
-        }
-
-        idle.Clear();
-        busy.Clear();
-
-        var claim = picked.Claim!;
         try
         {
+            var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
+            var now = runtime.Clock.GetUtcNow();
+
+            // A clone this walk could not make - recorded exactly as a failed spawn
+            // would be, so three of them in a row end the night the same way three
+            // broken increments do. Declared on the next read either way: the
+            // checkouts a clone attempt grew survive past a candidate it gave up on.
+            foreach (var failed in picked.CloneFailures ?? []) tally.Record(failed);
+            if (picked.Checkouts is { } grown) runtime = runtime with { Checkouts = grown };
+
+            switch (picked.Outcome)
+            {
+                case Pick.Idle:
+                    busy.Clear();
+                    line.Line = "nothing on the board is an agent's to move";
+                    runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+                    await SayQuietlyAsync(idle, now, interval, once,
+                        digest: string.Join('\n', Digest.Of(picked.Queue)),
+                        still: "hatch: still nothing an agent may move",
+                        inFull: () => runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct));
+                    return Pass.Waited;
+
+                case Pick.Busy:
+                    idle.Clear();
+                    line.Line = "every issue an agent could take is being worked elsewhere";
+                    runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+                    await SayQuietlyAsync(busy, now, interval, once,
+                        digest: string.Join('\n', picked.Busy),
+                        still: "hatch: every issue an agent could take is still being worked elsewhere",
+                        inFull: () =>
+                        {
+                            runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
+                            return Task.CompletedTask;
+                        });
+                    return Pass.Waited;
+
+                case Pick.Unreadable:
+                    // The client already said what went wrong, in a sentence. This
+                    // says what is going to happen about it.
+                    line.Line = "the board did not answer";
+                    runtime.Say.Complain($"hatch: the board did not answer - asking again in {interval}s");
+                    return Pass.Waited;
+
+                case Pick.Refused:
+                    // A 400 is the dispatcher saying this will never succeed as
+                    // asked - today, a --mine pass whose key belongs to nobody.
+                    // The same path "the workspace could not be reset" takes:
+                    // nothing was spawned, so this ends the night without going
+                    // through the three-failures tally.
+                    line.Line = "the board refused this pass";
+                    tally.StopWhy = picked.Refusal;
+                    return Pass.Fatal;
+
+                case Pick.Hopped:
+                    idle.Clear();
+                    busy.Clear();
+                    var hop = picked.Hopped!;
+                    var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  express, no session";
+                    line.Line = hopLine;
+                    runtime.Say.Line($"hatch: {hopLine}");
+                    return Pass.Hopped;
+            }
+
+            idle.Clear();
+            busy.Clear();
+
+            claim = picked.Claim!;
+            work = picked.Work!;
+            chosen = picked.Chosen!;
+
             // An increment is about to run, so what the pass walked past on the
             // way to it is context rather than noise.
             if (Digest.Of(picked.Queue) is { Count: > 0 } digest)
@@ -1134,7 +1148,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // has nothing to say to a loop with nothing to run. The guarantee is
             // the same either way, because it is about the spawn and not about
             // the pass.
-            foreach (var (path, baseBranch) in picked.Chosen!.Resets)
+            foreach (var (path, baseBranch) in chosen.Resets)
             {
                 switch (runtime.Workspace(path, baseBranch).Prepare())
                 {
@@ -1158,10 +1172,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // The one place the change trigger can fire, because the new source
             // only exists on disk once the reset has pulled it. Inside the `try`
-            // on purpose: the `finally` that gives the ticket back on every
-            // other way out of a pass gives it back on this one too, so a
-            // restart holds no claim and the next incarnation finds the ticket
-            // free.
+            // on purpose: the outer catch and the loop below both give the ticket
+            // back on every other way out of a pass, so a restart holds no claim
+            // and the next incarnation finds the ticket free.
             if (Changed(restart) is { Count: > 0 } changed)
             {
                 SayChanged(changed, tally);
@@ -1172,8 +1185,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // reads the loop's own source off the disk, and an issue's branch
             // that edits it would make the loop restart the moment it was
             // checked out. On the trunk, the check sees what the trunk has.
-            var lifecycle = new Lifecycle(runtime);
-            var work = picked.Work!;
+            lifecycle = new Lifecycle(runtime);
 
             // A conflict is asked about again before anything is spawned, against
             // the refs the reset just fetched: the board's verdict was read
@@ -1183,7 +1195,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             Rechecked? found = null;
             if (work.Kind == WorkKinds.Conflicts)
             {
-                found = await lifecycle.RecheckAsync(work, picked.Chosen!, ct);
+                found = await lifecycle.RecheckAsync(work, chosen, ct);
 
                 if (found.Conflicts.Count == 0)
                 {
@@ -1216,7 +1228,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             BuildFound? built = null;
             if (work.Kind == WorkKinds.Build)
             {
-                built = await lifecycle.RecheckBuildAsync(work, picked.Chosen!, ct);
+                built = await lifecycle.RecheckBuildAsync(work, chosen, ct);
 
                 if (built.StillFailing.Count == 0)
                 {
@@ -1234,15 +1246,19 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
-            var entering = await lifecycle.EnterAsync(work, picked.Chosen!, ct);
+            var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
                 // A checkout that did have one branch is on it: back to the
                 // trunk, so the restart between increments builds from there.
-                await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: false, ct);
+                await lifecycle.LeaveAsync(work, chosen, ownsTicket: false, ct);
                 line.Line = $"{work.Issue.Key} needs to be told which branch to use";
                 return Pass.Asked;
             }
+
+            // From here on the tree is on the issue's branch, and not the trunk
+            // - so a failure past this point has to be told to put it back.
+            entered = true;
 
             runtime.Say.Line("");
 
@@ -1251,11 +1267,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // across a night would be applying it to tickets nobody looked at.
             // What the loop does carry is the ticket's own model and effort,
             // which arrive folded into the playbook already.
-            var report = await runtime.Increment().RunAsync(
-                work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
-                quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries,
-                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)),
-                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)),
+            increment = runtime.Increment();
+            var report = await increment.RunAsync(
+                work, chosen.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
+                quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
+                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
+                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                 runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
 
             tally.Record(report);
@@ -1269,7 +1286,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var limit = report.UsageLimitResetAt is { } resetAt
                     ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
                     : null;
-                await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct, limit);
+                await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit);
             }
             finally
             {
@@ -1294,11 +1311,43 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             return Pass.Worked;
         }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // One failed increment, not the end of the night - whatever stage
+            // this pass was in when it fell over: picking, claiming, preparing
+            // the tree, the session itself, judging it, or tidying up after.
+            var key = e is PickFailedException pf ? pf.Key : work?.Issue.Key;
+            var cause = e is PickFailedException { InnerException: { } inner } ? inner : e;
+            var why = $"{cause.GetType().Name}: {cause.Message}";
+
+            runtime.Say.Complain(key is { Length: > 0 }
+                ? $"hatch: {key} - the runner failed, and is letting it go - {why}"
+                : $"hatch: the runner failed, before a ticket was settled on - {why}");
+
+            // Back on the trunk only if it was ever moved off it - a failure
+            // during picking or preparing the tree never left the trunk.
+            if (entered) await lifecycle!.LeaveAsync(work!, chosen!, ownsTicket: false, CancellationToken.None);
+
+            if (key is { Length: > 0 })
+                await LetGo.CommentAsync(runtime.Board, runtime.Say, key, why, increment?.SessionId, CancellationToken.None);
+
+            tally.Record(new IncrementReport
+            {
+                Key = key ?? "?",
+                From = work?.FromStatus.Name ?? "?",
+                To = work?.ToStatus?.Name ?? "?",
+                Ended = work?.FromStatus.Name ?? "?",
+                ExitCode = 1,
+                Flag = why,
+            });
+
+            return Pass.Worked;
+        }
         finally
         {
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            await claim.ReleaseAsync();
+            if (claim is not null) await claim.ReleaseAsync();
         }
     }
 
