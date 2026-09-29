@@ -15,5 +15,16 @@ export default defineConfig({
   build: {
     outDir: resolve(projectRoot, 'src/Hatch.Api/wwwroot/apps/hatch'),
     emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        // Left in the entry chunk, Vite's preload helper ties every lazily
+        // loaded chunk's hashed name to the entry's, so a deploy that touches
+        // only the entry - which is nearly every deploy - renames chunks (the
+        // Monaco chunk, in particular) that did not themselves change. A tab
+        // left open across that deploy then asks for a file that is gone. In
+        // a chunk of its own, the helper's name changes only when it does.
+        codeSplitting: { groups: [{ name: 'vite-preload', test: /vite\/preload-helper/ }] },
+      },
+    },
   },
 })
