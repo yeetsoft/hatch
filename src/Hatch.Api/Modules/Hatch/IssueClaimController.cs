@@ -60,9 +60,12 @@ public class IssueClaimController(
         // sentence can only be written from the row. The guarantee is not in
         // this read - it is in the predicate on the write below, which is what
         // makes two callers who both got here on the same pre-claim state
-        // resolve to one claim.
-        if (claims.IsLive(ClaimSnapshot.Of(issue), now))
-            return Conflict(claims.Sentence(ClaimSnapshot.Of(issue), now));
+        // resolve to one claim. Kept past the refusal, too: a token still on
+        // the row here is a claim whose lease has lapsed rather than one that
+        // was never taken, and that is worth a line on the trail of its own.
+        var previous = ClaimSnapshot.Of(issue);
+        if (claims.IsLive(previous, now))
+            return Conflict(claims.Sentence(previous, now));
 
         // One runner per line of the tree: a live claim on an ancestor or a
         // descendant refuses this one with the same kind of sentence.
@@ -89,6 +92,13 @@ public class IssueClaimController(
         // event, so the trail never says a claim was taken that was not kept.
         if (await claims.ConfirmLineAsync(db, issue.Id, token, now, ct) is { } lost)
             return Conflict(lost);
+
+        // The previous token survives only when its lease lapsed rather than
+        // being let go cleanly - a release clears it - so its presence here is
+        // itself the fact worth telling: this take is a takeover, and the trail
+        // says who stopped answering, and when, before it says who holds it now.
+        if (previous.Token is not null)
+            LogLapsed(issue, actor, Holder(previous.ClaimedBy, previous.Runner), previous.HeartbeatAt, now);
 
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
@@ -249,6 +259,24 @@ public class IssueClaimController(
 
     /// <summary>The holder as the trail names one: who, and from where.</summary>
     private static string Holder(string? who, string? runner) => $"{who} on {runner}";
+
+    /// <summary>
+    /// The trail row for a lapsed lease - its own shape, because
+    /// <paramref name="heardAt"/> is not a claim to be held, only the last
+    /// instant this one was.
+    /// </summary>
+    private void LogLapsed(EfHatchIssue issue, string actor, string from, DateTimeOffset? heardAt, DateTimeOffset at)
+    {
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = actor,
+            Kind = EfHatchIssueEvent.ClaimLapsed,
+            Payload = JsonSerializer.Serialize(new { from, heardAt }),
+            At = at,
+        });
+
+        issue.UpdatedAt = at;
+    }
 
     /// <summary>
     /// The claim columns as they stand now, read past the change tracker -

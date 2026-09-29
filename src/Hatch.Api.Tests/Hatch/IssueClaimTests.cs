@@ -88,6 +88,51 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task ATakeoverOfALapsedLease_WritesWhoStoppedAnsweringBeforeWhoHoldsItNow()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+        await h.TakeAsync(issue, "elsewhere:/checkouts/two");
+
+        Assert.Equal(
+            [EfHatchIssueEvent.ClaimLapsed, EfHatchIssueEvent.ClaimTaken],
+            await h.EventKindsAsync(issue));
+
+        var lapsed = (await h.EventsAsync(issue))[0];
+        Assert.Equal("Nathan on somewhere:/checkouts/one", lapsed.Payload!.Value.GetProperty("from").GetString());
+        Assert.Equal(Now, lapsed.Payload!.Value.GetProperty("heardAt").GetDateTimeOffset());
+    }
+
+    [SkippableFact]
+    public async Task AFreshTake_WritesNoLapse()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        Assert.Equal([EfHatchIssueEvent.ClaimTaken], await h.EventKindsAsync(issue));
+    }
+
+    [SkippableFact]
+    public async Task ATakeAfterAnOrdinaryRelease_WritesNoLapse()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        await h.Claims.ReleaseClaim(issue, token, default);
+
+        await h.TakeAsync(issue, "elsewhere:/checkouts/two");
+
+        Assert.Equal(
+            [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimTaken],
+            await h.EventKindsAsync(issue));
+    }
+
+    [SkippableFact]
     public async Task TwoTakesAgainstOnePreClaimState_ResolveToOneClaim()
     {
         await using var h = await NewAsync();

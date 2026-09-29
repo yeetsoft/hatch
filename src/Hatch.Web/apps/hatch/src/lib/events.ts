@@ -33,6 +33,14 @@ export function describe(event: IssueEvent): string {
      to here unless it is read first. */
   if (event.kind === 'wip_overridden') return overrideLine(event.payload) ?? '';
 
+  /* A takeover of a lease that lapsed rather than was let go: { from, heardAt },
+     no `to` - the holder that stopped answering, and when it was last heard
+     from. The claim_taken row right after it says who holds it now. */
+  if (event.kind === 'claim_lapsed') {
+    const heardAt = event.payload?.heardAt;
+    return `${short(from)} stopped answering, last heard from ${short(heardAt)}`;
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

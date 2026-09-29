@@ -354,6 +354,25 @@ public class RunnersControllerTests
         Assert.Null((await h.OneAsync()).ClaimKey);
     }
 
+    [Fact]
+    public async Task ARunnerMidIncrement_ReadsAsHereByItsClaimsHeartbeatEvenPastItsOwnRowsHorizon()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
+
+        // A loop only beats its own row between tickets - see Runners.Project -
+        // so a session well into a long increment can sit past its row's own
+        // gone horizon while its claim keeps being renewed every minute.
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 10));
+        await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
+
+        var runner = await h.OneAsync();
+        Assert.Equal(issue.Key, runner.ClaimKey);
+        Assert.Equal(Now.AddSeconds(Horizon + 10), runner.LastSeenAt);
+    }
+
     // ---- Aging ----
 
     [Fact]

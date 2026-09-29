@@ -1124,6 +1124,16 @@ public class EfHatchIssueEvent
     /// </summary>
     public const string ClaimTaken = "claim_taken";
 
+    /// <summary>
+    /// The claim a take found on the row had already gone quiet past its lease -
+    /// silence, a session that stopped printing, or a runner giving up on its
+    /// own after a partition - and the take that follows is a takeover rather
+    /// than a fresh claim. Written before <see cref="ClaimTaken"/>, so the trail
+    /// says who stopped answering and when before it says who holds it now. A
+    /// kind is a string, so this needed no migration.
+    /// </summary>
+    public const string ClaimLapsed = "claim_lapsed";
+
     /// <summary>The holder let go of it, presenting the token it was given.</summary>
     public const string ClaimReleased = "claim_released";
 

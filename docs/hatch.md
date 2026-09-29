@@ -962,13 +962,26 @@ the Comments thread. See [Comment, question and answer](#comment-question-and-an
 for what *read* means, and [What a runner does](#what-a-runner-does-in-order)
 for how a message reaches a session.
 
-**Clearing a claim does not stop the runner.** The operator's
-`DELETE .../claim` takes the lease off the row and nothing else: that session
-keeps running, keeps pushing, and may still move the ticket, because moves are
-not gated on a token. What clearing does is make the issue claimable again, so
-the next pass may spawn a second session at it and the two would then both be
-writing to it. It is the sentence the confirmation on the issue page leads with,
-and the reason to press it is a runner known to be gone or known to be wrong.
+**Clearing a claim stops the runner, but not at once.** The operator's
+`DELETE .../claim` takes the lease off the row straight away, so the issue is
+claimable again from that instant — but the session that held it does not know
+yet. It finds out at its next heartbeat, refused with "this claim was cleared",
+and that is what ends it: the heartbeat calls `OnLost`, and the runner cancels
+the session rather than let it keep pushing against a claim it no longer holds.
+That is a beat away, not gone in the same instant — within a minute by default —
+so a second session claimed in the gap may briefly be writing to the ticket
+alongside the first. It is the sentence the confirmation on the issue page leads
+with, and the reason to press it is a runner known to be gone or known to be
+wrong.
+
+**A take over a lapsed lease says so on the trail, before it says who holds it
+now.** When a take finds a token still on the row whose lease is no longer
+live — silence past the TTL, or any other reason the row stopped being kept
+up — it writes a `claim_lapsed` event naming who stopped answering and when
+they were last heard from, immediately before the `claim_taken` event for the
+runner taking it over. A take against a row nothing held, or a row a release
+left clean, writes no `claim_lapsed` — the event is for a takeover, not for
+every take.
 
 **The guarantee lives in a predicate on the write.** Reading the row first is
 unavoidable — a refusal has to name who holds it, and that sentence can only be
@@ -1246,7 +1259,11 @@ Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `expedited_changed`, `express_changed`, `dependency_added`,
-`dependency_removed`, `claim_taken`, `claim_released`, `claim_cleared`,
+`dependency_removed`, `claim_taken`, `claim_lapsed` (a take found a lease that
+had already gone quiet past its terms and is taking it over — payload
+`{ from, heardAt }`, the previous holder and when it was last heard from,
+written immediately before the `claim_taken` for the runner taking over),
+`claim_released`, `claim_cleared`,
 `merge_check_changed`, `build_check_changed`, `wip_overridden` (a move into a
 full [WIP](#wip) section, let through because a person said *move anyway* -
 payload `{ limit, load, to }`, `load` counting the card itself, written beside
@@ -3498,6 +3515,14 @@ would drift the moment an operator cleared a claim out from under the runner
 holding it. The row's own line is therefore only ever what a runner said
 *between* tickets — "nothing on the board is an agent's to move", "AER-12 moved"
 — because an increment's chatter already rides its lease.
+
+**A claim's heartbeat counts as the runner being heard from, too.** A loop
+beats its own row only between tickets, but a session well into a long
+increment can beat its *claim* every minute the whole time — see
+[Claim](#claim). `RunnerDto.LastSeenAt` is the later of the two, so a runner
+reads *Working AER-12* for as long as either is fresh, and does not read
+*Gone* out from under a session that is still there and still renewing its
+lease, only quiet on its own row.
 
 **Two horizons, and only one of them is a setting.** A row is *idle* while it is
 being heard from, *gone* once its last heartbeat is older than
