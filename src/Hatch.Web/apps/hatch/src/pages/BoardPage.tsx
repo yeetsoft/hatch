@@ -39,7 +39,10 @@ import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
-import type { AssigneeDirectory, Board, IssueCard, Project, Status } from '../types';
+import { preview, runs, tightness } from '../lib/wip';
+import type { Tightness } from '../lib/wip';
+import { WipBands } from '../components/WipBands';
+import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
 
 /** The URL's whole vocabulary here: which project, by key - the same param
     PlanPage's picker uses. */
@@ -206,6 +209,26 @@ export function BoardPage() {
      parent's Filed under list. */
   const columns = useMemo(() => boardColumns(board?.statuses ?? []), [board?.statuses]);
 
+  /* How full the WIP section is, and which of the drawn columns are in it -
+     read from board.wip and nothing else, so a column flagged isWip with no
+     limit set draws no band at all. Named `section`, not `wip`: HA-92 binds
+     that name to its own hook inside this component. */
+  const section: Wip | null = board?.wip ?? null;
+  const zone = useMemo(() => runs(columns, section), [columns, section]);
+  const zoneIds = useMemo(() => new Set(zone.flatMap((run) => run.statusIds)), [zone]);
+
+  /* The card a drop just sent into the section, held from onDragEnd until the
+     reload that follows it lands - see the comment there. Set and cleared by
+     onDragEnd alone, never by commit, since commit is shared with the peek's
+     status picker and a press there has nothing to do with a drag's preview. */
+  const [landing, setLanding] = useState<IssueCard | null>(null);
+
+  // The count and the tint the band and the lit columns draw: the section's
+  // own load, or one more for as long as a counted card sits outside it.
+  const load = section ? preview(section, dragging ?? landing) : 0;
+  const tint: Tightness | null = section ? tightness(load, section.limit) : null;
+  const previewing = section !== null && dragging !== null && load > section.load;
+
   // Reads the pointer against the board's own ids rather than dnd-kit's
   // default corner-distance scoring - see lib/aim.ts for why that matters.
   const collisionDetection = useMemo(() => aimAt(board?.issues ?? []), [board?.issues]);
@@ -279,15 +302,25 @@ export function BoardPage() {
       const placed = place(board.issues, visible, String(event.active.id), event.over ? String(event.over.id) : null);
       if (!placed) return;
 
+      // Held past the repaint below and past the request, so the preview
+      // does not go back to rest and then jump again once the reload's own
+      // wip catches up - see lib/wip.ts's preview and the decision on the
+      // ticket this implements.
+      if (zoneIds.has(placed.statusId)) {
+        setLanding(board.issues.find((i) => i.key === placed.key) ?? null);
+      }
+
       try {
         await commit(placed);
       } catch (err) {
         // Nothing is asked here: a move the server refused closed nothing.
         setError(message(err));
         await reload();
+      } finally {
+        setLanding(null);
       }
     },
-    [board, visible, commit, setError, reload],
+    [board, visible, commit, setError, reload, zoneIds],
   );
 
   /** The peek's status picker, sending a card to a column by a press rather
@@ -449,7 +482,8 @@ export function BoardPage() {
           onDragCancel={cancel}
           onDragEnd={(e) => void onDragEnd(e)}
         >
-          <div className="hatch-board">
+          <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
+            <WipBands runs={zone} section={section} load={load} />
             {columns.map((status) => (
               <Column
                 key={status.id}
@@ -458,6 +492,8 @@ export function BoardPage() {
                 hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
                 filtering={isFiltering(filter)}
                 dropping={dragging !== null && over === status.id}
+                lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
+                tint={zoneIds.has(status.id) ? tint : null}
                 found={found}
                 onPeek={peek}
               />
@@ -540,6 +576,8 @@ function Column({
   hidden,
   filtering,
   dropping,
+  lit,
+  tint,
   found,
   onPeek,
 }: {
@@ -550,6 +588,13 @@ function Column({
   filtering: boolean;
   /** A drag is in progress and this is the column it would land in. */
   dropping: boolean;
+  /** A counted card is being dragged over some column of this one's WIP
+      section - every column in the section lights together, not just the one
+      under the pointer. */
+  lit: boolean;
+  /** This column's tightness where it is in the WIP section, null where it
+      is not. */
+  tint: Tightness | null;
   /** The key of the card the console found, on any column. */
   found: string | null;
   onPeek: (card: IssueCard) => void;
@@ -587,7 +632,11 @@ function Column({
   const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
 
   return (
-    <section className={`hatch-column${dropping ? ' dropping' : ''}`} style={statusVars(status.color)} ref={setNodeRef}>
+    <section
+      className={`hatch-column${dropping || lit ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
+      style={statusVars(status.color)}
+      ref={setNodeRef}
+    >
       <header className="hatch-column-head">
         <StatusDot status={status} />
         <span className="hatch-column-name">{status.name}</span>
