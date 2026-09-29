@@ -672,13 +672,20 @@ public record ReviewDto(
 /// Held back because a red build or a conflict is not ready for a person, and
 /// the loop is already on it. Defaults to zero so an older client still reads.
 /// </param>
+/// <param name="TrunkBuilds">
+/// Every repository's trunk whose latest build failed, or is still running
+/// with a check that has already failed - a person's to fix, unlike
+/// <paramref name="FailingBuilds"/>, because no agent owns a trunk. Ordered by
+/// canonical, then trunk. Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
     IReadOnlyList<ConflictDto> Conflicts,
     IReadOnlyList<FailingBuildDto>? FailingBuilds = null,
-    int ReviewsHeldBack = 0);
+    int ReviewsHeldBack = 0,
+    IReadOnlyList<TrunkBuildDto>? TrunkBuilds = null);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -1559,6 +1566,46 @@ public record BuildCheckDto(
     string CheckedBy);
 
 /// <summary>
+/// A trunk's build verdict, as the runner reports it - the same fact as
+/// <see cref="BuildCheckRequest"/>, but about a repository's trunk rather than
+/// an issue's branch, because a trunk build is nobody's issue. Who took it is
+/// the credential's to say, and when is the board's, so the body names neither.
+/// </summary>
+/// <param name="Remote">The repository as the runner spells it. The board keys the verdict on its canonical form.</param>
+/// <param name="Trunk">The trunk's name, as the runner's own workspace reported it.</param>
+/// <param name="Verdict">One of <see cref="BuildVerdicts"/>.</param>
+/// <param name="Failing">The checks that failed. Required for <c>failed</c> and ignored otherwise.</param>
+/// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+public record TrunkBuildRequest(
+    string Remote,
+    string Trunk,
+    string Sha,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto>? Failing,
+    string Runner);
+
+/// <summary>One stored trunk verdict: the build on the tip of one repository's trunk.</summary>
+/// <param name="Remote">The remote as the runner spelled it.</param>
+/// <param name="Canonical">The remote's canonical form - the verdict's identity across every project, not only one issue's.</param>
+/// <param name="ShaSince">When the board first heard about <paramref name="Sha"/>. What ten minutes of asking again about <c>none</c> is counted from.</param>
+/// <param name="CheckedAt">When the board took it.</param>
+/// <param name="CheckedBy">The name of the credential it arrived under.</param>
+/// <param name="BugIssueKey">The bug filed while this trunk was failing, or null when none is attached yet - see HA-95.</param>
+public record TrunkBuildDto(
+    long Id,
+    string Remote,
+    string Canonical,
+    string Trunk,
+    string Sha,
+    DateTimeOffset ShaSince,
+    string Verdict,
+    IReadOnlyList<FailingCheckDto> Failing,
+    DateTimeOffset CheckedAt,
+    string Runner,
+    string CheckedBy,
+    string? BugIssueKey);
+
+/// <summary>
 /// The stall guard's two answers, in its words. A question the board opens for a
 /// build that failed again on the agent's own fix offers the same two, so they
 /// live here and neither side spells them.
@@ -1710,12 +1757,21 @@ public record RunnerHeartbeatRequest(
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
 /// </remarks>
+/// <param name="For">
+/// The person this runner works for, resolved the same way a <c>--mine</c>
+/// dispatch pass is: the calling key's owner, or the local person where the
+/// wall is off. A key with no owner falls back to the key's own name, the same
+/// fallback the claim's own "for &lt;name&gt;" already makes. Absent from a
+/// Hatch too old to answer with it, which the console reads the same way as
+/// a key belonging to nobody.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
     int? MaxRuns,
     decimal? MaxSpend,
-    DateTimeOffset? UntilAt);
+    DateTimeOffset? UntilAt,
+    string? For = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

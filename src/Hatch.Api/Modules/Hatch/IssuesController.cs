@@ -200,7 +200,19 @@ public class IssuesController(
     /// dialog.
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<IssueDto>> CreateIssue(IssueCreateRequest request, CancellationToken ct)
+    public Task<ActionResult<IssueDto>> CreateIssue(IssueCreateRequest request, CancellationToken ct) =>
+        CreateIssueAsync(request, expedited: false, ct);
+
+    /// <summary>
+    /// The whole of <see cref="CreateIssue"/>, plus the one thing a key must
+    /// never set for itself: <paramref name="expedited"/>. Internal, and called
+    /// only from <see cref="TrunkBuildBugController"/> - the bug a failing
+    /// trunk's button files is born expedited the way an issue under an express
+    /// parent is born express (<see cref="EfHatchIssue.Express"/>), in the same
+    /// save and with no second event, because expediting at birth is not a
+    /// change from anything.
+    /// </summary>
+    internal async Task<ActionResult<IssueDto>> CreateIssueAsync(IssueCreateRequest request, bool expedited, CancellationToken ct)
     {
         var title = request.Title?.Trim();
         if (Invalid(title, request.Description, request.Type) is { } invalid) return BadRequest(invalid);
@@ -242,6 +254,7 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 Express = expressFrom is not null,
+                Expedited = expedited,
                 CreatedBy = actor,
                 CreatedAt = now,
                 UpdatedAt = now,

@@ -254,6 +254,10 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
+        // No tally here - this is one increment, not a night - so the readout's
+        // runner row shows this one and nothing carried from a restart.
+        runtime.Readout.SetRunner(new RunnerSnapshot(runtime.RunnerName, beat.Instruction?.For, 1, TimeSpan.Zero, 0m, null));
+
         var clones = runtime.Settings.Workspace is not null;
 
         WorkDto? work = null;
@@ -509,6 +513,7 @@ public sealed class WorkCommand(Runtime runtime)
             // comment and push a pending merge for an increment that never
             // finished.
             var owned = false;
+            IncrementReport? report = null;
             try
             {
                 if (attach)
@@ -523,10 +528,11 @@ public sealed class WorkCommand(Runtime runtime)
                 // that treated a hard ticket as a broken command would be one more
                 // thing an operator has to work around.
                 increment = runtime.Increment();
-                var report = await increment.RunAsync(
+                report = await increment.RunAsync(
                     work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
-                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)));
+                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                    runnerName: runtime.RunnerName, incrementNumber: 1);
                 owned = !report.LostLease;
                 return 0;
             }
@@ -534,6 +540,12 @@ public sealed class WorkCommand(Runtime runtime)
             {
                 owned &= claim.Lost is null;
                 await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None);
+
+                // Every opening banner has a closing one - null only for the
+                // attach path, which prints its own header and has no report to
+                // close with; a person is sitting at that session.
+                if (report is not null)
+                    runtime.Say.Lines(Banner.Closing(report, Readout.OneLine(runtime.Readout.Snapshot().UsageWindows)));
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)

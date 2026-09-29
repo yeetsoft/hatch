@@ -110,13 +110,14 @@ public class RunnersTests
         row.MaxSpend = 40m;
         row.UntilAt = Now.AddHours(6);
 
-        var instruction = Runners.Instruct(row);
+        var instruction = Runners.Instruct(row, "Nathan");
 
         Assert.Equal(EfHatchRunner.Paused, instruction.State);
         Assert.Equal("AER-930", instruction.Under);
         Assert.Equal(12, instruction.MaxRuns);
         Assert.Equal(40m, instruction.MaxSpend);
         Assert.Equal(Now.AddHours(6), instruction.UntilAt);
+        Assert.Equal("Nathan", instruction.For);
     }
 
     // ---- The line ----

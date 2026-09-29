@@ -135,6 +135,23 @@ public static class Fixtures
                 : [],
             pushedByIncrement, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>
+    /// A trunk verdict as the board would hold it, passed unless said otherwise -
+    /// at the default checkout's remote and the default trunk sha
+    /// <c>PollTests.Heads()</c> gives "main", so a poll test that never mentions
+    /// a trunk build finds this one already settled and reads nothing further.
+    /// </summary>
+    public static TrunkBuildDto TrunkBuild(
+        string verdict = BuildVerdicts.Passed, string remote = "https://example.test/repo.git",
+        string canonical = "example.test/repo", string trunk = "main", string? sha = null,
+        DateTimeOffset? shaSince = null, string? bugIssueKey = null, params string[] failing) =>
+        new(
+            1, remote, canonical, trunk, sha ?? new string('a', 40), shaSince ?? DateTimeOffset.UnixEpoch, verdict,
+            verdict == BuildVerdicts.Failed
+                ? (failing.Length == 0 ? ["api"] : failing).Select(n => new FailingCheckDto(n, $"https://{canonical}/checks/{n}")).ToList()
+                : [],
+            DateTimeOffset.UnixEpoch, "runner", "hatch", bugIssueKey);
+
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
@@ -190,6 +207,44 @@ public static class Fixtures
         {
             type = "assistant",
             message = new { content = new[] { new { type = "tool_use", name, input = new { command } } } },
+        });
+
+    /// <summary>
+    /// One assistant message carrying a usage block, the way the stream repeats
+    /// it on every content block of the same message - one call here is one
+    /// message id, however many times a test plays it.
+    /// </summary>
+    public static string AssistantUsage(
+        string messageId, long input = 0, long output = 0, long cacheCreate = 0, long cacheRead = 0) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "assistant",
+            message = new
+            {
+                id = messageId,
+                content = new[] { new { type = "text", text = "" } },
+                usage = new
+                {
+                    input_tokens = input,
+                    output_tokens = output,
+                    cache_creation_input_tokens = cacheCreate,
+                    cache_read_input_tokens = cacheRead,
+                },
+            },
+        });
+
+    /// <summary>The CLI's own reading of the account, out of the session's stream.</summary>
+    public static string RateLimitEvent(params (string Window, double Utilization, long? ResetsAt)[] windows) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "rate_limit_event",
+            rate_limit_info = new
+            {
+                unifiedWindows = windows.ToDictionary(
+                    w => w.Window,
+                    w => new { utilization = w.Utilization, resetsAt = w.ResetsAt },
+                    StringComparer.Ordinal),
+            },
         });
 
     public static string Result(
