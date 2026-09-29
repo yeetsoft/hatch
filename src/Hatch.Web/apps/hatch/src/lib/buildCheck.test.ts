@@ -25,10 +25,14 @@ describe('failedBuilds', () => {
     expect(failedBuilds([check()])).toHaveLength(1);
   });
 
-  /* A build that passed, is running or never ran shows nothing - and so does a
-     board that has never heard of any of this. */
-  it.each(['passed', 'pending', 'none'])('drops a %s verdict', (verdict) => {
+  /* A build that passed, is running with nothing failed yet, or never ran
+     shows nothing - and so does a board that has never heard of any of this. */
+  it.each(['passed', 'pending', 'none'])('drops a %s verdict with nothing failed', (verdict) => {
     expect(failedBuilds([check({ verdict, failing: [] })])).toEqual([]);
+  });
+
+  it('keeps a pending verdict that already carries a failed check', () => {
+    expect(failedBuilds([check({ verdict: 'pending' })])).toHaveLength(1);
   });
 
   it('draws nothing for no verdict at all', () => {
@@ -54,6 +58,10 @@ describe('buildWords', () => {
 
   it('names the repository only when more than one fails', () => {
     expect(buildWords(check(), true)).toBe('Build failing: api, CI in forge.example/owner/repo');
+  });
+
+  it('says still running for a pending verdict that already carries a failed check', () => {
+    expect(buildWords(check({ verdict: 'pending' }))).toBe('Build failing, still running: api, CI');
   });
 });
 

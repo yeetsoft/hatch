@@ -282,6 +282,34 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_HoldsBackAnIssueWithAPendingBuildThatAlreadyHasAFailingCheck()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "one check failed, one still running", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, BuildVerdicts.Pending, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+        Assert.Equal(Key(issue), Assert.Single(attention.FailingBuilds!).Key);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotHoldBackAPendingBuildWithNothingFailedYet()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still running, nothing failed", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, BuildVerdicts.Pending);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(Key(issue), Assert.Single(attention.Reviews).Key);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+        Assert.Empty(attention.FailingBuilds!);
+    }
+
+    [Fact]
     public async Task Attention_ListsAnIssueWithACleanVerdictAndAPassedBuild()
     {
         var h = await NewAsync();

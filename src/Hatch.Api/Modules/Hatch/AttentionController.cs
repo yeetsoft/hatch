@@ -85,10 +85,13 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
             .ToList();
 
-        // The same for the build: listed with only its failed verdicts. Not
-        // counted towards the badge, as the conflicts are not.
+        // The same for the build: listed with only its failed verdicts, plus a
+        // pending one that already carries a failing check - a check that has
+        // failed counts while the rest are still running. Not counted towards
+        // the badge, as the conflicts are not.
         var failed = (await db.BuildChecks.AsNoTracking()
-                .Where(b => reviewIds.Contains(b.IssueId) && b.Verdict == BuildVerdicts.Failed)
+                .Where(b => reviewIds.Contains(b.IssueId)
+                    && (b.Verdict == BuildVerdicts.Failed || (b.Verdict == BuildVerdicts.Pending && b.Failing != null)))
                 .OrderBy(b => b.Canonical)
                 .ToListAsync(ct))
             .GroupBy(b => b.IssueId)

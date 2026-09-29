@@ -586,6 +586,9 @@ public sealed class PollTests
     private static ForgeAnswer Failed(params string[] names) =>
         new(new BuildRead(BuildVerdicts.Failed, (names.Length == 0 ? ["api"] : names).Select(n => new FailingCheck(n, $"https://forge.example/{n}", 9)).ToList()), null);
 
+    private static ForgeAnswer PendingFailing(params string[] names) =>
+        new(new BuildRead(BuildVerdicts.Pending, (names.Length == 0 ? ["api"] : names).Select(n => new FailingCheck(n, $"https://forge.example/{n}", 9)).ToList()), null);
+
     private static ForgeAnswer Read(string verdict) => new(new BuildRead(verdict, []), null);
 
     /// <summary>One issue in review with one branch on origin, a merge verdict that is already known, and a board that keeps the build.</summary>
@@ -625,6 +628,19 @@ public sealed class PollTests
         // The merge half fetched once for itself; the build half added none.
         Assert.Equal(1, rig.Count("fetch"));
         Assert.Contains($"hatch: AER-1 build on {Tip[..7]} failed (CI, api)", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_check_that_has_failed_is_sent_while_the_build_is_still_pending()
+    {
+        using var rig = Building(kept: Fixtures.Build(BuildVerdicts.Pending, "example.test/repo", Tip, failing: ["api"]));
+        rig.H.Forge.Answer = PendingFailing("api");
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal(BuildVerdicts.Pending, put.Verdict);
+        Assert.Equal(["api"], put.Failing!.Select(f => f.Name));
     }
 
     [Fact]

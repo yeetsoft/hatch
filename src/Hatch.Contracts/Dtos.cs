@@ -614,9 +614,10 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// which already lights the control.
 /// </param>
 /// <param name="FailingBuilds">
-/// The review column's issues whose build on the branch's tip failed in at
-/// least one repository, in that column's board order. Not counted towards the
-/// badge, for the reason <paramref name="Conflicts"/> is not: the loop fixes a
+/// The review column's issues whose build on the branch's tip failed, or is
+/// still running with a check that has already failed, in at least one
+/// repository, in that column's board order. Not counted towards the badge,
+/// for the reason <paramref name="Conflicts"/> is not: the loop fixes a
 /// failing build, and one it cannot fix becomes a question, which already
 /// lights the control.
 /// </param>
@@ -648,10 +649,11 @@ public record ConflictDto(
     IReadOnlyList<MergeCheckDto> Checks);
 
 /// <summary>
-/// One issue in review whose build failed: what the panel draws, and the checks
-/// that name where.
+/// One issue in review whose build failed, or is still running with a check
+/// that has already failed: what the panel draws, and the checks that name
+/// where.
 /// </summary>
-/// <param name="Checks">Only the failed verdicts, one per repository, so a passing repository beside a failing one is not listed.</param>
+/// <param name="Checks">Only the failed or still-failing verdicts, one per repository, so a passing repository beside a failing one is not listed.</param>
 public record FailingBuildDto(
     string Key,
     string Title,

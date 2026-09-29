@@ -1031,7 +1031,7 @@ branch as it stands now. `Verdict` is one of four:
 |---|---|
 | `passed` | Every check on the sha has concluded and none failed. Nothing for an agent to do |
 | `failed` | Every check has concluded and at least one failed. `Failing` names each, with a link |
-| `pending` | Something is still queued or running. A runner waits for every check to conclude, so one increment sees every failure at once instead of spending two |
+| `pending` | Something is still queued or running. A runner waits for every check to conclude before calling the verdict `failed`, so one increment sees every failure at once instead of spending two — but `Failing` already names whatever has failed so far, so a check that fails while others still run is visible before the last one concludes |
 | `none` | No check ran on the sha |
 
 A check run fails on `failure`, `timed_out` or `startup_failure`; a commit status
@@ -1057,9 +1057,9 @@ reason a key may write a merge check. It is refused, in a sentence, for a remote
 that does not canonicalise, an unknown verdict, no branch, no sha, `failed` with
 no failing checks, more than 100 of them, a check name that is empty, over 200
 characters or has a line break in it, and a runner over its limit; an unknown key
-is a `404`. Failing checks on a verdict that is not `failed` are ignored, not
-refused. They are deduplicated by name and sorted, so the same failure listed in
-another order is not a change. **A check's link is stored only if it is an
+is a `404`. Failing checks on a verdict that is not `failed` or `pending` are
+ignored, not refused. They are deduplicated by name and sorted, so the same
+failure listed in another order is not a change. **A check's link is stored only if it is an
 absolute `http` or `https` address, and as null otherwise**: a key writes it and
 the issue page draws it as a link, so anything else would be stored script. The
 verdict is not refused for it. The issue's column is not checked, for the reason
@@ -1681,11 +1681,12 @@ it.
 ### The issue in review whose build has failed
 
 `failingBuilds` is the fourth list, and it too does **not** light the control. It
-is the review column's issues whose [build check](#build-check) says `failed` in
-at least one repository, in the column's own board order, each with only the
-repositories that failed. The panel draws it as *Builds that fail*, after the
-conflicts, and the issue page draws a chip beside the pull request's naming the
-failing checks, each linked.
+is the review column's issues whose [build check](#build-check) says `failed`,
+or `pending` with a check that has already failed, in at least one repository,
+in the column's own board order, each with only the repositories that are
+failing. The panel draws it as *Builds that fail*, after the conflicts, and the
+issue page draws a chip beside the pull request's naming the failing checks,
+each linked — marked as still running while the verdict is `pending`.
 
 The reasoning is the conflicts' own: the loop fixes a failing build, and one it
 cannot fix becomes a question, which already lights the control. Counting it as
@@ -1693,7 +1694,7 @@ well would light the control twice for one problem, and for the ordinary case �
 one the loop fixes before anybody looks — for nothing. `attentionCount` leaves
 it out and its test says so.
 
-The same hold-back applies here: an issue with a failed build that carries a
+The same hold-back applies here: an issue with a failing build that carries a
 pull request is pulled out of `reviews` and counted in `reviewsHeldBack`
 instead, for the same reason a conflicted one is — a red build is not ready
 for a person, and the loop is already on it.

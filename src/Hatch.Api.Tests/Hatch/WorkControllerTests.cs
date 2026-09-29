@@ -2032,6 +2032,20 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Build_ARunningBuildIsFolded_EvenWithAFailingCheckAlreadyNamed()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "one failed, one still running", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Pending, failing: ["api"]);
+
+        Assert.Equal(
+            $"its build on {new string('b', 7)} is still running",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
     public async Task Build_APassingBuildIsFolded()
     {
         var h = await NewAsync();

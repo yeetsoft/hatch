@@ -83,11 +83,20 @@ public sealed class ForgeTests
         Assert.Equal(BuildVerdicts.Pending, GhForge.Classify("", Status("ci/other", "pending")).Verdict);
     }
 
-    /// <summary>The runner waits for every check to conclude, so one increment sees every failure.</summary>
+    /// <summary>The runner waits for every check to conclude before calling the verdict failed, so one increment sees every failure - but a check that has already failed is visible on the pending verdict too.</summary>
     [Fact]
-    public void One_check_still_running_outranks_another_that_failed()
+    public void A_check_still_running_does_not_hide_one_that_already_failed()
     {
         var read = GhForge.Classify(Run("api", "completed", "failure", 1) + "\n" + Run("CI", "in_progress", null, 2), "");
+
+        Assert.Equal(BuildVerdicts.Pending, read.Verdict);
+        Assert.Equal(["api"], read.Failing.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void A_check_still_running_and_nothing_failed_is_pending_with_nothing_named()
+    {
+        var read = GhForge.Classify(Run("api", "in_progress", null, 1) + "\n" + Run("CI", "in_progress", null, 2), "");
 
         Assert.Equal(BuildVerdicts.Pending, read.Verdict);
         Assert.Empty(read.Failing);

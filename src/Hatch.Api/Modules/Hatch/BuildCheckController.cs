@@ -94,16 +94,20 @@ public class BuildCheckController(
         if (sha.Length > EfHatchBuildCheck.MaxShaLength)
             return BadRequest($"a sha is at most {EfHatchBuildCheck.MaxShaLength} characters");
 
-        // Failing checks on a verdict that is not failed are ignored rather than
-        // refused. Deduplicated by name and sorted, so the same failure listed in
-        // another order by another runner is the same verdict and not a change.
+        // Failing checks on a verdict that is not failed or pending are ignored
+        // rather than refused. Deduplicated by name and sorted, so the same
+        // failure listed in another order by another runner is the same verdict
+        // and not a change. Only a failed verdict must name at least one - a
+        // pending verdict with nothing failed yet is legitimate.
         List<FailingCheckDto> failing = [];
-        if (verdict == BuildVerdicts.Failed)
+        if (verdict is BuildVerdicts.Failed or BuildVerdicts.Pending)
         {
             var named = request.Failing ?? [];
             if (named.Count > EfHatchBuildCheck.MaxFailing)
                 return BadRequest($"a verdict names at most {EfHatchBuildCheck.MaxFailing} failing checks");
-            if (named.Count == 0 || named.Any(f => f is null))
+            if (named.Any(f => f is null))
+                return BadRequest("a failed verdict names the checks that failed");
+            if (verdict == BuildVerdicts.Failed && named.Count == 0)
                 return BadRequest("a failed verdict names the checks that failed");
             if (named.Any(f => (f.Name?.Trim() ?? "").Length is 0 or > EfHatchBuildCheck.MaxCheckNameLength
                     || f.Name!.Contains('\n') || f.Name.Contains('\r')))
