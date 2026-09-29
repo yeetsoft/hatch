@@ -40,6 +40,12 @@ describe('describe', () => {
   it('leaves a plain created unchanged', () => {
     expect(describeEvent(event({ kind: 'created', payload: { type: 'story', title: 'A story' } }))).toBe('');
   });
+
+  it('draws an override as the WIP limit it crossed', () => {
+    expect(
+      describeEvent(event({ kind: 'wip_overridden', payload: { limit: 5, load: 6, to: 'In Progress' } })),
+    ).toBe('overrode the WIP limit — 6 of 5 into In Progress');
+  });
 });
 
 describe('short', () => {

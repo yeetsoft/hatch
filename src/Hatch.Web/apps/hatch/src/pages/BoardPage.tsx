@@ -20,6 +20,7 @@ import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
 import { StatusDot } from '../components/StatusPill';
+import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import type { CloseOffer } from '../lib/closeSubtree';
@@ -39,6 +40,8 @@ import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
+import { useWipOverride } from '../lib/useWipOverride';
+import { overridden, wipRefusal } from '../lib/wipOverride';
 import { preview, runs, tightness } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
@@ -165,6 +168,11 @@ export function BoardPage() {
   const closing = useCloseSubtree(reload, closed);
   const { ask } = closing;
 
+  // The dialog a drop into a full WIP section raises. `reload` is its
+  // `onLeave`: Leave it, or dismissing it, catches the board up with the card
+  // commit's own catch has already put back.
+  const wip = useWipOverride(reload);
+
   useEffect(() => {
     getProjects()
       .then((ps) => {
@@ -249,10 +257,20 @@ export function BoardPage() {
    *
    * Throws on a refusal rather than catching it, so the two callers can
    * answer differently: `onDragEnd` shows it on the board, `send` reloads and
-   * lets the peek show it instead.
+   * lets the peek show it instead. A WIP refusal is the one exception - it is
+   * swallowed here, behind the dialog, so a drag and a peek press get it
+   * uniformly rather than one getting a dialog and the other a bare inline
+   * sentence.
+   *
+   * The retry reaches `commit` through `commitRef` rather than by name, so the
+   * override call sits inside `commit`'s own body without reading the `const`
+   * while it is still being assigned.
    */
+  const commitRef = useRef<(placed: Placement, fromStatusId?: number, override?: boolean) => Promise<void>>(
+    () => Promise.resolve(),
+  );
   const commit = useCallback(
-    async (placed: Placement, fromStatusId?: number) => {
+    async (placed: Placement, fromStatusId?: number, override = false) => {
       if (!board) return;
 
       // Read off every card rather than off `visible`, and before the repaint:
@@ -275,23 +293,34 @@ export function BoardPage() {
       setMoving((n) => n + 1);
       setBoard({ ...board, issues: placed.issues });
 
+      const base = { statusId: placed.statusId, afterKey: placed.afterKey, beforeKey: placed.beforeKey, fromStatusId };
+      const request = override ? overridden(base) : base;
+
       try {
-        await moveIssue(placed.key, {
-          statusId: placed.statusId,
-          afterKey: placed.afterKey,
-          beforeKey: placed.beforeKey,
-          fromStatusId,
-        });
+        await moveIssue(placed.key, request);
         await reload();
         // After the reload, so the board the chicklet sits over already shows the move.
         if (move) moved(move);
         ask(offer);
+      } catch (err) {
+        const refusal = wipRefusal(err);
+        if (refusal && !override) {
+          await reload();
+          wip.ask(placed.key, refusal, () => commitRef.current(placed, fromStatusId, true));
+          return;
+        }
+        throw err;
       } finally {
         setMoving((n) => n - 1);
       }
     },
-    [board, setBoard, reload, ask, moved],
+    [board, setBoard, reload, ask, moved, wip],
   );
+  // Synced in an effect rather than during render, so a ref read is never a
+  // render-time access - the retry only ever runs later, from a press.
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
 
   const onDragEnd = useCallback(
     async (event: DragEndEvent) => {
@@ -550,6 +579,14 @@ export function BoardPage() {
         failures={closing.failures}
         onConfirm={closing.confirm}
         onClose={closing.close}
+      />
+
+      <WipOverrideDialog
+        asking={wip.asking}
+        busy={wip.busy}
+        error={wip.error}
+        onConfirm={wip.confirm}
+        onClose={wip.close}
       />
     </div>
   );

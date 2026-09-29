@@ -38,6 +38,7 @@ import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
+import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
 import { BuildCheckChips } from '../components/BuildCheckChips';
 import { MergeConflictChips } from '../components/MergeConflictChips';
@@ -60,6 +61,8 @@ import { waitingChild } from '../lib/next';
 import { openQuestions } from '../lib/questions';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
+import { useWipOverride } from '../lib/useWipOverride';
+import { overridden, wipRefusal } from '../lib/wipOverride';
 import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
 import type {
   AssigneeDirectory,
@@ -364,6 +367,10 @@ export function IssuePage() {
   // hooks, above the guards below, because the rules of hooks are an error here.
   const closing = useCloseSubtree(load);
 
+  // The dialog a status-bar press into a full WIP section raises. No
+  // `onLeave`: `move`'s own catch has already re-read the issue before asking.
+  const wip = useWipOverride();
+
   if (error && !issue) return <p className="text-danger">{error}</p>;
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
@@ -389,7 +396,22 @@ export function IssuePage() {
     // Computed before the patch, so it is the subtree the operator was looking
     // at when they pressed; asked after it, so a refused move asks nothing.
     const offer = closeOffer(board, key, issue.statusId, statusId);
-    if (await save({ statusId })) closing.ask(offer);
+    try {
+      await patchIssue(key, { statusId });
+      await load();
+      closing.ask(offer);
+    } catch (err) {
+      const refusal = wipRefusal(err);
+      if (refusal) {
+        await load();
+        wip.ask(key, refusal, async () => {
+          await patchIssue(key, overridden({ statusId }));
+          await load();
+        });
+        return;
+      }
+      setError(message(err));
+    }
   };
 
   async function remove() {
@@ -640,6 +662,14 @@ export function IssuePage() {
         failures={closing.failures}
         onConfirm={closing.confirm}
         onClose={closing.close}
+      />
+
+      <WipOverrideDialog
+        asking={wip.asking}
+        busy={wip.busy}
+        error={wip.error}
+        onConfirm={wip.confirm}
+        onClose={wip.close}
       />
     </div>
   );
@@ -969,7 +999,7 @@ function ChildComposer({
       </Button>
 
       {/* Said here, under the box that caused it, in the sentence the server
-          wrote - see failureMessage in api/client.ts. */}
+          wrote - see fetchJson in api/client.ts. */}
       {error && <p className="text-danger">{error}</p>}
     </div>
   );

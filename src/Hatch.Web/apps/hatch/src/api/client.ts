@@ -75,17 +75,19 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     return await new Promise<T>(() => {});
   }
   if (!res.ok) {
-    throw new HttpError(await failureMessage(res, init?.method ?? 'GET', path), res.status);
+    const text = await res.text();
+    const fallback = `${init?.method ?? 'GET'} ${path} failed: ${res.status} ${res.statusText}`;
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = undefined;
+    }
+    throw new HttpError(refusalSentence(text, fallback), res.status, body);
   }
   // 204s (every DELETE here) have no body, and res.json() throws on empty input.
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
-}
-
-/** What a failed request says out loud - see `refusalSentence`. */
-async function failureMessage(res: Response, method: string, path: string): Promise<string> {
-  const fallback = `${method} ${path} failed: ${res.status} ${res.statusText}`;
-  return refusalSentence(await res.text(), fallback);
 }
 
 const asJson = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });

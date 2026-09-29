@@ -408,6 +408,15 @@ export interface Wip {
   claimedInbound: number;
 }
 
+/** The `409` body a move or a patch is refused with when the WIP section is
+    full. Mirrors WipRefusalDto. `load` is the load *before* the move - what a
+    dialog quotes as "5 of 5" - not the load an accepted override would leave. */
+export interface WipRefusal {
+  error: string;
+  load: number;
+  limit: number;
+}
+
 export interface Board {
   statuses: Status[];
   issues: IssueCard[];
@@ -530,6 +539,9 @@ export interface IssuePatchRequest {
       Anything else is refused with a sentence - the field's only job is to be
       clicked. */
   pullRequestUrl?: string | null;
+  /** `true` to move into a full WIP section anyway - a person's call, and a
+      key sending it is refused with `403`, whatever the load. */
+  wipOverride?: boolean;
 }
 
 /** What one issue overrides its playbooks with. Null leaves a field alone and
@@ -593,6 +605,9 @@ export interface IssueMoveRequest {
   beforeKey?: string | null;
   /** The column the caller believes the card is in; a card that has left it is a 409. */
   fromStatusId?: number | null;
+  /** `true` to move into a full WIP section anyway - a person's call, and a
+      key sending it is refused with `403`, whatever the load. */
+  wipOverride?: boolean;
 }
 
 export interface CommentCreateRequest {
