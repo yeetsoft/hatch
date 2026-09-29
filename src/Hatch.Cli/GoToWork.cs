@@ -41,6 +41,9 @@ public sealed class Tally
     public int Runs { get; private set; }
     public decimal Spent { get; private set; }
 
+    /// <summary>When the night began - carried across a restart, the same as everything else it is judged against.</summary>
+    public DateTimeOffset Started => _started;
+
     /// <summary>Increments that exited non-zero, in a row.</summary>
     public int Fails { get; private set; }
 
@@ -674,6 +677,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var paused = new SaidOnce();
         var poll = new Poll();
 
+        // Who this beat says the runner works for, held here rather than read
+        // fresh every time the readout is updated: the board writes it on every
+        // beat, but a beat that answered with nothing (an origin gone quiet) is
+        // not a beat that said "nobody" - the last name heard stands until a
+        // fresh one replaces it.
+        string? forName = null;
+
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
             runtime.Say.Complain(missing);
@@ -707,6 +717,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // page is a cap this pass is judged against rather than the next
             // one.
             if (told is not null) under = Fold(told, tally, under);
+            if (told?.For is { Length: > 0 } named) forName = named;
+
+            runtime.Readout.SetRunner(new RunnerSnapshot(
+                runtime.RunnerName, forName, tally.Runs, runtime.Clock.GetUtcNow() - tally.Started, tally.Spent,
+                Bound(tally)));
 
             if (tally.ShouldStop()) return false;
 
@@ -735,6 +750,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 idle.Clear();
                 busy.Clear();
                 line.Line = "paused - waiting to be set running again";
+                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
                 await SayQuietlyAsync(paused, now, interval, once,
                     digest: "paused",
                     still: "hatch: still paused",
@@ -910,6 +926,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
         return scope;
     }
 
+    /// <summary>Whatever the night will stop at, for the readout's runner row - null when nothing is set.</summary>
+    private static string? Bound(Tally tally)
+    {
+        var parts = new List<string>();
+        if (tally.MaxRuns is { } runs) parts.Add($"--max-runs {runs.ToString(CultureInfo.InvariantCulture)}");
+        if (tally.MaxSpend is { } spend) parts.Add($"--max-spend {spend.ToString(CultureInfo.InvariantCulture)}");
+        if (tally.UntilAt is not null) parts.Add($"--until {tally.Until}");
+
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
     private async Task<Pass> PassAsync(
         string? under, bool quiet, bool mine, Tally tally,
         SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct)
@@ -929,6 +956,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             case Pick.Idle:
                 busy.Clear();
                 line.Line = "nothing on the board is an agent's to move";
+                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
                 await SayQuietlyAsync(idle, now, interval, once,
                     digest: string.Join('\n', Digest.Of(picked.Queue)),
                     still: "hatch: still nothing an agent may move",
@@ -938,6 +966,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             case Pick.Busy:
                 idle.Clear();
                 line.Line = "every issue an agent could take is being worked elsewhere";
+                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
                 await SayQuietlyAsync(busy, now, interval, once,
                     digest: string.Join('\n', picked.Busy),
                     still: "hatch: every issue an agent could take is still being worked elsewhere",
@@ -1119,15 +1148,26 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
                 quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries,
                 found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)),
-                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)));
+                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)),
+                runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
 
             tally.Record(report);
 
-            // Before the lease is let go, because the ticket is still this
-            // runner's to write on: what the session left is said there, and the
-            // pull request's branch is brought up to date. A lease that went
-            // gets the trees back on the trunk and nothing written.
-            await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
+            try
+            {
+                // Before the lease is let go, because the ticket is still this
+                // runner's to write on: what the session left is said there, and
+                // the pull request's branch is brought up to date. A lease that
+                // went gets the trees back on the trunk and nothing written.
+                await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
+            }
+            finally
+            {
+                // Every opening banner has a closing one - in a finally, so a
+                // Ctrl-C that lands while the tree is being left still gets one
+                // rather than the loop unwinding past it.
+                runtime.Say.Lines(Banner.Closing(report, Readout.OneLine(runtime.Readout.Snapshot().UsageWindows)));
+            }
 
             // A conflict that was resolved did not move the ticket, and did not
             // fail to: it stays in review, which is where it belongs.

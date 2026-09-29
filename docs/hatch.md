@@ -3373,6 +3373,76 @@ does not, for the reason the [playbooks](#playbooks) are closed to one — an
 agent that could raise its own `--max-spend` could raise its own budget, and a
 loop with no end is exactly what the bounds exist to prevent.
 
+### The console
+
+`go-to-work`, `do-my-work` and `hatch work` wrap every increment in a banner and,
+at an interactive terminal, pin a readout to the bottom of it — see HA-120 for
+the operator's brief and the reasoning behind each choice below.
+
+**The banners are in every log, terminal or not.** Before a session is spawned,
+`🥚🥚🥚🥚🥚 STARTING WORK ON <KEY>` opens it, naming the issue's title and type,
+what the increment is for (a move, a conflict, or a failing build), the model
+and effort — with the line saying the issue chose them, where it did — and the
+runner's name with which increment of the night this is. When the increment is
+over, a glyph row closes it: `🐣` where the ticket moved, a conflict was
+resolved, or a fix was pushed; `🥚` where it did not move; `🍳` where the
+session exited badly, was interrupted, or lost its lease before the end — that
+glyph outranks the other two, however the board reads afterward. Under it, the
+outcome in the tally's own words, a `Took` line with wall-clock time, tokens,
+cost and turns, and the account's usage where there is one. A figure that never
+arrived reads `not reported`, never `0` — a session interrupted deep enough to
+lose its own read-back (`Increment.RunAsync`'s own `catch
+(OperationCanceledException)`) still returns a report so its banner can close.
+Nothing is printed for a pass that spawns no session — an express hop, a
+conflict or a failing build that had already cleared, a ticket waiting to be
+told which branch. Plain text, no colour, no cursor movement: a redirected log,
+including the container runner's `docker logs`, reads exactly like a terminal's
+scrollback.
+
+**The readout is pinned to the bottom, not the top**, and only where output is
+an interactive terminal — never redirected, never `TERM=dumb`, and never
+`hatch work -i`, whose terminal belongs to the session a person is sitting in.
+Bottom rather than top because that needs no terminal mode at all: a scroll
+region left set by a runner killed outright (a second Ctrl-C, `kill -9`) would
+leave a terminal that scrolls wrongly until somebody types `reset`, where a
+footer erased and redrawn around every line — the way a build tool draws a
+progress bar — leaves at most one stale copy in the scrollback and nothing to
+repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
+under the same lock every streamed and printed line already goes through, so a
+clock tick can never land mid-line; what it draws is a pure function of a
+snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
+a running increment and the idle loop between them both write to.
+
+While an increment runs, its first row names the issue — key, title, the move
+or conflict or build it is for, and its address — and the second says whether
+the agent is alive: elapsed time, tokens spent so far, and how long it has been
+quiet with what it was last inside of (`quiet 2m14s — Bash  make test-api`),
+turning the warn colour past two minutes and the danger one past ten. One row
+follows per usage window the session's own stream reports — see below — each a
+20-cell bar, a percentage and a reset time. Last is the runner's own row: its
+character name, the person it works for (from the heartbeat's `for`, HA-122),
+how many increments this loop has run and for how long, counted across the
+loop's own restarts the way the closing tally already counts them, what the
+night has spent, and any bound it will stop at. Between increments the runner's
+row stays and one more appears, saying why nothing is being worked and when the
+loop looks again. Colour drops under `NO_COLOR`; every row is clipped to the
+terminal's own width, read fresh on each draw, so a resize clips rather than
+scrambles it. On exit for any reason the runner can catch — the night ending,
+Ctrl-C, a restart onto a newer build — the footer is erased and the closing
+tally prints below the last banner, as it always has.
+
+**The usage bars read the session's own stream, not Hatch's battery** — asked
+and answered on HA-120: every session's `stream-json` carries a
+`rate_limit_event` naming `unifiedWindows.five_hour` (labelled `Session`) and
+`seven_day` (`Weekly`), plus a per-model weekly window for accounts that have
+one, labelled `Weekly (model)` since it arrives with no name of its own. That is
+the account this runner's sessions actually spend — right for a friend's
+`do-my-work` on their own subscription, and it needs no token pasted into this
+Hatch's Settings page. The reading updates while a session streams and holds
+its last value between increments; a quiet run, or one that ends before the
+first such event, has none, and the readout and the closing banner alike simply
+draw no usage line rather than complain.
+
 ## The level above the board
 
 The board shows every card, which is the one thing it cannot do: say which of

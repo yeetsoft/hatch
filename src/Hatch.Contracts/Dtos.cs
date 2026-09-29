@@ -1710,12 +1710,21 @@ public record RunnerHeartbeatRequest(
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
 /// </remarks>
+/// <param name="For">
+/// The person this runner works for, resolved the same way a <c>--mine</c>
+/// dispatch pass is: the calling key's owner, or the local person where the
+/// wall is off. A key with no owner falls back to the key's own name, the same
+/// fallback the claim's own "for &lt;name&gt;" already makes. Absent from a
+/// Hatch too old to answer with it, which the console reads the same way as
+/// a key belonging to nobody.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
     int? MaxRuns,
     decimal? MaxSpend,
-    DateTimeOffset? UntilAt);
+    DateTimeOffset? UntilAt,
+    string? For = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
