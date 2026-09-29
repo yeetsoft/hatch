@@ -2063,7 +2063,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Nine refusals**, and two of them are rules of the whole loop rather than
+**Ten refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -2098,13 +2098,19 @@ missing configuration:
 8. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written. Only that move: a pull request that
    already exists is not held back by what its ticket once waited on.
-9. It is in review and there is nothing for an agent to do on its branch: it
-   neither conflicts with the trunk nor has a build that failed on its current
-   tip — because it merges cleanly and its build passes, is still running, was
-   not read on that tip or has no checks, because it has no branch on origin
-   (one already merged counts as none), because more than one branch is named
-   for it, or because no runner has checked yet. See [the review
-   dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
+9. The move is into the [WIP section](#wip), and the section has no room for
+   it: the load — not counting this issue — is already at or over the limit.
+   Said after the dependency, which needs other work to land, and before the
+   verdict below, which needs nothing at all once a branch is clean — a full
+   section needs other work to leave. The load is always the board's own,
+   whatever `ancestorKey` narrows the candidates to.
+10. It is in review and there is nothing for an agent to do on its branch: it
+    neither conflicts with the trunk nor has a build that failed on its current
+    tip — because it merges cleanly and its build passes, is still running, was
+    not read on that tip or has no checks, because it has no branch on origin
+    (one already merged counts as none), because more than one branch is named
+    for it, or because no runner has checked yet. See [the review
+    dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, one last check before the ordinary refusal: is
 this a [hop](#the-hop)? An issue that is [express](#express) and stands in a
@@ -2302,6 +2308,11 @@ housekeeping and is not: a ready date is a decision about scheduling, while an
 edge is a fact about the work, so `work/{key}` refuses on one too. Somebody who
 disagrees takes the edge off, which is one press.
 
+A full [WIP section](#wip) is not here either, for the same reason. The limit
+is a fact about the board, as a claim is, so `work/{key}` is refused by it in
+the same sentence a pass is. Overriding it is not a loop policy to set — it is
+done on the board, by moving the card in.
+
 **`?mine=true` is a third, and separate, policy** — a further narrowing rather
 than a rewrite of the second: plain `next`/`queue` still skip every ticket
 assigned to a person, including the caller's own, exactly as above.
@@ -2346,13 +2357,15 @@ second loop that happens to agree with it — two walks that could disagree abou
 the order of the board is precisely the bug this endpoint exists to expose.
 
 Every fold therefore lives in one place and in one order, most fundamental
-first: a next column that is terminal, then a ready date, then an unanswered
-question, then a repository this runner lacks, an unmet dependency, and — for an
-issue in review — the verdict on its branch, then [the hop](#the-hop), and last
-the missing playbook — last because it is only worth saying about an issue that
-is otherwise a candidate. The one that is the *loop's* policy rather than a
-fact about an issue is asked only when the pass is asking, so `work/{key}`
-still ignores it.
+first: a terminal or deferred column, nowhere to go, a next column that is
+terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
+question, a repository this runner lacks, an unmet dependency, a full [WIP
+section](#wip), and — for an issue in review — the verdict on its branch, then
+[the hop](#the-hop), and last the missing playbook — last because it is only
+worth saying about an issue that is otherwise a candidate. The two that are the
+*loop's* policy rather than a fact about an issue — the ready date and the
+assignee — are asked only when the pass is asking, so `work/{key}` still
+ignores them.
 
 **A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
 that is express, stands in a column marked `ExpressSkips`, and clears every
@@ -2486,9 +2499,9 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Ten conditions, the last one a way out of the ninth rather than one more gate.
-An issue is the loop's to pick up when it meets every one before it, and the
-sentence saying which one it failed is what `work/queue` reports:
+Eleven conditions, the last one a way out of the tenth rather than one more
+gate. An issue is the loop's to pick up when it meets every one before it, and
+the sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
@@ -2526,7 +2539,15 @@ sentence saying which one it failed is what `work/queue` reports:
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **In review, its branch conflicts with the trunk or its build failed.** An
+8. **The [WIP section](#wip) has room for it**, when the move is into it: the
+   load, not counting this issue, is below the limit. Said after the dependency
+   above, which needs other work to land, and before the verdict below, which
+   needs nothing at all once a branch is clean — a full section needs other
+   work to leave. The load is always the board's own, whatever `ancestorKey`
+   narrows the candidates to, and the limit is a fact about the board rather
+   than the loop's policy: `work/{key}` is refused by it too, and overriding it
+   is done on the board, by moving the card in.
+9. **In review, its branch conflicts with the trunk or its build failed.** An
    issue in the review column is the loop's only when a [merge check](#merge-check)
    says `conflicted`, or — on a branch that merges cleanly — when the
    [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -2535,26 +2556,26 @@ sentence saying which one it failed is what `work/queue` reports:
    on this tip, no checks, no branch, more than one branch and an unchecked one
    are what `hatch queue` prints. A clean branch that has merely fallen behind
    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-9. **A playbook covers that transition for that type — or it does not need
-   one.** Without one there is nothing to say to the session — and a column no
-   playbook leads out of is exactly [how a column becomes the
-   operator's](#status), which is why the absence is a fold rather than an
-   error. **This is also where the issue's type is decided**, and the only
-   place: a type an unattended run does not pick up is a type no row names for
-   that move, said in the words that name the fix.
-10. **Unless it does not need a session at all.** An issue that is
+10. **A playbook covers that transition for that type — or it does not need
+    one.** Without one there is nothing to say to the session — and a column no
+    playbook leads out of is exactly [how a column becomes the
+    operator's](#status), which is why the absence is a fold rather than an
+    error. **This is also where the issue's type is decided**, and the only
+    place: a type an unattended run does not pick up is a type no row names for
+    that move, said in the words that name the fix.
+11. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the ninth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the tenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository or a dependency, only from
-    needing a playbook.
+    date, an assignee, a question, a repository, a dependency or a full
+    section, only from needing a playbook.
 
-Seven of them — 1, 2, 5, 6, 7, 8 and 9 — are facts about the issue, and `work/{key}`
-asks them too. The tenth is as well, and `work/{key}` answers it the same way
-`work/queue` does: `WorkDto.Hop`. The other two are the loop's policy and are
-asked only when the pass is asking; see [one more, on `next`
+Eight of them — 1, 2, 5, 6, 7, 8, 9 and 10 — are facts about the issue, and
+`work/{key}` asks them too. The eleventh is as well, and `work/{key}` answers
+it the same way `work/queue` does: `WorkDto.Hop`. The other two are the loop's
+policy and are asked only when the pass is asking; see [one more, on `next`
 alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and

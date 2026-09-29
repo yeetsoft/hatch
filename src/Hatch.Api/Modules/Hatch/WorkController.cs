@@ -50,8 +50,10 @@ public class WorkController(
     ///
     /// <para>Nothing else changes - still right to left, still top of the
     /// column down, still folding past a ready date, an open question, a
-    /// terminal column, a missing playbook, an unfinished dependency, or a branch that
-    /// merges cleanly. The
+    /// terminal column, a missing playbook, an unfinished dependency, a full
+    /// WIP section, or a branch that
+    /// merges cleanly. The load a full section is judged against is always the
+    /// board's own, never the scope's - see <see cref="Wip.LoadAsync"/>. The
     /// scope narrows the candidates and decides nothing about them.</para>
     ///
     /// <para>The issue itself is not a candidate. "Under AER-1" is a question
@@ -116,7 +118,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Claims, scan.Repos, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Claims, scan.Repos, scan.Wip, ct);
     }
 
     /// <summary>
@@ -310,6 +312,7 @@ public class WorkController(
         var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct));
 
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
+        var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var open = await Questions.OpenCountsAsync(db, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
@@ -389,7 +392,7 @@ public class WorkController(
                     var hop = issue.Express && status.ExpressSkips;
                     var blocked = Blocked(
                         issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
-                        assignees[issue.Id], repos, merged, built, hop);
+                        assignees[issue.Id], repos, merged, built, hop, wip);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
@@ -398,7 +401,7 @@ public class WorkController(
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, claimed, repos, null);
+        return new Scan(statuses, rows, loop, gate, claimed, repos, wip, null);
     }
 
     /// <summary>One issue the pass looked at, and what it decided.</summary>
@@ -411,10 +414,10 @@ public class WorkController(
     /// </summary>
     private sealed record Scan(
         List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
-        ClaimGate Claims, RepositoryDeclaration Repos, string? Failure)
+        ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip, string? Failure)
     {
         public static Scan Refused(string why) =>
-            new([], [], null, DependencyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, why);
+            new([], [], null, DependencyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, null, why);
     }
 
     /// <summary>
@@ -665,6 +668,26 @@ public class WorkController(
     }
 
     /// <summary>
+    /// Why a move into the WIP section is not this issue's to make: the move
+    /// leaves outside it and lands inside it, the type counts, and the load -
+    /// not counting this issue - is already at or over the limit. Null where
+    /// the board has never turned WIP on, where the move does not cross into
+    /// the section, or where the type is not one the limit counts.
+    /// </summary>
+    private static string? WipFold(WipSection? wip, EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to)
+    {
+        if (wip is null) return null;
+        if (wip.Inside(from.Id)) return null;
+        if (!wip.Inside(to.Id)) return null;
+        if (!wip.Counts(issue.Type)) return null;
+
+        var room = wip.Load - (wip.Counted(issue) ? 1 : 0);
+        return room >= wip.Limit
+            ? $"{Wip.Sentence(room, wip.Limit, wip.Types)} - nothing more is pulled in until something leaves"
+            : null;
+    }
+
+    /// <summary>
     /// The verdicts on these issues, grouped by issue - one query for however
     /// many, and ordered by repository so the sentence a fold prints is stable.
     /// </summary>
@@ -739,6 +762,7 @@ public class WorkController(
             await DependencyGate.ForAsync(db, statuses, ct),
             new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
             RepositoryDeclaration.From(remote, standing, clones),
+            await Wip.LoadAsync(db, claims, statuses, now, ct),
             ct);
     }
 
@@ -791,7 +815,8 @@ public class WorkController(
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop);
+            repos, merged, built, hop,
+            await Wip.LoadAsync(db, claims, statuses, now, ct));
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
@@ -835,9 +860,14 @@ public class WorkController(
     /// claim is a fact about the issue, so an issue somebody named by hand is
     /// refused too.
     /// </param>
+    /// <param name="wip">
+    /// How full the WIP section is, or null where the board has never turned it
+    /// on. A fact about the board, not the loop's policy: an issue somebody
+    /// named by hand is refused by a full section too.
+    /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate,
-        ClaimGate claimed, RepositoryDeclaration repos, CancellationToken ct)
+        ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -902,7 +932,7 @@ public class WorkController(
         var blocked = Blocked(
             issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop);
+            repos, merged, built, hop, wip);
         var hopped = hop && blocked is null;
 
         return new WorkDto(
@@ -957,13 +987,14 @@ public class WorkController(
     /// <para>The order is what it costs to change the answer, most fundamental
     /// first: a terminal column, no column after this one, a terminal next
     /// column, a live claim, a ready date, an assignee, an unanswered question,
-    /// a repository the caller has no checkout of, an unmet dependency, the
-    /// verdict on an issue's branch, and last a missing playbook. A column with
-    /// nowhere an agent may go is a fact about the board and no argument alters
-    /// it; a ready date needs time; a question needs a person; a repository
-    /// needs a clone; a dependency needs other work to land; a clean branch with
-    /// a build that passes, is running or has not been read needs nothing at all;
-    /// and a missing playbook needs the operator, which
+    /// a repository the caller has no checkout of, an unmet dependency, a full
+    /// WIP section, the verdict on an issue's branch, and last a missing
+    /// playbook. A column with nowhere an agent may go is a fact about the
+    /// board and no argument alters it; a ready date needs time; a question
+    /// needs a person; a repository needs a clone; a dependency needs other
+    /// work to land; a full section needs other work to leave; a clean branch
+    /// with a build that passes, is running or has not been read needs nothing
+    /// at all; and a missing playbook needs the operator, which
     /// is last because it is only worth saying about an issue that is otherwise
     /// a candidate.</para>
     ///
@@ -1043,6 +1074,13 @@ public class WorkController(
     /// every other reason to hold the issue back still applies to it exactly as
     /// it applies to any other issue.
     /// </param>
+    /// <param name="wip">
+    /// How full the WIP section is, or null where the board has never turned it
+    /// on - see <see cref="Wip.LoadAsync"/>. A fact about the board, not the
+    /// loop's policy, so a named dispatch is folded by it too. Read once per
+    /// pass and once per named dispatch, always over the whole board, whatever
+    /// a scope narrows the candidates to.
+    /// </param>
     private static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -1057,7 +1095,8 @@ public class WorkController(
         RepositoryDeclaration repos,
         IReadOnlyList<EfHatchMergeCheck> verdicts,
         IReadOnlyList<EfHatchBuildCheck> builds,
-        bool hop)
+        bool hop,
+        WipSection? wip)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -1128,6 +1167,11 @@ public class WorkController(
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
         }
+
+        // A full section needs other work to leave, so it is said after a
+        // dependency, which needs other work to land, and before a missing
+        // playbook, which needs the operator - see Wip.LoadAsync.
+        if (WipFold(wip, issue, from, to) is { } full) return full;
 
         // Last before the playbook, and after the repository: a question needs a
         // person, a repository needs a clone, and a clean branch with a build

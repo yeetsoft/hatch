@@ -481,6 +481,28 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.Contains("2 question(s) are waiting on you", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_full_WIP_section_is_one_digest_line_however_many_rows_it_folds()
+    {
+        using var h = new Harness();
+        const string sentence =
+            "the WIP section is full - 2 of 2 stories and bugs are in it - nothing more is pulled in until something leaves";
+
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-1", sentence),
+            Fixtures.Row("AER-2", sentence),
+            Fixtures.Row("AER-3", sentence),
+            Fixtures.Row("AER-4", "AER-2 has not merged"),
+        });
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("4 issue(s) were on the dispatcher's path", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains($"3  {sentence}", StringComparison.Ordinal));
+    }
+
     // ---- --workspace: cloning what the board binds (HA-19) ----
 
     [Fact]
