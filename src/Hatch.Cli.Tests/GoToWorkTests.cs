@@ -742,6 +742,68 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
     }
 
+    // ---- A usage limit's own wait ----
+
+    [Fact]
+    public async Task Source_changed_during_the_wait_restarts_the_loop_and_carries_the_instant_forward()
+    {
+        using var h = new Harness();
+
+        // The change lands where the wait's own self-check reads it - the very
+        // first pass through the wait, since nothing has been checked yet.
+        h.Workspace.Watching = () => h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+
+        var resetAt = DateTimeOffset.UtcNow.AddHours(1);
+        Assert.True(new NightState { ExhaustedUntil = resetAt }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(
+            GoToWorkCommand.RestartExitCode,
+            await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        // No ticket was ever picked up: the restart came from the wait itself.
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("the loop's own source changed", StringComparison.Ordinal));
+
+        // And the incarnation coming back is still out of usage until the same
+        // instant - a restart is the middle of the wait, not the end of it.
+        var carried = NightState.Read(h.NightState);
+        Assert.NotNull(carried);
+        Assert.Equal(resetAt, carried.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task Stopping_from_the_board_ends_the_wait_rather_than_carrying_it_through()
+    {
+        using var h = new Harness();
+        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+
+        Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("the board asked this runner to stop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_until_earlier_than_the_reset_ends_the_night_at_until()
+    {
+        using var h = new Harness();
+
+        // The reset is an hour out; --until is a second out - carried directly
+        // rather than typed, so the test is not chasing a minute boundary.
+        Assert.True(new NightState
+        {
+            ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1),
+            UntilAt = DateTimeOffset.UtcNow.AddSeconds(1),
+        }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("has come", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task An_age_of_zero_turns_the_backstop_off_and_a_negative_one_is_refused()
     {

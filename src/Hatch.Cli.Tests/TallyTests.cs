@@ -6,7 +6,8 @@ namespace Hatch.Cli.Tests;
 public sealed class TallyTests
 {
     private static IncrementReport Report(
-        string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false) =>
+        string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
+        DateTimeOffset? usageLimitResetAt = null) =>
         new()
         {
             Key = key,
@@ -18,6 +19,7 @@ public sealed class TallyTests
             ExitCode = exit,
             Cost = cost,
             LostLease = lost,
+            UsageLimitResetAt = usageLimitResetAt,
         };
 
     [Fact]
@@ -67,6 +69,33 @@ public sealed class TallyTests
         // It still happened, and it still cost something.
         Assert.Equal(4, tally.Runs);
         Assert.Equal(4m, tally.Spent);
+    }
+
+    [Fact]
+    public void A_usage_limit_is_not_one_of_the_three_either()
+    {
+        var tally = new Tally(TimeProvider.System);
+        var resetAt = DateTimeOffset.Parse("2026-09-28T23:40:00+00:00");
+
+        tally.Record(Report("AER-1", exit: 1, moved: false, usageLimitResetAt: resetAt));
+        tally.Record(Report("AER-2", exit: 1, moved: false, usageLimitResetAt: resetAt));
+        tally.Record(Report("AER-3", exit: 1, moved: false, usageLimitResetAt: resetAt));
+        tally.Record(Report("AER-4", exit: 1, moved: false, usageLimitResetAt: resetAt));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+        Assert.Equal(resetAt, tally.ExhaustedUntil);
+    }
+
+    [Fact]
+    public void An_increment_that_worked_clears_a_usage_limit_the_night_carried()
+    {
+        var tally = new Tally(TimeProvider.System);
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: DateTimeOffset.UtcNow));
+        Assert.NotNull(tally.ExhaustedUntil);
+
+        tally.Record(Report("AER-2", moved: true));
+        Assert.Null(tally.ExhaustedUntil);
     }
 
     [Fact]
@@ -142,18 +171,20 @@ public sealed class TallyTests
     }
 
     [Fact]
-    public void The_tally_is_two_lists_because_they_are_two_mornings()
+    public void The_tally_is_three_lists_because_a_usage_limit_is_a_third_morning()
     {
         var say = new Transcript();
         var tally = new Tally(TimeProvider.System);
 
         tally.Record(Report("AER-1", moved: true));
         tally.Record(Report("AER-2", moved: false));
+        tally.Record(Report("AER-3", moved: false, usageLimitResetAt: DateTimeOffset.UtcNow));
         tally.StopWhy = "--once, and the pass is done";
         tally.Print(say);
 
-        Assert.Contains(say.Said, l => l.Contains("2 increment(s)", StringComparison.Ordinal));
+        Assert.Contains(say.Said, l => l.Contains("3 increment(s)", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("stalled  AER-2", StringComparison.Ordinal));
+        Assert.Contains(say.Said, l => l.Contains("usage    AER-3", StringComparison.Ordinal));
     }
 }

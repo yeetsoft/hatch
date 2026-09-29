@@ -921,6 +921,20 @@ export interface Attention {
       `failingBuilds`, because no agent owns a trunk. Ordered by canonical,
       then trunk. Absent from a board that predates it. */
   trunkBuilds?: TrunkBuild[];
+  /** Every runner still being heard from that is out of Claude usage, soonest
+      reset first. Not counted towards the badge - it lights a dot instead, see
+      `attentionCount`'s remarks. Absent from a board that predates it. */
+  exhaustedRunners?: ExhaustedRunner[];
+}
+
+/** One runner out of Claude usage, for the top of the attention panel. */
+export interface ExhaustedRunner {
+  /** What it calls itself - the same string the Runners page keys on. */
+  name: string;
+  /** The machine and checkout it runs from, `host:/path`, or null when it never said. */
+  where: string | null;
+  /** When it expects to reset. */
+  exhaustedUntil: string;
 }
 
 // ---- Who is sitting here ----
@@ -1206,6 +1220,10 @@ export interface Runner {
       Hatch:RunnerGoneAfterSeconds, carried the way a claim carries its TTL, so
       nothing here has to decide for itself what quiet means. */
   goneAfterSeconds: number;
+  /** This runner's own Claude account ran out of usage, and this is when it
+      expects to reset - a fact it reports about itself, never a person's to
+      set. Null on an ordinary runner, or one that has since cleared it. */
+  exhaustedUntil: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

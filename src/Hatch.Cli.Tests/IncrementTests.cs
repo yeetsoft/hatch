@@ -111,6 +111,125 @@ public sealed class IncrementTests
     }
 
     [Fact]
+    public async Task A_usage_limit_writes_no_stall_comment_and_asks_nothing()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.True(report.UsageLimitResetKnown);
+        Assert.False(report.Moved);
+        Assert.Null(report.Flag);
+        Assert.Equal(0, report.Asked);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains(h.Say.Said, l => l.Contains("out of Claude usage", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task An_ordinary_error_still_stalls_rather_than_reading_as_a_usage_limit()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(error: true, said: "the build failed on main"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.UsageLimited);
+        Assert.True(report.Stalled);
+        Assert.Equal("flagged", report.Flag);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_quoted_limit_sentence_in_an_ordinary_successful_run_is_not_mistaken_for_one()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            // Talking about this very feature, not reporting a real limit -
+            // and the run ends cleanly, exit 0, with no result event lost.
+            onLine?.Invoke(
+                """{"type":"assistant","message":{"content":[{"type":"text","text":"The sample sentence is You've hit your session limit · resets 7:40pm (America/New_York)"}]}}""");
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", to: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.UsageLimited);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_crash_with_no_result_event_still_reads_a_real_limit_off_the_assistants_last_words()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            // The stream is cut off before a "result" event ever arrives -
+            // the one place a limit hit mid-stream still shows up.
+            onLine?.Invoke(
+                """{"type":"assistant","message":{"content":[{"type":"text","text":"You've hit your session limit · resets 7:40pm (America/New_York)"}]}}""");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
     public async Task A_refused_heartbeat_stops_the_session_and_writes_nothing_past_the_work_log()
     {
         using var h = new Harness();
@@ -435,6 +554,29 @@ public sealed class IncrementTests
         await h.Runtime.Increment().RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
 
         Assert.Single(h.Sessions.Spawned);
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_quiet_run_that_crashed_without_a_final_object_still_reads_the_limit_off_its_raw_output()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        // Killed before it ever printed its one closing object - quiet mode's
+        // only account of the run is whatever made it to stdout regardless.
+        h.Sessions.Behaviour = (_, _, _) =>
+            Task.FromResult(new SessionResult(1, "You've hit your session limit · resets 7:40pm (America/New_York)"));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
+
+        Assert.True(report.UsageLimited);
+
         await claim.ReleaseAsync();
     }
 

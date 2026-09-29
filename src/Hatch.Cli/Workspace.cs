@@ -75,7 +75,34 @@ public interface IWorkspace
     /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
     /// </summary>
     void Return();
+
+    /// <summary>
+    /// Commits everything in the tree, untracked files included, onto the
+    /// issue's branch - cutting it first if the tree is still on the trunk -
+    /// and pushes it to origin, with no force. Called only when a session ended
+    /// because its Claude account ran out of usage: the one place a runner
+    /// pushes a session's own work for it, because green-before-pushed is not a
+    /// session's to judge once it can no longer say so. Called before
+    /// <see cref="Leave"/>, which then finds a clean tree.
+    /// </summary>
+    LimitPushed PushForLimit(string key, string title);
 }
+
+/// <summary>What came of pushing a session's work after its account ran out of usage.</summary>
+public enum LimitPush
+{
+    /// <summary>Nothing had changed - no reason to cut a branch nobody's work would be on.</summary>
+    Nothing,
+
+    Pushed,
+
+    /// <summary>Something would not go - named in <see cref="LimitPushed.Why"/>. The work stays on this machine.</summary>
+    Refused,
+}
+
+/// <param name="Branch">The issue's branch, cut if it did not exist - null only for <see cref="LimitPush.Nothing"/> off the trunk.</param>
+/// <param name="Sha">Where the branch stands now, on <see cref="LimitPush.Pushed"/> only.</param>
+public sealed record LimitPushed(LimitPush Outcome, string? Branch, string? Sha, string? Why);
 
 /// <summary>
 /// The slate every increment starts on: the trunk, as the remote has it now.

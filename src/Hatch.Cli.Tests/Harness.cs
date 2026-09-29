@@ -168,6 +168,12 @@ public sealed class FakeWorkspace
     /// <summary>The same, for <see cref="IWorkspace.Enter"/>.</summary>
     public Exception? EnterThrows { get; set; }
 
+    /// <summary>What <c>PushForLimit</c> answers, per checkout - nothing to push unless a test says.</summary>
+    public Dictionary<string, LimitPushed> PushFor { get; } = [];
+
+    /// <summary>Every <c>PushForLimit</c>, as <c>path key</c>, in order.</summary>
+    public List<string> Pushed { get; } = [];
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -229,6 +235,13 @@ public sealed class FakeWorkspace
         }
 
         public void Return() => owner.Calls.Add($"return {path}");
+
+        public LimitPushed PushForLimit(string key, string title)
+        {
+            owner.Calls.Add($"push {path}");
+            owner.Pushed.Add($"{path} {key}");
+            return owner.PushFor.GetValueOrDefault(path, new LimitPushed(LimitPush.Nothing, null, null, null));
+        }
 
         private BranchEntry Answer(string key, string title) =>
             owner.EntryFor.TryGetValue(path, out var one) ? one

@@ -2979,6 +2979,31 @@ button.hatch-option.chosen {
   flex: none;
 }
 
+/* Sized exactly to the glyph it wraps, so the dot below sits on it without
+   growing the control - a wrapper and not the glyph itself, since an <svg>
+   is not where an absolutely-positioned sibling can anchor. */
+.hatch-attention-glyph-wrap {
+  position: relative;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+/* A runner is out of Claude usage - a fact about an account, not a count of
+   anything to fix, so a dot rather than a pill: see the pills below, which
+   stay exactly what they were. */
+.hatch-attention-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  border: 1.5px solid var(--chrome);
+}
+
 .hatch-attention-head {
   fill: none;
   stroke: currentColor;
@@ -3105,6 +3130,21 @@ button.hatch-option.chosen {
      bottom of the screen. */
   max-height: 70vh;
   overflow-y: auto;
+}
+
+/* The one section outside a group, above Human - drawn only when it has rows
+   (see AttentionPanel), so this never sits beside an empty state the way the
+   four sections below always can. A tinted ground of its own marks it as the
+   one alert here about a condition that ends on its own rather than one a
+   person clears. */
+.hatch-attention-section-exhausted {
+  padding: var(--sp-2);
+  background: var(--danger-bg);
+  border-radius: var(--r-ctl);
+}
+
+.hatch-attention-section-exhausted .hatch-attention-heading {
+  color: var(--danger-ink);
 }
 
 /* A group is Human or Agent, each holding two sections. The panel's own gap

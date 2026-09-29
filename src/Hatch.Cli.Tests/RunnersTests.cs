@@ -350,6 +350,69 @@ public sealed class RunnersTests
         Assert.Single(h.Sessions.Spawned);
     }
 
+    // ---- Out of Claude usage ----
+
+    private static void HitsTheLimit(Harness h, string reset = "You've hit your session limit · resets 7:40pm (America/New_York)") =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(error: true, said: reset));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+    [Fact]
+    public async Task An_exhausted_loop_takes_nothing_further_and_keeps_heartbeating_the_reset_time()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+        HitsTheLimit(h);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        using var interrupting = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "1"], interrupting.Token);
+
+        // Three is the property under test: one to hit the limit, and at least
+        // two more that keep saying so instead of trying the board again.
+        await Harness.Eventually(() => Beats(h).Count >= 3, "an exhausted runner to heartbeat more than once");
+        await interrupting.CancelAsync();
+        await running;
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("out of Claude usage", StringComparison.Ordinal));
+
+        // Every beat after the limit says so explicitly - not merely a stale
+        // instant left over from the one increment that hit it - so the
+        // board's own record clears the moment this stops being true.
+        var last = Beats(h)[^1].Read<RunnerHeartbeatRequest>();
+        Assert.True(last.Exhausted);
+        Assert.NotNull(last.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task An_exhausted_loop_takes_a_ticket_again_once_the_clock_passes_the_reset()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxRuns: 1);
+
+        // A carried instant two seconds out, against the real clock - close
+        // enough that the loop's own one-second interval crosses it after a
+        // couple of naps, without a fake clock to pump.
+        Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddSeconds(2) }
+            .Write(h.Supervised.NightStatePath));
+
+        // The age backstop is off, so the wait ends for the reason under test
+        // and not for an unrelated one.
+        Assert.Equal(
+            0,
+            await new GoToWorkCommand(h.Supervised).RunAsync(
+                ["--interval", "1", "--max-runs", "1", "--restart-after", "0"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+    }
+
     // ---- Being told what it may spend ----
 
     [Fact]
