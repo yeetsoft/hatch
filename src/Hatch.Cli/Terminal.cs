@@ -97,36 +97,59 @@ public sealed class LiveTerminal : Terminal, IDisposable
 
     public override void Line(string line)
     {
-        lock (_gate)
+        // A closed terminal is not a reason for an unattended loop to go down
+        // with the claim still held - see the base class's own guard, which a
+        // direct write here bypasses.
+        try
         {
-            if (_stopped) { Console.Out.WriteLine(line); return; }
+            lock (_gate)
+            {
+                if (_stopped) { Console.Out.WriteLine(line); return; }
 
-            Erase();
-            Console.Out.WriteLine(line);
-            Draw();
+                Erase();
+                Console.Out.WriteLine(line);
+                Draw();
+            }
+        }
+        catch (IOException)
+        {
         }
     }
 
     public override void Complain(string line)
     {
-        lock (_gate)
+        try
         {
-            if (_stopped) { Console.Error.WriteLine(line); return; }
+            lock (_gate)
+            {
+                if (_stopped) { Console.Error.WriteLine(line); return; }
 
-            Erase();
-            Console.Error.WriteLine(line);
-            Draw();
+                Erase();
+                Console.Error.WriteLine(line);
+                Draw();
+            }
+        }
+        catch (IOException)
+        {
         }
     }
 
     private void Tick()
     {
-        lock (_gate)
+        // Runs on a timer thread - an exception left to escape a timer
+        // callback takes the whole process down, claim and all.
+        try
         {
-            if (_stopped) return;
+            lock (_gate)
+            {
+                if (_stopped) return;
 
-            Erase();
-            Draw();
+                Erase();
+                Draw();
+            }
+        }
+        catch (IOException)
+        {
         }
     }
 
@@ -184,7 +207,13 @@ public sealed class LiveTerminal : Terminal, IDisposable
             if (_stopped) return;
 
             _stopped = true;
-            Erase();
+            try
+            {
+                Erase();
+            }
+            catch (IOException)
+            {
+            }
         }
 
         _timer.Dispose();
