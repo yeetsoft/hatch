@@ -1571,7 +1571,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -1756,6 +1756,9 @@ answer worth having, and it is the one it gives most of the time.
       "trunk": "main", "sha": "1a2b3c4d5e...", "verdict": "failed",
       "failing": [ { "name": "CI", "url": "https://forge.example/checks/CI" } ],
       "bugIssueKey": null }
+  ],
+  "exhaustedRunners": [
+    { "name": "host:/checkouts/one", "where": "host:/checkouts/one", "exhaustedUntil": "2026-09-28T23:40:00Z" }
   ]
 }
 ```
@@ -1881,6 +1884,37 @@ The control keeps itself current on a sixty-second poll and on
 fails leaves the last answer drawn and says nothing at all. The bar is not
 where a fetch failure gets announced.
 
+### Runners out of Claude usage
+
+`exhaustedRunners` is the fifth list, and the one that lights a **dot** rather
+than growing a pill: it is not a count of anything to fix, only a fact about
+an account, so it does not touch `attentionCount` or `attentionTone`. Each
+entry is a runner's name, its `host:/path`, and when it expects to reset —
+every runner still being heard from whose own heartbeat says it is out of
+usage (see [Runners on the board](#runners-on-the-board)), soonest reset
+first. A runner that has gone quiet is not listed even if its last-known reset
+time has not passed: silence beats everything else this endpoint says about a
+row.
+
+The panel draws this section **above** *Human*, and only when it has rows -
+unlike the four above it, which always draw something. This one is an alert
+about a condition that ends by itself, and the report this shipped from asked
+for it to disappear the moment it does, which it does on its own: a runner
+whose reset instant has passed, or one that has stopped heartbeating, simply
+is not in the list the next time the panel polls - nothing has to notice and
+nothing is written. The dot on the nav control's glyph does not change its
+width or its review-and-question pills, and its accessible name gains a phrase
+like "1 runner is out of Claude usage". Each row links to the Runners page,
+where the same runner's own row reads `Out of usage until 7:40pm`, in the
+viewer's own time zone - unless it has stopped heartbeating, which still reads
+*Gone* regardless of what its last heartbeat said.
+
+Nothing a person presses sets or clears any of this - there is no button for
+it anywhere. Only a runner's own heartbeat says it is out of usage, and a loop
+heartbeat that says it is not clears the board's record at once - which is how
+a person overrides the wait: restarting the loop by hand starts a fresh night
+that carries nothing forward, and its first heartbeat clears whatever the
+board remembered.
 
 ## The leaderboard
 
@@ -2885,6 +2919,15 @@ thing. None of it fails the increment: a refused push — the forge, branch
 protection, somebody else's push landing first — is a line on the ticket, and so
 is a stash that would not go. The runner never pushes to the trunk.
 
+**The one exception is a session that ran out of Claude usage** (below): before
+any of the above runs, its tree is committed — untracked files included — onto
+the issue's branch (cut first if the tree was still on the trunk) and pushed to
+`origin`, no force. That is the one place a runner pushes a session's own work
+for it, because a session that cannot say whether it is finished never gets to
+say whether it is fit to publish either. `Leave` then runs exactly as above and
+finds a clean tree, and the ticket gets the usage-limit comment described below
+instead of the ordinary tidy-up note.
+
 #### Checking the branches in review
 
 Whether a pull request still merges with the trunk is decided by **git, in the
@@ -3014,6 +3057,28 @@ merely counting — and, if nothing is already open there, **a question**.
 nothing was spent on a ticket that did not move - the ticket did move, one
 column, and the runner never held a claim to have written anything on it. See
 [the hop](#the-hop).
+
+**Neither is a usage limit.** A session that ends because the Claude account it
+ran under hit its usage limit is read from what it said on its way out — the
+reported sentence is `You've hit your session limit · resets 7:40pm
+(America/New_York)`, and the same read handles an hour with no minutes, a
+weekly limit that names a date, and an unknown zone (falls back to UTC rather
+than giving up). A time with no date is the next occurrence of that clock time
+after the session ended, in the named zone; a limit the session named but whose
+time could not be parsed at all is treated as an hour away, and both the
+terminal and the ticket say so. No stall comment is written and no question is
+opened — the ticket is left exactly where the session left it, with no flag
+blocking the next dispatch — because nothing here is wrong with the ticket. The
+terminal says the runner is out of Claude usage and the reset time it read, and
+after [the tree is pushed](#leaving-the-tree), the ticket gets one comment: that
+the runner ran out of usage, when it expects to resume, the branch and sha that
+were pushed (or that there was nothing to push), and the `claude --resume`
+command. The night's tally counts it as **interrupted**, a third list beside
+*moved* and *stalled* — not a failure, and not one of the three in a row that end
+a night, the same treatment a lost lease gets and for the same reason: this is
+the loop working correctly against a spent account, not a broken increment. See
+[runners on the board](#runners-on-the-board) for what a runner does about the
+account itself.
 
 A question rather than a **flag field**, which was the obvious alternative and
 would have had to be taught three things a question already does: it blocks the
@@ -3314,7 +3379,16 @@ except the last one:
   not a reason to stop; a ticket can be wrong and a test can be flaky, and the
   next ticket is a different question. Three in a row is something else:
   whatever is broken is broken for every ticket, and the loop is now spending
-  money to prove it.
+  money to prove it. An exception anywhere in a pass — picking, claiming,
+  preparing the tree, the session, judging it, or tidying up — is one failed
+  increment and nothing more: the claim is let go of, the ticket is told why
+  in a comment naming the error, the tree goes back to the trunk, and the loop
+  goes on to its next pass. It feeds this same count rather than a list of its
+  own, so the list of things that end a night does not grow. **A usage limit
+  is not one of the three** — see
+  [when an increment does nothing](#when-an-increment-does-nothing) — and
+  neither is [the wait that follows one](#runners-on-the-board): the loop is
+  spending nothing while it waits, so there is nothing there to fail.
 - **A workspace that cannot be made current** — the other one nobody asks for,
   and the only condition that ends a night without an increment having failed. A
   tree that will not reset is a tree every ticket would be built wrong on, and
@@ -3504,6 +3578,29 @@ not say it was alive would leave a page that could only ever be empty. The write
 does not, for the reason the [playbooks](#playbooks) are closed to one — an
 agent that could raise its own `--max-spend` could raise its own budget, and a
 loop with no end is exactly what the bounds exist to prevent.
+
+**`exhaustedUntil` is a fact a runner reports about its own Claude account,
+never a person's to set.** There is no control for it on the page and no field
+on `PATCH` — only a heartbeat writes it, as a tri-state carried beside the
+instant itself: absent leaves the row's own record alone (an older CLI, or
+`hatch work`'s one-off beat, neither of which knows anything about the account
+it ran under), a heartbeat that says *out* sets it, and a loop heartbeat that
+says it is *not* clears it at once. `go-to-work` sends the tri-state
+explicitly on every beat, so its own restart carries a wait across (below) and
+a person overriding the wait by starting a fresh loop by hand clears the board's
+record on that loop's first heartbeat, the same way a fresh night carries none
+of the other bounds forward either. The Runners page draws such a row as *Out
+of usage until 7:40pm*, in the viewer's own time zone — unless the row has
+already gone quiet, which still reads *Gone* regardless of what the last
+heartbeat said, the same rule the rest of this table already follows: silence
+beats every other fact about a row. Nothing sweeps this either — a reset that
+has passed is arithmetic against `ExhaustedUntil` at the moment somebody asks,
+the same lazy expiry the horizons above use.
+
+See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
+that feeds the attention panel's dot, and
+[when an increment does nothing](#when-an-increment-does-nothing) for what
+sets this in the first place.
 
 ### The console
 

@@ -14,17 +14,22 @@
 
 import type { Runner, RunnerPatchRequest } from '../types';
 
-/** The five states a row can be in, in the order they are decided. */
-export type RunnerActivity = 'gone' | 'paused' | 'stopping' | 'working' | 'idle';
+/** The six states a row can be in, in the order they are decided. */
+export type RunnerActivity = 'gone' | 'exhausted' | 'paused' | 'stopping' | 'working' | 'idle';
 
 /**
  * What this runner is doing, in one word.
  *
- * Silence beats intent, which is the one ordering decision here: a paused
- * runner that stopped heartbeating is `gone`, because the pause was a request
- * and the silence is a fact. Below that, what it was asked to do beats what it
- * is holding - a loop finishing its last increment is `stopping`, and that is
- * the thing somebody watching wants to see.
+ * Silence beats everything, which is the one ordering decision here: a
+ * runner that stopped heartbeating is `gone` whatever it last reported about
+ * itself, because silence is a fact and everything else is a stale claim.
+ * Below that, a fact the runner reports about its own account -
+ * `exhaustedUntil` - beats a request a person made of it: an operator who
+ * paused a runner still sees that it is out of Claude usage, because pausing
+ * it changes nothing about whether it has any usage to spend. Below that,
+ * what it was asked to do beats what it is holding - a loop finishing its
+ * last increment is `stopping`, and that is the thing somebody watching wants
+ * to see.
  */
 export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
   const beat = Date.parse(runner.lastSeenAt);
@@ -33,6 +38,7 @@ export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
   // answer: it is a row whose age cannot be told, not a row that is fine.
   if (Number.isNaN(beat) || now.getTime() - beat > runner.goneAfterSeconds * 1000) return 'gone';
 
+  if (runner.exhaustedUntil !== null) return 'exhausted';
   if (runner.state === 'paused') return 'paused';
   if (runner.state === 'stopping') return 'stopping';
 
@@ -45,6 +51,8 @@ export function activityWords(runner: Runner, now: Date): string {
   switch (activity) {
     case 'gone':
       return 'Gone';
+    case 'exhausted':
+      return `Out of usage until ${clockWords(runner.exhaustedUntil as string)}`;
     case 'paused':
       return 'Paused';
     case 'stopping':
@@ -54,6 +62,14 @@ export function activityWords(runner: Runner, now: Date): string {
     default:
       return 'Idle';
   }
+}
+
+/** `7:40 PM`, in the viewer's own time zone - the clock a reset time is read at. */
+function clockWords(at: string): string {
+  const parsed = new Date(at);
+  return Number.isNaN(parsed.getTime())
+    ? 'an unknown time'
+    : parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 /**

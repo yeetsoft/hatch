@@ -178,10 +178,22 @@ public sealed record NightState
     /// </summary>
     public DateTimeOffset? UntilAt { get; init; }
 
-    /// <summary>The tally's two lists, so the morning's report is the whole night's.</summary>
+    /// <summary>The tally's lists, so the morning's report is the whole night's.</summary>
     public IReadOnlyList<string> Moved { get; init; } = [];
 
     public IReadOnlyList<string> Stalled { get; init; } = [];
+
+    public IReadOnlyList<string> Interrupted { get; init; } = [];
+
+    /// <summary>
+    /// The last increment ran out of Claude usage, and this is when it expects
+    /// to reset - carried the way <see cref="UntilAt"/> is, so a restart during
+    /// the wait comes back still waiting for the same instant.
+    /// </summary>
+    public DateTimeOffset? ExhaustedUntil { get; init; }
+
+    /// <summary>Whether <see cref="ExhaustedUntil"/> came from the session, or is the one-hour backstop.</summary>
+    public bool ExhaustedKnown { get; init; } = true;
 
     /// <summary>
     /// What is at <paramref name="path"/>, or null - which is a fresh night.

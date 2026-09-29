@@ -3,6 +3,7 @@ using System;
 using Hatch.Api.Modules.Hatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hatch.Api.Modules.Hatch.Migrations
 {
     [DbContext(typeof(HatchContext))]
-    partial class HatchContextModelSnapshot : ModelSnapshot
+    [Migration("20260929022657_RunnerExhaustedUntil")]
+    partial class RunnerExhaustedUntil
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -626,71 +629,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Statuses", "hatch");
                 });
 
-            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchTrunkBuild", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("BugIssueId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Canonical")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTimeOffset>("CheckedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CheckedBy")
-                        .IsRequired()
-                        .HasMaxLength(240)
-                        .HasColumnType("character varying(240)");
-
-                    b.Property<string>("Failing")
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("Remote")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("Runner")
-                        .IsRequired()
-                        .HasMaxLength(240)
-                        .HasColumnType("character varying(240)");
-
-                    b.Property<string>("Sha")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTimeOffset>("ShaSince")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Trunk")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Verdict")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BugIssueId");
-
-                    b.HasIndex("Canonical", "Trunk")
-                        .IsUnique();
-
-                    b.ToTable("TrunkBuilds", "hatch");
-                });
-
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWipLimit", b =>
                 {
                     b.Property<int>("Id")
@@ -913,16 +851,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
-                });
-
-            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchTrunkBuild", b =>
-                {
-                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "BugIssue")
-                        .WithMany()
-                        .HasForeignKey("BugIssueId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("BugIssue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWorkLogEntry", b =>

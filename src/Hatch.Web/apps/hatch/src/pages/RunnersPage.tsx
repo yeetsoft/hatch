@@ -103,6 +103,7 @@ const TONES: Record<RunnerActivity, 'muted' | 'success' | 'danger' | 'primary'> 
   working: 'success',
   stopping: 'primary',
   paused: 'primary',
+  exhausted: 'danger',
   gone: 'danger',
   idle: 'muted',
 };

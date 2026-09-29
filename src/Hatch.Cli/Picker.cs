@@ -33,6 +33,16 @@ public enum Pick
 }
 
 /// <summary>
+/// What escaped while a specific ticket was being picked, after its claim was
+/// already let go - so whoever catches it can still say which ticket failed,
+/// without the claim it once held to ask.
+/// </summary>
+public sealed class PickFailedException(string key, Exception inner) : Exception(inner.Message, inner)
+{
+    public string Key { get; } = key;
+}
+
+/// <summary>
 /// One issue a walk carried across itself, with no session - what
 /// <see cref="Pick.Hopped"/> carries beside <see cref="Picked.Outcome"/>, the
 /// way <see cref="Pick.Claimed"/> carries <see cref="Picked.Work"/>.
@@ -183,61 +193,85 @@ public sealed class Picker(
                 return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
             }
 
-            WorkDto? work;
+            // Everything from here to the return is this ticket's claim to give
+            // back on any way out - including a way out nobody wrote a catch
+            // for. The two expected refusals below still handle themselves,
+            // for the sentence each one prints; this is the net under both of
+            // them and under whatever neither expected.
             try
             {
-                work = await board.WorkAsync(checkouts, key, claim.Token, ct, _clones);
-            }
-            catch (HatchException e)
-            {
-                await claim.ReleaseAsync();
-                say.Complain(e.Message);
-                return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
-            }
-
-            // The ticket changed under us between the two reads - somebody
-            // answered a question, something landed, a dependency closed - and
-            // the lease goes back and the walk goes on.
-            if (work is null || work.Blocked is { Length: > 0 })
-            {
-                await claim.ReleaseAsync();
-                busy.Add($"  {key}  {work?.Blocked ?? "it left the dispatcher's path between two reads"}");
-                continue;
-            }
-
-            var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
-            checkouts = resolved.Checkouts;
-
-            if (resolved.Failed is { } failure)
-            {
-                await claim.ReleaseAsync();
-                await board.CommentAsync(
-                    key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
-
-                cloneFailures.Add(new IncrementReport
+                WorkDto? work;
+                try
                 {
-                    Key = key,
-                    From = work.FromStatus.Name,
-                    To = work.ToStatus?.Name ?? "?",
-                    Ended = work.FromStatus.Name,
-                    ExitCode = 1,
-                    Flag = $"could not clone {failure.Remote}: {failure.Error}",
-                });
-                continue;
-            }
+                    work = await board.WorkAsync(checkouts, key, claim.Token, ct, _clones);
+                }
+                catch (HatchException e)
+                {
+                    await claim.ReleaseAsync();
+                    say.Complain(e.Message);
+                    return new Picked(Pick.Unreadable, null, null, queue, busy, Checkouts: checkouts);
+                }
 
-            // Its primary repository matched no checkout this runner holds or
-            // could clone - the same "changed under us" the queue's own fold
-            // would have caught a moment later anyway.
-            if (resolved.Chosen is null)
+                // The ticket changed under us between the two reads - somebody
+                // answered a question, something landed, a dependency closed -
+                // and the lease goes back and the walk goes on.
+                if (work is null || work.Blocked is { Length: > 0 })
+                {
+                    await claim.ReleaseAsync();
+                    busy.Add($"  {key}  {work?.Blocked ?? "it left the dispatcher's path between two reads"}");
+                    continue;
+                }
+
+                var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
+                checkouts = resolved.Checkouts;
+
+                if (resolved.Failed is { } failure)
+                {
+                    await claim.ReleaseAsync();
+
+                    // Best-effort: a board that will not take this comment has
+                    // already had its claim let go of, and the walk goes on to
+                    // the next candidate either way.
+                    try
+                    {
+                        await board.CommentAsync(
+                            key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
+                    }
+                    catch (Exception e) when (e is HatchException or OperationCanceledException)
+                    {
+                        say.Complain($"hatch: {key} - could not tell the board that {failure.Remote} could not be cloned - {e.Message}");
+                    }
+
+                    cloneFailures.Add(new IncrementReport
+                    {
+                        Key = key,
+                        From = work.FromStatus.Name,
+                        To = work.ToStatus?.Name ?? "?",
+                        Ended = work.FromStatus.Name,
+                        ExitCode = 1,
+                        Flag = $"could not clone {failure.Remote}: {failure.Error}",
+                    });
+                    continue;
+                }
+
+                // Its primary repository matched no checkout this runner holds
+                // or could clone - the same "changed under us" the queue's own
+                // fold would have caught a moment later anyway.
+                if (resolved.Chosen is null)
+                {
+                    await claim.ReleaseAsync();
+                    busy.Add($"  {key}  it left the dispatcher's path between two reads");
+                    continue;
+                }
+
+                return new Picked(Pick.Claimed, work, claim, queue, busy, resolved.Chosen, checkouts,
+                    cloneFailures.Count > 0 ? cloneFailures : null);
+            }
+            catch (Exception e)
             {
                 await claim.ReleaseAsync();
-                busy.Add($"  {key}  it left the dispatcher's path between two reads");
-                continue;
+                throw e is OperationCanceledException ? e : new PickFailedException(key, e);
             }
-
-            return new Picked(Pick.Claimed, work, claim, queue, busy, resolved.Chosen, checkouts,
-                cloneFailures.Count > 0 ? cloneFailures : null);
         }
 
         return new Picked(Pick.Busy, null, null, queue, busy, Checkouts: checkouts,
