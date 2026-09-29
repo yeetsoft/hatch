@@ -1611,6 +1611,22 @@ one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both.
 
+Each row under *Pull requests to review* also carries two small icons, after
+the title, with no behaviour of their own — a click anywhere on the row,
+icon included, opens the pull request. The **build** icon is one of three
+states named in words as well as colour: *success* when every counted
+repository's [build check](#build-check) on the branch's current tip passed,
+*failure* when any has failed or is still running with a check that has
+already failed, and *no results* for anything else — no verdict, a build
+still running with nothing failed yet, no checks ran, or a verdict about an
+older sha than the branch's tip. Because a pull request held back into
+*Builds that fail* never reaches this list, *failure* is drawn and tested but
+never actually seen here. The **up to date** icon says whether the branch
+already holds the trunk's tip, from the same [merge check](#merge-check) that
+answers the section above — naming the trunk as a runner reported it (*Up to
+date with main*, *Behind main*), or *not checked against the trunk yet*, in
+grey, when no runner has said.
+
 Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
@@ -1621,7 +1637,8 @@ answer worth having, and it is the one it gives most of the time.
 {
   "reviews": [
     { "key": "AER-12", "title": "A story that landed", "type": "story",
-      "pullRequestUrl": "https://forge.example/pulls/12" }
+      "pullRequestUrl": "https://forge.example/pulls/12",
+      "buildState": "success", "holdsTrunk": true, "trunk": "main" }
   ],
   "inReviewWithoutPullRequest": 3,
   "questions": [ ... ],

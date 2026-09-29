@@ -65,9 +65,7 @@ public static class ReviewWork
     {
         var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
 
-        var counted = bound.Count == 0
-            ? merges
-            : merges.Where(v => bound.Any(r => r.Canonical == v.Canonical)).ToList();
+        var counted = Counted(bound, merges);
 
         if (counted.Any(v => v.Verdict == MergeVerdicts.Conflicted))
             return new Judgement(WorkKinds.Conflicts, null);
@@ -88,7 +86,7 @@ public static class ReviewWork
         // repository with no build verdict at all is not in either list: it
         // says nothing, which is the sentence it has always had.
         var builtAt = builds.Where(b => clean.Any(m => m.Canonical == b.Canonical)).ToList();
-        var about = builtAt.Where(b => clean.Any(m => m.Canonical == b.Canonical && m.BranchSha == b.Sha)).ToList();
+        var about = AboutTheBranch(clean, builtAt);
 
         if (about.Any(b => b.Verdict == BuildVerdicts.Failed))
             return new Judgement(WorkKinds.Build, null);
@@ -110,6 +108,19 @@ public static class ReviewWork
             ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do")
             : Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
     }
+
+    /// <summary>The merge verdicts for repositories the project still binds - every one, if it binds none.</summary>
+    public static IReadOnlyList<EfHatchMergeCheck> Counted(
+        IReadOnlyList<EfHatchProjectRepository> bound, IReadOnlyList<EfHatchMergeCheck> merges) =>
+        bound.Count == 0 ? merges : merges.Where(v => bound.Any(r => r.Canonical == v.Canonical)).ToList();
+
+    /// <summary>
+    /// The build verdicts about the branch as a clean merge check read it - a
+    /// verdict on any other sha says nothing about the branch as it stands.
+    /// </summary>
+    public static IReadOnlyList<EfHatchBuildCheck> AboutTheBranch(
+        IReadOnlyList<EfHatchMergeCheck> clean, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        builds.Where(b => clean.Any(m => m.Canonical == b.Canonical && m.BranchSha == b.Sha)).ToList();
 
     /// <summary>A folded row, which keeps the conflicts kind it has always had.</summary>
     private static Judgement Fold(string why) => new(WorkKinds.Conflicts, why);

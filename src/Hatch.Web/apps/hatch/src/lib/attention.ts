@@ -122,3 +122,46 @@ export const conflictEmptyWords = (): string => 'No branch in review has stopped
 
 /** The failing builds section's empty state - one wording, like the conflicts'. */
 export const failingBuildEmptyWords = (): string => 'No build in review is failing.';
+
+// ---- The two icons on a row under Pull requests to review ----
+
+/**
+ * `Build passed`, `Build failed`, `No build results yet` - the build icon's
+ * accessible name, in words rather than colour alone.
+ *
+ * `failure` is drawn and pinned here even though a real row can never carry
+ * it: a pull request with any failing check is held back into *Builds that
+ * fail* before it ever reaches this list, so this state is reachable only by
+ * calling the function directly, as the ticket asked for a tri-state icon.
+ */
+export function buildIconWords(buildState: string): string {
+  if (buildState === 'success') return 'Build passed';
+  if (buildState === 'failure') return 'Build failed';
+  return 'No build results yet';
+}
+
+/** Which token colours the build icon: `--success`, `--danger` or `--muted`. */
+export function buildIconTone(buildState: string): 'success' | 'danger' | 'muted' {
+  if (buildState === 'success') return 'success';
+  if (buildState === 'failure') return 'danger';
+  return 'muted';
+}
+
+/**
+ * `Up to date with main`, `Behind main`, `Not checked against the trunk yet` -
+ * naming the trunk as the runner reported it, never a hardcoded name.
+ */
+export function trunkIconWords(holdsTrunk: boolean | null, trunk: string | null): string {
+  if (holdsTrunk === null) return 'Not checked against the trunk yet';
+  return holdsTrunk ? `Up to date with ${trunk}` : `Behind ${trunk}`;
+}
+
+/**
+ * `--success` or `--muted` for the up-to-date icon. Behind is not an alarm -
+ * criterion 10 is explicit that a branch merely behind the trunk is not held
+ * back - so it shares `--muted` with "not checked" rather than a fourth
+ * token; the words, not the colour, are what tell the two apart.
+ */
+export function trunkIconTone(holdsTrunk: boolean | null): 'success' | 'muted' {
+  return holdsTrunk === true ? 'success' : 'muted';
+}

@@ -809,6 +809,17 @@ export interface Review {
       `inReviewWithoutPullRequest`. Nor is one held back by a conflict or a
       failed build - see `Attention.reviewsHeldBack`. */
   pullRequestUrl: string;
+  /** `'success' | 'failure' | 'unknown'` - one of `ReviewBuildStates`. Whether
+      every repository's build on the branch's current tip passed. A row held
+      back into `Attention.failingBuilds` never reaches this list, so
+      `'failure'` is never actually seen here, only drawn and tested. */
+  buildState: string;
+  /** Whether the branch already holds the trunk's tip, from the counted
+      repositories' clean merge checks - null when none has said. Non-null only
+      alongside `trunk`. */
+  holdsTrunk: boolean | null;
+  /** The trunk's name as a runner reported it, or null when `holdsTrunk` is. */
+  trunk: string | null;
 }
 
 /** An issue in review whose branch has stopped merging. Mirrors ConflictDto. */

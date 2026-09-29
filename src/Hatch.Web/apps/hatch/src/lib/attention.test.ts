@@ -3,10 +3,14 @@ import {
   attentionCount,
   attentionLabel,
   attentionTone,
+  buildIconTone,
+  buildIconWords,
   conflictEmptyWords,
   failingBuildEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
+  trunkIconTone,
+  trunkIconWords,
   waitedWords,
 } from './attention';
 import type { Attention, Conflict, Question, Review } from '../types';
@@ -20,6 +24,9 @@ const review = (over: Partial<Review> = {}): Review => ({
   title: 'A story that landed',
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/12',
+  buildState: 'unknown',
+  holdsTrunk: null,
+  trunk: null,
   ...over,
 });
 
@@ -231,5 +238,52 @@ describe('waitedWords', () => {
 
   it('falls back to a word rather than NaN on an unparseable instant', () => {
     expect(waitedWords('not a date', NOW)).toBe('waiting');
+  });
+});
+
+describe('buildIconWords', () => {
+  it('says the build passed', () => {
+    expect(buildIconWords('success')).toBe('Build passed');
+  });
+
+  it('says the build failed - drawn and pinned even though no real row ever carries it', () => {
+    expect(buildIconWords('failure')).toBe('Build failed');
+  });
+
+  it('says no results for anything else', () => {
+    expect(buildIconWords('unknown')).toBe('No build results yet');
+  });
+});
+
+describe('buildIconTone', () => {
+  it('is success, danger or muted', () => {
+    expect(buildIconTone('success')).toBe('success');
+    expect(buildIconTone('failure')).toBe('danger');
+    expect(buildIconTone('unknown')).toBe('muted');
+  });
+});
+
+describe('trunkIconWords', () => {
+  it('names the trunk as the runner reported it when up to date', () => {
+    expect(trunkIconWords(true, 'trunk')).toBe('Up to date with trunk');
+  });
+
+  it('names the trunk when behind', () => {
+    expect(trunkIconWords(false, 'trunk')).toBe('Behind trunk');
+  });
+
+  it('says not checked when no runner has said', () => {
+    expect(trunkIconWords(null, null)).toBe('Not checked against the trunk yet');
+  });
+});
+
+describe('trunkIconTone', () => {
+  it('is success only when the branch holds the trunk', () => {
+    expect(trunkIconTone(true)).toBe('success');
+  });
+
+  it('is muted when behind, and muted when not checked - the words tell those apart', () => {
+    expect(trunkIconTone(false)).toBe('muted');
+    expect(trunkIconTone(null)).toBe('muted');
   });
 });

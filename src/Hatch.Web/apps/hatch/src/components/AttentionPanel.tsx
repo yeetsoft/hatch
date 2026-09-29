@@ -1,9 +1,59 @@
 import { Link } from 'react-router-dom';
-import { conflictEmptyWords, failingBuildEmptyWords, questionEmptyWords, reviewEmptyWords, waitedWords } from '../lib/attention';
+import {
+  buildIconTone,
+  buildIconWords,
+  conflictEmptyWords,
+  failingBuildEmptyWords,
+  questionEmptyWords,
+  reviewEmptyWords,
+  trunkIconTone,
+  trunkIconWords,
+  waitedWords,
+} from '../lib/attention';
 import { buildWords } from '../lib/buildCheck';
 import { conflictWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import type { Attention } from '../types';
+
+/**
+ * The build icon: a plain dot, coloured and named for one of the three build
+ * states. No behaviour of its own - it sits inside the row's own link, so a
+ * click anywhere, icon included, opens the pull request.
+ */
+function BuildIcon({ state }: { state: string }) {
+  const words = buildIconWords(state);
+
+  return (
+    <svg
+      className={`hatch-attention-icon hatch-attention-icon-${buildIconTone(state)}`}
+      viewBox="0 0 12 12"
+      role="img"
+      aria-label={words}
+      focusable="false"
+    >
+      <title>{words}</title>
+      <circle cx="6" cy="6" r="5" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** The up-to-date icon: the same plain dot, coloured and named for whether the branch holds the trunk. */
+function TrunkIcon({ holdsTrunk, trunk }: { holdsTrunk: boolean | null; trunk: string | null }) {
+  const words = trunkIconWords(holdsTrunk, trunk);
+
+  return (
+    <svg
+      className={`hatch-attention-icon hatch-attention-icon-${trunkIconTone(holdsTrunk)}`}
+      viewBox="0 0 12 12"
+      role="img"
+      aria-label={words}
+      focusable="false"
+    >
+      <title>{words}</title>
+      <circle cx="6" cy="6" r="5" fill="currentColor" />
+    </svg>
+  );
+}
 
 /**
  * What the control hands over when it is pressed: the links that unblock the
@@ -52,6 +102,10 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
                     <span className="hatch-attention-row-head">
                       <span className="hatch-attention-key">{r.key}</span>
                       <span className="hatch-attention-title">{r.title}</span>
+                      <span className="hatch-attention-row-icons">
+                        <BuildIcon state={r.buildState} />
+                        <TrunkIcon holdsTrunk={r.holdsTrunk} trunk={r.trunk} />
+                      </span>
                     </span>
                     {/* Drawn the way the issue page's chip draws it: the noise
                         off the front, nothing parsed out of the path. Hatch has

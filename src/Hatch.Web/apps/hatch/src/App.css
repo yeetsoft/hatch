@@ -3097,6 +3097,33 @@ button.hatch-option.chosen {
   white-space: nowrap;
 }
 
+/* The build and up-to-date icons on a row under "Pull requests to review" -
+   plain dots, coloured and named, with no behaviour of their own. */
+.hatch-attention-row-icons {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: none;
+}
+
+.hatch-attention-icon {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.hatch-attention-icon-success {
+  color: var(--success);
+}
+
+.hatch-attention-icon-danger {
+  color: var(--danger);
+}
+
+.hatch-attention-icon-muted {
+  color: var(--muted);
+}
+
 /* Pushed to the far end of the row, because it is the one number somebody
    scans down the list for. */
 .hatch-attention-waited {

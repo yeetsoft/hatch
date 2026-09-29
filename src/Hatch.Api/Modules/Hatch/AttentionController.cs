@@ -58,6 +58,7 @@ public class AttentionController(HatchContext db) : ControllerBase
             .Select(i => new
             {
                 i.Id,
+                i.ProjectId,
                 ProjectKey = i.Project!.Key,
                 i.Number,
                 i.Type,
@@ -66,16 +67,35 @@ public class AttentionController(HatchContext db) : ControllerBase
             })
             .ToListAsync(ct);
 
-        // The verdicts of the column's issues, one query for all of them. An
-        // issue conflicts if any repository's verdict says so, and it is listed
-        // with only those - a clean repository beside a conflicted one is not
-        // part of the sentence. Listed whether or not it carries a pull
-        // request: the branch conflicts either way.
         var reviewIds = inReview.Select(i => i.Id).ToList();
-        var conflicted = (await db.MergeChecks.AsNoTracking()
-                .Where(m => reviewIds.Contains(m.IssueId) && m.Verdict == MergeVerdicts.Conflicted)
-                .OrderBy(m => m.Canonical)
+        var projectIds = inReview.Select(i => i.ProjectId).Distinct().ToList();
+
+        // The repositories each issue's project still binds - what ReviewWork's
+        // own "counted" rule needs, and what neither list below loaded before
+        // this row also had to say whether the branch is current and whether
+        // its build passed.
+        var bound = (await db.ProjectRepositories.AsNoTracking()
+                .Where(r => projectIds.Contains(r.ProjectId))
                 .ToListAsync(ct))
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchProjectRepository>)g.ToList());
+
+        // Every merge verdict for the column, not only the conflicted ones:
+        // a row's build/up-to-date state needs the clean ones too, so this
+        // reads once and both Conflicts and Reviews are built from it.
+        var allMerges = await db.MergeChecks.AsNoTracking()
+            .Where(m => reviewIds.Contains(m.IssueId))
+            .OrderBy(m => m.Canonical)
+            .ToListAsync(ct);
+        var mergesByIssue = allMerges.GroupBy(m => m.IssueId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // An issue conflicts if any repository's verdict says so, and it is
+        // listed with only those - a clean repository beside a conflicted one
+        // is not part of the sentence. Listed whether or not it carries a pull
+        // request: the branch conflicts either way. Deliberately not narrowed
+        // to bound repositories, as before this task.
+        var conflicted = allMerges
+            .Where(m => m.Verdict == MergeVerdicts.Conflicted)
             .GroupBy(m => m.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
 
@@ -85,15 +105,21 @@ public class AttentionController(HatchContext db) : ControllerBase
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, conflicted[i.Id]))
             .ToList();
 
-        // The same for the build: listed with only its failed verdicts, plus a
-        // pending one that already carries a failing check - a check that has
-        // failed counts while the rest are still running. Not counted towards
-        // the badge, as the conflicts are not.
-        var failed = (await db.BuildChecks.AsNoTracking()
-                .Where(b => reviewIds.Contains(b.IssueId)
-                    && (b.Verdict == BuildVerdicts.Failed || (b.Verdict == BuildVerdicts.Pending && b.Failing != null)))
-                .OrderBy(b => b.Canonical)
-                .ToListAsync(ct))
+        // The same for the build: every verdict for the column, so a row's
+        // build state can be computed from it below.
+        var allBuilds = await db.BuildChecks.AsNoTracking()
+            .Where(b => reviewIds.Contains(b.IssueId))
+            .OrderBy(b => b.Canonical)
+            .ToListAsync(ct);
+        var buildsByIssue = allBuilds.GroupBy(b => b.IssueId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Listed with only its failed verdicts, plus a pending one that already
+        // carries a failing check - a check that has failed counts while the
+        // rest are still running. Not counted towards the badge, as the
+        // conflicts are not, and not narrowed to bound repositories, as before.
+        var failed = allBuilds
+            .Where(b => b.Verdict == BuildVerdicts.Failed
+                || (b.Verdict == BuildVerdicts.Pending && b.Failing != null))
             .GroupBy(b => b.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<BuildCheckDto>)g.Select(IssueBuildChecks.Project).ToList());
 
@@ -114,8 +140,35 @@ public class AttentionController(HatchContext db) : ControllerBase
             .Where(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
                 && !conflicted.ContainsKey(i.Id)
                 && !failed.ContainsKey(i.Id))
-            .Select(i => new ReviewDto(
-                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!))
+            .Select(i =>
+            {
+                var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
+                var merges = mergesByIssue.TryGetValue(i.Id, out var m) ? (IReadOnlyList<EfHatchMergeCheck>)m : [];
+                var builds = buildsByIssue.TryGetValue(i.Id, out var b) ? (IReadOnlyList<EfHatchBuildCheck>)b : [];
+
+                // The same rules ReviewWork.Judge dispatches on: only the
+                // repositories the project still binds, and only builds about
+                // the branch as its own clean merge check reads it.
+                var counted = ReviewWork.Counted(repos, merges);
+                var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
+                var about = ReviewWork.AboutTheBranch(clean, builds);
+
+                var buildState = clean.Count == 0 ? ReviewBuildStates.Unknown
+                    : about.Any(x => x.Verdict == BuildVerdicts.Failed
+                        || (x.Verdict == BuildVerdicts.Pending && EfHatchBuildCheck.ReadFailing(x.Failing).Count > 0))
+                        ? ReviewBuildStates.Failure
+                    : about.Count == clean.Count && about.All(x => x.Verdict == BuildVerdicts.Passed)
+                        ? ReviewBuildStates.Success
+                    : ReviewBuildStates.Unknown;
+
+                bool? holdsTrunk = clean.Any(m => m.HoldsTrunk == false) ? false
+                    : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
+                    : null;
+
+                return new ReviewDto(
+                    IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
+                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk);
+            })
             .ToList();
 
         var withoutPr = inReview.Count(i => string.IsNullOrWhiteSpace(i.PullRequestUrl));
