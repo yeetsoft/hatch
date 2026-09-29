@@ -225,6 +225,85 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("increment(s) in", StringComparison.Ordinal));
     }
 
+    // ---- A pass that fails lets its ticket go and the night goes on (HA-115) ----
+
+    [Fact]
+    public async Task A_tree_that_cannot_be_prepared_lets_the_ticket_go_and_the_loop_takes_the_next_one()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+
+        // Both clear at first. The board would not really offer AER-1 straight
+        // back the moment its claim was released, so the swap below - made the
+        // instant the first reset falls over - stands in for that: what matters
+        // to this test is what the loop does next, not how the board gets there.
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        // Only the first reset throws - a git command that failed outright,
+        // rather than the ordinary Reset.Never a bad tree answers with.
+        var thrown = false;
+        h.Workspace.Watching = () =>
+        {
+            if (!thrown)
+            {
+                thrown = true;
+                h.Workspace.PrepareThrows = new InvalidOperationException("git blew up");
+                h.Wire.Replace(
+                    "GET", Queue, HttpStatusCode.OK,
+                    System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+            }
+            else h.Workspace.PrepareThrows = null;
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Sessions.Spawned);
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("git blew up", comment.Body);
+        Assert.Contains(h.Say.Complained, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("git blew up", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_session_runner_that_throws_lets_the_ticket_go_and_puts_the_tree_back_on_the_trunk()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("the CLI fell over", comment.Body);
+
+        // Back on the trunk - the same door a lost lease leaves through.
+        Assert.Contains($"return {h.Root}", h.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task Three_failed_passes_in_a_row_end_the_night_the_same_way_three_failed_sessions_do()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+        Assert.Equal(3, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
+        Assert.Equal(3, h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Count);
+    }
+
     // ---- More than one checkout in play ----
 
     private static (CheckoutEntry Primary, CheckoutEntry Other, WorkRepositoryDto[] Repositories) TwoCheckouts(Harness h)

@@ -103,4 +103,34 @@ public sealed class LiveTerminalTests
 
         return captured.ToString();
     }
+
+    // ---- A closed terminal (HA-115) ----
+
+    [Fact]
+    public void A_terminal_that_cannot_be_written_to_does_not_throw()
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        Console.SetOut(new ThrowingWriter());
+        Console.SetError(new ThrowingWriter());
+        try
+        {
+            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1));
+            live.Line("hello");
+            live.Complain("uh oh");
+            live.Stop();
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+        }
+    }
+
+    private sealed class ThrowingWriter : TextWriter
+    {
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        public override void Write(string? value) => throw new IOException("the pipe is gone");
+        public override void WriteLine(string? value) => throw new IOException("the pipe is gone");
+    }
 }

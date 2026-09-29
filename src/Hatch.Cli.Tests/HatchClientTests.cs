@@ -156,6 +156,25 @@ public sealed class HatchClientTests
     }
 
     /// <summary>
+    /// A write's refusal is already handled above the deserialise - what is left
+    /// unguarded is a 2xx whose body is not what the caller asked for, the way
+    /// <see cref="GetAsync{T}"/> already guards its own read.
+    /// </summary>
+    [Fact]
+    public async Task A_2xx_body_that_is_not_the_write_s_answer_is_a_HatchException_and_not_a_crash()
+    {
+        using var wire = new Wire();
+        wire.Reply("POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.OK, "not json at all");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.PostAsync<IssueDto>(
+                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+
+        Assert.Contains("IssueDto", thrown.Message);
+    }
+
+    /// <summary>
     /// A connection that never happened is a different thing from a refusal, and
     /// every caller treats it as one - the difference matters most to the
     /// heartbeat, where one is a lost lease and the other is a minute of bad

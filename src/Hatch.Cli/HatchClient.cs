@@ -214,7 +214,14 @@ public sealed class HatchClient : IDisposable
         if (!answer.Ok) throw new HatchException(Refusal(answer, path), answer.Status);
         if (answer.Body.Trim().Length == 0) return null;
 
-        return (T?)JsonSerializer.Deserialize(answer.Body, TypeInfo(typeof(T)));
+        try
+        {
+            return (T?)JsonSerializer.Deserialize(answer.Body, TypeInfo(typeof(T)));
+        }
+        catch (JsonException e)
+        {
+            throw new HatchException($"hatch: {path} answered with something that is not {typeof(T).Name}: {e.Message}");
+        }
     }
 
     /// <summary>The four refusals worth their own sentence, and everything else.</summary>

@@ -53,6 +53,16 @@ public sealed class ClaimTests
     }
 
     [Fact]
+    public async Task A_2xx_body_that_is_not_a_claim_is_a_HatchException_and_not_a_crash()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, "not json at all");
+
+        await Assert.ThrowsAsync<HatchException>(
+            () => Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat));
+    }
+
+    [Fact]
     public async Task The_interval_is_a_fifth_of_the_lease_and_never_a_busy_loop()
     {
         Assert.Equal(TimeSpan.FromSeconds(60), Claim.Interval(300));

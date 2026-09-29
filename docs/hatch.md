@@ -3375,7 +3375,13 @@ except the last one:
   not a reason to stop; a ticket can be wrong and a test can be flaky, and the
   next ticket is a different question. Three in a row is something else:
   whatever is broken is broken for every ticket, and the loop is now spending
-  money to prove it. **A usage limit is not one of the three** — see
+  money to prove it. An exception anywhere in a pass — picking, claiming,
+  preparing the tree, the session, judging it, or tidying up — is one failed
+  increment and nothing more: the claim is let go of, the ticket is told why
+  in a comment naming the error, the tree goes back to the trunk, and the loop
+  goes on to its next pass. It feeds this same count rather than a list of its
+  own, so the list of things that end a night does not grow. **A usage limit
+  is not one of the three** — see
   [when an increment does nothing](#when-an-increment-does-nothing) — and
   neither is [the wait that follows one](#runners-on-the-board): the loop is
   spending nothing while it waits, so there is nothing there to fail.
