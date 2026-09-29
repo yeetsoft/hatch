@@ -46,6 +46,14 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     private long _thinking;
     private long _said;
+    private readonly HashSet<string> _counted = [];
+
+    /// <summary>
+    /// The four counts added up, over every assistant message seen so far in
+    /// this session - the live version of the figure the work log eventually
+    /// answers with, read by the readout while the session is still running.
+    /// </summary>
+    public long TokensSoFar { get; private set; }
 
     /// <summary>The lines one event turns into, in order. Empty for the events that draw nothing.</summary>
     public IEnumerable<string> Read(string raw)
@@ -103,6 +111,8 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     private IEnumerable<string> Assistant(JsonElement e)
     {
+        Count(e);
+
         foreach (var part in Content(e))
         {
             switch (Text(part, "type"))
@@ -118,6 +128,26 @@ public sealed partial class StreamRender(string root, RunFacts facts)
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// One message's usage, added in once. The stream repeats a message's
+    /// <c>usage</c> on every content block it carries - a message with a
+    /// thinking block and two tool calls arrives with the same usage three
+    /// times - so a message already counted, by its id, is skipped rather than
+    /// summed again.
+    /// </summary>
+    private void Count(JsonElement e)
+    {
+        if (!e.TryGetProperty("message", out var message)) return;
+
+        var id = Text(message, "id");
+        if (id is null || !_counted.Add(id)) return;
+
+        if (!message.TryGetProperty("usage", out var usage)) return;
+
+        TokensSoFar += Long(usage, "input_tokens") + Long(usage, "output_tokens")
+            + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
     }
 
     /// <summary>

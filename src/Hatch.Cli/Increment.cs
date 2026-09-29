@@ -75,6 +75,32 @@ public sealed class IncrementReport
     /// </summary>
     public bool LostLease { get; set; }
 
+    /// <summary>
+    /// A cancellation reached deep enough into the increment - past the spawn
+    /// itself, which already answers a Ctrl-C by stopping the session and
+    /// returning normally - that nothing further could be read from or written
+    /// to the board. Not a failure of the increment, which is why it has no
+    /// bearing on <see cref="Outcome"/>: it is one more thing the closing
+    /// banner's glyph reads, alongside <see cref="LostLease"/> and a non-zero
+    /// exit.
+    /// </summary>
+    public bool Interrupted { get; set; }
+
+    /// <summary>When the increment started and ended, wall clock - the banner's "Took" line.</summary>
+    public DateTimeOffset StartedAt { get; set; }
+    public DateTimeOffset EndedAt { get; set; }
+
+    /// <summary>
+    /// The four counts added up, the same definition the work log answers with -
+    /// so the banner and the issue page never disagree. Null when the session
+    /// never reported what it spent, which the banner reads as "not reported"
+    /// and never as zero.
+    /// </summary>
+    public long? TotalTokens { get; set; }
+
+    /// <summary>Turns, out of the result event. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
+    public int? Turns { get; set; }
+
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
         Moved ? $"{From} -> {Ended}"
@@ -131,7 +157,9 @@ public sealed class Increment(
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
         IReadOnlyList<BranchEntry>? branches = null,
         ConflictRun? conflict = null,
-        BuildRun? build = null)
+        BuildRun? build = null,
+        string runnerName = "",
+        int incrementNumber = 1)
     {
         var report = new IncrementReport
         {
@@ -141,13 +169,9 @@ public sealed class Increment(
             ConflictTrunk = conflict is null ? null : conflict.Found.Trunk ?? Conflicts.Trunk(work.Issue),
         };
         report.Ended = report.From;
+        report.StartedAt = DateTimeOffset.UtcNow;
 
-        say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
-        say.Line(
-            conflict is not null ? $"hatch: {model}, effort {effort}, {report.From}, resolving conflicts with {report.ConflictTrunk}"
-            : build is not null ? $"hatch: {model}, effort {effort}, {report.From}, {Builds.Words(build.Found.Names)}"
-            : $"hatch: {model}, effort {effort}, {report.From} -> {report.To}");
-        if (Prompt.OverrideLine(work, model, effort) is { } chose) say.Line($"hatch:   {chose}");
+        say.Lines(Banner.Opening(report, work, model, effort, runnerName, incrementNumber, conflict, build));
         say.Line("");
 
         // What was open before the run, so that what the run asked can be told
@@ -169,6 +193,13 @@ public sealed class Increment(
         report.SessionId = facts.SessionId;
         report.Cost = facts.CostUsd;
 
+        if (facts.Result is { } summary)
+        {
+            report.Turns = summary.Turns;
+            report.TotalTokens = summary.Models?.Sum(m =>
+                m.InputTokens + m.OutputTokens + m.CacheCreationTokens + m.CacheReadTokens);
+        }
+
         // Before anything is written anywhere. A lease that went means this
         // runner no longer holds the ticket, and everything below except the
         // work log is a write onto somebody else's increment.
@@ -183,79 +214,97 @@ public sealed class Increment(
         // Before the board is asked anything, so a row exists even when the
         // reads after it fail. Money was spent on that ticket either way, and a
         // meter reading is not a claim to have done the work.
-        await PostWorkLogAsync(report.Key, facts, started, ct);
+        await PostWorkLogAsync(report, facts, started, ct);
 
-        // Where the ticket actually ended up, asked of the board rather than of
-        // the session. An increment that says it did the work and leaves the
-        // ticket in the column it found it in did not do the work, and this is
-        // the read that can tell the difference.
+        // Everything from here on reads from or writes to the board, all of it
+        // through the same token a Ctrl-C cancels. The spawn above already
+        // answers a cancellation by stopping the session and returning
+        // normally, but a signal caught this much later - between the session
+        // ending and the last of these calls - has nothing left running to stop,
+        // and would otherwise unwind out of this method with no report at all:
+        // an opening banner with no closing one. So it is caught here instead,
+        // and the report closes with whatever it already knows.
         try
         {
-            var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
-            report.Ended = later?.FromStatus.Name ?? report.From;
-
-            // A conflict or a build increment is judged by the branch, below, and
-            // not by the column: it starts and ends in review, so "did not move"
-            // is what success looks like. The column is still read and still
-            // reported.
-            if (report.Ended != report.From) report.Moved = true;
-            else if (conflict is null && build is null) report.Stalled = true;
-        }
-        catch (HatchException e)
-        {
-            // Not knowing where it ended up is not the same as knowing it went
-            // nowhere. A stall is written on the ticket in front of a person, so
-            // a read that did not happen must not become one.
-            say.Complain(e.Message);
-            report.Flag ??= "where it ended up is not known - the board did not answer";
-        }
-
-        // The verdict on a conflict increment: the branch on origin, fetched now,
-        // asked of git again. Never when the lease was lost - the ticket is
-        // somebody else's by then, and what the board is told about its branch is
-        // theirs to say.
-        if (conflict is not null && claim.Lost is null) await JudgeAsync(report, conflict, ct);
-
-        // The same for a build increment, and the same reason: what it did is on
-        // origin's branch. Whether that fixed the build is the board's to say,
-        // later, when the build on the new tip has run.
-        if (build is not null && claim.Lost is null) await JudgeBuildAsync(report, build, ct);
-
-        // Whatever the session asked for on its way out. This is the half of the
-        // loop that makes asking worth doing: an unattended run's questions are
-        // the one thing in its output that somebody has to act on, and they
-        // would otherwise be a paragraph in the middle of a transcript nobody
-        // scrolls back through.
-        int? open = null;
-        try
-        {
-            var after = await board.QuestionsAsync(report.Key, open: true, ct);
-            open = after.Count;
-
-            var asked = after.Where(q => !before.Contains(q.Id)).ToList();
-            report.Asked = asked.Count;
-
-            if (asked.Count > 0)
+            // Where the ticket actually ended up, asked of the board rather than
+            // of the session. An increment that says it did the work and leaves
+            // the ticket in the column it found it in did not do the work, and
+            // this is the read that can tell the difference.
+            try
             {
-                say.Line("");
-                say.Line($"--- {report.Key} asked {asked.Count} question(s) ---");
-                say.Line("");
-                foreach (var line in Questions.Draw(asked)) say.Line(line);
-                say.Line($"  hatch answer {report.Key}");
-                say.Line($"  {board.Client.Origin}/issues/{report.Key}");
+                var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
+                report.Ended = later?.FromStatus.Name ?? report.From;
+
+                // A conflict or a build increment is judged by the branch, below,
+                // and not by the column: it starts and ends in review, so "did
+                // not move" is what success looks like. The column is still read
+                // and still reported.
+                if (report.Ended != report.From) report.Moved = true;
+                else if (conflict is null && build is null) report.Stalled = true;
             }
+            catch (HatchException e)
+            {
+                // Not knowing where it ended up is not the same as knowing it
+                // went nowhere. A stall is written on the ticket in front of a
+                // person, so a read that did not happen must not become one.
+                say.Complain(e.Message);
+                report.Flag ??= "where it ended up is not known - the board did not answer";
+            }
+
+            // The verdict on a conflict increment: the branch on origin, fetched
+            // now, asked of git again. Never when the lease was lost - the
+            // ticket is somebody else's by then, and what the board is told
+            // about its branch is theirs to say.
+            if (conflict is not null && claim.Lost is null) await JudgeAsync(report, conflict, ct);
+
+            // The same for a build increment, and the same reason: what it did
+            // is on origin's branch. Whether that fixed the build is the
+            // board's to say, later, when the build on the new tip has run.
+            if (build is not null && claim.Lost is null) await JudgeBuildAsync(report, build, ct);
+
+            // Whatever the session asked for on its way out. This is the half of
+            // the loop that makes asking worth doing: an unattended run's
+            // questions are the one thing in its output that somebody has to act
+            // on, and they would otherwise be a paragraph in the middle of a
+            // transcript nobody scrolls back through.
+            int? open = null;
+            try
+            {
+                var after = await board.QuestionsAsync(report.Key, open: true, ct);
+                open = after.Count;
+
+                var asked = after.Where(q => !before.Contains(q.Id)).ToList();
+                report.Asked = asked.Count;
+
+                if (asked.Count > 0)
+                {
+                    say.Line("");
+                    say.Line($"--- {report.Key} asked {asked.Count} question(s) ---");
+                    say.Line("");
+                    foreach (var line in Questions.Draw(asked)) say.Line(line);
+                    say.Line($"  hatch answer {report.Key}");
+                    say.Line($"  {board.Client.Origin}/issues/{report.Key}");
+                }
+            }
+            catch (HatchException e)
+            {
+                say.Complain(e.Message);
+            }
+
+            // And if the board says nothing happened, say so on the ticket. Not
+            // for an increment whose lease went: writing a stall onto a ticket
+            // another runner now holds would flag their increment as ours, and
+            // the ticket did not move because we stopped - which the loop
+            // already knows.
+            if (report.Stalled && !report.LostLease) await FlagStallAsync(report, open, ct);
         }
-        catch (HatchException e)
+        catch (OperationCanceledException)
         {
-            say.Complain(e.Message);
+            report.Interrupted = true;
+            report.Flag ??= "interrupted - nothing further could be read or written";
         }
 
-        // And if the board says nothing happened, say so on the ticket. Not for
-        // an increment whose lease went: writing a stall onto a ticket another
-        // runner now holds would flag their increment as ours, and the ticket
-        // did not move because we stopped - which the loop already knows.
-        if (report.Stalled && !report.LostLease) await FlagStallAsync(report, open, ct);
-
+        report.EndedAt = DateTimeOffset.UtcNow;
         return report;
     }
 
@@ -465,8 +514,10 @@ public sealed class Increment(
     /// Nothing here may fail the increment. The work happened either way, and a
     /// loop must not stop because a meter did not.
     /// </remarks>
-    private async Task PostWorkLogAsync(string key, RunFacts facts, DateTimeOffset started, CancellationToken ct)
+    private async Task PostWorkLogAsync(IncrementReport report, RunFacts facts, DateTimeOffset started, CancellationToken ct)
     {
+        var key = report.Key;
+
         // No result event arrived - an interrupted run, or a CLI that fell over
         // before it could report. Nothing is posted, because a row of zeros
         // would be a claim rather than a record.
@@ -490,6 +541,10 @@ public sealed class Increment(
                 ? $"hatch: work log: written to {key}"
                 : $"hatch: work log: {Format.Compact(written.TotalTokens)} tokens, "
                   + $"{Format.Spent(written.CostUsd)}, {StreamRender.Clock(written.DurationMs / 1000)}");
+
+            // The server's own figure, when it wrote one - so the closing
+            // banner and the issue page never disagree about the headline.
+            if (written is not null) report.TotalTokens = written.TotalTokens;
         }
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {

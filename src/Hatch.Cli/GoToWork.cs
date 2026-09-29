@@ -1119,15 +1119,26 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 work, picked.Chosen!.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
                 quiet, claim, ct, picked.Chosen.AddDirs, picked.Chosen.Repositories, entering.Entries,
                 found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, picked.Chosen, judge)),
-                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)));
+                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, picked.Chosen, judge)),
+                runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
 
             tally.Record(report);
 
-            // Before the lease is let go, because the ticket is still this
-            // runner's to write on: what the session left is said there, and the
-            // pull request's branch is brought up to date. A lease that went
-            // gets the trees back on the trunk and nothing written.
-            await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
+            try
+            {
+                // Before the lease is let go, because the ticket is still this
+                // runner's to write on: what the session left is said there, and
+                // the pull request's branch is brought up to date. A lease that
+                // went gets the trees back on the trunk and nothing written.
+                await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
+            }
+            finally
+            {
+                // Every opening banner has a closing one - in a finally, so a
+                // Ctrl-C that lands while the tree is being left still gets one
+                // rather than the loop unwinding past it.
+                runtime.Say.Lines(Banner.Closing(report));
+            }
 
             // A conflict that was resolved did not move the ticket, and did not
             // fail to: it stays in review, which is where it belongs.
