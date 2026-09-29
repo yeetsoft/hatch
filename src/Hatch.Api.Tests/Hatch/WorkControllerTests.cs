@@ -2774,6 +2774,323 @@ public class WorkControllerTests
         Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
     }
 
+    // ---- The WIP section ----
+    //
+    // The tenth condition: a move whose from is outside the section and whose
+    // to is inside it is folded while the section has no room for it - the
+    // load, not counting this issue, at or over the limit. Read once for a
+    // pass and once for a named dispatch, always over the whole board, and
+    // placed after the dependency fold and before the review verdict.
+
+    [Fact]
+    public async Task WipFold_FoldsAStoryAndABugWaitingToEnterAFullSection()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(2, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+        await h.FileAsync("story", "already inside too", h.Review, rank: 512);
+
+        var story = await h.FileAsync("story", "waiting to get in", h.Todo, rank: 1024);
+        var bug = await h.FileAsync("bug", "waiting to get in too", h.Todo, rank: 2048);
+
+        const string sentence =
+            "the WIP section is full - 2 of 2 stories and bugs are in it - nothing more is pulled in until something leaves";
+
+        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+        Assert.Equal(sentence, queue[Key(story)]);
+        Assert.Equal(sentence, queue[Key(bug)]);
+
+        // No key and no title in it, so a digest of two rows folded for the
+        // same reason still groups to one line.
+        Assert.DoesNotContain(Key(story), sentence);
+        Assert.DoesNotContain("waiting", sentence);
+
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(story), null, default)).Blocked);
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(bug), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_FoldsAnExpeditedStoryTheSameWay()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var expedited = await h.FileAsync("story", "expedited but no room", h.Todo, rank: 1024);
+        await h.ExpediteAsync(expedited);
+
+        // Expedite reorders the queue and gates nothing - it is folded exactly
+        // as an ordinary story in the same column would be.
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Assert.Single(queue, e => e.Issue.Key == Key(expedited)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_DoesNotFoldATaskOrAnEpic()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        // Neither type the limit counts - Wip.LoadAsync only ever asks about
+        // stories and bugs, and WipFold's own Counts check folds nothing else.
+        var task = await h.FileAsync("task", "not counted", h.Todo, rank: 1024);
+        var epic = await h.FileAsync("epic", "not counted either", h.Todo, rank: 2048);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_DoesNotFoldAMoveInsideTheSectionOrAConflictedReviewDispatchedToItself()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.ConflictPlaybookAsync();
+
+        // Already inside, on its way further into the section - the section
+        // being full is never a reason to hold up work already in it.
+        var advancing = await h.FileAsync("story", "already inside, advancing", h.InProgress, rank: 512);
+        Assert.Null(Value(await h.Work.GetWork(Key(advancing), null, default)).Blocked);
+
+        // Inside, dispatched to itself for a conflict - also never folded by
+        // this: a clean branch is said only of an issue in review, and this one
+        // is never leaving the section on this move at all.
+        var conflicted = await h.FileAsync("story", "in review, conflicted", h.Review, rank: 1024);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        var work = Value(await h.Work.GetWork(Key(conflicted), null, default));
+        Assert.Null(work.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, work.Kind);
+    }
+
+    [Fact]
+    public async Task WipFold_AtLimitMinusOne_AClaimedStoryStaysClearAndTheNextOneFolds()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(2, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var first = await h.FileAsync("story", "first in line", h.Todo, rank: 1024);
+        var second = await h.FileAsync("story", "second in line", h.Todo, rank: 2048);
+
+        // One below the limit, and nothing has been claimed yet - both are
+        // clear.
+        Assert.Null(Value(await h.Work.GetWork(Key(first), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(second), null, default)).Blocked);
+
+        var token = await h.ClaimAsync(first);
+
+        // Claimed, and re-read with the claim's own token: still clear, because
+        // the card the claim counts is the very one asking.
+        Assert.Null(Value(await h.Work.GetWork(Key(first), token, default)).Blocked);
+
+        var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        var section = await Wip.LoadAsync(h.Db, TestClaims.With(), statuses, h.Time.GetUtcNow(), default);
+        Assert.Equal(1, section!.ClaimedInbound);
+
+        // A second pass, over the same board: the claim now counts against the
+        // next story in line.
+        Assert.Equal(
+            "the WIP section is full - 2 of 2 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(second), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_TwoRunnersOneSlot_TheSecondsOwnReReadFolds()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+
+        var first = await h.FileAsync("story", "runner A's card", h.Todo, rank: 1024);
+        var second = await h.FileAsync("story", "runner B's card", h.Todo, rank: 2048);
+
+        var tokenA = await h.ClaimAsync(first, by: "A");
+
+        // While A's claim is the only one live, A's own re-read is clear - the
+        // slot is A's to take.
+        Assert.Null(Value(await h.Work.GetWork(Key(first), tokenA, default)).Blocked);
+
+        var tokenB = await h.ClaimAsync(second, by: "B");
+
+        // The claim the first runner took is what stops the second from
+        // filling the same slot: B's re-read, on its own different token, is
+        // folded - the dispatcher never clears more cards into the section
+        // than the limit has room for.
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(second), tokenB, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_OverTheLimit_NothingNewIsPulledInAndEverythingInsideDispatchesAsBefore()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.ConflictPlaybookAsync();
+
+        // Two already inside a section whose limit is one - an override, or a
+        // limit lowered after the fact.
+        var advancing = await h.FileAsync("story", "already inside, advancing", h.InProgress, rank: 512);
+        var conflicted = await h.FileAsync("story", "already inside, in review", h.Review, rank: 1024);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var waiting = await h.FileAsync("story", "waiting outside", h.Todo, rank: 2048);
+
+        // Nothing new is pulled in...
+        Assert.Equal(
+            "the WIP section is full - 2 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(waiting), null, default)).Blocked);
+
+        // ...and everything already inside dispatches exactly as it would if
+        // the section were not over its limit at all.
+        Assert.Null(Value(await h.Work.GetWork(Key(advancing), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(conflicted), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_WhenTheLoadDropsBelowTheLimit_TheNextPassIsClear()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+
+        var claimed = await h.FileAsync("story", "claimed inbound", h.Todo, rank: 1024);
+        var waiting = await h.FileAsync("story", "waiting behind it", h.Todo, rank: 2048);
+
+        await h.ClaimAsync(claimed);
+
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(waiting), null, default)).Blocked);
+
+        // The claim on the way in outlives its TTL - a runner that died rather
+        // than a card that shipped, but the load drops exactly the same way.
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+
+        Assert.Null(Value(await h.Work.GetWork(Key(waiting), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_WithNoLimitSet_NoRowIsFoldedHoweverTheColumnsAreFlagged()
+    {
+        var h = await NewAsync();
+
+        // Flagged, but with no WipLimits row at all - Wip.LoadAsync returns
+        // null, and WipFold treats null as "fold nothing".
+        var inProgress = await h.Db.Statuses.FirstAsync(s => s.Id == h.InProgress);
+        var review = await h.Db.Statuses.FirstAsync(s => s.Id == h.Review);
+        inProgress.IsWip = true;
+        review.IsWip = true;
+        await h.Db.SaveChangesAsync();
+
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+        var waiting = await h.FileAsync("story", "waiting outside", h.Todo, rank: 1024);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(waiting), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_APassScopedToOneEpic_IsFoldedByLoadFromOutsideIt()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+
+        // The load is the board's, not the scope's: filled entirely by work
+        // outside the epic the pass is scoped to.
+        await h.FileAsync("story", "outside the epic, already inside the section", h.InProgress, rank: 512);
+
+        var epic = await h.FileAsync("epic", "the one epic", h.Todo, rank: 1024);
+        var child = await h.FileAsync("story", "under the epic, waiting", h.Todo, rank: 1024, parentId: epic.Id);
+
+        var queue = Value(await h.Work.GetQueue(0, Key(epic), default));
+        var row = Assert.Single(queue, e => e.Issue.Key == Key(child));
+
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            row.Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AClaimHeldByAnother_FoldsBeforeWip()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var held = await h.FileAsync("story", "somebody else is on it", h.Todo, rank: 1024);
+        await h.ClaimAsync(held);
+
+        var blocked = Value(await h.Work.GetWork(Key(held), null, default)).Blocked;
+        Assert.Equal(
+            "hatch is working this from somewhere:/checkouts/one, last heard from just now", blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AnUnansweredQuestion_FoldsBeforeWip()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var asked = await h.FileAsync("story", "waiting on an answer", h.Todo, rank: 1024);
+        await h.AskAsync(asked, "per-node or global?");
+
+        var blocked = Value(await h.Work.GetWork(Key(asked), null, default)).Blocked;
+        Assert.Contains("unanswered question", blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AMissingRepository_FoldsBeforeWip()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var issue = await h.FileAsync("story", "bound elsewhere", h.Todo, rank: 1024);
+
+        var blocked = Value(await h.Work.GetWork(
+            Key(issue), remote: ["https://example.com/other.git"], standing: true, ct: default)).Blocked;
+        Assert.Equal("bound to https://example.com/o/r, and this runner has no checkout of it", blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AnUnmetDependency_FoldsBeforeWip()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var blocker = await h.FileAsync("story", "phase one", h.Review, rank: 1024);
+        var waiting = await h.FileAsync("story", "phase two", h.Todo, rank: 2048);
+        await h.DependsAsync(waiting, blocker);
+
+        var blocked = Value(await h.Work.GetWork(Key(waiting), null, default)).Blocked;
+        Assert.Contains($"{Key(blocker)} is not done", blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AStoryWithNoPlaybookForItsMove_IsFoldedByWipWhileFull()
+    {
+        var h = await NewAsync();
+
+        // The section is To Do / In Progress here, deliberately, rather than
+        // In Progress / Review: inbox to todo is a move this board's seeded
+        // matrix says nothing about, which is the only way to see the WIP
+        // fold and the missing-playbook fold both reach for the same row.
+        await h.WipAsync(1, h.Todo, h.InProgress);
+        await h.FileAsync("story", "already inside", h.Todo, rank: 512);
+
+        var issue = await h.FileAsync("story", "no playbook, and no room either", h.Inbox, rank: 1024);
+
+        // Said before the playbook: the section needs other work to leave,
+        // and only once it does is a missing playbook worth mentioning at all.
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -2894,6 +3211,25 @@ public class WorkControllerTests
         {
             var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
             status.ExpressSkips = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Turns the WIP section on: the named columns count towards it, and
+        /// one limit row for stories and bugs - what the settings route accepts
+        /// and refuses is out of scope here (see <c>WipMoveTests</c>); these
+        /// tests are about what the dispatcher does with the section once it
+        /// exists.
+        /// </summary>
+        public async Task WipAsync(int limit, params int[] statusIds)
+        {
+            foreach (var id in statusIds)
+            {
+                var status = await Db.Statuses.FirstAsync(s => s.Id == id);
+                status.IsWip = true;
+            }
+
+            Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = limit });
             await Db.SaveChangesAsync();
         }
 

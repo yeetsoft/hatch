@@ -138,8 +138,9 @@ Work on the loop itself — `src/Hatch.Cli`, `scripts/hatch.sh`,
 night: when its own source changes on the trunk, the loop rebuilds and comes
 back as the new version.
 
-The five conditions that make an issue actionable live on the server, and
-[`docs/hatch.md`](docs/hatch.md) has them with the reasoning behind each.
+The conditions that make an issue actionable live on the server, and
+[`docs/hatch.md`](docs/hatch.md#what-makes-an-issue-actionable) lists them with
+the reasoning behind each.
 
 ### When a decision is not yours to make
 
