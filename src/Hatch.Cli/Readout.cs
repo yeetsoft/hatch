@@ -10,11 +10,14 @@ public sealed record IdleSnapshot(string Line, DateTimeOffset? NextLookAt);
 
 /// <summary>
 /// One usage window - the session's own, the weekly one, or a model-scoped
-/// weekly one where the source reports one. See HA-124: nothing feeds this yet,
-/// and an empty list draws no rows and complains about nothing, which is the
-/// point.
+/// weekly one where the source reports one.
 /// </summary>
-public sealed record UsageWindow(string Label, double Utilization, DateTimeOffset? ResetsAt);
+/// <param name="Window">
+/// <c>session</c>, <c>weekly</c> or <c>weeklyModel</c> - Hatch's own
+/// vocabulary, so the heartbeat hands the server a key rather than a label to
+/// parse back.
+/// </param>
+public sealed record UsageWindow(string Window, string Label, double Utilization, DateTimeOffset? ResetsAt);
 
 /// <summary>Whose runner this is, and how its night is going.</summary>
 public sealed record RunnerSnapshot(
@@ -25,7 +28,8 @@ public sealed record RunnerSnapshot(
 
 /// <summary>Everything the readout draws, at one instant.</summary>
 public sealed record ReadoutSnapshot(
-    IncrementSnapshot? Increment, IdleSnapshot? Idle, RunnerSnapshot Runner, IReadOnlyList<UsageWindow> UsageWindows);
+    IncrementSnapshot? Increment, IdleSnapshot? Idle, RunnerSnapshot Runner,
+    IReadOnlyList<UsageWindow> UsageWindows, DateTimeOffset? UsageReadAt);
 
 /// <summary>
 /// The one object a live increment and the idle loop between them both write
@@ -45,6 +49,7 @@ public sealed class ReadoutState
     private IdleSnapshot? _idle;
     private RunnerSnapshot _runner = RunnerSnapshot.Empty;
     private IReadOnlyList<UsageWindow> _usage = [];
+    private DateTimeOffset? _usageReadAt;
 
     /// <summary>A session is about to be spawned. Clears whatever idle line was showing.</summary>
     public void BeginIncrement(string key, string title, string what, string? issueUrl, DateTimeOffset startedAt)
@@ -84,15 +89,19 @@ public sealed class ReadoutState
         lock (_gate) _runner = runner;
     }
 
-    /// <summary>The account's usage windows, refreshed while a session is running - see HA-124.</summary>
-    public void SetUsage(IReadOnlyList<UsageWindow> windows)
+    /// <summary>The account's usage windows, refreshed while a session is running, and the instant they were read.</summary>
+    public void SetUsage(IReadOnlyList<UsageWindow> windows, DateTimeOffset readAt)
     {
-        lock (_gate) _usage = windows;
+        lock (_gate)
+        {
+            _usage = windows;
+            _usageReadAt = readAt;
+        }
     }
 
     public ReadoutSnapshot Snapshot()
     {
-        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage);
+        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage, _usageReadAt);
     }
 }
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -123,11 +124,12 @@ public class RunnersController(
             return Conflict($"{runner} is already the runner on {existing} - hatch config gives this checkout another name");
         }
 
-        var forName = await ForNameAsync(ct);
+        var forActor = await ForAsync(ct);
+        var forName = forActor?.Name ?? (await caller.ApiKeyAsync(ct))?.Name;
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now));
+            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id));
 
             try
             {
@@ -147,7 +149,7 @@ public class RunnersController(
             }
         }
 
-        Touch(row, kind, line, now, request);
+        Touch(row, kind, line, now, request, forActor?.Id);
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName);
@@ -156,16 +158,24 @@ public class RunnersController(
     /// <summary>
     /// Who this heartbeat's caller works for - the same resolution a
     /// <c>--mine</c> dispatch pass takes, so "whose runner is this" and "whose
-    /// tickets does <c>--mine</c> reach" can never disagree. A key with no
-    /// owner falls back to the key's own name, the fallback the claim's own
-    /// "for &lt;name&gt;" already makes.
+    /// tickets does <c>--mine</c> reach" can never disagree, and so the id and
+    /// the name this heartbeat writes come from one resolution rather than two
+    /// that could fall out of step. Null is ordinary: a key that belongs to
+    /// nobody keeps beating, and <see cref="EfHatchRunner.ForPersonId"/> is
+    /// null on its row.
     /// </summary>
-    private async Task<string?> ForNameAsync(CancellationToken ct)
-    {
-        if ((await actors.PrincipalAsync(ct))?.Name is { Length: > 0 } name) return name;
+    private async Task<Actor?> ForAsync(CancellationToken ct) => await actors.PrincipalAsync(ct);
 
-        return (await caller.ApiKeyAsync(ct))?.Name;
-    }
+    /// <summary>
+    /// The windows off a non-empty reading, as JSON, percent clamped 0..100 -
+    /// it is drawn as a fill, and a fill is a fraction of something. Null where
+    /// the request carries none, so the caller can tell "nothing to write" from
+    /// "write this".
+    /// </summary>
+    private static string? UsageJson(RunnerHeartbeatRequest request) =>
+        request.Usage is not { Count: > 0 } windows
+            ? null
+            : JsonSerializer.Serialize(windows.Select(w => w with { Percent = Math.Clamp(w.Percent, 0, 100) }));
 
     /// <summary>
     /// Keep going, pause, stop after this one - and the bounds that are flags
@@ -291,7 +301,8 @@ public class RunnersController(
 
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
-        string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now) => new()
+        string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
+        Guid? forPersonId) => new()
     {
         Name = name,
         Kind = kind,
@@ -316,6 +327,9 @@ public class RunnersController(
         Mine = request.Mine,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
         ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+        ForPersonId = forPersonId,
+        Usage = UsageJson(request),
+        UsageReadAt = request.UsageReadAt,
     };
 
     /// <summary>
@@ -324,7 +338,9 @@ public class RunnersController(
     /// and a heartbeat that wrote one would be the runner having the last word
     /// on what it may spend.
     /// </summary>
-    private static void Touch(EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request)
+    private static void Touch(
+        EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
+        Guid? forPersonId)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -356,6 +372,18 @@ public class RunnersController(
         // it at once - the one way a loop overrides its own past heartbeat.
         if (request.Exhausted == true) row.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) row.ExhaustedUntil = null;
+
+        // Whose key this is can change on the API Keys page, so this is
+        // written every beat like Where and Remotes, unlike the four bounds.
+        row.ForPersonId = forPersonId;
+
+        // A non-empty reading writes; absent or empty leaves the row's own
+        // reading alone - see the remark on RunnerHeartbeatRequest.Usage.
+        if (UsageJson(request) is { } usage)
+        {
+            row.Usage = usage;
+            row.UsageReadAt = request.UsageReadAt;
+        }
     }
 
     /// <summary>

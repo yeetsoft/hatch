@@ -1170,9 +1170,9 @@ public record PlanDto(IReadOnlyList<PlanEntryDto> Epics, RollupDto Loose);
 /// Hatch's names, not Anthropic's. The CLI's <c>result</c> event spells these
 /// <c>inputTokens</c>, <c>cacheCreationInputTokens</c>, <c>costUSD</c> and so
 /// on, and the translation happens once, in the runner's stream renderer
-/// (<c>src/Hatch.Cli/StreamRender.cs</c>), exactly as
-/// <c>ClaudeUsageClient</c> is the only file that knows the battery's spelling.
-/// Nothing downstream of the wire should have to know two vocabularies.
+/// (<c>src/Hatch.Cli/StreamRender.cs</c>), the same file that is the only one
+/// that knows the battery's vendor spelling. Nothing downstream of the wire
+/// should have to know two vocabularies.
 /// </remarks>
 public record WorkLogModelUseDto(
     string Model,
@@ -1765,6 +1765,19 @@ public record RunnerDto(
 /// carries the value.
 /// </param>
 /// <param name="ExhaustedUntil">When the account resets, read only when <see cref="Exhausted"/> is true.</param>
+/// <param name="Usage">
+/// The account's usage windows, as this runner's own session last read them -
+/// Hatch's own vocabulary, the same fields <c>UtilizationLimit</c> carries
+/// minus the tone, which is the server's to decide. Absent or empty leaves
+/// whatever the row already holds alone: a reading never becomes wrong, only
+/// old, so a runner that has not yet seen a <c>rate_limit_event</c> - one that
+/// has just restarted mid-night - sends nothing rather than blanking it.
+/// </param>
+/// <param name="UsageReadAt">
+/// When this runner read <see cref="Usage"/>, its own word for it - stored as
+/// reported, so an idle runner re-sending an hour-old reading on every poll
+/// does not make it look new.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -1777,7 +1790,27 @@ public record RunnerHeartbeatRequest(
     bool? Mine = null,
     string? Where = null,
     bool? Exhausted = null,
-    DateTimeOffset? ExhaustedUntil = null);
+    DateTimeOffset? ExhaustedUntil = null,
+    IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
+    DateTimeOffset? UsageReadAt = null);
+
+/// <summary>
+/// One usage window off a runner's own session stream, Hatch's own vocabulary
+/// - the same four fields <c>UtilizationLimit</c> carries minus the tone,
+/// which the server decides from the percentage alone.
+/// </summary>
+/// <param name="Window">
+/// <c>session</c>, <c>weekly</c> or <c>weeklyModel</c> - a window Hatch has
+/// never seen is still kept as sent.
+/// </param>
+/// <param name="Label">What the runner's own console calls this window.</param>
+/// <param name="Percent">0-100, clamped on the way in.</param>
+/// <param name="ResetsAt">When this window resets, if the account said so.</param>
+public record RunnerUsageWindowDto(
+    string Window,
+    string Label,
+    int Percent,
+    DateTimeOffset? ResetsAt = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat
