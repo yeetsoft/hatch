@@ -222,11 +222,11 @@ public class AdminSurfaceTests
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
 
-        // The account's own Claude headroom, proxied so no browser ever holds
-        // the subscription token. Hatch-scoped like the rest of the module and
-        // guarded for the same reason the board is: what it says is how much
-        // room is left to work tonight, which is a fact about the operator
-        // rather than about the house.
+        // My own Claude headroom, off my own runners' heartbeats. Hatch-scoped
+        // like the rest of the module and guarded for the same reason the
+        // board is: what it says is how much room is left to work tonight,
+        // which is a fact about the caller rather than about the house - and
+        // it already narrows to the caller's own runners, the same as `--mine`.
         "UtilizationController.Get",
 
         // The build on a repository's trunk, Hatch-scoped for the reason
