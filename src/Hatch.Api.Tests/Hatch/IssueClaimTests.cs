@@ -98,10 +98,10 @@ public class IssueClaimTests
         await h.TakeAsync(issue, "elsewhere:/checkouts/two");
 
         Assert.Equal(
-            [EfHatchIssueEvent.ClaimLapsed, EfHatchIssueEvent.ClaimTaken],
+            [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimLapsed, EfHatchIssueEvent.ClaimTaken],
             await h.EventKindsAsync(issue));
 
-        var lapsed = (await h.EventsAsync(issue))[0];
+        var lapsed = (await h.EventsAsync(issue))[1];
         Assert.Equal("Nathan on somewhere:/checkouts/one", lapsed.Payload!.Value.GetProperty("from").GetString());
         Assert.Equal(Now, lapsed.Payload!.Value.GetProperty("heardAt").GetDateTimeOffset());
     }
