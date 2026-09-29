@@ -49,8 +49,9 @@ function AppShell() {
           trailing={
             <>
               {/* What the bar says about this session rather than about the
-                  board. Draws nothing on an installation that has no answer
-                  for it - a cluster install has none. */}
+                  board. Draws nothing until a runner of mine has reported a
+                  reading - a fresh install, and anybody who has never run
+                  one, are both in that state. */}
               <NavUtilization />
               {/* Last, at the right end of the bar: whether the loop is
                   waiting on a person. Unlike the one above it this always draws

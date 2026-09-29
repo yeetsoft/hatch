@@ -31,9 +31,9 @@ export function NavUtilization() {
     return () => clearInterval(timer);
   }, []);
 
-  // The 204: no token configured on this installation. Nothing renders at all -
-  // not the modal either, which is why this sits above both rather than inside
-  // the battery alone.
+  // The 204: no runner of mine has ever reported a reading. Nothing renders at
+  // all - not the modal either, which is why this sits above both rather than
+  // inside the battery alone.
   if (!hasBattery(reading)) return null;
 
   return (
