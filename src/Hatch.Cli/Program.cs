@@ -127,6 +127,12 @@ var caught = 0;
 using var interrupt = Handle(PosixSignal.SIGINT);
 using var terminate = Handle(PosixSignal.SIGTERM);
 
+// The terminal a loop runs in closing - a window shut, a session hung up on -
+// raises this on the platforms that have it, and .NET raises it for a closed
+// console window on Windows too. Handled the same way SIGINT is: the claim
+// most needs letting go of is the one held when nobody is watching any more.
+using var hangup = Handle(PosixSignal.SIGHUP);
+
 try
 {
     if (command is "work" or "go-to-work" or "do-my-work")
@@ -196,6 +202,16 @@ catch (OperationCanceledException)
 catch (HatchException e)
 {
     say.Complain(e.Message);
+    return 1;
+}
+catch (Exception e)
+{
+    // Everything above this line has already let go of whatever claim it held
+    // - every `work` and `go-to-work` path releases in its own `finally`, and
+    // a pass in the loop catches its own exceptions before this is ever
+    // reached. What is left to do is say what broke, in one line and with no
+    // stack trace, and leave with the exit code a supervisor watches for.
+    say.Complain($"hatch: {e.GetType().Name}: {e.Message}");
     return 1;
 }
 

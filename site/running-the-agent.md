@@ -275,7 +275,11 @@ increment is in flight has finished.
 
 **Ctrl-C** lets go of the claim on the way out and exits 130. A second one is
 immediate, and leaves the ticket claimed until the lease ages out, five
-minutes by default.
+minutes by default. **Closing the terminal a loop runs in** lets go of the
+claim the same way - the hang-up a closed window or a dropped session sends is
+caught exactly like Ctrl-C is. A loop that can no longer write to that
+terminal at all carries on regardless, rather than going down with the claim
+still held.
 
 Four things end a run without a bound having been reached:
 

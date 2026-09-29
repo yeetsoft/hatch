@@ -18,13 +18,28 @@ public class Terminal
     /// <summary>What a person reads. Standard output.</summary>
     public virtual void Line(string line)
     {
-        lock (_gate) Console.Out.WriteLine(line);
+        // A closed terminal - the window went away, or the pipe on the other
+        // end did - is not a reason for an unattended loop to go down with the
+        // claim still held. There is nobody left to read this line either way.
+        try
+        {
+            lock (_gate) Console.Out.WriteLine(line);
+        }
+        catch (IOException)
+        {
+        }
     }
 
     /// <summary>What went wrong. Standard error, so a redirected log keeps the two apart.</summary>
     public virtual void Complain(string line)
     {
-        lock (_gate) Console.Error.WriteLine(line);
+        try
+        {
+            lock (_gate) Console.Error.WriteLine(line);
+        }
+        catch (IOException)
+        {
+        }
     }
 
     /// <summary>Several of them, in order.</summary>

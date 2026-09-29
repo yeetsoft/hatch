@@ -158,6 +158,16 @@ public sealed class FakeWorkspace
     /// <summary>Whether <see cref="IWorkspace.Prepare"/> was told to stash, per call.</summary>
     public List<bool> Stashed { get; } = [];
 
+    /// <summary>
+    /// Thrown out of <see cref="IWorkspace.Prepare"/> the next time it is
+    /// called, instead of answering - what a git command failing outright, and
+    /// not merely coming back <see cref="Reset.Never"/>, looks like.
+    /// </summary>
+    public Exception? PrepareThrows { get; set; }
+
+    /// <summary>The same, for <see cref="IWorkspace.Enter"/>.</summary>
+    public Exception? EnterThrows { get; set; }
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -168,6 +178,7 @@ public sealed class FakeWorkspace
             owner.Calls.Add($"prepare {path}");
             owner.Stashed.Add(stash);
             owner.Watching?.Invoke();
+            if (owner.PrepareThrows is { } thrown) throw thrown;
             return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
         }
 
@@ -175,6 +186,7 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"enter {path}");
             owner.Answers.Add(answer);
+            if (owner.EnterThrows is { } thrown) throw thrown;
             return Answer(key, title);
         }
 

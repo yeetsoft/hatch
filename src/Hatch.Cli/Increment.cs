@@ -123,6 +123,16 @@ public sealed class Increment(
     string? tempDirectory = null)
 {
     private readonly string _temp = tempDirectory ?? Path.GetTempPath();
+    private RunFacts? _facts;
+
+    /// <summary>
+    /// What <c>claude --resume</c> would take, read live off the facts a
+    /// running session is filling in - null before a session has said its id,
+    /// and null when <see cref="RunAsync"/> was never called. Read by a caller
+    /// whose call into this instance threw, to say whether there is a session
+    /// left to resume.
+    /// </summary>
+    public string? SessionId => _facts?.SessionId;
 
     public async Task<IncrementReport> RunAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
@@ -157,6 +167,7 @@ public sealed class Increment(
         var before = work.Questions.Where(q => q.Answers.Count == 0).Select(q => q.Id).ToHashSet();
 
         var facts = new RunFacts();
+        _facts = facts;
         var started = DateTimeOffset.UtcNow;
 
         // The session is stopped the moment the lease goes, and only then: a
@@ -653,19 +664,29 @@ public sealed class Pulse : IDisposable
 
     private void Tick(TimeSpan every)
     {
-        string inside;
-        long seconds;
-
-        lock (_gate)
+        // A timer callback runs on its own thread, outside anything an
+        // increment's own try/catch could reach - an exception here takes the
+        // whole process down, claim and all, so nothing above this line may
+        // escape it.
+        try
         {
-            if (_elapsed.Elapsed - _lastSaid < every) return;
+            string inside;
+            long seconds;
 
-            _lastSaid = _elapsed.Elapsed;
-            inside = _inside;
-            seconds = (long)_elapsed.Elapsed.TotalSeconds;
+            lock (_gate)
+            {
+                if (_elapsed.Elapsed - _lastSaid < every) return;
+
+                _lastSaid = _elapsed.Elapsed;
+                inside = _inside;
+                seconds = (long)_elapsed.Elapsed.TotalSeconds;
+            }
+
+            _say.Line($"  · still working - {inside} ({seconds / 60}m{seconds % 60:00}s)");
         }
-
-        _say.Line($"  · still working - {inside} ({seconds / 60}m{seconds % 60:00}s)");
+        catch (Exception)
+        {
+        }
     }
 
     public void Dispose() => _timer?.Dispose();
