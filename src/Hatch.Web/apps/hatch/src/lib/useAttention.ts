@@ -31,8 +31,13 @@ export const POLL_MS = 60 * 1000;
  * One piece of state, held by the control and passed to the panel: the panel
  * renders what the control already has, so opening and closing it issues no
  * request, and there is no second reading that could disagree with the badge.
+ *
+ * `reload` is exposed alongside the value for the one caller that cannot wait
+ * a minute for the poll to catch up: filing a trunk build's bug (HA-95) has to
+ * show the row's new key - and confirm the filing - the moment the press
+ * succeeds, for everybody who has the panel open right now.
  */
-export function useAttention(): Attention | null {
+export function useAttention(): { attention: Attention | null; reload: () => Promise<void> } {
   const [attention, setAttention] = useState<Attention | null>(null);
 
   const load = useCallback(async () => {
@@ -58,5 +63,5 @@ export function useAttention(): Attention | null {
     };
   }, [load]);
 
-  return attention;
+  return { attention, reload: load };
 }

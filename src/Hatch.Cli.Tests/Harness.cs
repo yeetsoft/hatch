@@ -361,6 +361,13 @@ public sealed class Harness : IDisposable
         var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0 };
         _client = new HatchClient(settings, "test:/checkout", Wire);
 
+        // The default checkout's trunk is already settled as passed, at the
+        // sha PollTests' own Heads() helper gives "main" - so a test that
+        // never mentions a trunk build gets none of the poll's new trunk half:
+        // it is vouched for on sight and costs nothing further. A test about
+        // the trunk half itself overrides this with its own stub.
+        Wire.Json("GET", "/api/hatch/trunk-builds", new[] { Fixtures.TrunkBuild() });
+
         Runtime = new Runtime(
             Settings: settings,
             Board: new Board(_client),
