@@ -826,6 +826,21 @@ board that has never turned WIP on reads exactly as one that predates it.
 Read at `GET /api/hatch/board`'s `wip` block, and printed as one line by
 `hatch board`.
 
+On the board itself the WIP columns read as one zone. A band spans each run of
+adjacent WIP columns - a section split by a column outside it draws two bands,
+both showing the same meter - reading `WIP 3 of 5` and, once claimed-inbound is
+non-zero, `(1 on the way)`. Tightness is one of four, each its own tint: *room*
+(two or more left), *tight* (one left), *full* (at the limit, said in the band
+as well as tinted, so the two do not depend on colour alone to be told apart),
+and *over* (past it). Picking up a story or a bug from outside the section
+previews the band with that card added, for as long as the drag lasts, and
+lights every column of the section as one target; a task, an epic, or a card
+already inside changes nothing. The count never follows the filter - it is
+`board.wip`'s own count, drawn whether or not the card counted is on screen.
+Where `board.wip` is null there is no band at all: nothing here asks about a
+drop into a full section or refuses one, either - that is the server's `409`,
+shown the way any refused drop is.
+
 ### Claim
 
 Seven nullable columns on the issue row — `ClaimToken`, `ClaimedBy`,
