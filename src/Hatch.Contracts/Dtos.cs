@@ -387,6 +387,11 @@ public record IssueCreateRequest(
 /// path or a bare <c>github.com/...</c> is a link that would not open, and the
 /// whole point of the field is that it opens.
 /// </param>
+/// <param name="WipOverride">
+/// <c>true</c> to move into a full WIP section anyway - a person's call, and a
+/// key sending it is refused with <c>403</c>, whatever the load. Bulk never
+/// sets it.
+/// </param>
 public record IssuePatchRequest(
     string? Title,
     string? Description,
@@ -395,7 +400,8 @@ public record IssuePatchRequest(
     string? ParentKey,
     string? ReadyAt,
     string? DueAt,
-    string? PullRequestUrl);
+    string? PullRequestUrl,
+    bool WipOverride = false);
 
 /// <summary>
 /// A drop on the board: which column, and which cards it landed between. The
@@ -410,7 +416,12 @@ public record IssuePatchRequest(
 /// column is refused rather than moved - which is how an undo can never
 /// overrule a move somebody made since. Null asks nothing of where it is now.
 /// </param>
-public record IssueMoveRequest(int StatusId, string? AfterKey, string? BeforeKey, int? FromStatusId = null);
+/// <param name="WipOverride">
+/// <c>true</c> to move into a full WIP section anyway - a person's call, and a
+/// key sending it is refused with <c>403</c>, whatever the load.
+/// </param>
+public record IssueMoveRequest(
+    int StatusId, string? AfterKey, string? BeforeKey, int? FromStatusId = null, bool WipOverride = false);
 
 // ---- Searching and editing in bulk ----
 
@@ -428,6 +439,16 @@ public record IssueBulkResultDto(
     IReadOnlyList<IssueBulkFailureDto> Failures);
 
 public record IssueBulkFailureDto(string Key, string Reason);
+
+/// <summary>
+/// The <c>409</c> body a move or a patch is refused with when the WIP section
+/// is full - <c>{ error, load, limit }</c>, following <c>AuthErrorDto</c>'s
+/// <c>{ error }</c> shape (<c>src/Hatch.Api/Models/Auth/Dtos.cs</c>) so the
+/// browser can ask without parsing prose. <see cref="Load"/> is the load
+/// <em>before</em> the move - what a dialog quotes as "5 of 5" - not the load
+/// an accepted override would leave.
+/// </summary>
+public record WipRefusalDto(string Error, int Load, int Limit);
 
 /// <summary>
 /// One edit applied to many issues. The fields are

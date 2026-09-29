@@ -231,8 +231,33 @@ public sealed class HatchClient : IDisposable
         HttpStatusCode.Forbidden =>
             "hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).",
         HttpStatusCode.NotFound => $"hatch: 404 - no such issue or route: {path}",
-        var code => $"hatch: {(int)code!} - {answer.Body}",
+        var code => $"hatch: {(int)code!} - {Sentence(answer.Body)}",
     };
+
+    /// <summary>
+    /// A structured body's own sentence, where it has one - the WIP
+    /// <c>409</c>'s <c>{ error, load, limit }</c>, following
+    /// <c>AuthErrorDto</c>'s <c>{ error }</c> shape. Everything else -
+    /// Hatch's ordinary bare-string refusal, an object with no string
+    /// <c>error</c>, anything unparseable - prints exactly as it arrived, the
+    /// way it always has.
+    /// </summary>
+    private static string Sentence(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String
+                ? error.GetString() ?? body
+                : body;
+        }
+        catch (JsonException)
+        {
+            return body;
+        }
+    }
 
     public void Dispose() => _http.Dispose();
 }

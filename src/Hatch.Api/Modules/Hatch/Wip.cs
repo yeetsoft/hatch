@@ -103,6 +103,30 @@ public static class Wip
 
         return new WipSection(value, types, section, counted, claimedInbound);
     }
+
+    /// <summary>
+    /// The sentence a refusal or an override names - "the WIP section is full -
+    /// 2 of 2 stories and bugs are in it" - built once here from the limit
+    /// row's own types, pluralised and joined, so no caller spells a type name.
+    /// The dispatcher's fold (HA-90) shares it and adds its own tail.
+    /// </summary>
+    public static string Sentence(int load, int limit, IReadOnlyList<string> types) =>
+        $"the WIP section is full - {load} of {limit} {Pluralize(types)} are in it";
+
+    private static string Pluralize(IReadOnlyList<string> types)
+    {
+        var plural = types.Select(PluralizeOne).ToList();
+        return plural.Count switch
+        {
+            0 => "issues",
+            1 => plural[0],
+            2 => $"{plural[0]} and {plural[1]}",
+            _ => $"{string.Join(", ", plural.Take(plural.Count - 1))}, and {plural[^1]}",
+        };
+    }
+
+    private static string PluralizeOne(string type) =>
+        type.EndsWith('y') ? $"{type[..^1]}ies" : $"{type}s";
 }
 
 /// <summary>

@@ -298,13 +298,19 @@ public class IssuesController(
         var issue = await LoadAsync(key, ct);
         if (issue is null) return NotFound();
 
+        if (await OverrideRefusal(request.WipOverride, ct) is { } notAPerson) return notAPerson;
+
         if (Invalid(request.Title?.Trim(), request.Description, request.Type, required: false) is { } invalid)
             return BadRequest(invalid);
 
         if (!ReadEdit(request, out var edit, out var editError)) return BadRequest(editError);
 
         var actor = await caller.ActorNameAsync(ct);
-        var (changed, error) = await StageEditAsync(issue, edit, actor, time.GetUtcNow(), new ColumnBottoms(ranks), ct);
+        var now = time.GetUtcNow();
+        var gate = new WipGate(db, claims, now);
+        var (changed, error, full) = await StageEditAsync(
+            issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+        if (full is not null) return Conflict(full);
         if (error is not null) return BadRequest(error);
 
         if (changed) await db.SaveChangesAsync(ct);
@@ -355,6 +361,10 @@ public class IssuesController(
         // fifty appends, and nothing is saved between them - see ColumnBottoms.
         var bottoms = new ColumnBottoms(ranks);
 
+        // And the same for the WIP load: two stories in one bulk request aimed
+        // at one free slot must not both be admitted. Bulk takes no override.
+        var gate = new WipGate(db, claims, now);
+
         var changed = new List<string>();
         var unchanged = new List<string>();
         var failures = new List<IssueBulkFailureDto>();
@@ -368,8 +378,9 @@ public class IssuesController(
                 continue;
             }
 
-            var (moved, error) = await StageEditAsync(issue, edit, actor, now, bottoms, ct);
-            if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
+            var (moved, error, full) = await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
+            if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
+            else if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
             else if (moved) changed.Add(await KeyOfAsync(issue, ct));
             else unchanged.Add(await KeyOfAsync(issue, ct));
         }
@@ -389,9 +400,14 @@ public class IssuesController(
     /// discovered an illegal parent would leave the title change staged and
     /// written on behalf of a request that was refused.
     /// </summary>
-    /// <returns>Whether anything changed, and the sentence to refuse with if it could not be applied.</returns>
-    private async Task<(bool Changed, string? Error)> StageEditAsync(
-        EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms, CancellationToken ct)
+    /// <returns>
+    /// Whether anything changed, the sentence to refuse with if it could not be
+    /// applied, and - separately, because it is a <c>409</c> and carries
+    /// numbers rather than a sentence alone - the WIP refusal if that is why.
+    /// </returns>
+    private async Task<(bool Changed, string? Error, WipRefusalDto? Full)> StageEditAsync(
+        EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms,
+        WipGate gate, bool wipOverride, CancellationToken ct)
     {
         // ---- What could be refused ----
 
@@ -399,7 +415,7 @@ public class IssuesController(
         if (edit.StatusId is { } statusId && statusId != issue.StatusId)
         {
             status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
-            if (status is null) return (false, $"there is no column {statusId}");
+            if (status is null) return (false, $"there is no column {statusId}", null);
         }
 
         // Present-but-empty is the clear; absent is no opinion. See IssuePatchRequest.
@@ -407,7 +423,17 @@ public class IssuesController(
         if (edit.ParentKey is not null)
         {
             parent = await ResolveParentAsync(edit.ParentKey, issue.ProjectId, edit.Type ?? issue.Type, issue.Id, ct);
-            if (parent.Error is { } parentError) return (false, parentError);
+            if (parent.Error is { } parentError) return (false, parentError, null);
+        }
+
+        // Asked last, and only when the column is actually changing, so a
+        // board with no limit set pays no read and nothing after this can
+        // refuse the edit once the gate has admitted it.
+        WipVerdict? wip = null;
+        if (status is not null)
+        {
+            wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, wipOverride, ct);
+            if (wip.Kind == WipVerdictKind.Refused) return (false, null, wip.Refusal);
         }
 
         // ---- What is written ----
@@ -444,6 +470,9 @@ public class IssuesController(
             // so the card goes to the bottom of the new column. The board sends
             // its drops to `move`, which does have them.
             issue.Rank = await bottoms.NextAsync(status.Id, ct);
+
+            if (wip is { Kind: WipVerdictKind.Overridden } overridden)
+                events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, new { limit = overridden.Limit, load = overridden.Load, to = status.Name }, now));
 
             // Newly shelved - not shuffled between two deferred columns. See
             // Deferrals: the issues waiting on this one are about to wait
@@ -505,11 +534,11 @@ public class IssuesController(
             issue.ParentId = parent.Issue?.Id;
         }
 
-        if (events.Count == 0) return (false, null);
+        if (events.Count == 0) return (false, null, null);
 
         foreach (var e in events) issue.Events.Add(e);
         issue.UpdatedAt = now;
-        return (true, null);
+        return (true, null, null);
     }
 
     /// <summary>
@@ -557,6 +586,8 @@ public class IssuesController(
         var issue = await LoadAsync(key, ct);
         if (issue is null) return NotFound();
 
+        if (await OverrideRefusal(request.WipOverride, ct) is { } notAPerson) return notAPerson;
+
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == request.StatusId, ct);
         if (status is null) return BadRequest($"there is no column {request.StatusId}");
 
@@ -572,10 +603,16 @@ public class IssuesController(
         var changedColumn = issue.StatusId != status.Id;
         if (changedColumn)
         {
-            var actor = await caller.ActorNameAsync(ct);
             var now = time.GetUtcNow();
+            var gate = new WipGate(db, claims, now);
+            var wip = await gate.AdmitAsync(issue, status.Id, issue.Type, request.WipOverride, ct);
+            if (wip.Kind == WipVerdictKind.Refused) return Conflict(wip.Refusal);
+
+            var actor = await caller.ActorNameAsync(ct);
             var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
             issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, new { from = from?.Name, to = status.Name }, now));
+            if (wip.Kind == WipVerdictKind.Overridden)
+                issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, new { limit = wip.Limit, load = wip.Load, to = status.Name }, now));
             issue.UpdatedAt = now;
             issue.StatusId = status.Id;
 
@@ -665,6 +702,26 @@ public class IssuesController(
 
         return (parent, null);
     }
+
+    // ---- The one narrowing ----
+
+    /// <summary>
+    /// A person, not a key. Overriding the WIP limit is the operator's call to
+    /// make, the same way the limit itself is - see <see cref="WipController.NotAPerson"/>.
+    /// Checked in the action rather than left to <c>RoleGate</c>, for
+    /// <see cref="IssueClaimController.NotAPerson"/>'s reason: this route has to
+    /// go on accepting a key, and <c>RoleGate</c> is dormant wherever the wall is
+    /// off, where a keyless runner is a program too. Refuses whatever the load,
+    /// and even where no limit is set, so an agent can never learn from the
+    /// answer when the flag would have mattered.
+    /// </summary>
+    private async Task<ObjectResult?> OverrideRefusal(bool wipOverride, CancellationToken ct) =>
+        wipOverride && await caller.IsProgramAsync(ct)
+            ? new ObjectResult("overriding the WIP limit is a person's call, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
 
     // ---- Mapping ----
 
