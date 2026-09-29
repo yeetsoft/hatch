@@ -9,11 +9,13 @@ import {
   failingBuildEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
+  trunkBuildEmptyWords,
+  trunkBuildHead,
   trunkIconTone,
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, Question, Review } from '../types';
+import type { Attention, Conflict, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -48,6 +50,22 @@ const conflict = (over: Partial<Conflict> = {}): Conflict => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/14',
   checks: [],
+  ...over,
+});
+
+const trunkBuild = (over: Partial<TrunkBuild> = {}): TrunkBuild => ({
+  id: 1,
+  remote: 'https://forge.example/owner/repo.git',
+  canonical: 'forge.example/owner/repo',
+  trunk: 'main',
+  sha: '1111111111111111111111111111111111111111',
+  shaSince: ago(60_000),
+  verdict: 'failed',
+  failing: [{ name: 'CI', url: null }],
+  checkedAt: ago(0),
+  runner: 'box:/work/repo',
+  checkedBy: 'runner',
+  bugIssueKey: null,
   ...over,
 });
 
@@ -98,6 +116,16 @@ describe('attentionCount', () => {
     expect(attentionCount(attention({ reviews: [], reviewsHeldBack: 3 }))).toBe(0);
     expect(attentionCount(attention({ reviews: [review()], reviewsHeldBack: 3 }))).toBe(1);
   });
+
+  it('counts a failing trunk build, unlike a branch conflict or a failing branch build', () => {
+    // No agent owns a trunk, so a failing one has nobody already on it - the
+    // one build-shaped thing in this panel that does light the control.
+    expect(attentionCount(attention({ trunkBuilds: [trunkBuild(), trunkBuild({ id: 2 })] }))).toBe(2);
+  });
+
+  it('reads an absent trunkBuilds as none, for a board that predates it', () => {
+    expect(attentionCount(attention({ trunkBuilds: undefined }))).toBe(0);
+  });
 });
 
 describe('attentionTone', () => {
@@ -121,6 +149,10 @@ describe('attentionTone', () => {
 
   it('stays resting for a branch that conflicts', () => {
     expect(attentionTone(attention({ conflicts: [conflict()] }))).toBe('rest');
+  });
+
+  it('asks as soon as one trunk build is failing', () => {
+    expect(attentionTone(attention({ trunkBuilds: [trunkBuild()] }))).toBe('asking');
   });
 });
 
@@ -153,6 +185,19 @@ describe('attentionLabel', () => {
 
   it('says nothing is waiting when the only thing in review has no pull request', () => {
     expect(attentionLabel(attention({ inReviewWithoutPullRequest: 3 }))).toBe('Nothing is waiting on you');
+  });
+
+  it('names a failing trunk build first, pluralised on its own count', () => {
+    expect(attentionLabel(attention({ trunkBuilds: [trunkBuild()] }))).toBe('1 trunk build failing');
+    expect(attentionLabel(attention({ trunkBuilds: [trunkBuild(), trunkBuild({ id: 2 })] }))).toBe(
+      '2 trunk builds failing',
+    );
+  });
+
+  it('combines all three parts, trunk builds first', () => {
+    expect(
+      attentionLabel(attention({ trunkBuilds: [trunkBuild()], reviews: [review()], questions: [question()] })),
+    ).toBe('1 trunk build failing, 1 pull request to review, 1 question to answer');
   });
 });
 
@@ -196,6 +241,22 @@ describe('reviewEmptyWords', () => {
 describe('failingBuildEmptyWords', () => {
   it('says no build is failing', () => {
     expect(failingBuildEmptyWords()).toBe('No build in review is failing.');
+  });
+});
+
+describe('trunkBuildEmptyWords', () => {
+  it('says no trunk build is failing', () => {
+    expect(trunkBuildEmptyWords()).toBe('No trunk build is failing.');
+  });
+});
+
+describe('trunkBuildHead', () => {
+  it('names the trunk as the runner reported it, and the repository', () => {
+    expect(trunkBuildHead(trunkBuild())).toBe('main in forge.example/owner/repo');
+  });
+
+  it('never hardcodes a trunk name', () => {
+    expect(trunkBuildHead(trunkBuild({ trunk: 'trunk', canonical: 'example.test/o/r' }))).toBe('trunk in example.test/o/r');
   });
 });
 

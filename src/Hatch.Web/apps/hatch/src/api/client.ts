@@ -351,6 +351,12 @@ export const getUtilization = (refresh = false) =>
  */
 export const getAttention = () => fetchJson<Attention>('/api/hatch/attention');
 
+/** Files the bug a failing trunk row's *File a bug* button asks for, or answers
+    the one already filed - see TrunkBuildBugController. Person-only: a key is
+    refused `403`, because the bug it files is expedited. */
+export const fileTrunkBuildBug = (id: number) =>
+  fetchJson<Issue>(`/api/hatch/trunk-builds/${id}/bug`, { method: 'POST' });
+
 // ---- Who is sitting here ----
 
 /**

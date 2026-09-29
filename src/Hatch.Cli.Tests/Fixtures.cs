@@ -135,6 +135,23 @@ public static class Fixtures
                 : [],
             pushedByIncrement, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>
+    /// A trunk verdict as the board would hold it, passed unless said otherwise -
+    /// at the default checkout's remote and the default trunk sha
+    /// <c>PollTests.Heads()</c> gives "main", so a poll test that never mentions
+    /// a trunk build finds this one already settled and reads nothing further.
+    /// </summary>
+    public static TrunkBuildDto TrunkBuild(
+        string verdict = BuildVerdicts.Passed, string remote = "https://example.test/repo.git",
+        string canonical = "example.test/repo", string trunk = "main", string? sha = null,
+        DateTimeOffset? shaSince = null, string? bugIssueKey = null, params string[] failing) =>
+        new(
+            1, remote, canonical, trunk, sha ?? new string('a', 40), shaSince ?? DateTimeOffset.UnixEpoch, verdict,
+            verdict == BuildVerdicts.Failed
+                ? (failing.Length == 0 ? ["api"] : failing).Select(n => new FailingCheckDto(n, $"https://{canonical}/checks/{n}")).ToList()
+                : [],
+            DateTimeOffset.UnixEpoch, "runner", "hatch", bugIssueKey);
+
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>

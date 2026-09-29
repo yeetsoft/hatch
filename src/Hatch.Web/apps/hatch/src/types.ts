@@ -215,6 +215,30 @@ export interface BuildCheck {
   checkedBy: string;
 }
 
+/** One stored trunk verdict: the build on the tip of one repository's trunk. Mirrors TrunkBuildDto. */
+export interface TrunkBuild {
+  id: number;
+  /** The remote as the runner spelled it. */
+  remote: string;
+  /** The remote's canonical form - the verdict's identity across every project, not only one issue's. */
+  canonical: string;
+  /** The trunk's name, as the runner's own workspace reported it. */
+  trunk: string;
+  /** The trunk's tip that the verdict is about. */
+  sha: string;
+  /** When the board first heard about `sha`. */
+  shaSince: string;
+  /** `passed`, `failed`, `pending` or `none`. */
+  verdict: string;
+  /** The checks that failed; empty unless the verdict is `failed` or a `pending` one already carries some. */
+  failing: FailingCheck[];
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+  /** The bug filed while this trunk was failing, or null when none is attached yet - see HA-95. */
+  bugIssueKey: string | null;
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
@@ -892,6 +916,11 @@ export interface Attention {
       pull request never appears in both halves. Held back because a red build
       or a conflict is not ready for a person, and the loop is already on it. */
   reviewsHeldBack: number;
+  /** Every repository's trunk whose latest build failed, or is still running
+      with a check that has already failed - a person's to fix, unlike
+      `failingBuilds`, because no agent owns a trunk. Ordered by canonical,
+      then trunk. Absent from a board that predates it. */
+  trunkBuilds?: TrunkBuild[];
 }
 
 // ---- Who is sitting here ----

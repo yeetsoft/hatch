@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, thirteen tables.
+/// migration history, fourteen tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -22,6 +22,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
+    public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -203,6 +204,20 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
 
             e.Property(b => b.Failing).HasColumnType("jsonb");
+        });
+
+        // A trunk build is nobody's issue, so it does not cascade with one -
+        // SetNull instead, the way an outdent orphans a story rather than
+        // deleting it: the bug that was filed for this outage outlives the row
+        // that attached it.
+        modelBuilder.Entity<EfHatchTrunkBuild>(e =>
+        {
+            e.HasOne(t => t.BugIssue)
+                .WithMany()
+                .HasForeignKey(t => t.BugIssueId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.Property(t => t.Failing).HasColumnType("jsonb");
         });
 
         base.OnModelCreating(modelBuilder);

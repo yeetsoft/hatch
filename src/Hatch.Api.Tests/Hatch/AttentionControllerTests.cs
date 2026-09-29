@@ -575,6 +575,85 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Questions);
     }
 
+    // ---- The trunk half (HA-95) ----
+
+    [Fact]
+    public async Task Attention_ListsAFailedTrunkBuild()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api", "CI"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+
+        Assert.Equal("main", row.Trunk);
+        Assert.Equal("forge.example/owner/repo", row.Canonical);
+        Assert.Equal(["api", "CI"], row.Failing.Select(f => f.Name));
+        Assert.Null(row.BugIssueKey);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAPendingTrunkBuildThatAlreadyCarriesAFailingCheck()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Pending, failing: ["api"]);
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.None)]
+    public async Task Attention_DoesNotListAPassedOrANoneTrunkBuild(string verdict)
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(verdict);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListAPendingTrunkBuildWithNothingFailedYet()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Pending);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_CarriesTheAttachedBugsKey()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "Build failing on main", h.Inbox);
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"], bugIssueId: bug.Id);
+
+        Assert.Equal(Key(bug), Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!).BugIssueKey);
+    }
+
+    [Fact]
+    public async Task Attention_OrdersTrunkBuildsByCanonicalThenTrunk()
+    {
+        var h = await NewAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/repo", trunk: "release");
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/repo", trunk: "main");
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["a"], remote: "forge.example/owner/another");
+
+        var rows = Value(await h.Attention.GetAttention(default)).TrunkBuilds!;
+
+        Assert.Equal(
+            [("forge.example/owner/another", "main"), ("forge.example/owner/repo", "main"), ("forge.example/owner/repo", "release")],
+            rows.Select(r => (r.Canonical, r.Trunk)));
+    }
+
+    [Fact]
+    public async Task Attention_ListsAFailedTrunkBuild_EvenOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
     // ---- The gate ----
 
     [Fact]
@@ -696,6 +775,31 @@ public class AttentionControllerTests
             });
 
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A trunk verdict, written straight to the row - the same reason <see cref="BuildAsync"/> is.</summary>
+        public async Task<EfHatchTrunkBuild> TrunkAsync(
+            string verdict, string[]? failing = null, string remote = "forge.example/owner/repo", string trunk = "main",
+            string? sha = null, long? bugIssueId = null)
+        {
+            var row = new EfHatchTrunkBuild
+            {
+                Remote = remote,
+                Canonical = remote,
+                Trunk = trunk,
+                Sha = sha ?? new string('2', 40),
+                ShaSince = Now,
+                Verdict = verdict,
+                Failing = EfHatchBuildCheck.WriteFailing((failing ?? []).Select(n => new FailingCheckDto(n)).ToList()),
+                CheckedAt = Now,
+                Runner = "box:/work/repo",
+                CheckedBy = "runner",
+                BugIssueId = bugIssueId,
+            };
+
+            Db.TrunkBuilds.Add(row);
+            await Db.SaveChangesAsync();
+            return row;
         }
 
         /// <summary>
