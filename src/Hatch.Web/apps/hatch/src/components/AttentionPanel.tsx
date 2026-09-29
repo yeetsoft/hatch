@@ -5,6 +5,7 @@ import {
   conflictEmptyWords,
   failingBuildEmptyWords,
   questionEmptyWords,
+  resetWords,
   reviewEmptyWords,
   trunkIconTone,
   trunkIconWords,
@@ -73,9 +74,34 @@ export function AttentionPanel({ attention, now }: { attention: Attention | null
   const conflicts = attention?.conflicts ?? [];
   const failingBuilds = attention?.failingBuilds ?? [];
   const questions = attention?.questions ?? [];
+  const exhaustedRunners = attention?.exhaustedRunners ?? [];
 
   return (
     <div className="hatch-attention-panel">
+      {/* Unlike the four groups below, drawn only when it has rows: this is an
+          alert about a condition that ends by itself, and nothing has to be
+          pressed for it to disappear - see runners.ts and the ticket this
+          shipped with. */}
+      {exhaustedRunners.length > 0 && (
+        <section className="hatch-attention-section hatch-attention-section-exhausted">
+          <h3 className="hatch-attention-heading">Out of Claude usage</h3>
+
+          <ul className="hatch-attention-rows">
+            {exhaustedRunners.map((r) => (
+              <li key={r.name}>
+                <Link className="hatch-attention-row" to="/runners">
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{r.name}</span>
+                    {r.where && <span className="hatch-attention-title">{r.where}</span>}
+                  </span>
+                  <span className="hatch-attention-files">{resetWords(r.exhaustedUntil, now)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="hatch-attention-group">
         <h2 className="hatch-attention-group-heading">Human</h2>
 

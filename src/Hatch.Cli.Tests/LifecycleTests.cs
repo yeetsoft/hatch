@@ -190,6 +190,70 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task A_usage_limit_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one()
+    {
+        using var h = new Harness();
+        Board(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        // Pushed before Leave finds the tree, so what Leave sees is already clean.
+        Assert.Equal(
+            [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
+            h.Workspace.Calls);
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments);
+        Assert.Contains("out of Claude usage", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("resume at 7:40pm", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_usage_limit_with_nothing_to_push_still_writes_the_one_comment()
+    {
+        using var h = new Harness();
+        Board(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var comment = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+        Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_ordinary_stall_still_gets_the_tidy_comment_and_not_the_limit_one()
+    {
+        using var h = new Harness();
+        Board(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("push ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_recorded_pull_request_is_synced_and_none_is_not()
     {
         using var with = new Harness();

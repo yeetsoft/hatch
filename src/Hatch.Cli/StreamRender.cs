@@ -22,6 +22,19 @@ public sealed class RunFacts
 
     /// <summary>The whole work log entry, or null on a run that ended before it could report.</summary>
     public WorkLogEntryRequest? Result { get; set; }
+
+    /// <summary>
+    /// The result event's own <c>result</c> field, raw - what <see cref="UsageLimit"/>
+    /// reads, because a limit's sentence is not always inside the work-log fence
+    /// <see cref="Result"/> was parsed out of.
+    /// </summary>
+    public string? ResultText { get; set; }
+
+    /// <summary>
+    /// The last thing the assistant said, for a run that ended before a result
+    /// event arrived at all - the one place a limit hit mid-stream shows up.
+    /// </summary>
+    public string? LastAssistantText { get; set; }
 }
 
 /// <summary>
@@ -111,7 +124,8 @@ public sealed partial class StreamRender(string root, RunFacts facts)
                     yield return $"  ⏺ {Text(part, "name")}  {Summarise(part)}";
                     break;
 
-                case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 }:
+                case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 } text:
+                    facts.LastAssistantText = text;
                     yield return "";
                     foreach (var said in (Text(part, "text") ?? "").ReplaceLineEndings("\n").Split('\n'))
                         yield return said;
@@ -155,8 +169,10 @@ public sealed partial class StreamRender(string root, RunFacts facts)
         facts.SessionId = id;
         if (cost is { } spent) facts.CostUsd = spent;
 
-        var (title, summary) = WorkLog(Text(e, "result") ?? "");
+        var resultText = Text(e, "result") ?? "";
+        var (title, summary) = WorkLog(resultText);
 
+        facts.ResultText = resultText;
         facts.Result = new WorkLogEntryRequest(
             SessionId: id,
             StartedAt: default,

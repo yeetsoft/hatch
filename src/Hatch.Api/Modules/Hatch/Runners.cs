@@ -96,7 +96,8 @@ public sealed class Runners(IOptions<HatchOptions> options)
         runner.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
         runner.Clones,
         runner.Mine,
-        runner.Where);
+        runner.Where,
+        runner.ExhaustedUntil);
 
     /// <summary>What the loop reads back off its own heartbeat: the row's operator half, and nothing else.</summary>
     public static RunnerInstructionDto Instruct(EfHatchRunner runner) =>

@@ -575,6 +575,63 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Questions);
     }
 
+    // ---- Runners out of usage ----
+
+    [Fact]
+    public async Task Attention_ListsALiveRunnerOutOfUsage()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(2));
+
+        var exhausted = Value(await h.Attention.GetAttention(default)).ExhaustedRunners;
+
+        var row = Assert.Single(exhausted!);
+        Assert.Equal("host:/checkouts/one", row.Name);
+        Assert.Equal(h.Time.GetUtcNow().AddHours(2), row.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListOneWhoseResetHasPassed()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(-1));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).ExhaustedRunners!);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotListOneThatHasGoneQuiet()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync(
+            "host:/checkouts/one", h.Time.GetUtcNow().AddHours(2), lastSeenAt: h.Time.GetUtcNow().AddDays(-1));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).ExhaustedRunners!);
+    }
+
+    [Fact]
+    public async Task Attention_OrdersExhaustedRunnersBySoonestResetFirst()
+    {
+        var h = await NewAsync();
+        await h.RunnerAsync("host:/checkouts/late", h.Time.GetUtcNow().AddHours(5));
+        await h.RunnerAsync("host:/checkouts/soon", h.Time.GetUtcNow().AddHours(1));
+
+        Assert.Equal(
+            ["host:/checkouts/soon", "host:/checkouts/late"],
+            Value(await h.Attention.GetAttention(default)).ExhaustedRunners!.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task Attention_ListsExhaustedRunnersEvenOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        await h.RunnerAsync("host:/checkouts/one", h.Time.GetUtcNow().AddHours(2));
+
+        var exhausted = Value(await h.Attention.GetAttention(default)).ExhaustedRunners;
+
+        Assert.Single(exhausted!);
+    }
+
     // ---- The gate ----
 
     [Fact]
@@ -598,6 +655,7 @@ public class AttentionControllerTests
     {
         public required HatchContext Db { get; init; }
         public required AttentionController Attention { get; init; }
+        public required Microsoft.Extensions.Time.Testing.FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -606,6 +664,22 @@ public class AttentionControllerTests
 
         private int next = 1;
         private int nextRepoOrder = 1;
+
+        /// <summary>A runner row, placed directly - this is not RunnersController's own heartbeat rules to pin.</summary>
+        public async Task RunnerAsync(string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null)
+        {
+            Db.Runners.Add(new EfHatchRunner
+            {
+                Name = name,
+                Kind = "loop",
+                FirstSeenAt = Time.GetUtcNow(),
+                LastSeenAt = lastSeenAt ?? Time.GetUtcNow(),
+                State = "running",
+                Where = $"host:/checkouts/{name}",
+                ExhaustedUntil = exhaustedUntil,
+            });
+            await Db.SaveChangesAsync();
+        }
 
         /// <summary>
         /// An issue placed directly. These tests are about which column an
@@ -792,10 +866,14 @@ public class AttentionControllerTests
         db.AddRange(project, inbox, todo, doing, review, done);
         await db.SaveChangesAsync();
 
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db),
+            Attention = new AttentionController(db, runners, time),
+            Time = time,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -818,10 +896,14 @@ public class AttentionControllerTests
         db.AddRange(project, done);
         await db.SaveChangesAsync();
 
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db),
+            Attention = new AttentionController(db, runners, time),
+            Time = time,
             ProjectId = project.Id,
             Inbox = done.Id,
             Todo = done.Id,

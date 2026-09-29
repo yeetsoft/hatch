@@ -176,6 +176,48 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Mine);
     }
 
+    // ---- Out of Claude usage ----
+
+    [Fact]
+    public async Task ExhaustedUntil_IsSetClearedAndLeftAloneTheSameWayMineIs()
+    {
+        var h = await NewAsync();
+        var resetAt = Now.AddHours(2);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+
+        // A loop heartbeat that says it is not out clears it at once.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: false));
+        Assert.Null((await h.OneAsync()).ExhaustedUntil);
+
+        // And absent - an older CLI, or hatch work's single beat - leaves
+        // whatever the row already said alone.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task ExhaustedUntil_IsSeededOnANewRow()
+    {
+        var h = await NewAsync();
+        var resetAt = Now.AddHours(1);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: resetAt));
+
+        Assert.Equal(resetAt, (await h.OneAsync()).ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task ExhaustedUntil_IsNotSomethingAPersonPatches()
+    {
+        // No field on the request at all - it is a fact a runner reports about
+        // itself, never a person's to set from the page.
+        Assert.DoesNotContain(
+            typeof(RunnerPatchRequest).GetProperties(), p => p.Name == "ExhaustedUntil" || p.Name == "Exhausted");
+    }
+
     // ---- Where it runs ----
 
     [Fact]

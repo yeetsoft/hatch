@@ -12,6 +12,7 @@ public sealed class Tally
     private readonly TimeProvider _clock;
     private readonly List<string> _moved;
     private readonly List<string> _stalled;
+    private readonly List<string> _interrupted;
     private readonly List<string> _failed = [];
     private readonly DateTimeOffset _started;
 
@@ -26,6 +27,7 @@ public sealed class Tally
         _clock = clock;
         _moved = [.. carried?.Moved ?? []];
         _stalled = [.. carried?.Stalled ?? []];
+        _interrupted = [.. carried?.Interrupted ?? []];
 
         // The night's start and not this process's, so the elapsed time in the
         // morning covers the whole of it. A state file with no start in it is
@@ -36,6 +38,8 @@ public sealed class Tally
         Spent = carried?.Spent ?? 0m;
         Fails = carried?.Fails ?? 0;
         Restarts = carried?.Restarts ?? 0;
+        ExhaustedUntil = carried?.ExhaustedUntil;
+        ExhaustedKnown = carried?.ExhaustedKnown ?? true;
     }
 
     public int Runs { get; private set; }
@@ -46,6 +50,27 @@ public sealed class Tally
 
     /// <summary>How many times the loop has come back as a newer version of itself.</summary>
     public int Restarts { get; }
+
+    /// <summary>
+    /// The last increment ran out of Claude usage, and this is when it expects
+    /// to reset - null on an ordinary night, and cleared the moment an
+    /// increment finishes without hitting one.
+    /// </summary>
+    public DateTimeOffset? ExhaustedUntil { get; private set; }
+
+    /// <summary>Whether <see cref="ExhaustedUntil"/> came from the session, or is the one-hour backstop.</summary>
+    public bool ExhaustedKnown { get; private set; } = true;
+
+    /// <summary>
+    /// The reset instant has passed - told rather than let expire on its own,
+    /// so the very next heartbeat says this runner is not out any more instead
+    /// of repeating a stale instant until the next increment happens to clear it.
+    /// </summary>
+    public void ClearExhausted()
+    {
+        ExhaustedUntil = null;
+        ExhaustedKnown = true;
+    }
 
     /// <summary>The sentence naming what ended the run.</summary>
     public string? StopWhy { get; set; }
@@ -120,6 +145,24 @@ public sealed class Tally
         Runs++;
         if (report.Cost is { } cost) Spent += cost;
 
+        // Set on every increment and cleared the moment one finishes without
+        // hitting one - a person restarting the loop by hand is the only other
+        // way this clears, since a fresh incarnation carries nothing forward.
+        ExhaustedUntil = report.UsageLimitResetAt;
+        ExhaustedKnown = report.UsageLimitResetKnown;
+
+        // A third list, because a usage limit is neither: nothing was moved,
+        // and nothing is waiting on a person either - the next runner with
+        // usage left picks this ticket straight up. It does not touch the
+        // failure streak, the same reason a lost lease does not: three of these
+        // in a row is the loop working correctly against a spent account, not
+        // three broken increments.
+        if (report.UsageLimited)
+        {
+            _interrupted.Add($"hatch:   usage    {report.Key}  {report.Outcome}");
+            return;
+        }
+
         // Two lists rather than one, because they are two different mornings:
         // the moved ones are what the night got done, and the stalled ones are
         // what is waiting on somebody. A conflict that was resolved is something
@@ -167,6 +210,9 @@ public sealed class Tally
         UntilAt = UntilAt,
         Moved = _moved,
         Stalled = _stalled,
+        Interrupted = _interrupted,
+        ExhaustedUntil = ExhaustedUntil,
+        ExhaustedKnown = ExhaustedKnown,
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
@@ -193,6 +239,7 @@ public sealed class Tally
         say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{restarts}");
         say.Lines(_moved);
         say.Lines(_stalled);
+        say.Lines(_interrupted);
     }
 }
 
@@ -672,7 +719,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var idle = new SaidOnce();
         var busy = new SaidOnce();
         var paused = new SaidOnce();
+        var exhausted = new SaidOnce();
         var poll = new Poll();
+
+        // When the loop's own checkout was last made current while waiting out
+        // a usage limit - never, at first, so the first pass through the wait
+        // checks at once rather than waiting a further ten minutes for news
+        // that arrived just before the limit hit.
+        var checkedSelfAt = DateTimeOffset.MinValue;
 
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
@@ -749,6 +803,57 @@ public sealed class GoToWorkCommand(Runtime runtime)
             }
 
             paused.Clear();
+
+            if (tally.ExhaustedUntil is { } until && now < until)
+            {
+                // Still heartbeating, the same reason a paused loop does - and
+                // this runner's own row is the one place that says why, on the
+                // terms Restart HA-107 gave it: ExhaustedUntil, read back off
+                // its own heartbeat by nobody but the page.
+                idle.Clear();
+                busy.Clear();
+                var waiting = $"out of Claude usage until {UsageLimit.Clock(until)}";
+                line.Line = waiting;
+                await SayQuietlyAsync(exhausted, now, interval, once,
+                    digest: "exhausted",
+                    still: "hatch: still out of Claude usage",
+                    inFull: () =>
+                    {
+                        runtime.Say.Line($"hatch: this runner is {waiting} - taking no tickets until then");
+                        return Task.CompletedTask;
+                    });
+
+                // The one thing a paused wait does not have to do: stay
+                // current. Nothing here is ever dispatched against a stale
+                // trunk, so a claimed pass fetches on every ticket - but an idle
+                // wait that fetched every interval all night would be exactly
+                // the fetch-for-nothing the workspace's own remarks already
+                // rule out, so this is timed on its own, independently of
+                // --interval, at the same ten minutes a quiet reminder waits.
+                if (now - checkedSelfAt >= StillNothing)
+                {
+                    checkedSelfAt = now;
+                    runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
+
+                    if (Changed(restart) is { Count: > 0 } changed)
+                    {
+                        SayChanged(changed, tally);
+                        return true;
+                    }
+                }
+
+                if (!await NapAsync(interval, tally, ct)) return false;
+                continue;
+            }
+
+            if (exhausted.Running)
+            {
+                runtime.Say.Line("");
+                runtime.Say.Line("hatch: back within Claude usage - taking tickets again");
+            }
+
+            exhausted.Clear();
+            tally.ClearExhausted();
 
             // Between the heartbeat and the pass, and on every iteration - an
             // idle loop and a busy one alike - so a pull request that stopped
@@ -857,7 +962,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
-                Where: runtime.Where),
+                Where: runtime.Where,
+                Exhausted: tally.ExhaustedUntil is not null,
+                ExhaustedUntil: tally.ExhaustedUntil),
             ct);
 
         // The one heartbeat answer that ends a run: this name is already the
@@ -1127,7 +1234,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // runner's to write on: what the session left is said there, and the
             // pull request's branch is brought up to date. A lease that went
             // gets the trees back on the trunk and nothing written.
-            await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct);
+            var limit = report.UsageLimitResetAt is { } resetAt
+                ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                : null;
+            await lifecycle.LeaveAsync(work, picked.Chosen, ownsTicket: !report.LostLease, ct, limit);
 
             // A conflict that was resolved did not move the ticket, and did not
             // fail to: it stays in review, which is where it belongs.

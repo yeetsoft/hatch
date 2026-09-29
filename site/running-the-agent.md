@@ -245,6 +245,15 @@ with two options, *leave it* and *try again*, neither recommended. Nothing
 further is dispatched there until somebody answers. One bad ticket costs one
 increment instead of a night.
 
+**Running out of Claude usage is not a stall.** When a session ends because its
+account hit its usage limit, the runner commits and pushes whatever it left
+onto the issue's branch, writes one comment saying it ran out of usage, when it
+expects to resume, and the `claude --resume` command, and lets the ticket go
+with no question asked and no flag blocking the next dispatch. The loop then
+stops taking tickets until the account resets — see
+[Bounds, timeouts and stopping](#bounds-timeouts-and-stopping) — without
+counting toward the three-failures stop either.
+
 ### Bounds, timeouts and stopping
 
 None are set by default. An unattended run that stopped for a reason nobody
@@ -272,6 +281,14 @@ process; the loop picks each of these up itself, between increments, which is
 what makes them work for a runner behind a router nothing can reach. The cost
 of that: a press takes effect at the top of the next pass, after whatever
 increment is in flight has finished.
+
+**A runner waiting out a usage limit obeys every one of these too** - stopping,
+`--until`, `--max-runs`, `--max-spend` and `--stop-file`, and Ctrl-C - the same
+as a paused one. An `--until` earlier than the reset ends the night at
+`--until`. The one thing it does that a pause does not: every ten minutes it
+fetches its own checkout's trunk, and restarts as the new version if its own
+source changed there, the same restart a claimed pass makes - see
+[Stalls](#stalls) above.
 
 **Ctrl-C** lets go of the claim on the way out and exits 130. A second one is
 immediate, and leaves the ticket claimed until the lease ages out, five

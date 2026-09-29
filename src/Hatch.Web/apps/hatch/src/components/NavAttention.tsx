@@ -38,6 +38,7 @@ export function NavAttention() {
   const label = attentionLabel(attention);
   const reviews = attention?.reviews.length ?? 0;
   const questions = attention?.questions.length ?? 0;
+  const exhausted = attention?.exhaustedRunners?.length ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +86,14 @@ export function NavAttention() {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <Robot lit={tone === 'asking'} />
+        <span className="hatch-attention-glyph-wrap">
+          <Robot lit={tone === 'asking'} />
+          {/* A dot, not a pill: a runner out of usage is not a count of
+              anything to fix, so it never changes the control's width or its
+              review-and-question pills - only the accessible name above does
+              that, with a phrase of its own. */}
+          {exhausted > 0 && <span className="hatch-attention-dot" aria-hidden="true" />}
+        </span>
 
         {tone === 'rest' ? (
           <span className="hatch-attention-word">Clear</span>

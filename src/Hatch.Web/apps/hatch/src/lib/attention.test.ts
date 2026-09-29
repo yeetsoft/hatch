@@ -8,12 +8,13 @@ import {
   conflictEmptyWords,
   failingBuildEmptyWords,
   questionEmptyWords,
+  resetWords,
   reviewEmptyWords,
   trunkIconTone,
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, Question, Review } from '../types';
+import type { Attention, Conflict, ExhaustedRunner, Question, Review } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -48,6 +49,13 @@ const conflict = (over: Partial<Conflict> = {}): Conflict => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/14',
   checks: [],
+  ...over,
+});
+
+const exhaustedRunner = (over: Partial<ExhaustedRunner> = {}): ExhaustedRunner => ({
+  name: 'here:/checkouts/one',
+  where: 'here:/checkouts/one',
+  exhaustedUntil: new Date(NOW.getTime() + 3_600_000).toISOString(),
   ...over,
 });
 
@@ -97,6 +105,14 @@ describe('attentionCount', () => {
     // `reviews.length` is, however inconsistent a caller's data might be.
     expect(attentionCount(attention({ reviews: [], reviewsHeldBack: 3 }))).toBe(0);
     expect(attentionCount(attention({ reviews: [review()], reviewsHeldBack: 3 }))).toBe(1);
+  });
+
+  it('does not count a runner out of Claude usage, and stays resting for it', () => {
+    // A dot, not a pill: see the control's own remarks.
+    const exhausted = attention({ exhaustedRunners: [exhaustedRunner()] });
+
+    expect(attentionCount(exhausted)).toBe(0);
+    expect(attentionTone(exhausted)).toBe('rest');
   });
 });
 
@@ -153,6 +169,21 @@ describe('attentionLabel', () => {
 
   it('says nothing is waiting when the only thing in review has no pull request', () => {
     expect(attentionLabel(attention({ inReviewWithoutPullRequest: 3 }))).toBe('Nothing is waiting on you');
+  });
+
+  it('adds a runner out of Claude usage as its own phrase, singular and plural', () => {
+    expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner()] }))).toBe(
+      '1 runner is out of Claude usage',
+    );
+    expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner(), exhaustedRunner()] }))).toBe(
+      '2 runners are out of Claude usage',
+    );
+  });
+
+  it('joins it onto the human halves rather than replacing them', () => {
+    expect(attentionLabel(attention({ reviews: [review()], exhaustedRunners: [exhaustedRunner()] }))).toBe(
+      '1 pull request to review, 1 runner is out of Claude usage',
+    );
   });
 });
 
@@ -285,5 +316,29 @@ describe('trunkIconTone', () => {
   it('is muted when behind, and muted when not checked - the words tell those apart', () => {
     expect(trunkIconTone(false)).toBe('muted');
     expect(trunkIconTone(null)).toBe('muted');
+  });
+});
+
+describe('resetWords', () => {
+  it('names just the clock for later today', () => {
+    const soon = new Date(NOW.getTime() + 60_000).toISOString();
+    const words = resetWords(soon, NOW);
+
+    expect(words).toMatch(/^resets \d{1,2}:\d{2}/);
+    expect(words).not.toContain(' at ');
+  });
+
+  it('names the weekday within the week', () => {
+    const within = new Date(NOW.getTime() + 3 * 86_400_000).toISOString();
+    expect(resetWords(within, NOW)).toMatch(/^resets [A-Za-z]+ at \d{1,2}:\d{2}/);
+  });
+
+  it('names the date beyond a week', () => {
+    const later = new Date(NOW.getTime() + 30 * 86_400_000).toISOString();
+    expect(resetWords(later, NOW)).toMatch(/^resets [A-Za-z]{3} \d{1,2} at \d{1,2}:\d{2}/);
+  });
+
+  it('is unknown for a time that cannot be read', () => {
+    expect(resetWords('not a date', NOW)).toBe('resets at an unknown time');
   });
 });

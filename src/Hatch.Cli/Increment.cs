@@ -53,6 +53,18 @@ public sealed class IncrementReport
     public string? BuildBranch { get; set; }
     public string? BuildSha { get; set; }
 
+    /// <summary>
+    /// The session ended because its Claude account ran out of usage - when it
+    /// expects to reset, or null when this was an ordinary increment.
+    /// </summary>
+    public DateTimeOffset? UsageLimitResetAt { get; set; }
+
+    /// <summary>Whether <see cref="UsageLimitResetAt"/> came from what the session said, or is the one-hour backstop.</summary>
+    public bool UsageLimitResetKnown { get; set; } = true;
+
+    /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
+    public bool UsageLimited => UsageLimitResetAt is not null;
+
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
 
@@ -78,6 +90,7 @@ public sealed class IncrementReport
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
         Moved ? $"{From} -> {Ended}"
+        : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
         : FixPushed ? "fix pushed, build pending"
         : Stalled && StillFailing.Count > 0
@@ -185,6 +198,35 @@ public sealed class Increment(
         // meter reading is not a claim to have done the work.
         await PostWorkLogAsync(report.Key, facts, started, ct);
 
+        // A run that ended in error, or one that ended before it could report
+        // at all, may have ended because the account it ran under ran out of
+        // Claude usage - read from whatever it said on its way out, never from
+        // the claim, which knows nothing about why a session stopped. Never
+        // when the lease was lost: the ticket is somebody else's by then.
+        //
+        // The result event's own text is trusted on any error - it is the
+        // CLI's own structured account of how the run ended. The last thing
+        // the assistant said is trusted only when there was no result event
+        // at all *and* the process exited abnormally: without that second
+        // guard, an ordinary crash whose last words happened to quote this
+        // very sentence - and this file's own tests do - would read as a
+        // usage limit and hide the crash behind a clean-looking wait instead
+        // of the three-strikes stall that would otherwise catch it.
+        var said = facts.Result is { IsError: true } ? facts.ResultText
+            : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
+            : null;
+
+        if (claim.Lost is null && UsageLimit.Recognise(said, DateTimeOffset.UtcNow) is { } hit)
+        {
+            report.UsageLimitResetAt = hit.ResetAt;
+            report.UsageLimitResetKnown = hit.ResetKnown;
+
+            say.Line("");
+            say.Line(hit.ResetKnown
+                ? $"hatch: {report.Key} - out of Claude usage, resets {UsageLimit.Clock(hit.ResetAt)}"
+                : $"hatch: {report.Key} - out of Claude usage, and the reset time could not be read - treating it as an hour away");
+        }
+
         // Where the ticket actually ended up, asked of the board rather than of
         // the session. An increment that says it did the work and leaves the
         // ticket in the column it found it in did not do the work, and this is
@@ -213,13 +255,14 @@ public sealed class Increment(
         // The verdict on a conflict increment: the branch on origin, fetched now,
         // asked of git again. Never when the lease was lost - the ticket is
         // somebody else's by then, and what the board is told about its branch is
-        // theirs to say.
-        if (conflict is not null && claim.Lost is null) await JudgeAsync(report, conflict, ct);
+        // theirs to say. Never on a usage limit either: there is no fix to judge,
+        // only a session that did not finish.
+        if (conflict is not null && claim.Lost is null && !report.UsageLimited) await JudgeAsync(report, conflict, ct);
 
         // The same for a build increment, and the same reason: what it did is on
         // origin's branch. Whether that fixed the build is the board's to say,
         // later, when the build on the new tip has run.
-        if (build is not null && claim.Lost is null) await JudgeBuildAsync(report, build, ct);
+        if (build is not null && claim.Lost is null && !report.UsageLimited) await JudgeBuildAsync(report, build, ct);
 
         // Whatever the session asked for on its way out. This is the half of the
         // loop that makes asking worth doing: an unattended run's questions are
@@ -253,8 +296,10 @@ public sealed class Increment(
         // And if the board says nothing happened, say so on the ticket. Not for
         // an increment whose lease went: writing a stall onto a ticket another
         // runner now holds would flag their increment as ours, and the ticket
-        // did not move because we stopped - which the loop already knows.
-        if (report.Stalled && !report.LostLease) await FlagStallAsync(report, open, ct);
+        // did not move because we stopped - which the loop already knows. And
+        // not for a usage limit: that is not a stall, it is the one increment
+        // kind whose ticket is left clean and unquestioned on purpose.
+        if (report.Stalled && !report.LostLease && !report.UsageLimited) await FlagStallAsync(report, open, ct);
 
         return report;
     }
@@ -404,8 +449,13 @@ public sealed class Increment(
             }
             else if (output.Length > 0)
             {
-                // Not JSON, so it is the CLI complaining. Whatever it said is
-                // the only account of the run there is.
+                // Not JSON, so it is the CLI complaining - or, on a crash that
+                // never reached its final object, whatever of the run's own
+                // output survived. Kept as the last-resort text a usage limit
+                // can still be read from in quiet mode, the same as the
+                // streamed path keeps the assistant's last line for the same
+                // reason.
+                facts.LastAssistantText ??= output;
                 say.Line(output);
             }
 

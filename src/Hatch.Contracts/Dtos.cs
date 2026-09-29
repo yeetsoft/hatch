@@ -672,13 +672,28 @@ public record ReviewDto(
 /// Held back because a red build or a conflict is not ready for a person, and
 /// the loop is already on it. Defaults to zero so an older client still reads.
 /// </param>
+/// <param name="ExhaustedRunners">
+/// Every runner that is still being heard from and is out of Claude usage,
+/// soonest reset first. Not counted towards the badge, which is a dot rather
+/// than a pill - see <see cref="AttentionDto"/>'s remarks. Defaults to empty so
+/// an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
     IReadOnlyList<QuestionDto> Questions,
     IReadOnlyList<ConflictDto> Conflicts,
     IReadOnlyList<FailingBuildDto>? FailingBuilds = null,
-    int ReviewsHeldBack = 0);
+    int ReviewsHeldBack = 0,
+    IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null);
+
+/// <summary>
+/// One runner out of Claude usage, for the top of the attention panel.
+/// </summary>
+/// <param name="Name">What the runner calls itself - the same string the Runners page keys on.</param>
+/// <param name="Where">The machine and checkout it runs from, <c>host:/path</c>, or null when it never said.</param>
+/// <param name="ExhaustedUntil">When it expects to reset.</param>
+public record ExhaustedRunnerDto(string Name, string? Where, DateTimeOffset ExhaustedUntil);
 
 /// <summary>
 /// One issue in review whose branch conflicts with the trunk: what the panel
@@ -1643,6 +1658,11 @@ public static class RunnerStates
 /// about the process, drawn under its name rather than as the name, now that
 /// <see cref="Name"/> is a character and not a path.
 /// </param>
+/// <param name="ExhaustedUntil">
+/// This runner's own Claude account ran out of usage, and this is when it
+/// expects to reset - null on an ordinary runner. A fact this runner reports
+/// about itself, never a person's to set.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -1660,7 +1680,8 @@ public record RunnerDto(
     string[] Repositories,
     bool? Clones,
     bool? Mine,
-    string? Where);
+    string? Where,
+    DateTimeOffset? ExhaustedUntil = null);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -1688,6 +1709,15 @@ public record RunnerDto(
 /// about the process, written on every beat like <see cref="Remotes"/>. Absent
 /// from an older client, which is never refused on that account alone.
 /// </param>
+/// <param name="Exhausted">
+/// This runner's own account ran out of Claude usage - or, sent false, it is
+/// not. Absent (an older CLI, or <c>hatch work</c>'s single beat, which knows
+/// nothing about the account it ran under) leaves whatever the row already
+/// says alone. A <c>DateTimeOffset?</c> alone cannot tell "leave alone" from
+/// "clear", so this carries the tri-state and <see cref="ExhaustedUntil"/>
+/// carries the value.
+/// </param>
+/// <param name="ExhaustedUntil">When the account resets, read only when <see cref="Exhausted"/> is true.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -1698,7 +1728,9 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<string>? Remotes = null,
     bool? Clones = null,
     bool? Mine = null,
-    string? Where = null);
+    string? Where = null,
+    bool? Exhausted = null,
+    DateTimeOffset? ExhaustedUntil = null);
 
 /// <summary>
 /// What the board would like this runner to do, answered to its own heartbeat

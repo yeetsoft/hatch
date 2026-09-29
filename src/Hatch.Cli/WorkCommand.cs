@@ -480,6 +480,7 @@ public sealed class WorkCommand(Runtime runtime)
             }
 
             var owned = true;
+            UsageLimitInfo? limit = null;
             try
             {
                 if (attach) return await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
@@ -493,12 +494,15 @@ public sealed class WorkCommand(Runtime runtime)
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)));
                 owned = !report.LostLease;
+                limit = report.UsageLimitResetAt is { } resetAt
+                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                    : null;
                 return 0;
             }
             finally
             {
                 owned &= claim.Lost is null;
-                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None);
+                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit);
             }
         }
         finally

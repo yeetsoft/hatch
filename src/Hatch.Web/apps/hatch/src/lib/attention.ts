@@ -50,11 +50,14 @@ export const attentionTone = (attention: Attention | null): AttentionTone =>
  * trusting the rest of the sentence.
  */
 export function attentionLabel(attention: Attention | null): string {
-  if (attention === null) return 'Nothing is waiting on you';
-
   const parts: string[] = [];
-  if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
-  if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
+  if (attention !== null) {
+    if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
+    if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
+  }
+
+  const exhausted = attention?.exhaustedRunners?.length ?? 0;
+  if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of Claude usage`);
 
   return parts.length > 0 ? parts.join(', ') : 'Nothing is waiting on you';
 }
@@ -122,6 +125,28 @@ export const conflictEmptyWords = (): string => 'No branch in review has stopped
 
 /** The failing builds section's empty state - one wording, like the conflicts'. */
 export const failingBuildEmptyWords = (): string => 'No build in review is failing.';
+
+/**
+ * `resets 7:40pm` today, `resets Tuesday at 7:40pm` within the week, `resets
+ * Oct 5 at 7:40pm` otherwise - the same escalation a person reads a date with,
+ * naming only as much of it as is not already obvious from today.
+ */
+export function resetWords(exhaustedUntil: string, now: Date): string {
+  const at = new Date(exhaustedUntil);
+  if (Number.isNaN(at.getTime())) return 'resets at an unknown time';
+
+  const clock = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+  if (sameDay(at, now)) return `resets ${clock}`;
+
+  const days = Math.floor((startOfDay(at).getTime() - startOfDay(now).getTime()) / 86_400_000);
+  if (days > 0 && days < 7) return `resets ${at.toLocaleDateString(undefined, { weekday: 'long' })} at ${clock}`;
+
+  return `resets ${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${clock}`;
+}
+
+const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const sameDay = (a: Date, b: Date): boolean => startOfDay(a).getTime() === startOfDay(b).getTime();
 
 // ---- The two icons on a row under Pull requests to review ----
 
