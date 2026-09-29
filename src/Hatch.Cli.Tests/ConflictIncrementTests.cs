@@ -114,7 +114,8 @@ public sealed class ConflictIncrementTests
     // ---- Judging the increment ----
 
     private static async Task<(IncrementReport Report, Harness H)> RunAsync(
-        Func<Harness, ConflictRun> conflict, string endsIn = "In Review", bool lost = false, bool questionsOpen = false)
+        Func<Harness, ConflictRun> conflict, string endsIn = "In Review", bool lost = false, bool questionsOpen = false,
+        int letGo = 0)
     {
         var h = new Harness();
         h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -131,7 +132,7 @@ public sealed class ConflictIncrementTests
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
         var report = await h.Runtime.Increment().RunAsync(
-            Fixtures.ConflictWork(Key), h.Root, "sonnet", "high", quiet: false, claim!, default, conflict: conflict(h));
+            Fixtures.ConflictWork(Key, letGo: letGo), h.Root, "sonnet", "high", quiet: false, claim!, default, conflict: conflict(h));
 
         await claim!.ReleaseAsync();
         return (report, h);
@@ -163,7 +164,7 @@ public sealed class ConflictIncrementTests
     [Fact]
     public async Task A_branch_that_still_conflicts_is_a_stall_flagged_with_the_files_in_the_comment_and_a_question()
     {
-        var (report, h) = await RunAsync(_ => Judging(Found(Conflicted("a.txt", "b.txt"))));
+        var (report, h) = await RunAsync(_ => Judging(Found(Conflicted("a.txt", "b.txt"))), letGo: 1);
         using var _h = h;
 
         Assert.True(report.Stalled);
@@ -230,7 +231,7 @@ public sealed class ConflictIncrementTests
     [Fact]
     public async Task A_session_that_moved_the_ticket_out_of_review_is_reported_as_moved_and_still_a_stall_if_it_conflicts()
     {
-        var (report, h) = await RunAsync(_ => Judging(Found(Conflicted("a.txt"))), endsIn: "In Progress");
+        var (report, h) = await RunAsync(_ => Judging(Found(Conflicted("a.txt"))), endsIn: "In Progress", letGo: 1);
         using var _h = h;
 
         Assert.True(report.Moved);
@@ -238,6 +239,10 @@ public sealed class ConflictIncrementTests
         Assert.True(report.Stalled);
         Assert.Equal("flagged", report.Flag);
         Assert.Equal(2, h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments").Count);
+
+        // The ticket moved, so the claim's own verdict is worked - even though
+        // its branch still needs another pass and is flagged for it.
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
     }
 
     [Fact]
@@ -258,12 +263,12 @@ public sealed class ConflictIncrementTests
         h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
         h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Json("POST", $"/api/hatch/issues/{Key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.Work(Key));
+        h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.Work(Key, letGo: 1));
         h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
 
-        var report = await h.Runtime.Increment().RunAsync(Fixtures.Work(Key), h.Root, "sonnet", "high", false, claim!, default);
+        var report = await h.Runtime.Increment().RunAsync(Fixtures.Work(Key, letGo: 1), h.Root, "sonnet", "high", false, claim!, default);
 
         Assert.True(report.Stalled);
         Assert.Contains("left this issue where it found it", h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments")[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
@@ -446,7 +451,7 @@ public sealed class ConflictIncrementTests
     public async Task A_conflict_that_is_still_there_after_the_session_costs_one_increment_and_is_flagged()
     {
         using var h = new Harness();
-        Board(h, Fixtures.ConflictWork(Key));
+        Board(h, Fixtures.ConflictWork(Key, letGo: 1));
         h.Workspace.Verdicts[(h.Root, Key)] = Conflicted("still.txt");
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);

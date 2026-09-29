@@ -65,7 +65,8 @@ public static class Fixtures
         bool noLink = false,
         string kind = WorkKinds.Advance,
         IReadOnlyList<CommentDto>? messages = null,
-        bool hop = false) =>
+        bool hop = false,
+        int letGo = 0) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -78,24 +79,26 @@ public static class Fixtures
             IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
             Kind: kind,
             Messages: messages,
-            Hop: hop);
+            Hop: hop,
+            LetGo: letGo);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
         string key, string trunk = "main", IReadOnlyList<MergeCheckDto>? checks = null,
-        IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        IReadOnlyList<WorkRepositoryDto>? repositories = null, int letGo = 0) =>
         Work(
             key, from: "In Review", to: "In Review", repositories: repositories,
             issue: Issue(key) with { MergeChecks = checks ?? [MergeCheck(MergeVerdicts.Conflicted, trunk, files: "a.txt")] },
-            kind: WorkKinds.Conflicts);
+            kind: WorkKinds.Conflicts, letGo: letGo);
 
     /// <summary>The dispatch of an issue in review whose build failed: review to itself, with the board's build verdict on it.</summary>
     public static WorkDto BuildWork(
-        string key, IReadOnlyList<BuildCheckDto>? builds = null, IReadOnlyList<WorkRepositoryDto>? repositories = null) =>
+        string key, IReadOnlyList<BuildCheckDto>? builds = null, IReadOnlyList<WorkRepositoryDto>? repositories = null,
+        int letGo = 0) =>
         Work(
             key, from: "In Review", to: "In Review", repositories: repositories,
             issue: Issue(key) with { BuildChecks = builds ?? [Build(BuildVerdicts.Failed, "example.test/repo", failing: ["api", "CI"])] },
-            kind: WorkKinds.Build);
+            kind: WorkKinds.Build, letGo: letGo);
 
     /// <summary>An issue in review whose build failed, and the queue row that says to fix it.</summary>
     public static QueueEntryDto BuildRow(string key, params string[] failing) =>

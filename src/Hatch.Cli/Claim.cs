@@ -235,7 +235,15 @@ public sealed class Claim : IAsyncDisposable
     /// on its way out, then presents the token - which is what lets a runner
     /// release its own lease and nobody else's.
     /// </summary>
-    public async Task ReleaseAsync()
+    /// <param name="outcome">
+    /// One of <see cref="ClaimOutcomes"/> - whether this increment moved the
+    /// ticket or left it where it found it - or null, which is what every
+    /// release sent before this one meant and what a pick's own throwaway
+    /// release, a restart, and an attached session's still mean: nothing is
+    /// said about how the increment went, because none of them ran one to
+    /// completion.
+    /// </param>
+    public async Task ReleaseAsync(string? outcome = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
 
@@ -266,13 +274,16 @@ public sealed class Claim : IAsyncDisposable
         // real seconds this would otherwise cost.
         using var budget = new CancellationTokenSource(ReleaseBudget, _client.Clock);
 
+        var path = outcome is { Length: > 0 }
+            ? $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
+            : $"/api/hatch/issues/{Key}/claim?token={Token}";
+
         try
         {
             // Not through the throwing lane: a release that was refused is a
             // lease that has already gone, which is the state a DELETE was
             // asking for.
-            await _client.Send(
-                HttpMethod.Delete, $"/api/hatch/issues/{Key}/claim?token={Token}", null, budget.Token);
+            await _client.Send(HttpMethod.Delete, path, null, budget.Token);
         }
         catch (OperationCanceledException)
         {

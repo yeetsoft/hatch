@@ -269,6 +269,12 @@ public sealed class WorkCommand(Runtime runtime)
         // take. Null for an attached session, which is a person's to resume.
         Increment? increment = null;
 
+        // What the release in the `finally` below says about how this
+        // increment went - the report's own verdict on the ordinary path, or
+        // dropped where the runner itself fell over. Null on every other way
+        // out, matching every release before this one.
+        string? releaseOutcome = null;
+
         try
         {
             if (key is { Length: > 0 })
@@ -534,6 +540,7 @@ public sealed class WorkCommand(Runtime runtime)
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                     runnerName: runtime.RunnerName, incrementNumber: 1);
                 owned = !report.LostLease;
+                releaseOutcome = report.ReleaseOutcome;
                 return 0;
             }
             finally
@@ -571,11 +578,16 @@ public sealed class WorkCommand(Runtime runtime)
             if (ticketKey is { Length: > 0 })
                 await LetGo.CommentAsync(runtime.Board, runtime.Say, ticketKey, why, increment?.SessionId, CancellationToken.None);
 
+            // The runner fell over rather than the increment running to a
+            // verdict, so the claim (where one was ever held) goes back the
+            // same way any other stall does.
+            releaseOutcome = ClaimOutcomes.Dropped;
+
             return 1;
         }
         finally
         {
-            if (claim is not null) await claim.ReleaseAsync();
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome);
         }
     }
 

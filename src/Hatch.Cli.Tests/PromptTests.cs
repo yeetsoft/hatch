@@ -93,6 +93,35 @@ public sealed class PromptTests
             Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
     }
 
+    // ---- HA-118: a ticket already let go of once or more ----
+
+    [Fact]
+    public void A_ticket_let_go_of_gets_a_section_naming_how_many_times()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", letGo: 2));
+
+        Assert.Contains("## This ticket was let go", prompt, StringComparison.Ordinal);
+        Assert.Contains("The last 2 increment(s) on this ticket ended without moving it", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_ticket_never_let_go_of_gets_no_such_section()
+    {
+        Assert.DoesNotContain("## This ticket was let go",
+            Prompt.Compose(Fixtures.Work("AER-12", letGo: 0)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_let_go_section_comes_before_decisions_already_made()
+    {
+        var work = Fixtures.Work("AER-12", letGo: 1, questions: [Fixtures.Question(1, answered: true)]);
+        var prompt = Prompt.Compose(work);
+
+        Assert.True(
+            prompt.IndexOf("## This ticket was let go", StringComparison.Ordinal)
+            < prompt.IndexOf("## Decisions already made", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void The_ticket_says_when_it_chose_the_model_rather_than_the_playbook()
     {
@@ -213,6 +242,21 @@ public sealed class PromptTests
     public void An_ordinary_ticket_gets_no_express_section()
     {
         Assert.DoesNotContain("## This ticket is express", Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
+    // ---- HA-118: the ending says a stall is recorded as having done nothing ----
+
+    [Fact]
+    public void Where_this_increment_ends_says_a_stall_counts_as_nothing_done()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        var section = prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal);
+        Assert.True(section >= 0);
+        Assert.Contains(
+            "recorded as having",
+            prompt[section..], StringComparison.Ordinal);
+        Assert.Contains("so move it, or ask, before you", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

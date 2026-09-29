@@ -103,8 +103,15 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-118: the first increment in a row to leave a ticket where it found
+    /// it is let go quietly - one comment, no question - rather than flagged.
+    /// Most of the time whatever happened is weather, and a retry a few
+    /// minutes later just works, so the ticket goes straight back onto the
+    /// board rather than costing a person a trip to answer a question about it.
+    /// </summary>
     [Fact]
-    public async Task A_ticket_that_did_not_move_is_flagged_where_a_person_will_see_it()
+    public async Task A_ticket_that_did_not_move_is_let_go_the_first_time()
     {
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
@@ -117,15 +124,53 @@ public sealed class IncrementTests
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
-            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
 
         Assert.True(report.Stalled);
-        Assert.Equal("flagged", report.Flag);
+        Assert.True(report.LetGo);
+        Assert.Equal("let go", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
-        // A comment naming the session, and a question, which is what actually
-        // stops the next pass spending the same money the same way.
+        // One comment naming the session, and no question: the ticket is free
+        // for the very next pass to try again.
+        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
+        Assert.Single(written);
+        Assert.Contains("let it go", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+        Assert.Contains("the session ended without moving it", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+        Assert.Null(written[0].Read<CommentCreateRequest>().Kind);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The second increment in a row to do the same is flagged exactly as every stall used to be.</summary>
+    [Fact]
+    public async Task A_ticket_that_did_not_move_a_second_time_in_a_row_is_flagged_where_a_person_will_see_it()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Equal("flagged", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+
+        // A comment naming the session, mentioning this is the second increment
+        // in a row, and a question, which is what actually stops the next pass
+        // spending the same money the same way.
         var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
         Assert.Equal(2, written.Count);
+        Assert.Contains("second increment in a row", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
         Assert.Equal("question", written[1].Read<CommentCreateRequest>().Kind);
 
@@ -140,22 +185,87 @@ public sealed class IncrementTests
 
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        // The question is already open before the increment starts, so the
+        // session did not ask it - it is the second increment in a row to
+        // leave the ticket where it was, which is what puts this on the
+        // flagged path rather than a quiet let-go.
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, questions: [Fixtures.Question(42)]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", new[] { Fixtures.Question(42) });
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1, questions: [Fixtures.Question(42)]), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Equal("waiting on a question", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        // The session raised no question of its own this time - the one open
+        // is the same one that was already there.
+        Assert.Equal(0, report.Asked);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// The session asked its own question on the way out: that already does
+    /// everything a stall comment would, so nothing further is written and the
+    /// claim reads as having worked rather than been dropped.
+    /// </summary>
+    [Fact]
+    public async Task A_session_that_asked_its_own_question_is_not_let_go_or_flagged()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", new[] { Fixtures.Question(42) });
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Equal(1, report.Asked);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>An erroring session's let-go comment quotes its own result text.</summary>
+    [Fact]
+    public async Task An_erroring_sessions_let_go_comment_quotes_its_result_text()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(error: true, said: "the build failed on main"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
-        Assert.Equal("waiting on a question", report.Flag);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
-        // And the question the session asked on its way out is printed, because
-        // it is the one thing in an unattended run's output somebody has to act
-        // on.
-        Assert.Equal(1, report.Asked);
-        Assert.Contains(h.Say.Said, l => l.Contains("asked 1 question(s)", StringComparison.Ordinal));
+        var body = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")[0].Read<CommentCreateRequest>().Body;
+        Assert.Contains("the session ended with an error", body, StringComparison.Ordinal);
+        Assert.Contains("the build failed on main", body, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
@@ -218,7 +328,7 @@ public sealed class IncrementTests
 
         Assert.False(report.UsageLimited);
         Assert.True(report.Stalled);
-        Assert.Equal("flagged", report.Flag);
+        Assert.Equal("let go", report.Flag);
 
         await claim.ReleaseAsync();
     }

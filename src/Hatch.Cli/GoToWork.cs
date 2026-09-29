@@ -12,6 +12,7 @@ public sealed class Tally
     private readonly TimeProvider _clock;
     private readonly List<string> _moved;
     private readonly List<string> _stalled;
+    private readonly List<string> _letGo;
     private readonly List<string> _interrupted;
     private readonly List<string> _failed = [];
     private readonly DateTimeOffset _started;
@@ -27,6 +28,7 @@ public sealed class Tally
         _clock = clock;
         _moved = [.. carried?.Moved ?? []];
         _stalled = [.. carried?.Stalled ?? []];
+        _letGo = [.. carried?.LetGo ?? []];
         _interrupted = [.. carried?.Interrupted ?? []];
 
         // The night's start and not this process's, so the elapsed time in the
@@ -166,12 +168,16 @@ public sealed class Tally
             return;
         }
 
-        // Two lists rather than one, because they are two different mornings:
-        // the moved ones are what the night got done, and the stalled ones are
-        // what is waiting on somebody. A conflict that was resolved is something
-        // the night got done, though the ticket did not move, and so is a fix
-        // pushed to a failing build.
+        // Three lists rather than two, because a let-go ticket is neither of
+        // the other mornings: the moved ones are what the night got done, the
+        // stalled ones are what is waiting on somebody, and the let-go ones are
+        // what nothing needs to be done about yet - the first increment in a
+        // row to leave a ticket alone, freed for the next pass rather than
+        // flagged. A conflict that was resolved is something the night got
+        // done, though the ticket did not move, and so is a fix pushed to a
+        // failing build.
         if (report.Moved || report.Resolved || report.FixPushed) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
+        else if (report.LetGo) _letGo.Add($"hatch:   let go   {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
         // A lost lease is not a failure. It is the loop working correctly on a
@@ -213,6 +219,7 @@ public sealed class Tally
         UntilAt = UntilAt,
         Moved = _moved,
         Stalled = _stalled,
+        LetGo = _letGo,
         Interrupted = _interrupted,
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
@@ -242,6 +249,7 @@ public sealed class Tally
         say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{restarts}");
         say.Lines(_moved);
         say.Lines(_stalled);
+        say.Lines(_letGo);
         say.Lines(_interrupted);
     }
 }
@@ -1059,6 +1067,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         Increment? increment = null;
         var entered = false;
 
+        // What the release in the `finally` below says about how this pass
+        // went - set on the increment's own report when one ran to a verdict,
+        // or to dropped when the runner itself fell over. Left null on every
+        // other way out: a claim that was never spent on a finished increment
+        // has nothing to say about the ticket.
+        string? releaseOutcome = null;
+
         try
         {
             var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
@@ -1276,6 +1291,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
 
             tally.Record(report);
+            releaseOutcome = report.ReleaseOutcome;
 
             try
             {
@@ -1331,6 +1347,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (key is { Length: > 0 })
                 await LetGo.CommentAsync(runtime.Board, runtime.Say, key, why, increment?.SessionId, CancellationToken.None);
 
+            // The runner fell over rather than the increment running to a
+            // verdict, so the claim (where one was ever held) goes back the
+            // same way any other stall does.
+            releaseOutcome = ClaimOutcomes.Dropped;
+
             tally.Record(new IncrementReport
             {
                 Key = key ?? "?",
@@ -1347,7 +1368,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            if (claim is not null) await claim.ReleaseAsync();
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome);
         }
     }
 

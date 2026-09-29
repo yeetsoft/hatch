@@ -417,7 +417,12 @@ by default. The runner heartbeats `POST …/claim/heartbeat` every
 whole process tree and the increment ends with
 `hatch: <key> - <sentence>` and `the session was stopped; nothing further was
 written there`. Every other heartbeat failure is weather, retried next tick.
-Release is `DELETE …/claim?token=<token>`, idempotent.
+Release is `DELETE …/claim?token=<token>`, idempotent, with an optional
+`&outcome=dropped|worked` naming the claim's own verdict on the increment -
+see "The stall guard" below for who sends which. Every release that is not an
+increment's own verdict (the pick's own throwaway release, a restart, a lost
+lease, a usage limit, an interrupted increment, an attached session) sends no
+outcome, exactly as every release did before `outcome` existed.
 
 ### The spawned process
 
@@ -480,17 +485,43 @@ before it said what it had spent`. A failed post never fails the increment.
 2. `GET …/questions?open=true`: questions whose ids were not open before the
    run are printed under `--- <KEY> asked N question(s) ---` with the answer
    command and the issue URL.
-3. **The stall guard**, when stalled and the lease was not lost. If the
-   question count could not be read, nothing is written and the terminal says
-   the ticket could not be flagged. Otherwise a comment is posted beginning
-   `An unattended increment ran here and left this issue where it found it:
-   still in "<From>", under a playbook moving <From> -> <To>.`, with the
-   resume command and the exit code when non-zero. If a question was already
-   open, that is the flag. If none was, a question goes up: `An unattended
-   increment left <KEY> in "<From>" without moving it - what should happen
-   to it now?` with exactly two options, `leave it` and `try again`, neither
-   recommended, because the whole content of a stall is that nothing here
-   knows why it happened.
+3. **The stall guard**, when stalled and the lease was not lost and it was not
+   a usage limit. The dispatch itself carries `letGo`: how many releases of
+   this ticket in a row already came back `dropped`, counted back to the last
+   `worked` release, a status change, or a person's answer.
+   - **The session asked its own question this increment** (`Asked > 0`):
+     nothing further is written. The claim releases `worked` - the question
+     already blocks the next dispatch and badges the card, so a second
+     comment would say the same thing back in different words.
+   - **`letGo` is `0`** (the first increment in a row to leave this ticket
+     where it found it): one comment, no question. The body is `An
+     unattended increment left <KEY> where it found it and let it go: <why>.`,
+     where `<why>` is `the session ended with an error - "<result text>"`
+     when the run exited non-zero or its result said `is_error`, else `the
+     session ended without moving it` - and the resume command, or `There is
+     no session to resume: the run ended before it said what its id was.`
+     The claim releases `dropped`.
+   - **`letGo` is `1` or more**: flagged exactly as every stall used to be. If
+     the question count could not be read, nothing is written and the
+     terminal says the ticket could not be flagged. Otherwise a comment is
+     posted beginning `An unattended increment ran here and left this issue
+     where it found it: still in "<From>", under a playbook moving <From> ->
+     <To>.`, with a line naming which increment in a row this is (`This is
+     the second increment in a row to leave this ticket here.` for `letGo:
+     1`, and so on), the resume command, and the exit code when non-zero. If
+     a question was already open, that is the flag. If none was, a question
+     goes up: `An unattended increment left <KEY> in "<From>" without moving
+     it - what should happen to it now?` with exactly two options, `leave it`
+     and `try again`, neither recommended, because the whole content of a
+     stall is that nothing here knows why it happened. The claim releases
+     `dropped` either way.
+
+   An increment that moved the ticket, resolved a conflict, or pushed a build
+   fix releases `worked` regardless of anything above - a conflict or build
+   increment is judged by its branch and can do both: move the ticket to a
+   new column while its branch still needs another pass, in which case it is
+   still flagged or let go of for the branch, but the claim still reads as
+   having worked.
 
 ### Prompt assembly
 
@@ -502,18 +533,25 @@ Joined with newlines, in this order:
    then `parent:`, `ready:`, `due:` when set, and the description, or `_No
    description. That is itself worth noting on the ticket._`
 4. `## Its children`, one bullet per child, only when there are any.
-5. `## Decisions already made`, only for questions with at least one answer:
+5. `## This ticket was let go`, only when the dispatch's `letGo` is greater
+   than zero: *The last `<letGo>` increment(s) on this ticket ended without
+   moving it, and were let go rather than flagged. The comments on the ticket
+   say why, and what each one left behind - read them, and continue that work
+   rather than starting over.*
+6. `## Decisions already made`, only for questions with at least one answer:
    *These were asked on this ticket and answered. They are settled: build on
    them, and do not ask again.* Then each as `**Asked (<author>):**` and
    `**Answered (<author>):**`. Unanswered questions are absent, because a
    ticket with one is never dispatched.
-6. A fixed tail: `## Reaching Hatch` (the `hatch show`, `start`, `move`,
+7. A fixed tail: `## Reaching Hatch` (the `hatch show`, `start`, `move`,
    `comment`, `ask` and `api` calls, noting the key is already in the
    environment); `## When you cannot decide` (the `ask --recommend --option`
    shape, and *then stop*); `## Where this increment ends` (`<KEY> should be
    in "<To>" when you stop, and no further`, only the operator moves work
-   into a terminal column, do not edit playbooks); and the instruction to end
-   with a `work-log` block of a title line and a summary under 100 words.
+   into a terminal column, an increment that leaves the ticket where it found
+   it is recorded as having done nothing so move it or ask before stopping,
+   do not edit playbooks); and the instruction to end with a `work-log` block
+   of a title line and a summary under 100 words.
 
 ## `hatch go-to-work`
 
@@ -618,7 +656,8 @@ report.
    reaches here.
 6. Record it and print `hatch: <KEY> moved, <outcome>  (N increment(s),
    $x.xx)` or `hatch: <KEY> did not move - <outcome>  …`.
-7. Release the claim.
+7. Release the claim, with the outcome the increment decided - see "The stall
+   guard" above.
 
 ### Preparing the workspace
 
@@ -669,7 +708,7 @@ pulled new source, or the incarnation is older than `--restart-after`
 minutes. A restart never holds a claim.
 
 On the way out the night's totals (runs, spend, start, failure streak,
-restarts, the resolved `--until`, the moved and stalled keys) are written to
+restarts, the resolved `--until`, the moved, stalled and let-go keys) are written to
 `HATCH_NIGHT_STATE`. If that write fails the restart is cancelled rather than
 starting the budget over. `--until` is carried as an instant, not recomputed,
 so a restart across midnight does not add a day. On any other ending the
@@ -721,7 +760,14 @@ hatch: <why it stopped>
 hatch: N increment(s) in <duration>, $<x.xx>[, N restart(s)]
 hatch:   moved    <KEY>  <outcome>
 hatch:   stalled  <KEY>  <outcome>
+hatch:   let go   <KEY>  <outcome>
 ```
+
+The stalled list is the second stall in a row on a ticket, flagged with a
+comment and a question; the let-go list is the first, let go of quietly with
+a comment and no question - see "The stall guard" above. A ticket that exits
+zero without moving does not count toward the three-failures streak either
+way; a non-zero exit does, whichever list it lands in.
 
 ## `hatch do-my-work`
 
@@ -769,7 +815,7 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 | GET | `/api/hatch/issues/{key}` | `show`, `pr` read, `depends` read |
 | GET | `/api/hatch/issues?ancestorKey=…` | the idle report under an epic |
 | GET | `/api/hatch/issues/{key}/comments` | `show` |
-| POST | `/api/hatch/issues/{key}/comments` | `comment`, `ask`, `answer`, the stall comment |
+| POST | `/api/hatch/issues/{key}/comments` | `comment`, `ask`, `answer`, the stall comment, the let-go comment |
 | POST | `/api/hatch/issues/{key}/move` | `move`, `start` |
 | PATCH | `/api/hatch/issues/{key}` | `pr` set and clear |
 | POST, DELETE | `/api/hatch/issues/{key}/dependencies[/{other}]` | `depends` |
@@ -779,7 +825,7 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 | GET | `/api/hatch/work/{key}[?heldToken=…]` | `work`, the picker's second read, the post-increment read |
 | POST | `/api/hatch/issues/{key}/claim` | taking a claim |
 | POST | `/api/hatch/issues/{key}/claim/heartbeat` | keeping it |
-| DELETE | `/api/hatch/issues/{key}/claim?token=…` | releasing it |
+| DELETE | `/api/hatch/issues/{key}/claim?token=…[&outcome=dropped\|worked]` | releasing it |
 | POST | `/api/hatch/issues/{key}/work-log` | the work-log row |
 | POST | `/api/hatch/runners/{name}` | the runner heartbeat |
 | GET | `/api/hatch/settings/claude-token` | `runner-claude-token` |

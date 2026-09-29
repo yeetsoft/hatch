@@ -94,6 +94,42 @@ public sealed class ClaimTests
         var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
         Assert.Single(released);
         Assert.Contains(Token.ToString(), released[0].Query, StringComparison.Ordinal);
+
+        // No outcome was named, matching every release before this ticket - and
+        // no other caller of this overload should have to change to keep that.
+        Assert.DoesNotContain("outcome", released[0].Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>HA-118: the claim's own verdict on how the increment went, named on the release.</summary>
+    [Fact]
+    public async Task A_release_names_the_outcome_when_it_is_given_one()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains(Token.ToString(), released.Query, StringComparison.Ordinal);
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_names_worked_the_same_way()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Worked);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
     [Fact]
