@@ -28,7 +28,7 @@ public static class Banner
         [
             $"{Egg} STARTING WORK ON {report.Key}",
             $"  {work.Issue.Title} [{work.Issue.Type}]",
-            $"  {For(report, conflict, build)}",
+            $"  {What(report, conflict, build)}",
             $"  {model}, effort {effort}",
         ];
 
@@ -60,7 +60,11 @@ public static class Banner
         return lines;
     }
 
-    private static string For(IncrementReport report, ConflictRun? conflict, BuildRun? build) =>
+    /// <summary>
+    /// What the increment is for, in the phrase the opening banner and the
+    /// readout's issue row both use - a move, a conflict, or a failing build.
+    /// </summary>
+    public static string What(IncrementReport report, ConflictRun? conflict, BuildRun? build) =>
         conflict is not null ? $"resolving conflicts with {report.ConflictTrunk}"
         : build is not null ? Builds.Words(build.Found.Names)
         : $"{report.From} -> {report.To}";

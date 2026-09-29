@@ -1002,4 +1002,36 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Clone.Requested);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
+
+    // ---- The banners and the readout's facts (HA-121, HA-122) ----
+
+    [Fact]
+    public async Task An_increment_opens_and_closes_with_a_banner_and_the_readout_learns_who_it_works_for()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        // Not --once: that sends one heartbeat and reads nothing back, which is
+        // no place to see the "for" name arrive. MaxRuns echoes the flag this
+        // process started with, the way a real server's first-seen seed does -
+        // folding back a bare null would clear the cap this test relies on to
+        // end the loop.
+        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+            new RunnerInstructionDto("running", null, 1, null, null, "Nathan"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+
+        // OneTicket's own stub answers the same "In Review" for the picked
+        // ticket and for the reread, so this increment is a stall rather than a
+        // move - the glyph logic itself has its own tests in BannerTests.cs;
+        // this one is only about the wiring, that a banner opened and closed
+        // and that the readout heard who the runner works for.
+        Assert.Contains(h.Say.Said, l => l.StartsWith("🥚🥚🥚🥚🥚 STARTING WORK ON AER-1", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("STOPPING WORK ON AER-1", StringComparison.Ordinal));
+
+        var snapshot = h.Runtime.Readout.Snapshot();
+        Assert.Equal("Nathan", snapshot.Runner.ForName);
+        Assert.Equal(1, snapshot.Runner.NightRuns);
+        Assert.Null(snapshot.Increment);
+    }
 }

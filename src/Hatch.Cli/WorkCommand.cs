@@ -254,6 +254,10 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
+        // No tally here - this is one increment, not a night - so the readout's
+        // runner row shows this one and nothing carried from a restart.
+        runtime.Readout.SetRunner(new RunnerSnapshot(runtime.RunnerName, beat.Instruction?.For, 1, TimeSpan.Zero, 0m, null));
+
         var clones = runtime.Settings.Workspace is not null;
 
         WorkDto work;
@@ -505,7 +509,8 @@ public sealed class WorkCommand(Runtime runtime)
                 // Every opening banner has a closing one - null only for the
                 // attach path, which prints its own header and has no report to
                 // close with; a person is sitting at that session.
-                if (report is not null) runtime.Say.Lines(Banner.Closing(report));
+                if (report is not null)
+                    runtime.Say.Lines(Banner.Closing(report, Readout.OneLine(runtime.Readout.Snapshot().UsageWindows)));
             }
         }
         finally
