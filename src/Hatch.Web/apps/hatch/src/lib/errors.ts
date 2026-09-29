@@ -49,10 +49,12 @@ export function refusalSentence(text: string, fallback: string): string {
  */
 export class HttpError extends Error {
   readonly status: number;
+  readonly body: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body: unknown = undefined) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
+    this.body = body;
   }
 }

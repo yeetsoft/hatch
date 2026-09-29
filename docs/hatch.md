@@ -648,6 +648,12 @@ anywhere else with a `409` naming where it is and writes nothing. The chicklet t
 and offers no Undo. Any other failure leaves the button, so it can be pressed
 again.
 
+Undoing an override is an ordinary move out, with no dialog and no second
+event - the section only ever asks on the way in. Taking a card back *into* a
+section that has since filled is refused the same way any other undo is: the
+server's sentence on the chicklet, and no Undo. The speed bump is for moving a
+card in on purpose, not for reversing one already out.
+
 An undo is an ordinary move: it writes its own `status_changed` event, and the
 history shows the drop and the undo both. The card goes back between the
 neighbours it had — read by rank, over every card in the column, since that is
@@ -841,7 +847,7 @@ already inside changes nothing. The count never follows the filter - it is
 `board.wip`'s own count, drawn whether or not the card counted is on screen.
 Where `board.wip` is null there is no band at all: nothing here asks about a
 drop into a full section or refuses one, either - that is the server's `409`,
-shown the way any refused drop is.
+and the paragraph below is what a full section does with it.
 
 **The refusal.** A move whose `from` is outside the section and whose `to` is
 inside is refused with `409` while the load is at or over the limit - a move
@@ -856,7 +862,11 @@ on a move or a patch; bulk takes no override), which writes `wip_overridden`
 beside `status_changed` - see [Issue event](#issue-event). Overriding is a
 person's call and not an agent's: a key or a keyless runner sending
 `wipOverride: true` is refused with `403`, whatever the load and even where no
-limit is set.
+limit is set. On the board and on the issue page, the browser never sends that
+flag on its own first guess: the `409` raises a dialog quoting the sentence
+above and asking *move anyway?*, and only a press of *Move anyway* resends the
+same request with `wipOverride: true` - the event that follows names who
+pressed it.
 
 ### Claim
 

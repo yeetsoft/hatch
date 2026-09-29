@@ -1,3 +1,4 @@
+import { overrideLine } from './wipOverride';
 import type { IssueEvent } from '../types';
 
 /**
@@ -27,6 +28,10 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'created' && typeof event.payload?.expressFrom === 'string') {
     return `express, from ${event.payload.expressFrom}`;
   }
+
+  /* An override carries { limit, load, to } - no `from` - so it falls through
+     to here unless it is read first. */
+  if (event.kind === 'wip_overridden') return overrideLine(event.payload) ?? '';
 
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
