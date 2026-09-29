@@ -411,6 +411,32 @@ public class BuildCheckControllerTests
         Assert.Single(await h.QuestionsAsync());
     }
 
+    /// <summary>
+    /// The refail question offers exactly <see cref="StallAnswers.Options"/>,
+    /// so it lapses by the same rule a runner's own stall question does - one
+    /// definition, shared, rather than the dispatcher recognising this
+    /// question's options and a runner's as two different things.
+    /// </summary>
+    [Fact]
+    public async Task TheRefailQuestion_LapsesTheSameWayAStallQuestionDoes()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
+        await h.PutAsync(issue, Failed("api", "CI"));
+
+        var question = Assert.Single(await h.QuestionsAsync());
+        Assert.True(StallAnswers.IsStall(Questions.ReadOptions(question.Options)));
+
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+        var now = h.Time.GetUtcNow();
+
+        // Nothing else has touched the issue, so the question's own age is
+        // the newest history entry too.
+        Assert.False(Questions.IsLapsed(question.CreatedAt, question.CreatedAt, claims.StallLapseSeconds, now.AddMinutes(4)));
+        Assert.True(Questions.IsLapsed(question.CreatedAt, question.CreatedAt, claims.StallLapseSeconds, now.AddMinutes(5).AddSeconds(1)));
+    }
+
     [Fact]
     public async Task AFailedVerdictOnAShaNoIncrementPushed_OpensNoQuestion()
     {

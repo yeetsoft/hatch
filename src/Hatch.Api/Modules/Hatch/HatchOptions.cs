@@ -51,4 +51,20 @@ public class HatchOptions
     /// have rows vanish before they were ever gone.</para>
     /// </remarks>
     public int RunnerGoneAfterSeconds { get; set; } = 90;
+
+    /// <summary>
+    /// How long a stall question or a claim may go untouched before it lapses -
+    /// see <see cref="IssueClaims.StallLapseSeconds"/> and
+    /// <see cref="Questions.IsLapsed"/>. Named in minutes rather than hours or
+    /// seconds: the whole point of this setting is that it is small enough an
+    /// operator will actually type it in.
+    /// </summary>
+    /// <remarks>
+    /// Read through <see cref="IssueClaims.StallLapseSeconds"/> and nowhere
+    /// else, with the same three-way guard <see cref="ClaimTtlSeconds"/> has
+    /// with one difference: zero turns lapsing off rather than falling back,
+    /// because "never lapse" is a setting an operator may actually want, and a
+    /// negative value is the misconfiguration the fallback is for.
+    /// </remarks>
+    public int StallLapseMinutes { get; set; } = 5;
 }

@@ -45,15 +45,55 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     public int TtlSeconds { get; } =
         options.Value.ClaimTtlSeconds > 0 ? options.Value.ClaimTtlSeconds : new HatchOptions().ClaimTtlSeconds;
 
+    /// <summary>
+    /// The window a stall question or a silent claim is judged against, in
+    /// seconds - see <see cref="HatchOptions.StallLapseMinutes"/>. Guarded the
+    /// way <see cref="TtlSeconds"/> is, with one difference: zero is not a
+    /// misconfiguration here but the operator turning lapsing off, so it is
+    /// kept rather than replaced with the fallback. Only a negative value -
+    /// which nothing before this could ever have meant - falls back.
+    /// </summary>
+    public int StallLapseSeconds { get; } = options.Value.StallLapseMinutes switch
+    {
+        0 => 0,
+        > 0 => options.Value.StallLapseMinutes * 60,
+        _ => new HatchOptions().StallLapseMinutes * 60,
+    };
+
     /// <summary>The heartbeat at or after which a claim is still alive.</summary>
     public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-TtlSeconds);
 
     /// <summary>
+    /// The instant at or after which a claim is not yet quiet, or null when
+    /// lapsing is off - see <see cref="IsQuiet"/>.
+    /// </summary>
+    public DateTimeOffset? QuietCutoff(DateTimeOffset now) =>
+        StallLapseSeconds > 0 ? now.AddSeconds(-StallLapseSeconds) : null;
+
+    /// <summary>
     /// Whether something holds this issue right now. Exactly at the cutoff is
-    /// alive; one tick past it is not.
+    /// alive; one tick past it is not. A claim that has gone quiet is not
+    /// live either, however recently it was heartbeat - see
+    /// <see cref="IsQuiet"/>.
     /// </summary>
     public bool IsLive(ClaimSnapshot? claim, DateTimeOffset now) =>
-        claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now);
+        claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now) && !IsQuiet(claim, now);
+
+    /// <summary>
+    /// Whether a live-looking claim has gone quiet: the later of its
+    /// <see cref="ClaimSnapshot.ClaimedAt"/> and <see cref="ClaimSnapshot.ChatterAt"/>
+    /// is older than <see cref="StallLapseSeconds"/>. A bare heartbeat does not
+    /// count - it says a process is still alive, not that anybody is still
+    /// looking at this ticket, and a runner that never sends a line at all
+    /// (<c>--quiet</c>) is measured from when it was claimed.
+    /// </summary>
+    public bool IsQuiet(ClaimSnapshot claim, DateTimeOffset now)
+    {
+        if (StallLapseSeconds <= 0 || claim.ClaimedAt is not { } claimedAt) return false;
+
+        var last = claim.ChatterAt is { } chatter && chatter > claimedAt ? chatter : claimedAt;
+        return last < now.AddSeconds(-StallLapseSeconds);
+    }
 
     /// <summary>
     /// The claim as a client draws it, or null where there is none <em>or it
@@ -121,6 +161,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
+        var quietCutoff = QuietCutoff(now);
 
         var tree = await db.Issues.AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -128,7 +169,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             .ToListAsync(ct);
 
         var live = await db.Issues.AsNoTracking()
-            .Where(i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff)
+            .Where(i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
+                && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff))
             .Select(i => new
             {
                 i.Id,
@@ -202,10 +244,12 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
+        var quietCutoff = QuietCutoff(now);
 
         return await db.Issues
             .Where(i => i.Id == issueId
-                && (i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff))
+                && (i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff
+                    || (quietCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < quietCutoff)))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimToken, token)
                 .SetProperty(i => i.ClaimedBy, actor)
@@ -232,7 +276,9 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, Guid token, string? chatter, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
-        var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff);
+        var quietCutoff = QuietCutoff(now);
+        var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff
+            && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff));
 
         var written = chatter switch
         {

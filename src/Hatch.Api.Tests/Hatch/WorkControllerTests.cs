@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules;
@@ -831,6 +832,169 @@ public class WorkControllerTests
         Assert.Contains("unanswered question", work.Blocked);
         Assert.NotNull(work.Playbook);
     }
+
+    // ---- A lapsed stall question ----
+
+    [Fact]
+    public async Task ALapsedStallQuestion_DoesNotFoldTheIssue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
+        await h.AskStallAsync(issue, Now);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AFreshStallQuestion_StillFoldsTheIssue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "just asked", h.Todo);
+        await h.AskStallAsync(issue, Now);
+
+        // Not yet five minutes old.
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AProseQuestion_FoldsHoweverLongItWaits()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "asked in prose", h.Todo);
+        await h.AskAsync(issue, "what should this be called?");
+
+        h.Time.Advance(TimeSpan.FromDays(1));
+
+        // No options at all - never a stall question, whatever its body reads
+        // like, so it never lapses.
+        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AStallQuestionOnARecentlyTouchedIssue_StillFolds()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "somebody is still looking", h.Todo);
+        await h.AskStallAsync(issue, Now);
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+
+        // The question itself is ten minutes old, well past the window - but
+        // something happened to the issue seconds ago, so the untouched half
+        // of the lapse is not met and the question still folds.
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Commented, null, h.Time.GetUtcNow());
+
+        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_NamesTheLapseOnARowClearOnlyBecauseOfIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
+        await h.AskStallAsync(issue, Now);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.Equal("its stall question lapsed after 5 minutes untouched", row.ClearNote);
+    }
+
+    [Fact]
+    public async Task Queue_NamesNoLapseOnAnOrdinaryClearRow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "nothing special", h.Todo);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).ClearNote);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    // ---- The count of let-go increments ----
+
+    [Fact]
+    public async Task LetGo_IsZeroForAnIssueWithNoTrailAtAll()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "never claimed", h.Todo);
+
+        Assert.Equal(0, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
+    public async Task LetGo_CountsTrailingDroppedReleases()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "let go twice in a row", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Dropped);
+
+        Assert.Equal(2, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
+    public async Task LetGo_StopsAtAWorkedRelease()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "worked, then dropped once", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Worked);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
+    public async Task LetGo_StopsAtAStatusChange()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "moved, then dropped once", h.Todo);
+
+        await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "Backlog", to = "Todo" }, Now);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
+    public async Task LetGo_StopsAtAPersonsAnswer()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "answered, then dropped once", h.Todo);
+
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Answered, new { questionId = 1 }, Now);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
+    public async Task LetGo_SkipsOverAReleaseWithNoOutcome_AndAnAnswerWrittenByALapse()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "skipped over rather than counted or stopped at", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Answered, new { questionId = 1, lapsed = true }, Now.AddMinutes(1));
+        await Released(h, issue, Now.AddMinutes(2), outcome: null);
+        await Released(h, issue, Now.AddMinutes(3), ClaimOutcomes.Dropped);
+
+        Assert.Equal(2, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    /// <summary>A release event, in the <c>{ from, to, outcome }</c> shape the controller writes - a null <c>outcome</c> reads back the same as one left out entirely, since nothing here asks for the difference.</summary>
+    private static Task Released(Harness h, EfHatchIssue issue, DateTimeOffset at, string? outcome) =>
+        h.LogEventAsync(
+            issue,
+            EfHatchIssueEvent.ClaimReleased,
+            new { from = "Nathan on host:/checkout", to = (string?)null, outcome },
+            at);
 
     [Fact]
     public async Task NextWork_PassesOverAnIssueWaitingOnAnAnswer()
@@ -2938,6 +3102,57 @@ public class WorkControllerTests
             Db.Comments.Add(comment);
             await Db.SaveChangesAsync();
             return comment;
+        }
+
+        /// <summary>
+        /// A stall question, written straight to the table with the shared
+        /// options and its own <c>asked</c> event - what a runner asks when an
+        /// increment does nothing, and what the server asks when a fixed build
+        /// fails again. These tests are about what a lapsed one does to a
+        /// dispatch, not about who asks it.
+        /// </summary>
+        public async Task<EfHatchComment> AskStallAsync(EfHatchIssue issue, DateTimeOffset at)
+        {
+            var comment = new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = "hatch-agent",
+                Body = "an increment did nothing - what next?",
+                Kind = EfHatchComment.Question,
+                Options = Questions.WriteOptions(StallAnswers.Options()),
+                CreatedAt = at,
+            };
+
+            Db.Comments.Add(comment);
+            Db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id,
+                Actor = "hatch-agent",
+                Kind = EfHatchIssueEvent.Asked,
+                At = at,
+            });
+
+            await Db.SaveChangesAsync();
+            return comment;
+        }
+
+        /// <summary>
+        /// An event written straight to the trail, at whatever instant a test
+        /// says - what a scan's newest-event read is judged against, and what
+        /// the let-go count folds over.
+        /// </summary>
+        public async Task LogEventAsync(EfHatchIssue issue, string kind, object? payload, DateTimeOffset at)
+        {
+            Db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id,
+                Actor = "hatch-agent",
+                Kind = kind,
+                Payload = payload is null ? null : JsonSerializer.Serialize(payload),
+                At = at,
+            });
+
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>A comment of any kind, written straight to the table, optionally already delivered.</summary>

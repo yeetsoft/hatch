@@ -29,6 +29,86 @@ public static class Questions
             .Select(g => new { IssueId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.IssueId, x => x.Count, ct);
 
+    // ---- Lapsed ----
+
+    /// <summary>
+    /// Whether a stall question, asked at <paramref name="askedAt"/> and open
+    /// still, has gone unanswered long enough to lapse - see
+    /// <see cref="HatchOptions.StallLapseMinutes"/>. Two things must both be
+    /// true: the question itself is old enough, and nothing has happened to the
+    /// issue since - <paramref name="newestEventAt"/>, the latest row this
+    /// issue's own <see cref="EfHatchIssueEvent"/>s hold, is old enough too. A
+    /// comment left without answering, a status change, anything at all, resets
+    /// the second half without touching the first: an issue somebody is still
+    /// looking at does not lapse just because the question itself is old.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="lapseSeconds"/> at or below zero is lapsing turned off -
+    /// see <see cref="IssueClaims.StallLapseSeconds"/> - and this always answers
+    /// false, whatever the ages.
+    /// </remarks>
+    public static bool IsLapsed(
+        DateTimeOffset askedAt, DateTimeOffset? newestEventAt, int lapseSeconds, DateTimeOffset now)
+    {
+        if (lapseSeconds <= 0) return false;
+
+        var cutoff = now.AddSeconds(-lapseSeconds);
+        return askedAt <= cutoff && (newestEventAt ?? DateTimeOffset.MinValue) <= cutoff;
+    }
+
+    /// <summary>The latest event this issue's trail holds, or null for an issue with none.</summary>
+    public static Task<DateTimeOffset?> NewestEventAtAsync(HatchContext db, long issueId, CancellationToken ct) =>
+        db.IssueEvents.AsNoTracking()
+            .Where(e => e.IssueId == issueId)
+            .OrderByDescending(e => e.At)
+            .Select(e => (DateTimeOffset?)e.At)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>The same, for however many issues a scan is judging at once - one query rather than one a row.</summary>
+    public static async Task<Dictionary<long, DateTimeOffset>> NewestEventAtByIssueAsync(
+        HatchContext db, CancellationToken ct) =>
+        await db.IssueEvents.AsNoTracking()
+            .GroupBy(e => e.IssueId)
+            .Select(g => new { IssueId = g.Key, At = g.Max(e => e.At) })
+            .ToDictionaryAsync(x => x.IssueId, x => x.At, ct);
+
+    /// <summary>How many open questions each issue is waiting on, and whether a lapsed stall question was among them - the dispatcher's own count, not the board's.</summary>
+    /// <remarks>
+    /// This is deliberately not <see cref="OpenCountsAsync"/> with an extra
+    /// argument. That method also badges a card and rolls up an epic
+    /// (<see cref="BoardController"/>, <see cref="Rollup"/>), and a stall
+    /// nobody has touched in the lapse window is still a real open question
+    /// there - it is only the dispatcher's fold that a lapsed one stops
+    /// counting against.
+    /// </remarks>
+    public static async Task<Dictionary<long, OpenSummary>> DispatchCountsAsync(
+        HatchContext db, int lapseSeconds, DateTimeOffset now, CancellationToken ct)
+    {
+        var open = await Open(db)
+            .Select(c => new { c.IssueId, c.CreatedAt, c.Options })
+            .ToListAsync(ct);
+
+        var result = new Dictionary<long, OpenSummary>();
+        if (open.Count == 0) return result;
+
+        var newest = await NewestEventAtByIssueAsync(db, ct);
+
+        foreach (var q in open)
+        {
+            var lapsed = StallAnswers.IsStall(ReadOptions(q.Options))
+                && IsLapsed(q.CreatedAt, newest.TryGetValue(q.IssueId, out var at) ? at : null, lapseSeconds, now);
+
+            var soFar = result.GetValueOrDefault(q.IssueId, new OpenSummary(0, false));
+            result[q.IssueId] = soFar with
+            {
+                Waiting = soFar.Waiting + (lapsed ? 0 : 1),
+                LapsedStall = soFar.LapsedStall || lapsed,
+            };
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// The stored options as a list, or null for a question asked in prose.
     /// </summary>
@@ -123,3 +203,11 @@ public static class Questions
             byQuestion.TryGetValue(r.Id, out var found) ? found : [])).ToList();
     }
 }
+
+/// <summary>
+/// One issue's open questions, as the dispatcher counts them - see
+/// <see cref="Questions.DispatchCountsAsync"/>.
+/// </summary>
+/// <param name="Waiting">Open questions, leaving out a lapsed stall question.</param>
+/// <param name="LapsedStall">Whether at least one of those left out was a lapsed stall question - what lets a row that is clear say so.</param>
+public sealed record OpenSummary(int Waiting, bool LapsedStall);
