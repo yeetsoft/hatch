@@ -282,6 +282,34 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_HoldsBackAnIssueWithAPendingBuildThatAlreadyHasAFailingCheck()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "one check failed, one still running", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, BuildVerdicts.Pending, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+        Assert.Equal(Key(issue), Assert.Single(attention.FailingBuilds!).Key);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotHoldBackAPendingBuildWithNothingFailedYet()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still running, nothing failed", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.BuildAsync(issue, BuildVerdicts.Pending);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(Key(issue), Assert.Single(attention.Reviews).Key);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+        Assert.Empty(attention.FailingBuilds!);
+    }
+
+    [Fact]
     public async Task Attention_ListsAnIssueWithACleanVerdictAndAPassedBuild()
     {
         var h = await NewAsync();
@@ -291,8 +319,120 @@ public class AttentionControllerTests
 
         var attention = Value(await h.Attention.GetAttention(default));
 
-        Assert.Equal(Key(issue), Assert.Single(attention.Reviews).Key);
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
         Assert.Equal(0, attention.ReviewsHeldBack);
+        Assert.Equal(ReviewBuildStates.Success, row.BuildState);
+    }
+
+    // ---- The build and up-to-date half ----
+
+    [Fact]
+    public async Task Attention_BuildStateIsUnknownForAPassedBuildOnAnOlderSha()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "stale build", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Passed, sha: new string('3', 40));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_BuildStateIsUnknownWithNoBuildVerdictAtAll()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nobody has read it", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_BuildStateIsUnknownForAPendingBuildWithNothingFailedYet()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still running", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Pending);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_BuildStateIsUnknownWithNoCleanMergeCheckAtAll()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "no branch read yet", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.None);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+        Assert.Null(row.HoldsTrunk);
+    }
+
+    [Fact]
+    public async Task Attention_BuildStateIsUnknownWhenOneOfTwoRepositoriesHasNotReported()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.test/one");
+        await h.BindRepositoryAsync("https://example.test/two");
+        var issue = await h.FileAsync("story", "half reported", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, remote: "https://example.test/one");
+        await h.BuildAsync(issue, BuildVerdicts.Passed, remote: "https://example.test/one");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, remote: "https://example.test/two");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsTrunkTrueNamesTheTrunk()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "current", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(true, row.HoldsTrunk);
+        Assert.Equal("main", row.Trunk);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsTrunkFalse()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "behind", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(false, row.HoldsTrunk);
+        Assert.Equal("main", row.Trunk);
+    }
+
+    [Fact]
+    public async Task Attention_ADroppedRepositoryDoesNotCountTowardsBuildStateOrHoldsTrunk()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.test/kept");
+        var issue = await h.FileAsync("story", "one repo let go", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, remote: "https://example.test/let-go", holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed, remote: "https://example.test/let-go");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+
+        Assert.Equal(ReviewBuildStates.Unknown, row.BuildState);
+        Assert.Null(row.HoldsTrunk);
     }
 
     [Fact]
@@ -465,6 +605,7 @@ public class AttentionControllerTests
         public required int Review { get; init; }
 
         private int next = 1;
+        private int nextRepoOrder = 1;
 
         /// <summary>
         /// An issue placed directly. These tests are about which column an
@@ -503,10 +644,13 @@ public class AttentionControllerTests
         /// same issue and remote clears the first rather than leaving both.
         /// </summary>
         public async Task CheckAsync(
-            EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo")
+            EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo",
+            string? branchSha = null, bool? holdsTrunk = null)
         {
             Db.MergeChecks.RemoveRange(
                 Db.MergeChecks.Where(m => m.IssueId == issue.Id && m.Remote == remote));
+
+            var hasBranch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted;
 
             Db.MergeChecks.Add(new EfHatchMergeCheck
             {
@@ -516,6 +660,9 @@ public class AttentionControllerTests
                 Trunk = "main",
                 TrunkSha = new string('1', 40),
                 Verdict = verdict,
+                Branch = hasBranch ? "ha-1-thing" : null,
+                BranchSha = hasBranch ? branchSha ?? new string('2', 40) : null,
+                HoldsTrunk = hasBranch ? holdsTrunk : null,
                 Files = EfHatchMergeCheck.JoinFiles(files ?? []),
                 CheckedAt = Now,
                 Runner = "box:/work/repo",
@@ -527,7 +674,8 @@ public class AttentionControllerTests
 
         /// <summary>Replaces any existing row for the same issue and repository, for the same reason <see cref="CheckAsync"/> does.</summary>
         public async Task BuildAsync(
-            EfHatchIssue issue, string verdict, string[]? failing = null, string remote = "forge.example/owner/repo")
+            EfHatchIssue issue, string verdict, string[]? failing = null, string remote = "forge.example/owner/repo",
+            string? sha = null)
         {
             Db.BuildChecks.RemoveRange(
                 Db.BuildChecks.Where(b => b.IssueId == issue.Id && b.Remote == remote));
@@ -538,7 +686,7 @@ public class AttentionControllerTests
                 Remote = remote,
                 Canonical = remote,
                 Branch = "ha-1-thing",
-                Sha = new string('2', 40),
+                Sha = sha ?? new string('2', 40),
                 ShaSince = Now,
                 Verdict = verdict,
                 Failing = EfHatchBuildCheck.WriteFailing((failing ?? []).Select(n => new FailingCheckDto(n)).ToList()),
@@ -548,6 +696,31 @@ public class AttentionControllerTests
             });
 
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A remote bound to the project, written straight to the table in the
+        /// order it is called - every issue <see cref="FileAsync"/> files lands
+        /// in the one shared project, so every test binds against the same
+        /// list. What the route that writes these accepts and refuses is
+        /// <c>ProjectsControllerTests</c>'s business.
+        /// </summary>
+        public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote, string? baseBranch = null)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            var repo = new EfHatchProjectRepository
+            {
+                ProjectId = ProjectId,
+                Remote = remote,
+                Canonical = canonical!,
+                BaseBranch = baseBranch,
+                SortOrder = nextRepoOrder++,
+                CreatedAt = Now,
+            };
+
+            Db.ProjectRepositories.Add(repo);
+            await Db.SaveChangesAsync();
+            return repo;
         }
 
         /// <summary>What an operator does on the Statuses page, written straight to the row.</summary>

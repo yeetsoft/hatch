@@ -577,7 +577,30 @@ public record IssueEventDto(long Id, string Actor, string Kind, JsonElement? Pay
 /// in the same response - see <see cref="AttentionDto.ReviewsHeldBack"/> - for
 /// the same reason: a person cannot act on either.
 /// </param>
-public record ReviewDto(string Key, string Title, string Type, string PullRequestUrl);
+/// <param name="BuildState">
+/// One of <see cref="ReviewBuildStates"/>: whether every repository's build on
+/// the branch's current tip passed. "Current tip" and "counted" are
+/// <see cref="ReviewWork"/>'s own rules, so this agrees with the dispatcher
+/// about what the branch's build is. Because a row held back by
+/// <see cref="AttentionDto.FailingBuilds"/> never reaches this list,
+/// <see cref="ReviewBuildStates.Failure"/> is drawn and tested but never seen
+/// here in practice. Defaults to <see cref="ReviewBuildStates.Unknown"/> so an
+/// older client still reads.
+/// </param>
+/// <param name="HoldsTrunk">
+/// Whether the branch already holds the trunk's tip, from the counted
+/// repositories' clean merge checks - <c>null</c> when none has said.
+/// Non-null only alongside <paramref name="Trunk"/>.
+/// </param>
+/// <param name="Trunk">The trunk's name as a counted clean merge check reported it, or <c>null</c> when <paramref name="HoldsTrunk"/> is.</param>
+public record ReviewDto(
+    string Key,
+    string Title,
+    string Type,
+    string PullRequestUrl,
+    string BuildState = ReviewBuildStates.Unknown,
+    bool? HoldsTrunk = null,
+    string? Trunk = null);
 
 /// <summary>
 /// The two things that stop a night, in one read: a pull request nobody has
@@ -614,9 +637,10 @@ public record ReviewDto(string Key, string Title, string Type, string PullReques
 /// which already lights the control.
 /// </param>
 /// <param name="FailingBuilds">
-/// The review column's issues whose build on the branch's tip failed in at
-/// least one repository, in that column's board order. Not counted towards the
-/// badge, for the reason <paramref name="Conflicts"/> is not: the loop fixes a
+/// The review column's issues whose build on the branch's tip failed, or is
+/// still running with a check that has already failed, in at least one
+/// repository, in that column's board order. Not counted towards the badge,
+/// for the reason <paramref name="Conflicts"/> is not: the loop fixes a
 /// failing build, and one it cannot fix becomes a question, which already
 /// lights the control.
 /// </param>
@@ -648,10 +672,11 @@ public record ConflictDto(
     IReadOnlyList<MergeCheckDto> Checks);
 
 /// <summary>
-/// One issue in review whose build failed: what the panel draws, and the checks
-/// that name where.
+/// One issue in review whose build failed, or is still running with a check
+/// that has already failed: what the panel draws, and the checks that name
+/// where.
 /// </summary>
-/// <param name="Checks">Only the failed verdicts, one per repository, so a passing repository beside a failing one is not listed.</param>
+/// <param name="Checks">Only the failed or still-failing verdicts, one per repository, so a passing repository beside a failing one is not listed.</param>
 public record FailingBuildDto(
     string Key,
     string Title,
@@ -1448,6 +1473,21 @@ public static class BuildVerdicts
     public const string None = "none";
 
     public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
+}
+
+/// <summary>The three states of a review row's build icon - see <see cref="ReviewDto.BuildState"/>.</summary>
+public static class ReviewBuildStates
+{
+    /// <summary>Every counted repository with a clean merge check has a build verdict on that check's own sha, and all of them passed.</summary>
+    public const string Success = "success";
+
+    /// <summary>Any counted repository's build on its clean merge check's sha failed, or is still running with a check that has already failed.</summary>
+    public const string Failure = "failure";
+
+    /// <summary>Anything else: no verdict, a build still running with nothing failed yet, no checks ran, a verdict about an older sha, or no clean merge check at all.</summary>
+    public const string Unknown = "unknown";
+
+    public static readonly IReadOnlyList<string> All = [Success, Failure, Unknown];
 }
 
 /// <summary>One check that failed: its name, and a link to it where the forge gave one.</summary>

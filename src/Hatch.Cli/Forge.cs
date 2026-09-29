@@ -150,10 +150,13 @@ public sealed class GhForge(
     /// <remarks>
     /// Only the <c>statuses</c> list counts, and never the endpoint's own
     /// <c>state</c>, which says <c>pending</c> for a sha that has no statuses at
-    /// all. Pending outranks failed - the read waits for every check to conclude,
-    /// so one increment sees every failure - and no check of either kind is
-    /// <c>none</c>. A check counts once, at its latest run: the check-runs
-    /// endpoint's default and the status endpoint's latest per context.
+    /// all. Pending outranks failed for the verdict - the read waits for every
+    /// check to conclude before calling it <c>failed</c>, so one increment sees
+    /// every failure - but a pending verdict still carries whatever has already
+    /// failed, so a check that fails while others still run is visible before
+    /// the last one concludes. No check of either kind is <c>none</c>. A check
+    /// counts once, at its latest run: the check-runs endpoint's default and the
+    /// status endpoint's latest per context.
     /// </remarks>
     public static BuildRead Classify(string checkRuns, string statuses)
     {
@@ -187,15 +190,15 @@ public sealed class GhForge(
                 failing.Add(new FailingCheck(Text(o, "context") ?? "unnamed status", Text(o, "url")));
         }
 
-        if (!any) return new BuildRead(BuildVerdicts.None, []);
-        if (pending) return new BuildRead(BuildVerdicts.Pending, []);
-        if (failing.Count == 0) return new BuildRead(BuildVerdicts.Passed, []);
-
         // Once a name, sorted: two checks of one name are one failure, and the
         // same failure in another order is the same verdict.
-        return new BuildRead(BuildVerdicts.Failed, failing
-            .GroupBy(f => f.Name, StringComparer.Ordinal).Select(g => g.First())
-            .OrderBy(f => f.Name, StringComparer.Ordinal).ToList());
+        var sorted = failing.GroupBy(f => f.Name, StringComparer.Ordinal).Select(g => g.First())
+            .OrderBy(f => f.Name, StringComparer.Ordinal).ToList();
+
+        if (!any) return new BuildRead(BuildVerdicts.None, []);
+        if (pending) return new BuildRead(BuildVerdicts.Pending, sorted);
+        if (sorted.Count == 0) return new BuildRead(BuildVerdicts.Passed, []);
+        return new BuildRead(BuildVerdicts.Failed, sorted);
     }
 
     private static IEnumerable<string> Lines(string text) =>

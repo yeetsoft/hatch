@@ -46,9 +46,8 @@ public class BuildCheckControllerTests
 
     [Theory]
     [InlineData(BuildVerdicts.Passed)]
-    [InlineData(BuildVerdicts.Pending)]
     [InlineData(BuildVerdicts.None)]
-    public async Task TheOtherThree_KeepNoFailingChecks_EvenWhenTheRunnerSendsThem(string verdict)
+    public async Task TheOtherTwo_KeepNoFailingChecks_EvenWhenTheRunnerSendsThem(string verdict)
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
@@ -56,6 +55,30 @@ public class BuildCheckControllerTests
         var kept = Value(await h.PutAsync(issue, Failed("a") with { Verdict = verdict }));
 
         Assert.Equal(verdict, kept.Verdict);
+        Assert.Empty(kept.Failing);
+    }
+
+    [Fact]
+    public async Task APendingVerdict_KeepsTheChecksThatHaveAlreadyFailed()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(issue, Failed("b", "a") with { Verdict = BuildVerdicts.Pending }));
+
+        Assert.Equal(BuildVerdicts.Pending, kept.Verdict);
+        Assert.Equal(["a", "b"], kept.Failing.Select(f => f.Name));
+    }
+
+    [Fact]
+    public async Task APendingVerdict_WithNothingFailedYet_IsNotRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(issue, Pending()));
+
+        Assert.Equal(BuildVerdicts.Pending, kept.Verdict);
         Assert.Empty(kept.Failing);
     }
 
