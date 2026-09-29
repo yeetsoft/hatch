@@ -59,6 +59,77 @@ public class IssueClaimsTests
         Assert.Equal(new HatchOptions().ClaimTtlSeconds, TestClaims.With(ttlSeconds: -5).TtlSeconds);
     }
 
+    // ---- Gone quiet ----
+
+    [Fact]
+    public void AClaimWithNoWordSinceItWasTaken_GoesQuietMeasuredFromTheTake()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        // ChatterAt is null throughout - a --quiet session sends no chatter -
+        // so the clock the quiet check reads runs from ClaimedAt. The
+        // heartbeat itself stays fresh, as an ongoing --quiet session's would,
+        // so only the quiet clause is under test here and not the TTL.
+        ClaimSnapshot Held(DateTimeOffset now) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null);
+
+        Assert.True(claims.IsLive(Held(Now.AddMinutes(4).AddSeconds(59)), Now.AddMinutes(4).AddSeconds(59)));
+        Assert.False(claims.IsLive(Held(Now.AddMinutes(5).AddSeconds(1)), Now.AddMinutes(5).AddSeconds(1)));
+    }
+
+    [Fact]
+    public void AWordSaidRecently_KeepsAHeardFromClaimAlive_HoweverOldTheTake()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        var claim = new ClaimSnapshot(
+            Guid.NewGuid(), "hatch", "somewhere:/checkouts/one",
+            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-1));
+
+        Assert.True(claims.IsLive(claim, Now));
+    }
+
+    [Fact]
+    public void AWordSaidLongAgo_GoesQuiet_EvenWithARecentHeartbeat()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        // The heartbeat alone says a process is alive; the chatter is the last
+        // time anybody looked, and that is what quiet measures.
+        var claim = new ClaimSnapshot(
+            Guid.NewGuid(), "hatch", "somewhere:/checkouts/one",
+            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-6));
+
+        Assert.False(claims.IsLive(claim, Now));
+    }
+
+    [Fact]
+    public void StallLapseMinutesOfZero_TurnsQuietOffEntirely()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 0);
+
+        // The heartbeat stays fresh at the instant checked, so only the quiet
+        // clause is under test - the claim was taken a day ago and has never
+        // said a word since.
+        var later = Now.AddDays(1);
+        var claim = new ClaimSnapshot(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, later, null, null);
+
+        Assert.True(claims.IsLive(claim, later));
+        Assert.Equal(0, claims.StallLapseSeconds);
+    }
+
+    [Fact]
+    public void ANegativeStallLapseMinutes_FallsBackToTheDefault()
+    {
+        Assert.Equal(new HatchOptions().StallLapseMinutes * 60, TestClaims.With(stallLapseMinutes: -5).StallLapseSeconds);
+    }
+
+    [Fact]
+    public void APositiveStallLapseMinutes_IsHonouredInSeconds()
+    {
+        Assert.Equal(600, TestClaims.With(stallLapseMinutes: 10).StallLapseSeconds);
+    }
+
     // ---- What a client is handed ----
 
     [Fact]

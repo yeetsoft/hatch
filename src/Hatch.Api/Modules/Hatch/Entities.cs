@@ -1049,7 +1049,12 @@ public class EfHatchIssueEvent
     /// </summary>
     public const string ClaimTaken = "claim_taken";
 
-    /// <summary>The holder let go of it, presenting the token it was given.</summary>
+    /// <summary>
+    /// The holder let go of it, presenting the token it was given. The payload
+    /// carries <c>outcome</c> beside <c>from</c> and <c>to</c> - one of
+    /// <see cref="ClaimOutcomes"/>, or absent where the caller did not say how
+    /// the increment ended, which is a release nothing here refuses.
+    /// </summary>
     public const string ClaimReleased = "claim_released";
 
     /// <summary>

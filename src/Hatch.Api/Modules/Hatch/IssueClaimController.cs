@@ -90,11 +90,62 @@ public class IssueClaimController(
         if (await claims.ConfirmLineAsync(db, issue.Id, token, now, ct) is { } lost)
             return Conflict(lost);
 
+        await AnswerLapsedStallQuestionsAsync(issue.Id, now, ct);
+
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
-        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds);
+        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, claims.StallLapseSeconds);
     }
+
+    /// <summary>
+    /// The one moment a lapsed stall question gets answered rather than left
+    /// waiting: a session is about to spend an increment on this issue, and
+    /// <see cref="StallAnswers.TryAgain"/> is exactly the instruction a fresh
+    /// increment needs among its decisions already made. Written as
+    /// <see cref="HatchActor"/> rather than the caller's own name - the take is
+    /// a runner's, and the answer is not its call to have made.
+    /// </summary>
+    private async Task AnswerLapsedStallQuestionsAsync(long issueId, DateTimeOffset now, CancellationToken ct)
+    {
+        if (claims.StallLapseSeconds <= 0) return;
+
+        var open = await Questions.Open(db)
+            .Where(c => c.IssueId == issueId)
+            .Select(c => new { c.Id, c.CreatedAt, c.Options })
+            .ToListAsync(ct);
+        if (open.Count == 0) return;
+
+        var newestEventAt = await Questions.NewestEventAtAsync(db, issueId, ct);
+
+        foreach (var question in open)
+        {
+            if (!StallAnswers.IsStall(Questions.ReadOptions(question.Options))) continue;
+            if (!Questions.IsLapsed(question.CreatedAt, newestEventAt, claims.StallLapseSeconds, now)) continue;
+
+            db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issueId,
+                Author = HatchActor,
+                Body = StallAnswers.TryAgain,
+                Kind = EfHatchComment.Answer,
+                AnswersId = question.Id,
+                CreatedAt = now,
+            });
+
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issueId,
+                Actor = HatchActor,
+                Kind = EfHatchIssueEvent.Answered,
+                Payload = JsonSerializer.Serialize(new { questionId = question.Id, lapsed = true }),
+                At = now,
+            });
+        }
+    }
+
+    /// <summary>The name an answer nobody pressed is written under - see <see cref="AnswerLapsedStallQuestionsAsync"/>.</summary>
+    private const string HatchActor = "Hatch";
 
     /// <summary>
     /// Still here. Refreshes the lease and, optionally, replaces the line it is
@@ -146,12 +197,29 @@ public class IssueClaimController(
     /// The one the claim was taken with. Absent is the operator's clobber -
     /// see <see cref="NotAPerson"/>.
     /// </param>
+    /// <param name="outcome">
+    /// How the increment ended - one of <see cref="ClaimOutcomes"/>, read only
+    /// where <paramref name="token"/> is given: the operator's tokenless
+    /// clobber names no increment to have an outcome. Absent is accepted as it
+    /// always has been, which covers the pick's own releases, a restart, and an
+    /// older CLI.
+    /// </param>
     [HttpDelete]
-    public async Task<IActionResult> ReleaseClaim(string key, [FromQuery] Guid? token, CancellationToken ct)
+    public async Task<IActionResult> ReleaseClaim(
+        string key, [FromQuery] Guid? token, [FromQuery] string? outcome, CancellationToken ct = default)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
         if (token is null && await NotAPerson(ct) is { } refusal) return refusal;
+
+        string? given = null;
+        if (token is not null && !string.IsNullOrEmpty(outcome))
+        {
+            if (!ClaimOutcomes.IsValid(outcome))
+                return BadRequest(
+                    $"\"{outcome}\" is not an outcome - it is \"{ClaimOutcomes.Dropped}\", \"{ClaimOutcomes.Worked}\", or nothing at all");
+            given = outcome;
+        }
 
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
@@ -179,7 +247,8 @@ public class IssueClaimController(
             token is null ? EfHatchIssueEvent.ClaimCleared : EfHatchIssueEvent.ClaimReleased,
             holder,
             null,
-            now);
+            now,
+            given);
 
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -219,14 +288,17 @@ public class IssueClaimController(
     // ---- Saying why ----
 
     /// <summary>
-    /// Why a token was refused, in the three shapes a runner can be refused in:
-    /// the row carries nothing, the row carries somebody else's, or the row
-    /// still carries this one and the lease is simply over.
+    /// Why a token was refused, in the four shapes a runner can be refused in:
+    /// the row carries nothing, the row carries this one but has gone quiet,
+    /// the row carries this one and the lease is simply over, or the row
+    /// carries somebody else's.
     /// </summary>
     private string Why(ClaimSnapshot claim, Guid presented, DateTimeOffset now) => claim.Token switch
     {
         null => "this claim was cleared",
-        var held when held == presented => "this claim has expired",
+        var held when held == presented => claims.IsQuiet(claim, now)
+            ? $"this claim has gone quiet for {claims.StallLapseSeconds / 60} minutes"
+            : "this claim has expired",
         _ => claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
     };
 
@@ -270,13 +342,20 @@ public class IssueClaimController(
     /// null-to-holder and both releases are holder-to-null; which of the two a
     /// release was is the kind's to say.
     /// </summary>
-    private void Log(EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at)
+    private void Log(
+        EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
+        string? outcome = null)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
             Actor = actor,
             Kind = kind,
-            Payload = JsonSerializer.Serialize(new { from, to }),
+            // outcome is left out of the object entirely rather than
+            // serialized as null, so a release that named none writes the
+            // same payload it always has.
+            Payload = outcome is null
+                ? JsonSerializer.Serialize(new { from, to })
+                : JsonSerializer.Serialize(new { from, to, outcome }),
             At = at,
         });
 
