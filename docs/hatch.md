@@ -184,7 +184,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`IsWip`, `ExpressSkips`, `Color` (`#rrggbb`).
+`IsWip`, `ExpressSkips`, `ParentPulls`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -249,6 +249,15 @@ it decides which gates the loop may pass unattended, and a key that could tick
 it could carry its own ticket through the night with nobody reading it first.
 Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set
 it.
+
+`ParentPulls` marks the columns a child is carried on out of, with no session,
+while its parent stands in the implementation column — seeded true on
+`Backlog` and, as of this writing, read by nothing: it is the flag HA-146's
+other tasks are built against, and the pull itself lands separately. Set only
+by a person, through its own route (`PUT
+/api/hatch/statuses/{id}/parent-pulls`), for the same reason `ExpressSkips`
+is: it decides which gates the loop may pass unattended. Neither `POST
+/api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set it either.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey

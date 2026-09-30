@@ -34,7 +34,7 @@ public class BoardController(
 
         var statusDtos = statuses
             .Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips))
+                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls))
             .ToList();
 
         // Ordered by (StatusId, Expedited desc, Rank, Id) so the client can
