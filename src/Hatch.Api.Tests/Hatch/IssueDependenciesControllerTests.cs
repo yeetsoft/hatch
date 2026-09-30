@@ -252,7 +252,7 @@ public class IssueDependenciesControllerTests
     // ---- What a deferred blocker says out loud ----
     //
     // The gate does not open for one: only work that lands satisfies an edge
-    // (see the DependencyGate in WorkController), because a story built on a
+    // (see the DependencyGate in Dispatch), because a story built on a
     // branch that was never written is the failure the whole feature exists to
     // prevent. What is added here is the sentence that stops the gate holding
     // in silence - a shelved ticket leaves the board, and without this the

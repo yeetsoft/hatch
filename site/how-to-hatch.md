@@ -210,7 +210,10 @@ shipped, and only you decide that something is not worth doing now.
 **The attention control** on the bar counts what is waiting on you:
 pull requests nobody has reviewed, tickets in review with no pull request
 recorded, and questions nobody has answered. It always draws something, so an
-empty panel says "nothing is up for review" rather than nothing.
+empty panel says "nothing is up for review" rather than nothing. It is the one
+thing that never leaves the bar - on a phone it is still right there beside
+the gear, at the same size it is on a desk, while everything else moves into
+the gear's own panel.
 
 **Claims.** While a runner holds a ticket, the card shows a dot, green while
 the runner is heard from and amber once it has gone quiet, and the issue page

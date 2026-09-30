@@ -36,6 +36,55 @@
   gap: var(--sp-1);
 }
 
+/* ---- The bar at phone width ----
+
+   TopBar's own markup never changes (HA-157's AC6): PrimaryNav is absent
+   from `leading` below the breakpoint instead (App.tsx), the battery moves
+   out of `trailing` and into the gear's panel as a row, and the wordmark is
+   hidden here rather than removed, so the brand link keeps its accessible
+   name. */
+
+/* display: none would drop this text from the brand link's accessible-name
+   computation entirely, leaving it named by the logo alone - which is
+   alt="" (TopBar.tsx), deliberately decorative. Visually hidden instead, the
+   same technique @hatch/ui's own ThemeSwitch.css uses for its legend. */
+@media (max-width: 40rem) {
+  .hatch-topbar__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* Everything App.tsx prepends to the gear's panel at phone width - the
+   flattened nav rows and the battery row - draws ahead of Theme, Settings,
+   Docs and who's-here without TopBar.tsx's own DOM order (Theme first,
+   asserted by TopBar.test.tsx) ever changing: .hatch-menu__surface is a
+   column flex box, so moving this one wrapper is enough. */
+@media (max-width: 40rem) {
+  .hatch-phone-menu {
+    order: -1;
+  }
+}
+
+/* The brand link, the gear trigger and the attention control: every control
+   still standing in the bar itself, 44px on a coarse pointer whatever the
+   viewport width - layout follows width, touch follows pointer, the same
+   rule Button.css's own coarse-pointer block already follows. */
+@media (pointer: coarse) {
+  .hatch-topbar .hatch-topbar__brand,
+  .hatch-topbar .hatch-menu__trigger--accent,
+  .hatch-attention-control {
+    min-height: 44px;
+  }
+}
+
 /* Who Hatch will name in the trail for anything done from this browser. Drawn
    only where there is no wall; on a cluster install the route answers nothing
    and this never renders. Quiet by default - it is a statement of fact, not a
@@ -3035,6 +3084,27 @@ button.hatch-option.chosen {
   line-height: 1;
 }
 
+/* The battery, re-inked as a row in the gear's panel at phone width
+   (.hatch-phone-menu, App.tsx). .hatch-battery above is authored for the
+   bar's own chrome gradient - color: var(--on-chrome), a hover in
+   --on-chrome-wash - but nested here it sits on the panel's --card surface
+   instead, where --on-chrome is the wrong ink. No media query needed:
+   .hatch-phone-menu only ever exists in the DOM when the viewport is phone
+   width, so this costs nothing above the breakpoint. */
+.hatch-phone-menu .hatch-battery {
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 0;
+  color: var(--ink);
+}
+
+/* The hover fill .hatch-menu__item:hover already uses - a row in this panel,
+   hovered, should look like every other row in it. */
+.hatch-phone-menu .hatch-battery:hover {
+  background: var(--primary-bg);
+}
+
 /* The attention control: whether the loop is waiting on a person, at the right
    end of the bar on every route.
 
@@ -3263,6 +3333,28 @@ button.hatch-option.chosen {
      bottom of the screen. */
   max-height: 70vh;
   overflow-y: auto;
+}
+
+/* Below the breakpoint, a sheet the full width of the screen under the bar,
+   rather than a dropdown hung off a bar wider than it - the same shape of
+   change Modal.css's own phone block makes, not code to import (this panel
+   has no overlay of its own). 48px is the bar's own --topbar-h
+   (packages/ui/src/components/TopBar.css), restated as a literal for the
+   same reason the board's own phone rule already does - a sibling of
+   .hatch-topbar cannot read a custom property scoped to it. No JS changes:
+   NavAttention's outside-press/focusout/Escape handling all key off the
+   container ref, a DOM containment check untouched by this override. */
+@media (max-width: 40rem) {
+  .hatch-attention-panel {
+    position: fixed;
+    top: 48px;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 48px);
+    border-radius: 0;
+  }
 }
 
 /* The one section outside a group, above Human - drawn only when it has rows
