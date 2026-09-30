@@ -595,7 +595,7 @@
   text-decoration: none;
   color: var(--ink);
   cursor: grab;
-  touch-action: none;
+  touch-action: manipulation;
 }
 
 .hatch-card:hover {
