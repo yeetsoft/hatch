@@ -383,6 +383,17 @@ public record ClaimRequest(string Runner)
 public record ClaimTakenDto(Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0);
 
 /// <summary>
+/// What a heartbeat answers where the caller is the runner the board has
+/// chosen to preempt, instead of the plain <c>204</c> it answers every other
+/// time - see <c>Preemption</c> for the five rules that decide this. An older
+/// <c>hatch</c> reads only whether the call succeeded and is unaffected by the
+/// new shape.
+/// </summary>
+/// <param name="Key">The emergency issue's key - what the runner is being asked to make room for.</param>
+/// <param name="Title">Its title, so a runner can say why on the ticket it puts down without a second call.</param>
+public record ClaimPreemptedDto(string Key, string Title);
+
+/// <summary>
 /// How a release said an increment ended, on <c>DELETE …/claim?token=…</c> -
 /// what a runner may name, and nothing else. Absent is accepted exactly as it
 /// always has been: the pick's own release, a restart, and an older CLI all
@@ -396,7 +407,15 @@ public static class ClaimOutcomes
     /// <summary>The increment moved the ticket, or otherwise finished what it set out to do.</summary>
     public const string Worked = "worked";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked;
+    /// <summary>
+    /// The board itself ordered the ticket put down, for an emergency - not a
+    /// choice the increment made, so <c>WorkController.LetGoAsync</c>'s count
+    /// of increments in a row that left a ticket where they found it neither
+    /// counts this nor resets on it.
+    /// </summary>
+    public const string Preempted = "preempted";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted;
 }
 
 /// <summary>

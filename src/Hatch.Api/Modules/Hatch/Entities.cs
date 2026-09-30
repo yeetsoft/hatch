@@ -1199,6 +1199,21 @@ public class EfHatchIssueEvent
     /// </summary>
     public const string ClaimCleared = "claim_cleared";
 
+    /// <summary>
+    /// This issue's runner was told, at a claim heartbeat, that the board had
+    /// chosen it to make room for an emergency issue - see <c>Preemption</c>
+    /// for the five rules. The payload carries <c>emergencyKey</c> and
+    /// <c>emergencyTitle</c>, its own shape rather than <c>{ from, to }</c>:
+    /// this is a fact plus a detail, not a transition, the same reasoning
+    /// <see cref="MergeCheckChanged"/>'s payload gets its own remark for. Also
+    /// doubles as the record of "already told" - a heartbeat asks whether an
+    /// issue carries one of these since its own <c>ClaimedAt</c> the same way
+    /// <c>WorkController.LetGoAsync</c> asks whether a trail carries a release
+    /// since its last status change, so nothing about a preemption is ever
+    /// nominated or written down in advance.
+    /// </summary>
+    public const string ClaimPreempted = "claim_preempted";
+
     public const string Commented = "commented";
 
     /// <summary>A message was sent to whichever session is working the issue.</summary>

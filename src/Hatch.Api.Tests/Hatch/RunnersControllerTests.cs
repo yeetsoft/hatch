@@ -430,22 +430,28 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ARunnerMidIncrement_ReadsAsHereByItsClaimsHeartbeatEvenPastItsOwnRowsHorizon()
+    public async Task ALiveClaim_NoLongerKeepsTheRunnersRowFreshByItself()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
 
-        // A loop only beats its own row between tickets - see Runners.Project -
-        // so a session well into a long increment can sit past its row's own
-        // gone horizon while its claim keeps being renewed every minute.
+        // IssueClaimController's own heartbeat and release now touch the
+        // holding runner's row directly, on every beat - see the remark on
+        // Runners.Project and Preemption's rule 5, which is what needs
+        // LastSeenAt to be that current the moment a runner frees itself.
+        // This harness's ClaimAsync writes the claim columns straight onto
+        // the row without going through that controller (the endpoint is
+        // built out of conditional UPDATEs the in-memory provider refuses),
+        // so nothing here simulates the touch - which is exactly why a live
+        // claim, on its own, no longer keeps this row reading as here past
+        // its own horizon.
         h.Time.Advance(TimeSpan.FromSeconds(Horizon + 10));
-        await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
 
         var runner = await h.OneAsync();
         Assert.Equal(issue.Key, runner.ClaimKey);
-        Assert.Equal(Now.AddSeconds(Horizon + 10), runner.LastSeenAt);
+        Assert.Equal(Now, runner.LastSeenAt);
     }
 
     // ---- Aging ----

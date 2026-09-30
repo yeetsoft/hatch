@@ -67,7 +67,7 @@ public class RunnersController(
             .OrderByDescending(r => r.LastSeenAt)
             .ToListAsync(ct);
 
-        var held = await HeldAsync(now, ct);
+        var held = await runners.HeldAsync(db, claims, now, ct);
 
         return rows.Select(r => runners.Project(r, Holding(held, r.Name))).ToList();
     }
@@ -248,7 +248,7 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         var now = time.GetUtcNow();
-        return runners.Project(row, Holding(await HeldAsync(now, ct), row.Name));
+        return runners.Project(row, Holding(await runners.HeldAsync(db, claims, now, ct), row.Name));
     }
 
     // ---- The one narrowing ----
@@ -384,52 +384,6 @@ public class RunnersController(
             row.Usage = usage;
             row.UsageReadAt = request.UsageReadAt;
         }
-    }
-
-    /// <summary>
-    /// Every live claim, by the runner holding it. The key is
-    /// <see cref="EfHatchIssue.ClaimRunner"/> read backwards, which is what
-    /// makes "what is this runner working" a question with one answer and no
-    /// second copy to keep in step.
-    /// </summary>
-    private async Task<Dictionary<string, (string Key, ClaimSnapshot Claim)>> HeldAsync(
-        DateTimeOffset now, CancellationToken ct)
-    {
-        var rows = await db.Issues.AsNoTracking()
-            .Where(i => i.ClaimToken != null && i.ClaimRunner != null)
-            .Select(i => new
-            {
-                i.Project!.Key,
-                i.Number,
-                i.ClaimToken,
-                i.ClaimedBy,
-                i.ClaimRunner,
-                i.ClaimedAt,
-                i.ClaimHeartbeatAt,
-                i.ClaimChatter,
-                i.ClaimChatterAt,
-            })
-            .ToListAsync(ct);
-
-        return rows
-            .Select(i => (
-                Runner: i.ClaimRunner!,
-                Key: IssueKey.Format(i.Key, i.Number),
-                Claim: new ClaimSnapshot(
-                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
-                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt)))
-            .Where(i => claims.IsLive(i.Claim, now))
-            // A runner holds one ticket at a time by construction, and the most
-            // recent heartbeat is the one to draw if something ever leaves two
-            // behind - a row about the wrong ticket is worse than a row about
-            // none.
-            .GroupBy(i => i.Runner, StringComparer.Ordinal)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(i => i.Claim.HeartbeatAt)
-                    .Select(i => (i.Key, i.Claim))
-                    .First(),
-                StringComparer.Ordinal);
     }
 
     /// <summary>

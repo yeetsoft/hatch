@@ -198,7 +198,14 @@ public class MessageDeliveryTests
         // writes under test run outside the change tracker.
         public IssueMessagesController Messages => new(Connect(), TestClaims.With(), Caller, Time);
 
-        public IssueClaimController Claims => new(Connect(), TestClaims.With(), Caller, Time);
+        public IssueClaimController Claims
+        {
+            get
+            {
+                var db = Connect();
+                return new(db, TestClaims.With(), Caller, Time, TestClaims.Preemption(db, Time));
+            }
+        }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
 
