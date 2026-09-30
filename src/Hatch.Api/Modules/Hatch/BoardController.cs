@@ -37,14 +37,15 @@ public class BoardController(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips))
             .ToList();
 
-        // Ordered by (StatusId, Expedited desc, Rank, Id) so the client can
+        // Ordered by (StatusId, Priority desc, Rank, Id) so the client can
         // slice the one list into columns without sorting, and so two cards
         // sharing a rank do not trade places between refetches.
         //
         // The float is here rather than in the browser, and that is the whole
-        // of it: an expedited card is served above every non-expedited card in
-        // its column whatever its rank, two expedited cards keep the board's
-        // own (Rank, Id) between them, and the client still slices one ordered
+        // of it: a higher-priority card is served above every lower-priority
+        // card in its column whatever its rank - emergency above expedited
+        // above the rest - two cards at the same level keep the board's own
+        // (Rank, Id) between them, and the client still slices one ordered
         // list. Sorting in the client would have been a second opinion about
         // where a card sits, and the board, the plan and the queue disagreeing
         // about that is exactly what the server's ordering exists to rule out.
@@ -56,7 +57,7 @@ public class BoardController(
 
         var issues = await db.Issues.AsNoTracking()
             .OrderBy(i => i.StatusId)
-            .ThenByDescending(i => i.Expedited)
+            .ThenByDescending(i => i.Priority)
             .ThenBy(i => i.Rank)
             .ThenBy(i => i.Id)
             .Select(i => new
@@ -76,7 +77,7 @@ public class BoardController(
                 i.DueAtHasTime,
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
-                i.Expedited,
+                i.Priority,
                 i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
@@ -113,8 +114,9 @@ public class BoardController(
             waiting.GetValueOrDefault(i.Id),
             assignees[i.Id],
             claims.Project(i.Claim, now),
-            i.Expedited,
-            i.Express)).ToList();
+            i.Priority >= PriorityLevels.Expedited,
+            i.Express,
+            PriorityLevels.Name(i.Priority))).ToList();
 
         return new BoardDto(statusDtos, cards, wip?.ToDto());
     }

@@ -382,8 +382,9 @@ hatch questions AER-12            ...or just this ticket's
 ```
 
 `hatch queue` is the dry run for the loop and the answer to "why did it not
-pick up the ticket I meant". A row marked `!` is expedited. Columns are found
-by name on the letters and digits alone, so `todo` reaches `To Do`.
+pick up the ticket I meant". A row marked `!!` is emergency and one marked
+`! ` is expedited. Columns are found by name on the letters and digits alone,
+so `todo` reaches `To Do`.
 
 ## Driving a ticket by hand
 
@@ -447,7 +448,7 @@ not find an editor extension's bundled copy.
 board wants a key. Mint one on its API keys page and run `hatch config`.
 
 **`hatch: 403 - the key is good and this route is not one it may take.`**
-A key is never an administrator. Playbooks, expedite, assignees, settings and
+A key is never an administrator. Playbooks, priority, assignees, settings and
 the Runners page controls are a person's to change, in the browser. Whose
 tickets a key's `--mine` reaches is the same kind of change — an admin sets it
 on the API Keys page when minting a key, or afterwards, and a key can never

@@ -191,7 +191,15 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// the one ordered list rather than sorting for itself - so the board, the plan
 /// and the queue cannot disagree about where a card sits. Trailing and
 /// defaulted for the reason <paramref name="OpenQuestions"/> is, though every
-/// list that draws a card fills it.
+/// list that draws a card fills it. Derived from <paramref name="Priority"/>
+/// as <c>Priority >= PriorityLevels.Expedited</c> - nothing writes it
+/// directly any more.
+/// </param>
+/// <param name="Priority">
+/// The level's name - see <see cref="PriorityLevels"/> - <c>"normal"</c>,
+/// <c>"expedited"</c> or <c>"emergency"</c>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is, though every list that draws a
+/// card fills it.
 /// </param>
 public record IssueCardDto(
     string Key,
@@ -207,7 +215,8 @@ public record IssueCardDto(
     AssigneeDto? Assignee = null,
     IssueClaimDto? Claim = null,
     bool Expedited = false,
-    bool Express = false);
+    bool Express = false,
+    string Priority = PriorityLevels.NormalName);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -290,7 +299,13 @@ public record IssueClaimDto(
 /// because it is a sort key and not a gate. Readable by a key for the reason
 /// <paramref name="ModelOverride"/> is, and writable only by a person through
 /// <see cref="IssueExpediteController"/>: a key that could set one could put
-/// its own ticket at the front of every night.
+/// its own ticket at the front of every night. Derived from
+/// <paramref name="Priority"/> as <c>Priority >= PriorityLevels.Expedited</c> -
+/// nothing writes it directly any more.
+/// </param>
+/// <param name="Priority">
+/// The level's name - see <see cref="PriorityLevels"/> - <c>"normal"</c>,
+/// <c>"expedited"</c> or <c>"emergency"</c>.
 /// </param>
 public record IssueDto(
     string Key,
@@ -318,7 +333,8 @@ public record IssueDto(
     bool Expedited = false,
     IReadOnlyList<MergeCheckDto>? MergeChecks = null,
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
-    bool Express = false);
+    bool Express = false,
+    string Priority = PriorityLevels.NormalName);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -373,6 +389,42 @@ public static class ClaimOutcomes
     public const string Worked = "worked";
 
     public static bool IsValid(string outcome) => outcome is Dropped or Worked;
+}
+
+/// <summary>
+/// The three levels an issue's priority can sit at, ordered - see
+/// <see cref="EfHatchIssue.Priority"/>.
+/// </summary>
+public static class PriorityLevels
+{
+    public const int Normal = 0;
+    public const int Expedited = 1;
+    public const int Emergency = 2;
+
+    public const string NormalName = "normal";
+    public const string ExpeditedName = "expedited";
+    public const string EmergencyName = "emergency";
+
+    /// <summary>The level's name, for the wire - see <see cref="TryParse"/> for the reverse.</summary>
+    public static string Name(int level) => level switch
+    {
+        Emergency => EmergencyName,
+        Expedited => ExpeditedName,
+        _ => NormalName,
+    };
+
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    public static bool TryParse(string? name, out int level)
+    {
+        (level, var ok) = name switch
+        {
+            EmergencyName => (Emergency, true),
+            ExpeditedName => (Expedited, true),
+            NormalName => (Normal, true),
+            _ => (Normal, false),
+        };
+        return ok;
+    }
 }
 
 /// <summary>
@@ -928,6 +980,15 @@ public record AssigneeRequest(string? Kind, Guid? Id);
 /// sends the state it wants.
 /// </remarks>
 public record ExpediteRequest(bool Expedited);
+
+/// <summary>
+/// The level to set, by name - <c>"normal"</c>, <c>"expedited"</c> or
+/// <c>"emergency"</c> - see <see cref="PriorityLevels"/>. One required string
+/// rather than a boolean, for the same reason <see cref="ExpediteRequest"/> is
+/// one required boolean: the same route both marks and unmarks, and the
+/// caller says which it meant.
+/// </summary>
+public record PriorityRequest(string Priority);
 
 /// <summary>
 /// Whether this issue is carried past a column marked <em>Express skips</em>

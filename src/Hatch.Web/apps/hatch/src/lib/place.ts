@@ -116,13 +116,13 @@ export function place(
  * everything.
  *
  * It is the server's own two steps, in the server's own order - place the card
- * in the column's *rank* order, then float the expedited cards to the top of
- * it. Nothing here computes a rank; the number is still the server's
- * (docs/hatch.md, "Rank computation") and this only mirrors where that number
- * will land the card. Doing the float first, or placing by the order on screen
- * rather than by rank, gives a different answer the moment a column holds an
- * expedited card - and a card that has to jump once the refetch arrives is a
- * board the operator stops trusting.
+ * in the column's *rank* order, then float the emergency and expedited cards
+ * to the top of it, most severe first. Nothing here computes a rank; the
+ * number is still the server's (docs/hatch.md, "Rank computation") and this
+ * only mirrors where that number will land the card. Doing the float first,
+ * or placing by the order on screen rather than by rank, gives a different
+ * answer the moment a column holds a card above normal - and a card that has
+ * to jump once the refetch arrives is a board the operator stops trusting.
  */
 function reorder(
   all: IssueCard[],
@@ -141,9 +141,14 @@ function reorder(
 
   ranked.splice(insertionIndex(ranked, afterKey, beforeKey), 0, moved);
 
-  // And then the float, exactly as the board read applies it: expedited first,
-  // (rank, id) within each half.
-  const ordered = [...ranked.filter((i) => i.expedited), ...ranked.filter((i) => !i.expedited)];
+  // And then the float, exactly as the board read applies it: emergency
+  // first, then expedited, then everything else - (rank, id) within each
+  // third, mirroring the server's (Priority desc, Rank, Id).
+  const ordered = [
+    ...ranked.filter((i) => i.priority === 'emergency'),
+    ...ranked.filter((i) => i.priority === 'expedited'),
+    ...ranked.filter((i) => i.priority === 'normal'),
+  ];
 
   /* Written back into the slots the column already occupies, so the array stays
      grouped by column the way the server hands it over. A column with nothing

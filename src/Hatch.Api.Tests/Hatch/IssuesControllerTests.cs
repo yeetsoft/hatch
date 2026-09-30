@@ -314,6 +314,94 @@ public class IssuesControllerTests
         Assert.True(Value(await h.Issues.GetIssue("AER-2", default)).Express);
     }
 
+    // ---- Priority, inherited at filing only from Emergency ----
+
+    [Fact]
+    public async Task FiledUnderAnEmergencyParent_IsBornEmergency()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Emergency);
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.Equal(PriorityLevels.EmergencyName, child.Priority);
+    }
+
+    [Fact]
+    public async Task TheCreatedEvent_NamesTheParentItTookEmergencyFrom()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Emergency);
+
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var e = Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Equal("AER-1", e.Payload!.Value.GetProperty("emergencyFrom").GetString());
+    }
+
+    [Fact]
+    public async Task FiledUnderAnExpeditedButNotEmergencyParent_DoesNotInherit()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Expedited);
+
+        // Expedited never inherits at filing, and never has - only Emergency
+        // does, the same as Express.
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.Equal(PriorityLevels.NormalName, child.Priority);
+    }
+
+    [Fact]
+    public async Task FiledUnderAParentThatIsNotEmergency_IsNotEmergency()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.Equal(PriorityLevels.NormalName, child.Priority);
+    }
+
+    [Fact]
+    public async Task FiledWithNoParent_IsNotEmergency()
+    {
+        var h = await NewAsync();
+
+        var issue = await h.CreateAsync("task", "a chore");
+
+        Assert.Equal(PriorityLevels.NormalName, issue.Priority);
+    }
+
+    [Fact]
+    public async Task ReparentedUnderAnEmergencyParent_IsNotMarked()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Emergency);
+        await h.CreateAsync("task", "a chore");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+
+        Assert.Equal(PriorityLevels.NormalName, moved.Priority);
+    }
+
+    [Fact]
+    public async Task UnmarkingTheEmergencyParent_LeavesAnAlreadyFiledChildAsItWas()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Emergency);
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        await h.PriorityAsync("AER-1", PriorityLevels.Normal);
+
+        Assert.Equal(PriorityLevels.EmergencyName, Value(await h.Issues.GetIssue("AER-2", default)).Priority);
+    }
+
     // ---- Events ----
 
     [Fact]
@@ -2480,6 +2568,20 @@ public class IssuesControllerTests
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
             issue.Express = express;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Written straight to the row, the same as <see cref="ExpressAsync"/> -
+        /// what the dedicated route accepts and refuses is
+        /// <c>IssueExpediteControllerTests</c>' business, and these tests are
+        /// about what filing under an emergency parent makes of it.
+        /// </summary>
+        public async Task PriorityAsync(string key, int level)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.Priority = level;
             await Db.SaveChangesAsync();
         }
 

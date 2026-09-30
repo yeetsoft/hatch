@@ -63,6 +63,7 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   assignee: null,
   claim: null,
   expedited: false,
+  priority: 'normal',
   express: false,
   ...over,
 });

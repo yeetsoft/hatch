@@ -131,20 +131,24 @@ That is what a person does when they mean to ship, and it is what an unattended
 loop does here.
 
 Within a column, order is the order you see. Drag a card up and the runner
-reaches it sooner. There is no priority field.
+reaches it sooner.
 
-**Expedite** is the one flag that means *this one first*. Press it on the
-issue page and the card floats to the top of its column and the dispatcher
-considers every expedited card, right to left, before anything else. So an
-expedited bug in Breakdown is reached before an unexpedited story in To Do.
-Two things it is not:
+**Priority** puts an issue at one of three levels: normal, expedited, or
+emergency, the third and highest. Set it on the issue page and the card
+floats to the top of its column, and the dispatcher considers every emergency
+card before every expedited card before anything else, right to left within
+each. So an emergency bug in Breakdown is reached before an expedited story in
+To Do, which is reached before a normal one in To Do. Two things it is not:
 
-- It is a sort key, not a gate. An expedited issue that is blocked is still
-  blocked.
+- It is a sort key, not a gate. An emergency or expedited issue that is
+  blocked is still blocked.
 - It marks one issue, not the subtree under it. To point a night at one epic,
   scope the runner with `hatch go-to-work --under AER-1` instead.
 
-Only a person can expedite. An agent that could put its own ticket ahead of
+A child filed under an emergency parent is born emergency; expedited never
+inherits that way.
+
+Only a person can set it. An agent that could put its own ticket ahead of
 everything you filed, every night, would look fine on the board and be wrong.
 
 **Ready and due dates.** `readyAt` is a gate: file the certificate renewal in

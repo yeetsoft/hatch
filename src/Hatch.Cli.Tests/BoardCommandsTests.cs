@@ -22,8 +22,11 @@ public sealed class BoardCommandsTests
 
     private static IssueCardDto Card(
         string key, int statusId, string type = "task", string? readyAt = null, string? dueAt = null,
-        bool expedited = false, bool express = false) =>
-        new(key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt, Expedited: expedited, Express: express);
+        bool expedited = false, bool express = false, string? priority = null) =>
+        new(
+            key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt,
+            Expedited: expedited, Express: express,
+            Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName));
 
     [Fact]
     public async Task The_board_is_every_column_and_what_is_on_it_with_the_terminal_one_marked()
@@ -406,6 +409,26 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_emergency()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, priority: PriorityLevels.EmergencyName), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        // Most severe first, and both said when a column has one of each.
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 emergency)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
     public async Task Next_marks_the_card_it_prints_when_somebody_expedited_it()
     {
         using var h = new CliHarness();
@@ -413,6 +436,16 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (expedited)", h.Said);
+    }
+
+    [Fact]
+    public async Task Next_marks_the_card_it_prints_when_it_is_emergency()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.EmergencyName)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-1  [task]  AER-1's title  (emergency)", h.Said);
     }
 
     [Fact]
@@ -429,6 +462,28 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(
             """
+            ! AER-7  [task]  In Progress  -> In Review
+              AER-1  [task]  In Progress  it waits on AER-7
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_emergency_above_expedited_with_its_own_doubled_marker()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
+            Fixtures.Row("AER-7", expedited: true),
+            Fixtures.Row("AER-1", blocked: "it waits on AER-7"),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            !!AER-9  [task]  In Progress  -> In Review
             ! AER-7  [task]  In Progress  -> In Review
               AER-1  [task]  In Progress  it waits on AER-7
             """.ReplaceLineEndings("\n"),

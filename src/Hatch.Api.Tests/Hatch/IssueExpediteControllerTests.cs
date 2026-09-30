@@ -10,21 +10,23 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <em>This one first.</em> What the route writes, what it refuses to write
-/// twice, what nothing else is allowed to clear - and the property the whole
-/// design rests on, which is that an API key cannot set one.
+/// <em>This one first, or first of all.</em> What the route writes, what it
+/// refuses to write twice, what nothing else is allowed to clear, the legacy
+/// two-level alias, and the property the whole design rests on, which is that
+/// an API key cannot set either route.
 /// </summary>
 public class IssueExpediteControllerTests
 {
     // ---- Marking, and unmarking ----
 
     [Fact]
-    public async Task AnIssue_IsNotExpeditedUntilSomebodySaysSo()
+    public async Task AnIssue_IsNormalUntilSomebodySaysSo()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
         Assert.False(issue.Expedited);
+        Assert.Equal(PriorityLevels.NormalName, issue.Priority);
     }
 
     [Fact]
@@ -33,23 +35,49 @@ public class IssueExpediteControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var marked = await h.ExpediteAsync(issue.Key, true);
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
         Assert.True(marked.Expedited);
-        Assert.True((await h.RowAsync(issue.Key)).Expedited);
+        Assert.Equal(PriorityLevels.ExpeditedName, marked.Priority);
+        Assert.Equal(PriorityLevels.Expedited, (await h.RowAsync(issue.Key)).Priority);
     }
 
     [Fact]
-    public async Task TheSameControl_UnmarksIt()
+    public async Task AnIssue_IsMarkedEmergency()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        await h.ExpediteAsync(issue.Key, true);
-        var unmarked = await h.ExpediteAsync(issue.Key, false);
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
+
+        Assert.True(marked.Expedited);
+        Assert.Equal(PriorityLevels.EmergencyName, marked.Priority);
+        Assert.Equal(PriorityLevels.Emergency, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task TheSameRoute_UnmarksIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
+        var unmarked = await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
 
         Assert.False(unmarked.Expedited);
-        Assert.False((await h.RowAsync(issue.Key)).Expedited);
+        Assert.Equal(PriorityLevels.NormalName, unmarked.Priority);
+        Assert.Equal(PriorityLevels.Normal, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task AnUnknownLevel_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var result = await h.Priority.PutIssuePriority(issue.Key, new PriorityRequest("urgent"), default);
+
+        Assert.Contains("not a priority", Reason(result.Result));
     }
 
     [Fact]
@@ -58,22 +86,24 @@ public class IssueExpediteControllerTests
         var h = await NewAsync();
 
         Assert.IsType<NotFoundResult>(
+            (await h.Priority.PutIssuePriority("AER-404", new PriorityRequest(PriorityLevels.ExpeditedName), default)).Result);
+        Assert.IsType<NotFoundResult>(
             (await h.Expedite.PutIssueExpedite("AER-404", new ExpediteRequest(true), default)).Result);
     }
 
     // ---- The trail ----
 
     [Fact]
-    public async Task Marking_WritesWhoDidItAndWhichWay()
+    public async Task Marking_WritesWhoDidItAndWhichWayByName()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
 
         var e = Assert.Single(await h.EventsAsync(issue.Key));
         Assert.Equal("Nathan", e.Actor);
-        Assert.Equal((false, true), Sides(e));
+        Assert.Equal((PriorityLevels.NormalName, PriorityLevels.EmergencyName), Sides(e));
     }
 
     [Fact]
@@ -82,13 +112,13 @@ public class IssueExpediteControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        await h.ExpediteAsync(issue.Key, true);
-        await h.ExpediteAsync(issue.Key, false);
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
+        await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
 
         var events = await h.EventsAsync(issue.Key);
         Assert.Equal(2, events.Count);
-        Assert.Equal((false, true), Sides(events[0]));
-        Assert.Equal((true, false), Sides(events[1]));
+        Assert.Equal((PriorityLevels.NormalName, PriorityLevels.ExpeditedName), Sides(events[0]));
+        Assert.Equal((PriorityLevels.ExpeditedName, PriorityLevels.NormalName), Sides(events[1]));
     }
 
     // ---- Setting what it already holds ----
@@ -98,11 +128,11 @@ public class IssueExpediteControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
-        var again = await h.ExpediteAsync(issue.Key, true);
+        var again = await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
-        Assert.True(again.Expedited);
+        Assert.Equal(PriorityLevels.ExpeditedName, again.Priority);
         Assert.Single(await h.EventsAsync(issue.Key));
     }
 
@@ -111,11 +141,11 @@ public class IssueExpediteControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
         var was = (await h.ReadAsync(issue.Key)).UpdatedAt;
         h.Time.Advance(TimeSpan.FromHours(1));
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
         Assert.Equal(was, (await h.ReadAsync(issue.Key)).UpdatedAt);
     }
@@ -126,9 +156,9 @@ public class IssueExpediteControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var unmarked = await h.ExpediteAsync(issue.Key, false);
+        var unmarked = await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
 
-        Assert.False(unmarked.Expedited);
+        Assert.Equal(PriorityLevels.NormalName, unmarked.Priority);
         Assert.Empty(await h.EventsAsync(issue.Key));
     }
 
@@ -140,9 +170,9 @@ public class IssueExpediteControllerTests
         var h = await NewAsync();
         var epic = await h.FileAsync("epic", "the epic");
         var issue = await h.FileAsync("story", "the story");
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
 
-        // Every other way an issue is written, one after another. The flag is
+        // Every other way an issue is written, one after another. The level is
         // written by one route and read by everything, so "nothing clears it"
         // is a claim about every other route rather than about this one.
         await h.PatchAsync(issue.Key, new IssuePatchRequest(
@@ -152,8 +182,8 @@ public class IssueExpediteControllerTests
         var moved = Value(await h.Issues.MoveIssue(
             issue.Key, new IssueMoveRequest(h.DoneId, null, null), default));
 
-        Assert.True(moved.Expedited);
-        Assert.True((await h.RowAsync(issue.Key)).Expedited);
+        Assert.Equal(PriorityLevels.EmergencyName, moved.Priority);
+        Assert.Equal(PriorityLevels.Emergency, (await h.RowAsync(issue.Key)).Priority);
     }
 
     // ---- The edge that is cut ----
@@ -161,20 +191,26 @@ public class IssueExpediteControllerTests
     [Fact]
     public void SettingIt_IsClosedToAnApiKey()
     {
+        AssertRefusesAKey(nameof(IssueExpediteController.PutIssuePriority));
+        AssertRefusesAKey(nameof(IssueExpediteController.PutIssueExpedite));
+
+        Assert.Empty(typeof(IssueExpediteController)
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
+    }
+
+    private static void AssertRefusesAKey(string method)
+    {
         var guard = typeof(IssueExpediteController)
-            .GetMethod(nameof(IssueExpediteController.PutIssueExpedite))!
+            .GetMethod(method)!
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
-        // No scope named, and no class-level attribute to inherit one from:
-        // expedite decides what the loop reaches for first, so a key that could
-        // set one could put its own ticket at the front of every night.
+        // No scope named: priority decides what the loop reaches for first, so
+        // a key that could set one could put its own ticket at the front of
+        // every night.
         Assert.NotNull(guard);
         Assert.Null(guard.AcceptScope);
-
-        Assert.Empty(typeof(IssueExpediteController)
-            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
     [Fact]
@@ -182,15 +218,19 @@ public class IssueExpediteControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
 
         // It rides IssueDto and IssueCardDto, both of which IssuesController
         // hands out to the hatch scope: an agent is entitled to know why it was
         // sent where it was sent.
-        Assert.True((await h.ReadAsync(issue.Key)).Expedited);
+        var read = await h.ReadAsync(issue.Key);
+        Assert.True(read.Expedited);
+        Assert.Equal(PriorityLevels.EmergencyName, read.Priority);
 
         var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
-        Assert.True(cards.Single(c => c.Key == issue.Key).Expedited);
+        var card = cards.Single(c => c.Key == issue.Key);
+        Assert.True(card.Expedited);
+        Assert.Equal(PriorityLevels.EmergencyName, card.Priority);
     }
 
     [Fact]
@@ -198,11 +238,13 @@ public class IssueExpediteControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.ExpediteAsync(issue.Key, true);
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
 
         var board = Value(await h.Board.GetBoard(default));
 
-        Assert.True(board.Issues.Single(c => c.Key == issue.Key).Expedited);
+        var card = board.Issues.Single(c => c.Key == issue.Key);
+        Assert.True(card.Expedited);
+        Assert.Equal(PriorityLevels.ExpeditedName, card.Priority);
     }
 
     // ---- The float ----
@@ -215,7 +257,7 @@ public class IssueExpediteControllerTests
         await h.FileAsync(title: "second");
         var last = await h.FileAsync(title: "last");
 
-        await h.ExpediteAsync(last.Key, true);
+        await h.PriorityAsync(last.Key, PriorityLevels.ExpeditedName);
 
         // The bottom card of the column, above the two that outrank it. The
         // ordering is the server's, so this is what a client that only slices
@@ -224,17 +266,33 @@ public class IssueExpediteControllerTests
     }
 
     [Fact]
-    public async Task TwoExpeditedCards_KeepTheBoardsOwnOrderBetweenThem()
+    public async Task AnEmergencyCard_IsServedAboveAnExpeditedCard()
+    {
+        var h = await NewAsync();
+        var expedited = await h.FileAsync(title: "expedited");
+        await h.FileAsync(title: "second");
+        var emergency = await h.FileAsync(title: "emergency");
+
+        await h.PriorityAsync(expedited.Key, PriorityLevels.ExpeditedName);
+        await h.PriorityAsync(emergency.Key, PriorityLevels.EmergencyName);
+
+        // Emergency first, then expedited, then everything else - the same
+        // (Rank, Id) order within each level.
+        Assert.Equal([emergency.Key, expedited.Key, "AER-2"], await h.ColumnAsync(h.InboxId));
+    }
+
+    [Fact]
+    public async Task TwoCardsAtTheSameLevel_KeepTheBoardsOwnOrderBetweenThem()
     {
         var h = await NewAsync();
         var first = await h.FileAsync(title: "first");
         await h.FileAsync(title: "second");
         var last = await h.FileAsync(title: "last");
 
-        await h.ExpediteAsync(last.Key, true);
-        await h.ExpediteAsync(first.Key, true);
+        await h.PriorityAsync(last.Key, PriorityLevels.ExpeditedName);
+        await h.PriorityAsync(first.Key, PriorityLevels.ExpeditedName);
 
-        // (Rank, Id) inside the expedited half as well as outside it - the
+        // (Rank, Id) inside the expedited group as well as outside it - the
         // float is one more key in front of the tuple, not a replacement for
         // it.
         Assert.Equal([first.Key, last.Key, "AER-2"], await h.ColumnAsync(h.InboxId));
@@ -248,8 +306,8 @@ public class IssueExpediteControllerTests
         await h.FileAsync(title: "second");
         var last = await h.FileAsync(title: "last");
 
-        await h.ExpediteAsync(last.Key, true);
-        await h.ExpediteAsync(last.Key, false);
+        await h.PriorityAsync(last.Key, PriorityLevels.EmergencyName);
+        await h.PriorityAsync(last.Key, PriorityLevels.NormalName);
 
         Assert.Equal(["AER-1", "AER-2", last.Key], await h.ColumnAsync(h.InboxId));
     }
@@ -262,12 +320,51 @@ public class IssueExpediteControllerTests
         var there = await h.FileAsync(title: "there");
         Value(await h.Issues.MoveIssue(there.Key, new IssueMoveRequest(h.DoneId, null, null), default));
 
-        await h.ExpediteAsync(there.Key, true);
+        await h.PriorityAsync(there.Key, PriorityLevels.EmergencyName);
 
-        // Expedite is a sort key inside a column. Where the columns themselves
+        // Priority is a sort key inside a column. Where the columns themselves
         // sit is the status's SortOrder, and nothing about a card moves that.
         Assert.Equal([here.Key], await h.ColumnAsync(h.InboxId));
         Assert.Equal([there.Key], await h.ColumnAsync(h.DoneId));
+    }
+
+    // ---- The legacy alias ----
+
+    [Fact]
+    public async Task TheExpediteRoute_SetsExpeditedByName()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.ExpediteAsync(issue.Key, true);
+
+        Assert.True(marked.Expedited);
+        Assert.Equal(PriorityLevels.Expedited, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task TheExpediteRoutesFalse_SetsNormalByName()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
+
+        var unmarked = await h.ExpediteAsync(issue.Key, false);
+
+        Assert.False(unmarked.Expedited);
+        Assert.Equal(PriorityLevels.Normal, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task BothRoutesWriteTheSameTrail()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.ExpediteAsync(issue.Key, true);
+
+        var e = Assert.Single(await h.EventsAsync(issue.Key));
+        Assert.Equal((PriorityLevels.NormalName, PriorityLevels.ExpeditedName), Sides(e));
     }
 
     // ---- Harness ----
@@ -278,6 +375,7 @@ public class IssueExpediteControllerTests
     {
         public required HatchContext Db { get; init; }
         public required IssueExpediteController Expedite { get; init; }
+        public required IssueExpediteController Priority { get; init; }
         public required IssuesController Issues { get; init; }
         public required BoardController Board { get; init; }
         public required IssueThreadController Thread { get; init; }
@@ -288,6 +386,9 @@ public class IssueExpediteControllerTests
 
         public async Task<IssueDto> FileAsync(string type = "task", string title = "a thing") =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, null, null, null), default));
+
+        public async Task<IssueDto> PriorityAsync(string key, string level) =>
+            Value(await Priority.PutIssuePriority(key, new PriorityRequest(level), default));
 
         public async Task<IssueDto> ExpediteAsync(string key, bool expedited) =>
             Value(await Expedite.PutIssueExpedite(key, new ExpediteRequest(expedited), default));
@@ -304,17 +405,17 @@ public class IssueExpediteControllerTests
                 .Select(c => c.Key)
                 .ToList();
 
-        /// <summary>The column itself, which is what the projection is read against.</summary>
+        /// <summary>The row itself, which is what the projection is read against.</summary>
         public async Task<EfHatchIssue> RowAsync(string key)
         {
             IssueKey.TryParse(key, out var projectKey, out var number);
             return await Db.Issues.AsNoTracking().WithKey(projectKey, number).FirstAsync();
         }
 
-        /// <summary>The flag's own events, oldest first.</summary>
+        /// <summary>The level's own events, oldest first.</summary>
         public async Task<IReadOnlyList<IssueEventDto>> EventsAsync(string key) =>
             Value(await Thread.GetEvents(key, default))
-                .Where(e => e.Kind == EfHatchIssueEvent.ExpeditedChanged)
+                .Where(e => e.Kind == EfHatchIssueEvent.PriorityChanged)
                 .Reverse()
                 .ToList();
     }
@@ -335,11 +436,15 @@ public class IssueExpediteControllerTests
         var time = new FakeTimeProvider(Now);
         var caller = new StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
         var actors = new StubActorDirectory();
+        var controller = new IssueExpediteController(db, actors, TestClaims.With(), caller, time);
 
         return new Harness
         {
             Db = db,
-            Expedite = new IssueExpediteController(db, actors, TestClaims.With(), caller, time),
+            // One controller instance, called through two names - both routes
+            // share the one route class, exactly as they share it in production.
+            Expedite = controller,
+            Priority = controller,
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Thread = new IssueThreadController(db, caller, time),
@@ -377,11 +482,11 @@ public class IssueExpediteControllerTests
             Task.FromResult(Person?.Name ?? Key?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
     }
 
-    /// <summary>The two sides an <c>expedited_changed</c> event carries.</summary>
-    private static (bool From, bool To) Sides(IssueEventDto e)
+    /// <summary>The two sides a <c>priority_changed</c> event carries, by name.</summary>
+    private static (string From, string To) Sides(IssueEventDto e)
     {
         var payload = e.Payload!.Value;
-        return (payload.GetProperty("from").GetBoolean(), payload.GetProperty("to").GetBoolean());
+        return (payload.GetProperty("from").GetString()!, payload.GetProperty("to").GetString()!);
     }
 
     private static T Value<T>(ActionResult<T> result) =>
