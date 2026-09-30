@@ -73,3 +73,12 @@ a.hatch-btn {
 .hatch-btn--danger:focus-visible {
   outline-color: var(--on-accent);
 }
+
+/* 44px is Apple's and WCAG's minimum comfortable touch target - a literal for
+   the same reason Menu's existing 36px trigger height is one, not a spacing
+   rung. */
+@media (pointer: coarse) {
+  .hatch-btn {
+    min-height: 44px;
+  }
+}

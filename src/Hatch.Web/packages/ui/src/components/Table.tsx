@@ -37,5 +37,8 @@ export function Table({ scroll = false, className, children, ...rest }: TablePro
     </table>
   );
 
-  return scroll ? <div className="hatch-table-scroll">{table}</div> : table;
+  const wrapperClasses = ['hatch-table-scroll'];
+  if (scroll) wrapperClasses.push('hatch-table-scroll--scroll');
+
+  return <div className={wrapperClasses.join(' ')}>{table}</div>;
 }

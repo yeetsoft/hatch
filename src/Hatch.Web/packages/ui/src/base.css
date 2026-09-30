@@ -200,6 +200,27 @@ textarea:focus {
   box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
+/* iOS Safari zooms the page on focusing any control under 16px - the jiggle a
+   phone user does to get the page back after editing. --t-section (16px) is
+   the floor a coarse pointer needs; above it buys nothing, which is why the
+   desk keeps --t-body (14px). Same enumerated list as above, for the same
+   specificity reason. */
+@media (pointer: coarse) {
+  input:not([type]),
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="datetime-local"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: var(--t-section);
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Utility.
 

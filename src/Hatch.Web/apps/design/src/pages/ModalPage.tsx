@@ -19,6 +19,13 @@ export function ModalPage() {
       blurb="The dialog. Admin had this as its own component and it moved here whole — plus the three things it was missing: a dialog role, focus that goes in and comes back, and an escape key that works from inside an input."
     >
       <GallerySection
+        title="At phone width"
+        note="An iframe, not a narrowed box: the sheet rule is a real @media (max-width: 40rem), which reads this frame's own width. Open any dialog inside it — it rises from the bottom, full width, and the page behind it does not scroll while it's open."
+      >
+        <iframe className="gallery-phone-frame" src="/apps/design/modal" title="Modal at phone width" />
+      </GallerySection>
+
+      <GallerySection
         title="Open one"
         note="Then press Escape, or click the scrim, or tab around inside. When it closes, focus returns to the button that opened it — before this, a keyboard user pressed Tab after closing and walked the page from the top."
       >
