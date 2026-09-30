@@ -686,21 +686,22 @@ public class WorkController(
 
     /// <summary>
     /// Why a move into the WIP section is not this issue's to make: the move
-    /// leaves outside it and lands inside it, the type counts, and the load -
-    /// not counting this issue - is already at or over the limit. Null where
-    /// the board has never turned WIP on, where the move does not cross into
-    /// the section, or where the type is not one the limit counts.
+    /// leaves outside it and lands inside it, a slice counts the type, and that
+    /// slice's load - not counting this issue - is already at or over its
+    /// limit. Null where the board has never turned WIP on, where the move does
+    /// not cross into the section, where no slice counts the type, or where the
+    /// slice that does has no limit.
     /// </summary>
     private static string? WipFold(WipSection? wip, EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to)
     {
         if (wip is null) return null;
         if (wip.Inside(from.Id)) return null;
         if (!wip.Inside(to.Id)) return null;
-        if (!wip.Counts(issue.Type)) return null;
+        if (wip.SliceFor(issue.Type) is not { Limit: { } limit } slice) return null;
 
-        var room = wip.Load - (wip.Counted(issue) ? 1 : 0);
-        return room >= wip.Limit
-            ? $"{Wip.Sentence(room, wip.Limit, wip.Types)} - nothing more is pulled in until something leaves"
+        var room = slice.Load - (slice.Counted(issue) ? 1 : 0);
+        return room >= limit
+            ? $"{Wip.Sentence(room, limit, slice.Types)} - nothing more is pulled in until something leaves"
             : null;
     }
 

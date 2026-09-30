@@ -1372,17 +1372,24 @@ public class EfHatchPlaybook
 /// <summary>
 /// A WIP limit: how much of one slice of the board the operator will let stand
 /// at once, across every column <see cref="EfHatchStatus.IsWip"/> flags. One row
-/// per slice, keyed by <see cref="Types"/> - and, for now, exactly one row ever
-/// written: <see cref="StoriesAndBugs"/>, the only slice this epic asks for. No
-/// row for a slice means no limit, which is why a limit is a nullable read
-/// rather than a row that is always there holding a large number.
+/// per slice, keyed by <see cref="Types"/>. Hatch knows exactly two slices,
+/// <see cref="Slices"/>, in that order - <see cref="StoriesAndBugs"/> and
+/// <see cref="Epics"/> - and no row for a slice means no limit, which is why a
+/// limit is a nullable read rather than a row that is always there holding a
+/// large number.
 /// </summary>
 [Table("WipLimits")]
 [Index(nameof(Types), IsUnique = true)]
 public class EfHatchWipLimit
 {
-    /// <summary>The one slice this epic writes: stories and bugs, comma separated the way <see cref="EfHatchPlaybook.Types"/> is.</summary>
+    /// <summary>The stories-and-bugs slice, comma separated the way <see cref="EfHatchPlaybook.Types"/> is.</summary>
     public const string StoriesAndBugs = "story,bug";
+
+    /// <summary>The epic slice.</summary>
+    public const string Epics = "epic";
+
+    /// <summary>Every slice Hatch knows, in the fixed order the board and the CLI print them in.</summary>
+    public static readonly string[] Slices = [StoriesAndBugs, Epics];
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }

@@ -6,7 +6,7 @@ import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
 import { limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
-import type { Status, WipSection } from '../types';
+import type { Status, WipSliceSetting } from '../types';
 
 export function StatusesPage() {
   const load = useCallback(
@@ -78,11 +78,19 @@ export function StatusesPage() {
 
       {section && (
         <Card>
-          <h2 className="hatch-section-title">WIP limit</h2>
+          <h2 className="hatch-section-title">WIP limits</h2>
           <div className="hatch-field-grid">
             <LimitField
-              section={section}
+              slice={section.slices[0]}
+              label="WIP limit"
+              hint="Stories and bugs across the WIP columns; blank means no limit."
               onSetLimit={(limit) => void act(() => putWip({ limit }))}
+            />
+            <LimitField
+              slice={section.slices[1]}
+              label="Epic limit"
+              hint="Epics across the WIP columns; blank means no limit."
+              onSetLimit={(epicLimit) => void act(() => putWip({ epicLimit }))}
             />
           </div>
         </Card>
@@ -99,7 +107,7 @@ export function StatusesPage() {
                 <th title="Parked work. Not drawn on the board and not dragged into - the issue page is the only way in.">
                   Deferred
                 </th>
-                <th title="Stories and bugs across the WIP columns count towards the limit above.">WIP</th>
+                <th title="Whether a story, bug or epic here counts towards its limit above.">WIP</th>
                 <th title="An express issue standing here is carried on to the next column with no session, as long as it has no unanswered question. The terminal column is never entered.">
                   Express skips
                 </th>
@@ -252,30 +260,40 @@ function NameCell({ status, onRename }: { status: Status; onRename: (name: strin
 }
 
 /**
- * How much of the stories-and-bugs slice may sit across the WIP columns at
- * once. Committed on blur, the way NameCell is, and only if changed - a blank
- * box takes the limit off rather than refusing "0", the same string-on-the-wire
- * convention `RunnerBounds` uses.
+ * How much of one slice may sit across the WIP columns at once. Committed on
+ * blur, the way NameCell is, and only if changed - a blank box takes the
+ * limit off rather than refusing "0", the same string-on-the-wire convention
+ * `RunnerBounds` uses.
  */
-function LimitField({ section, onSetLimit }: { section: WipSection; onSetLimit: (limit: string) => void }) {
-  const [draft, setDraft] = useState(limitDraft(section));
-  const [known, setKnown] = useState(section.limit);
+function LimitField({
+  slice,
+  label,
+  hint,
+  onSetLimit,
+}: {
+  slice: WipSliceSetting;
+  label: string;
+  hint: string;
+  onSetLimit: (limit: string) => void;
+}) {
+  const [draft, setDraft] = useState(limitDraft(slice));
+  const [known, setKnown] = useState(slice.limit);
 
   // Re-syncs when the row changes underneath - see ColorCell above.
-  if (section.limit !== known) {
-    setKnown(section.limit);
-    setDraft(limitDraft(section));
+  if (slice.limit !== known) {
+    setKnown(slice.limit);
+    setDraft(limitDraft(slice));
   }
 
   return (
-    <Field label="WIP limit" hint="Stories and bugs across the WIP columns; blank means no limit.">
+    <Field label={label} hint={hint}>
       <input
         inputMode="numeric"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const next = limitRequest(draft);
-          if (next !== limitDraft(section)) onSetLimit(next);
+          if (next !== limitDraft(slice)) onSetLimit(next);
         }}
       />
     </Field>

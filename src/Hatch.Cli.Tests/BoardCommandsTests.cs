@@ -43,21 +43,16 @@ public sealed class BoardCommandsTests
             h.Said);
     }
 
-    /// <summary>
-    /// The WIP line, in each of the four wordings HA-88 names, printed after
-    /// every column line and in nobody else's order: the count, then how much
-    /// of it is only claimed and not yet in, then the columns, then full or over.
-    /// </summary>
-    [Theory]
-    [InlineData(3, 5, 0, "WIP: 3 of 5 across In Progress, In Review")]
-    [InlineData(4, 5, 1, "WIP: 4 of 5 (1 claimed on the way in) across In Progress, In Review")]
-    [InlineData(5, 5, 0, "WIP: 5 of 5 across In Progress, In Review - full")]
-    [InlineData(6, 5, 0, "WIP: 6 of 5 across In Progress, In Review - over the limit")]
-    public async Task TheWipLine_PrintsAfterTheColumnsInEachWording(
-        int load, int limit, int claimedInbound, string line)
-    {
-        using var h = new CliHarness();
-        var board = new BoardDto(
+    private static WipDto WipBoard(int? storyLimit, int storyLoad, int storyClaimed, int? epicLimit = null, int epicLoad = 0, int epicClaimed = 0) =>
+        new(
+            [3, 4],
+            [
+                new WipSliceLoadDto(["story", "bug"], storyLimit, storyLoad, storyClaimed),
+                new WipSliceLoadDto(["epic"], epicLimit, epicLoad, epicClaimed),
+            ]);
+
+    private static BoardDto WithWip(WipDto wip) =>
+        new(
             [
                 Fixtures.Status(1, "Backlog"),
                 Fixtures.Status(2, "To Do"),
@@ -66,12 +61,56 @@ public sealed class BoardCommandsTests
                 Fixtures.Status(5, "Done", terminal: true),
             ],
             [],
-            new WipDto(limit, ["story", "bug"], [3, 4], load, claimedInbound));
-        h.Wire.Json("GET", "/api/hatch/board", board);
+            wip);
+
+    /// <summary>
+    /// The WIP line, in each of the four wordings HA-88 names, printed after
+    /// every column line and in nobody else's order: the count, then how much
+    /// of it is only claimed and not yet in, then the columns, then full or over.
+    /// </summary>
+    [Theory]
+    [InlineData(3, 5, 0, "WIP: 3 of 5 stories and bugs across In Progress, In Review")]
+    [InlineData(4, 5, 1, "WIP: 4 of 5 stories and bugs (1 claimed on the way in) across In Progress, In Review")]
+    [InlineData(5, 5, 0, "WIP: 5 of 5 stories and bugs across In Progress, In Review - full")]
+    [InlineData(6, 5, 0, "WIP: 6 of 5 stories and bugs across In Progress, In Review - over the limit")]
+    public async Task TheWipLine_PrintsAfterTheColumnsInEachWording(
+        int load, int limit, int claimedInbound, string line)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(limit, load, claimedInbound)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
         Assert.Equal(line, h.Said.Split('\n').Last());
+    }
+
+    /// <summary>Both slices limited: one line each, the epic slice's line naming its own types.</summary>
+    [Fact]
+    public async Task TwoLimitedSlices_PrintTwoLines()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(5, 3, 0, epicLimit: 2, epicLoad: 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.Equal(
+            [
+                "WIP: 3 of 5 stories and bugs across In Progress, In Review",
+                "WIP: 2 of 2 epics across In Progress, In Review - full",
+            ],
+            h.Said.Split('\n').TakeLast(2));
+    }
+
+    /// <summary>Neither slice limited: no WIP line at all, not even a blank one.</summary>
+    [Fact]
+    public async Task NoLimitedSlices_PrintsNoWipLine()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(null, 3, 0, epicLimit: null, epicLoad: 1)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.DoesNotContain("WIP", h.Said);
     }
 
     /// <summary>

@@ -2992,18 +2992,56 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task WipFold_DoesNotFoldATaskOrAnEpic()
+    public async Task WipFold_DoesNotFoldATaskOrAnEpicWithNoEpicLimitSet()
     {
         var h = await NewAsync();
         await h.WipAsync(1, h.InProgress, h.Review);
         await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
 
-        // Neither type the limit counts - Wip.LoadAsync only ever asks about
-        // stories and bugs, and WipFold's own Counts check folds nothing else.
+        // Neither type the story-and-bug slice counts, and the epic slice has
+        // no limit row here - WipFold's SliceFor check folds nothing for either.
         var task = await h.FileAsync("task", "not counted", h.Todo, rank: 1024);
         var epic = await h.FileAsync("epic", "not counted either", h.Todo, rank: 2048);
 
         Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_FoldsAnEpicWaitingToEnterAFullEpicSlice()
+    {
+        var h = await NewAsync();
+        await h.EpicWipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("epic", "already inside", h.InProgress, rank: 512);
+
+        var epic = await h.FileAsync("epic", "waiting to get in", h.Todo, rank: 1024);
+
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 epics are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AStoryIsNeverFoldedByAFullEpicSlice()
+    {
+        var h = await NewAsync();
+        await h.EpicWipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("epic", "already inside", h.InProgress, rank: 512);
+
+        var story = await h.FileAsync("story", "waiting outside", h.Todo, rank: 1024);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(story), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task WipFold_AnEpicIsNeverFoldedByAFullStoryAndBugSlice()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+
+        var epic = await h.FileAsync("epic", "waiting outside", h.Todo, rank: 1024);
+
         Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
     }
 
@@ -3052,7 +3090,7 @@ public class WorkControllerTests
 
         var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
         var section = await Wip.LoadAsync(h.Db, TestClaims.With(), statuses, h.Time.GetUtcNow(), default);
-        Assert.Equal(1, section!.ClaimedInbound);
+        Assert.Equal(1, section!.SliceFor("story")!.ClaimedInbound);
 
         // A second pass, over the same board: the claim now counts against the
         // next story in line.
@@ -3394,6 +3432,19 @@ public class WorkControllerTests
             }
 
             Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = limit });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same as <see cref="WipAsync"/>, for the epic slice.</summary>
+        public async Task EpicWipAsync(int limit, params int[] statusIds)
+        {
+            foreach (var id in statusIds)
+            {
+                var status = await Db.Statuses.FirstAsync(s => s.Id == id);
+                status.IsWip = true;
+            }
+
+            Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.Epics, Limit = limit });
             await Db.SaveChangesAsync();
         }
 

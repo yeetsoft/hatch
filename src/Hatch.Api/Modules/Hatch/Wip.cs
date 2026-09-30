@@ -18,17 +18,14 @@ namespace Hatch.Api.Modules.Hatch;
 public static class Wip
 {
     /// <summary>
-    /// The stories-and-bugs slice, as both <c>WipController</c>'s read and the
-    /// board (HA-88) will share it: the limit if one is held, the types it
-    /// counts, and the flagged columns that are neither deferred nor terminal,
-    /// in board order.
+    /// The section as <c>WipController</c>'s read and the board (HA-88) will
+    /// share it: the flagged columns that are neither deferred nor terminal, in
+    /// board order, and every slice Hatch knows - <see cref="EfHatchWipLimit.Slices"/>,
+    /// always both, in that order - with the limit if one is held.
     /// </summary>
     public static async Task<WipSectionDto> SectionAsync(HatchContext db, CancellationToken ct)
     {
-        var limit = await db.WipLimits.AsNoTracking()
-            .Where(w => w.Types == EfHatchWipLimit.StoriesAndBugs)
-            .Select(w => (int?)w.Limit)
-            .SingleOrDefaultAsync(ct);
+        var limits = await RowsAsync(db, ct);
 
         var statusIds = await db.Statuses.AsNoTracking()
             .Where(s => s.IsWip && !s.IsDeferred && !s.IsTerminal)
@@ -36,15 +33,20 @@ public static class Wip
             .Select(s => s.Id)
             .ToListAsync(ct);
 
-        return new WipSectionDto(limit, EfHatchPlaybook.SplitTypes(EfHatchWipLimit.StoriesAndBugs), statusIds);
+        var slices = EfHatchWipLimit.Slices
+            .Select(types => new WipSliceDto(EfHatchPlaybook.SplitTypes(types), limits.GetValueOrDefault(types)))
+            .ToList();
+
+        return new WipSectionDto(statusIds, slices);
     }
 
     /// <summary>
-    /// How full the WIP section is right now, or null where the board has never
-    /// turned WIP on: no limit row, or no column left flagged (and neither
-    /// deferred nor terminal). Every board caller - <c>BoardController</c>
-    /// today, the move gate and the dispatcher's fold later - reads the answer
-    /// from here rather than counting for itself.
+    /// How full the WIP section is right now, or null only where the board has
+    /// never turned WIP on at all: no column left flagged (and neither deferred
+    /// nor terminal). A slice with no limit row still comes back, with its own
+    /// real load and no limit to gate anything with. Every board caller -
+    /// <c>BoardController</c> today, the move gate and the dispatcher's fold
+    /// later - reads the answer from here rather than counting for itself.
     /// </summary>
     /// <param name="statuses">
     /// The board's own status list, already loaded by the caller: no second
@@ -59,13 +61,6 @@ public static class Wip
     public static async Task<WipSection?> LoadAsync(
         HatchContext db, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
     {
-        var limit = await db.WipLimits.AsNoTracking()
-            .Where(w => w.Types == EfHatchWipLimit.StoriesAndBugs)
-            .Select(w => (int?)w.Limit)
-            .SingleOrDefaultAsync(ct);
-
-        if (limit is not { } value) return null;
-
         var section = statuses
             .Where(s => s.IsWip && !s.IsDeferred && !s.IsTerminal)
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
@@ -74,98 +69,121 @@ public static class Wip
 
         if (section.Count == 0) return null;
 
+        var limits = await RowsAsync(db, ct);
+
         var sectionIds = section.ToHashSet();
         var feeders = statuses
             .Where(s => !sectionIds.Contains(s.Id) && Columns.Target(statuses, s) is { } target && sectionIds.Contains(target.Id))
             .Select(s => s.Id)
             .ToHashSet();
 
-        var types = EfHatchPlaybook.SplitTypes(EfHatchWipLimit.StoriesAndBugs);
+        var sliceTypes = EfHatchWipLimit.Slices
+            .Select(EfHatchPlaybook.SplitTypes)
+            .ToList();
+        var everyType = sliceTypes.SelectMany(t => t).ToHashSet();
 
         var rows = await db.Issues.AsNoTracking()
-            .Where(i => types.Contains(i.Type) && (sectionIds.Contains(i.StatusId) || feeders.Contains(i.StatusId)))
+            .Where(i => everyType.Contains(i.Type) && (sectionIds.Contains(i.StatusId) || feeders.Contains(i.StatusId)))
             .Select(i => new
             {
                 i.Id,
                 i.StatusId,
+                i.Type,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
             })
             .ToListAsync(ct);
 
-        var counted = rows
-            .Where(r => sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
-            .Select(r => r.Id)
-            .ToHashSet();
+        var slices = new List<WipSlice>();
+        foreach (var types in sliceTypes)
+        {
+            var typeSet = types.ToHashSet();
+            var ofType = rows.Where(r => typeSet.Contains(r.Type)).ToList();
 
-        var claimedInbound = rows.Count(r => !sectionIds.Contains(r.StatusId) && counted.Contains(r.Id));
+            var counted = ofType
+                .Where(r => sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
+                .Select(r => r.Id)
+                .ToHashSet();
 
-        return new WipSection(value, types, section, counted, claimedInbound);
+            var claimedInbound = ofType.Count(r => !sectionIds.Contains(r.StatusId) && counted.Contains(r.Id));
+
+            var limit = limits.GetValueOrDefault(string.Join(",", types));
+            slices.Add(new WipSlice(types, limit, counted, claimedInbound));
+        }
+
+        return new WipSection(section, slices);
     }
+
+    private static async Task<Dictionary<string, int?>> RowsAsync(HatchContext db, CancellationToken ct) =>
+        await db.WipLimits.AsNoTracking().ToDictionaryAsync(w => w.Types, w => (int?)w.Limit, ct);
 
     /// <summary>
     /// The sentence a refusal or an override names - "the WIP section is full -
-    /// 2 of 2 stories and bugs are in it" - built once here from the limit
-    /// row's own types, pluralised and joined, so no caller spells a type name.
-    /// The dispatcher's fold (HA-90) shares it and adds its own tail.
+    /// 2 of 2 stories and bugs are in it" - built once here from a slice's own
+    /// types, pluralised and joined, so no caller spells a type name. The
+    /// dispatcher's fold (HA-90) shares it and adds its own tail.
     /// </summary>
     public static string Sentence(int load, int limit, IReadOnlyList<string> types) =>
-        $"the WIP section is full - {load} of {limit} {Pluralize(types)} are in it";
-
-    private static string Pluralize(IReadOnlyList<string> types)
-    {
-        var plural = types.Select(PluralizeOne).ToList();
-        return plural.Count switch
-        {
-            0 => "issues",
-            1 => plural[0],
-            2 => $"{plural[0]} and {plural[1]}",
-            _ => $"{string.Join(", ", plural.Take(plural.Count - 1))}, and {plural[^1]}",
-        };
-    }
-
-    private static string PluralizeOne(string type) =>
-        type.EndsWith('y') ? $"{type[..^1]}ies" : $"{type}s";
+        $"the WIP section is full - {load} of {limit} {TypeWords.Plural(types)} are in it";
 }
 
 /// <summary>
 /// One reading of the WIP section, as <see cref="Wip.LoadAsync"/> takes it: the
-/// limit, the counted types, the section's columns, and which issues are the
-/// load right now. Callers ask it questions rather than re-deriving any of this
-/// - <see cref="Inside"/> and <see cref="Counts"/> exist so the move gate
-/// (HA-89) and the dispatcher's fold (HA-90) never work out the section or the
-/// types for themselves.
+/// section's columns, and every slice Hatch knows, each with its own limit,
+/// load and claimed-inbound count. Callers ask it questions rather than
+/// re-deriving any of this - <see cref="Inside"/> and <see cref="SliceFor"/>
+/// exist so the move gate (HA-89) and the dispatcher's fold (HA-90) never work
+/// out the section or the types for themselves.
 /// </summary>
 public sealed class WipSection
 {
     private readonly IReadOnlySet<int> _section;
-    private readonly IReadOnlySet<string> _types;
-    private readonly IReadOnlySet<long> _counted;
 
-    internal WipSection(
-        int limit, IReadOnlyList<string> types, IReadOnlyList<int> statusIds, IReadOnlySet<long> counted, int claimedInbound)
+    internal WipSection(IReadOnlyList<int> statusIds, IReadOnlyList<WipSlice> slices)
     {
-        Limit = limit;
-        Types = types;
         StatusIds = statusIds;
-        Load = counted.Count;
-        ClaimedInbound = claimedInbound;
+        Slices = slices;
         _section = statusIds.ToHashSet();
-        _types = types.ToHashSet();
-        _counted = counted;
     }
 
-    public int Limit { get; }
-    public IReadOnlyList<string> Types { get; }
     public IReadOnlyList<int> StatusIds { get; }
-    public int Load { get; }
-    public int ClaimedInbound { get; }
+    public IReadOnlyList<WipSlice> Slices { get; }
 
     /// <summary>Whether a column counts towards the section - <see cref="StatusIds"/>, as a set.</summary>
     public bool Inside(int statusId) => _section.Contains(statusId);
 
-    /// <summary>Whether an issue type counts towards this limit - <see cref="Types"/>, as a set.</summary>
+    /// <summary>The slice whose types cover this issue type, or null for a type no slice counts (a task).</summary>
+    public WipSlice? SliceFor(string type) => Slices.FirstOrDefault(s => s.Counts(type));
+
+    public WipDto ToDto() => new(StatusIds, Slices.Select(s => s.ToDto()).ToList());
+}
+
+/// <summary>
+/// One slice of the WIP section: the types it counts, its limit (or null for
+/// none), and which issues are its load right now.
+/// </summary>
+public sealed class WipSlice
+{
+    private readonly IReadOnlySet<string> _types;
+    private readonly IReadOnlySet<long> _counted;
+
+    internal WipSlice(IReadOnlyList<string> types, int? limit, IReadOnlySet<long> counted, int claimedInbound)
+    {
+        Types = types;
+        Limit = limit;
+        Load = counted.Count;
+        ClaimedInbound = claimedInbound;
+        _types = types.ToHashSet();
+        _counted = counted;
+    }
+
+    public IReadOnlyList<string> Types { get; }
+    public int? Limit { get; }
+    public int Load { get; }
+    public int ClaimedInbound { get; }
+
+    /// <summary>Whether an issue type counts towards this slice - <see cref="Types"/>, as a set.</summary>
     public bool Counts(string type) => _types.Contains(type);
 
     /// <summary>
@@ -176,5 +194,5 @@ public sealed class WipSection
     /// </summary>
     public bool Counted(EfHatchIssue issue) => _counted.Contains(issue.Id);
 
-    public WipDto ToDto() => new(Limit, Types, StatusIds, Load, ClaimedInbound);
+    public WipSliceLoadDto ToDto() => new(Types, Limit, Load, ClaimedInbound);
 }

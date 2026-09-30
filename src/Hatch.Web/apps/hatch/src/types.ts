@@ -67,29 +67,35 @@ export interface Status {
   color: string;
 }
 
-/** One slice of the board's WIP section: what the limit is, which types it
-    counts, and which columns count towards it right now. Mirrors
+/** The board's WIP section: one set of columns, and every slice Hatch knows -
+    `story,bug` then `epic`, always both, in that order. Mirrors
     WipSectionDto. */
 export interface WipSection {
-  /** How many issues of `types` may sit across the counted columns at once, or
-      null for no limit. */
-  limit: number | null;
-  /** The issue types this slice counts - `['story', 'bug']`, the one slice
-      this epic writes. */
-  types: IssueType[];
   /** The flagged columns that actually count: `Status.isWip` is true and the
       column is neither deferred nor terminal, in board order. */
   statusIds: number[];
+  /** Always two entries, `story,bug` then `epic`. */
+  slices: WipSliceSetting[];
+}
+
+/** One slice of the section, as the settings route reads it: which types it
+    counts, and what its limit is - null where no row is held for it. Mirrors
+    WipSliceDto. */
+export interface WipSliceSetting {
+  types: IssueType[];
+  limit: number | null;
 }
 
 /** A write to the section: absent or undefined leaves a field alone, the bulk
     rule every other clearable field in Hatch follows. Mirrors
     WipSectionRequest. */
 export interface WipSectionRequest {
-  /** `''` clears the limit; a whole number of one or more sets it. */
+  /** `''` clears the stories-and-bugs limit; a whole number of one or more sets it. */
   limit?: string;
   /** The whole section, not a delta - `[]` clears it. */
   statusIds?: number[];
+  /** The same rule as `limit`, for the epic slice. */
+  epicLimit?: string;
 }
 
 /** Which kind of thing an assignee is. Mirrors ActorKind. */
@@ -418,15 +424,21 @@ export interface IssueEvent {
 }
 
 /** How full the WIP section is right now. Mirrors WipDto - not WipSection
-    (the settings shape, with a nullable limit and no load): this one is always
-    a load against a limit known to exist. */
+    (the settings shape, with a nullable limit and no load): this one carries a
+    load for every slice, whether or not it has a limit. */
 export interface Wip {
-  /** How many issues of `types` may sit across the counted columns at once. */
-  limit: number;
-  /** The issue types this slice counts - the limit row's own types. */
-  types: IssueType[];
   /** The counted columns, in board order. Never a deferred or terminal one. */
   statusIds: number[];
+  /** Always two entries, `story,bug` then `epic`. */
+  slices: WipSlice[];
+}
+
+/** One slice's load against its limit, or against no limit at all. Mirrors WipSliceLoadDto. */
+export interface WipSlice {
+  /** The issue types this slice counts. */
+  types: IssueType[];
+  /** How many issues of `types` may sit across the counted columns at once, or null for no limit. */
+  limit: number | null;
   /** How many counted issues are on the board right now - inside the section, plus `claimedInbound`. */
   load: number;
   /** Of `load`, how many are outside the section but claimed and on their way in. */
@@ -445,9 +457,10 @@ export interface WipRefusal {
 export interface Board {
   statuses: Status[];
   issues: IssueCard[];
-  /** How full the WIP section is, or null/undefined where the board has never
-      heard of WIP - no column flagged, or no limit set. Optional so existing
-      Board fixtures still type-check; the server always sends the key. */
+  /** How full the WIP section is, or null/undefined only where no column is
+      flagged - present, with both slices' limits null, wherever a column is
+      flagged but no limit has been typed. Optional so existing Board fixtures
+      still type-check; the server always sends the key. */
   wip?: Wip | null;
 }
 

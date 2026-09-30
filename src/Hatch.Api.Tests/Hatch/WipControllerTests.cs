@@ -38,7 +38,19 @@ public class WipControllerTests
         var refusal = await h.Wip.PutWip(new WipSectionRequest(Limit: "5"), default);
 
         Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
-        Assert.Null((await h.GetAsync()).Limit);
+        Assert.Null(StoryLimit(await h.GetAsync()));
+    }
+
+    [Fact]
+    public async Task AKeylessRunnerWhereTheWallIsOff_IsTheSame403()
+    {
+        var h = await NewAsync();
+        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner");
+
+        var refusal = await h.Wip.PutWip(new WipSectionRequest(Limit: "5"), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Null(StoryLimit(await h.GetAsync()));
     }
 
     // ---- The limit ----
@@ -49,12 +61,12 @@ public class WipControllerTests
         var h = await NewAsync();
 
         var set = await h.PutAsync(new WipSectionRequest(Limit: "5"));
-        Assert.Equal(5, set.Limit);
-        Assert.Equal(5, (await h.GetAsync()).Limit);
+        Assert.Equal(5, StoryLimit(set));
+        Assert.Equal(5, StoryLimit(await h.GetAsync()));
 
         var cleared = await h.PutAsync(new WipSectionRequest(Limit: ""));
-        Assert.Null(cleared.Limit);
-        Assert.Null((await h.GetAsync()).Limit);
+        Assert.Null(StoryLimit(cleared));
+        Assert.Null(StoryLimit(await h.GetAsync()));
     }
 
     [Fact]
@@ -65,7 +77,7 @@ public class WipControllerTests
         var result = await h.Wip.PutWip(new WipSectionRequest(Limit: "0"), default);
 
         Assert.Equal("a WIP limit is a whole number of one or more - not \"0\"", BadRequestValue(result.Result));
-        Assert.Null((await h.GetAsync()).Limit);
+        Assert.Null(StoryLimit(await h.GetAsync()));
     }
 
     [Fact]
@@ -81,6 +93,57 @@ public class WipControllerTests
         Assert.Equal(idBefore, idAfter);
     }
 
+    // ---- The epic limit ----
+
+    [Fact]
+    public async Task TheEpicLimitIsSetReadBackAndClearedWithAnEmptyString()
+    {
+        var h = await NewAsync();
+
+        var set = await h.PutAsync(new WipSectionRequest(EpicLimit: "2"));
+        Assert.Equal(2, EpicLimit(set));
+        Assert.Equal(2, EpicLimit(await h.GetAsync()));
+
+        var cleared = await h.PutAsync(new WipSectionRequest(EpicLimit: ""));
+        Assert.Null(EpicLimit(cleared));
+        Assert.Null(EpicLimit(await h.GetAsync()));
+    }
+
+    [Fact]
+    public async Task SettingTheEpicLimitLeavesTheStoryAndBugLimitAlone()
+    {
+        var h = await NewAsync();
+        await h.PutAsync(new WipSectionRequest(Limit: "5"));
+
+        var result = await h.PutAsync(new WipSectionRequest(EpicLimit: "2"));
+
+        Assert.Equal(5, StoryLimit(result));
+        Assert.Equal(2, EpicLimit(result));
+    }
+
+    [Fact]
+    public async Task AnEpicLimitBelowOne_IsRefusedNamingTheEpicLimitAndWritesNothing()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Wip.PutWip(new WipSectionRequest(EpicLimit: "0"), default);
+
+        Assert.Equal("an epic limit is a whole number of one or more - not \"0\"", BadRequestValue(result.Result));
+        Assert.Null(EpicLimit(await h.GetAsync()));
+    }
+
+    [Fact]
+    public async Task AGoodLimitBesideABadEpicLimit_ChangesNeither()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Wip.PutWip(new WipSectionRequest(Limit: "5", EpicLimit: "x"), default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Null(StoryLimit(await h.GetAsync()));
+        Assert.Null(EpicLimit(await h.GetAsync()));
+    }
+
     // ---- The section ----
 
     [Fact]
@@ -91,7 +154,7 @@ public class WipControllerTests
 
         var result = await h.PutAsync(new WipSectionRequest());
 
-        Assert.Equal(5, result.Limit);
+        Assert.Equal(5, StoryLimit(result));
         Assert.Equal([h.InProgress], result.StatusIds);
     }
 
@@ -158,7 +221,7 @@ public class WipControllerTests
         var result = await h.Wip.PutWip(new WipSectionRequest(Limit: "10", StatusIds: [h.Done]), default);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Equal(3, (await h.GetAsync()).Limit);
+        Assert.Equal(3, StoryLimit(await h.GetAsync()));
     }
 
     [Fact]
@@ -192,14 +255,24 @@ public class WipControllerTests
     }
 
     [Fact]
-    public void TheReadNamesStoriesAndBugs()
+    public async Task TheReadNamesBothSlicesInOrder()
     {
-        Assert.Equal(["story", "bug"], EfHatchPlaybook.SplitTypes(EfHatchWipLimit.StoriesAndBugs));
+        var h = await NewAsync();
+
+        var result = await h.GetAsync();
+
+        Assert.Equal(2, result.Slices.Count);
+        Assert.Equal(["story", "bug"], result.Slices[0].Types);
+        Assert.Equal(["epic"], result.Slices[1].Types);
     }
 
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+    private static int? StoryLimit(WipSectionDto dto) => dto.Slices[0].Limit;
+
+    private static int? EpicLimit(WipSectionDto dto) => dto.Slices[1].Limit;
 
     private static string BadRequestValue(ActionResult? result) =>
         Assert.IsType<BadRequestObjectResult>(result).Value as string ?? "";
@@ -214,6 +287,7 @@ public class WipControllerTests
     {
         public required WipController Wip { get; init; }
         public required HatchContext Db { get; init; }
+        public required StubCaller Caller { get; init; }
         public required int InProgress { get; init; }
         public required int InReview { get; init; }
         public required int Done { get; init; }
@@ -258,6 +332,7 @@ public class WipControllerTests
         {
             Wip = new WipController(db, caller),
             Db = db,
+            Caller = caller,
             InProgress = inProgress.Id,
             InReview = inReview.Id,
             Done = done.Id,
@@ -265,12 +340,14 @@ public class WipControllerTests
         };
     }
 
-    /// <summary>Whoever is holding the phone: a person, or the key an agent carries.</summary>
+    /// <summary>Whoever is holding the phone: a person, the key an agent carries, or a keyless runner where the wall is off.</summary>
     private sealed class StubCaller : ICallerIdentity
     {
         public EfPerson? Person { get; init; }
 
-        public EfApiKey? Key { get; init; }
+        public EfApiKey? Key { get; set; }
+
+        public Actor? Local { get; set; }
 
         public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
 
@@ -280,11 +357,12 @@ public class WipControllerTests
 
         public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(Key);
 
-        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult<Actor?>(null);
+        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult(Local);
 
-        public Task<bool> IsProgramAsync(CancellationToken ct) => Task.FromResult(Key is not null);
+        public Task<bool> IsProgramAsync(CancellationToken ct) =>
+            Task.FromResult(Key is not null || Local is { Kind: ActorKind.Key });
 
         public Task<string> ActorNameAsync(CancellationToken ct) =>
-            Task.FromResult(Person?.Name ?? Key?.Name ?? CallerIdentity.Unattributed);
+            Task.FromResult(Person?.Name ?? Key?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
     }
 }

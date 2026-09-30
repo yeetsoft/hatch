@@ -42,7 +42,7 @@ import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { useWipOverride } from '../lib/useWipOverride';
 import { overridden, wipRefusal } from '../lib/wipOverride';
-import { preview, runs, tightness } from '../lib/wip';
+import { preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
 import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
@@ -231,11 +231,14 @@ export function BoardPage() {
      status picker and a press there has nothing to do with a drag's preview. */
   const [landing, setLanding] = useState<IssueCard | null>(null);
 
-  // The count and the tint the band and the lit columns draw: the section's
-  // own load, or one more for as long as a counted card sits outside it.
-  const load = section ? preview(section, dragging ?? landing) : 0;
-  const tint: Tightness | null = section ? tightness(load, section.limit) : null;
-  const previewing = section !== null && dragging !== null && load > section.load;
+  // The counts and the tint the band and the lit columns draw: each slice's
+  // own load, or one more for as long as a card of its type sits outside it.
+  const loads = section ? preview(section, dragging ?? landing) : [];
+  const tint: Tightness | null = section ? tightest(section, loads) : null;
+  const previewing =
+    section !== null &&
+    dragging !== null &&
+    section.slices.some((slice, i) => slice.limit !== null && loads[i] > slice.load);
 
   // Reads the pointer against the board's own ids rather than dnd-kit's
   // default corner-distance scoring - see lib/aim.ts for why that matters.
@@ -512,7 +515,7 @@ export function BoardPage() {
           onDragEnd={(e) => void onDragEnd(e)}
         >
           <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
-            <WipBands runs={zone} section={section} load={load} />
+            <WipBands runs={zone} section={section} loads={loads} />
             {columns.map((status) => (
               <Column
                 key={status.id}

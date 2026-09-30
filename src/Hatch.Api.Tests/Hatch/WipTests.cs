@@ -19,23 +19,40 @@ public class WipTests
     // ---- The board's wip block ----
 
     [Fact]
-    public async Task StoriesAndBugsInTheSectionCount_TasksAndEpicsDoNot()
+    public async Task StoriesAndBugsInTheSectionCount_TasksDoNot()
     {
         var h = await NewAsync();
         await h.WipAsync(3, h.InProgress, h.InReview);
         await h.IssueAsync("story", h.InProgress);
         await h.IssueAsync("story", h.InReview);
         await h.IssueAsync("task", h.InProgress);
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        Assert.NotNull(wip);
+        var slice = wip!.Slices.Single(s => s.Types.SequenceEqual(new[] { "story", "bug" }));
+        Assert.Equal(3, slice.Limit);
+        Assert.Equal([h.InProgress, h.InReview], wip.StatusIds);
+        Assert.Equal(2, slice.Load);
+        Assert.Equal(0, slice.ClaimedInbound);
+    }
+
+    [Fact]
+    public async Task AnEpicInTheSection_CountsTowardTheEpicSliceAndNotTheOther()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        await h.WriteLimitAsync(2, EfHatchWipLimit.Epics);
+        await h.IssueAsync("story", h.InProgress);
         await h.IssueAsync("epic", h.InReview);
 
         var wip = (await h.BoardAsync()).Wip;
 
         Assert.NotNull(wip);
-        Assert.Equal(3, wip!.Limit);
-        Assert.Equal(["story", "bug"], wip.Types);
-        Assert.Equal([h.InProgress, h.InReview], wip.StatusIds);
-        Assert.Equal(2, wip.Load);
-        Assert.Equal(0, wip.ClaimedInbound);
+        var storyBug = wip!.Slices.Single(s => s.Types.SequenceEqual(new[] { "story", "bug" }));
+        var epics = wip.Slices.Single(s => s.Types.SequenceEqual(new[] { "epic" }));
+        Assert.Equal(1, storyBug.Load);
+        Assert.Equal(1, epics.Load);
     }
 
     [Fact]
@@ -48,7 +65,7 @@ public class WipTests
 
         var wip = (await h.BoardAsync()).Wip;
 
-        Assert.Equal(2, wip!.Load);
+        Assert.Equal(2, wip!.Slices[0].Load);
     }
 
     [Fact]
@@ -62,14 +79,14 @@ public class WipTests
         await h.ClaimAsync(claimed);
 
         var live = (await h.BoardAsync()).Wip;
-        Assert.Equal(3, live!.Load);
-        Assert.Equal(1, live.ClaimedInbound);
+        Assert.Equal(3, live!.Slices[0].Load);
+        Assert.Equal(1, live.Slices[0].ClaimedInbound);
 
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
 
         var expired = (await h.BoardAsync()).Wip;
-        Assert.Equal(2, expired!.Load);
-        Assert.Equal(0, expired.ClaimedInbound);
+        Assert.Equal(2, expired!.Slices[0].Load);
+        Assert.Equal(0, expired.Slices[0].ClaimedInbound);
     }
 
     [Fact]
@@ -87,8 +104,24 @@ public class WipTests
 
         var wip = (await h.BoardAsync()).Wip;
 
-        Assert.Equal(0, wip!.Load);
-        Assert.Equal(0, wip.ClaimedInbound);
+        Assert.Equal(0, wip!.Slices[0].Load);
+        Assert.Equal(0, wip.Slices[0].ClaimedInbound);
+    }
+
+    [Fact]
+    public async Task ALiveClaimOnAnEpicInTheFeederColumn_CountsInboundOnTheEpicSlice()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        await h.WriteLimitAsync(2, EfHatchWipLimit.Epics);
+        var claimed = await h.IssueAsync("epic", h.ToDo);
+        await h.ClaimAsync(claimed);
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        var epics = wip!.Slices.Single(s => s.Types.SequenceEqual(new[] { "epic" }));
+        Assert.Equal(1, epics.Load);
+        Assert.Equal(1, epics.ClaimedInbound);
     }
 
     [Fact]
@@ -103,12 +136,24 @@ public class WipTests
         var taskInSection = await h.IssueAsync("task", h.InReview);
 
         var section = await h.LoadAsync();
+        var slice = section!.SliceFor("story")!;
 
-        Assert.True(section!.Counted(await h.EntityAsync(inSection)));
-        Assert.True(section.Counted(await h.EntityAsync(claimedInToDo)));
-        Assert.False(section.Counted(await h.EntityAsync(unclaimedInToDo)));
-        Assert.False(section.Counted(await h.EntityAsync(taskInSection)));
-        Assert.Equal(2, section.Load);
+        Assert.True(slice.Counted(await h.EntityAsync(inSection)));
+        Assert.True(slice.Counted(await h.EntityAsync(claimedInToDo)));
+        Assert.False(slice.Counted(await h.EntityAsync(unclaimedInToDo)));
+        Assert.False(slice.Counted(await h.EntityAsync(taskInSection)));
+        Assert.Equal(2, slice.Load);
+    }
+
+    [Fact]
+    public async Task SliceForATask_IsNull()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+
+        var section = await h.LoadAsync();
+
+        Assert.Null(section!.SliceFor("task"));
     }
 
     [Fact]
@@ -125,7 +170,7 @@ public class WipTests
         var wip = (await h.BoardAsync()).Wip;
         Assert.NotNull(wip);
         Assert.DoesNotContain(h.InReview, wip!.StatusIds);
-        Assert.Equal(1, wip.Load);
+        Assert.Equal(1, wip.Slices[0].Load);
 
         var inProgress = await h.Db.Statuses.SingleAsync(s => s.Id == h.InProgress);
         inProgress.IsDeferred = true;
@@ -157,6 +202,38 @@ public class WipTests
         Assert.Equal(6, board.Statuses.Count);
         Assert.Single(board.Issues);
         Assert.Equal(h.ToDo, board.Issues[0].StatusId);
+    }
+
+    [Fact]
+    public async Task FlaggedColumnsWithNoRow_GiveANonNullSectionWithBothLimitsNullAndRealLoads()
+    {
+        var h = await NewAsync();
+        await h.FlagAsync(h.InProgress, h.InReview);
+        await h.IssueAsync("story", h.InProgress);
+        await h.IssueAsync("epic", h.InReview);
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        Assert.NotNull(wip);
+        Assert.Equal(2, wip!.Slices.Count);
+        Assert.All(wip.Slices, s => Assert.Null(s.Limit));
+        var storyBug = wip.Slices.Single(s => s.Types.SequenceEqual(new[] { "story", "bug" }));
+        var epics = wip.Slices.Single(s => s.Types.SequenceEqual(new[] { "epic" }));
+        Assert.Equal(1, storyBug.Load);
+        Assert.Equal(1, epics.Load);
+    }
+
+    [Fact]
+    public async Task AStrayRowWithOtherTypes_IsIgnored()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        h.Db.WipLimits.Add(new EfHatchWipLimit { Types = "task", Limit = 5 });
+        await h.Db.SaveChangesAsync();
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        Assert.Equal(2, wip!.Slices.Count);
     }
 
     // ---- The sentence ----
@@ -248,6 +325,12 @@ public class WipTests
 
         public async Task WipAsync(int limit, params int[] statusIds)
         {
+            await FlagAsync(statusIds);
+            await WriteLimitAsync(limit);
+        }
+
+        public async Task FlagAsync(params int[] statusIds)
+        {
             foreach (var id in statusIds)
             {
                 var status = await Db.Statuses.SingleAsync(s => s.Id == id);
@@ -255,12 +338,11 @@ public class WipTests
             }
 
             await Db.SaveChangesAsync();
-            await WriteLimitAsync(limit);
         }
 
-        public async Task WriteLimitAsync(int limit)
+        public async Task WriteLimitAsync(int limit, string types = EfHatchWipLimit.StoriesAndBugs)
         {
-            Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = limit });
+            Db.WipLimits.Add(new EfHatchWipLimit { Types = types, Limit = limit });
             await Db.SaveChangesAsync();
         }
 
