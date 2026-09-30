@@ -15,9 +15,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// draws: <see cref="RequireRoleAttribute"/> is <c>AllowMultiple = false</c>,
 /// so a method-level attribute silently *replaces* a class-level one rather
 /// than tightening it. Decorating every action explicitly is what keeps
-/// <see cref="PutExpressSkips"/> closed to a key whatever else is added
-/// beside it - it decides which gates the loop may pass unattended, the same
-/// kind of power <see cref="PutRepositories"/> guards over there.
+/// <see cref="PutExpressSkips"/> and <see cref="PutParentPulls"/> closed to a
+/// key whatever else is added beside it - each decides which gates the loop
+/// may pass unattended, the same kind of power <see cref="PutRepositories"/>
+/// guards over there.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
@@ -31,7 +32,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
             .Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips))
+                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls))
             .ToListAsync(ct);
 
         return statuses;
@@ -64,7 +65,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             nameof(GetStatuses),
             new StatusDto(
                 status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-                status.Color, status.ExpressSkips));
+                status.Color, status.ExpressSkips, status.ParentPulls));
     }
 
     [HttpPatch("{id:int}")]
@@ -96,7 +97,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips);
+            status.Color, status.ExpressSkips, status.ParentPulls);
     }
 
     /// <summary>
@@ -118,7 +119,29 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips);
+            status.Color, status.ExpressSkips, status.ParentPulls);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Parent pulls</em>. Its own action rather than one
+    /// more field on <see cref="PatchStatus"/>, for the same reason
+    /// <see cref="PutExpressSkips"/> is: this one decides which columns carry a
+    /// child on with no session while its parent stands in the implementation
+    /// column, and that is a playbook's kind of power.
+    /// </summary>
+    [HttpPut("{id:int}/parent-pulls")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutParentPulls(int id, ParentPullsRequest request, CancellationToken ct)
+    {
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        status.ParentPulls = request.ParentPulls;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls);
     }
 
     /// <summary>

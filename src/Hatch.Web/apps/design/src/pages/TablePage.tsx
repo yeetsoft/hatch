@@ -8,6 +8,13 @@ export function TablePage() {
       blurb="The rows. It owns the appearance and nothing else — <thead> and <tbody> pass straight through, which is what keeps admin's editing rows and nested tables plain JSX."
     >
       <GallerySection
+        title="At phone width"
+        note="An iframe, not a narrowed box: the forced sideways scroll below the breakpoint is a real @media (max-width: 40rem), which reads this frame's own width. Scroll any table inside it sideways — every one scrolls here, not only the one passing scroll."
+      >
+        <iframe className="gallery-phone-frame" src="/apps/design/table" title="Table at phone width" />
+      </GallerySection>
+
+      <GallerySection
         title="A table, in the card it lives in"
         note="Headers sit at the label register — uppercase, tracked out, muted — so the header row reads as a legend rather than as the first row of data. Rows are separated by a hairline, and the last one has none: a rule above nothing is a rule that looks like a missing row."
       >

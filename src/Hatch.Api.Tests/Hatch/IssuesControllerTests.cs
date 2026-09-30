@@ -1927,6 +1927,48 @@ public class IssuesControllerTests
         Assert.True(patched.ExpressSkips);
     }
 
+    // ---- Parent pulls ----
+    //
+    // The pull half of the same kind of flag: whether a child standing here is
+    // carried on to the next column with no session while its parent stands in
+    // the implementation column. Set only through its own route -
+    // PutParentPulls - and untouched by the two ordinary routes, the same
+    // split ExpressSkips draws.
+
+    [Fact]
+    public async Task ANewColumn_StartsWithParentPullsUnticked()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
+
+        Assert.False(created.ParentPulls);
+    }
+
+    [Fact]
+    public async Task PutParentPulls_TicksAndUnticksIt()
+    {
+        var h = await NewAsync();
+
+        var ticked = Value(await h.Statuses.PutParentPulls(h.Todo, new ParentPullsRequest(true), default));
+        Assert.True(ticked.ParentPulls);
+
+        var unticked = Value(await h.Statuses.PutParentPulls(h.Todo, new ParentPullsRequest(false), default));
+        Assert.False(unticked.ParentPulls);
+    }
+
+    [Fact]
+    public async Task APatchOfOtherFields_LeavesParentPullsAlone()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutParentPulls(h.Todo, new ParentPullsRequest(true), default);
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, new StatusPatchRequest("later", null, null), default));
+
+        Assert.Equal("later", patched.Name);
+        Assert.True(patched.ParentPulls);
+    }
+
     [Fact]
     public async Task ReorderingAColumn_MovesIt()
     {

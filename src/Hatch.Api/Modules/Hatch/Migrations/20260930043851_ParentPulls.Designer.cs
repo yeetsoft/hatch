@@ -3,6 +3,7 @@ using System;
 using Hatch.Api.Modules.Hatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hatch.Api.Modules.Hatch.Migrations
 {
     [DbContext(typeof(HatchContext))]
-    partial class HatchContextModelSnapshot : ModelSnapshot
+    [Migration("20260930043851_ParentPulls")]
+    partial class ParentPulls
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -199,6 +202,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<bool>("Expedited")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("Express")
                         .HasColumnType("boolean");
 
@@ -211,9 +217,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<long?>("ParentId")
                         .HasColumnType("bigint");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("integer");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer");

@@ -230,6 +230,11 @@ gets a decision. These controls share `--r-ctl` and a one-step-darker border on
 hover with buttons, and pad one pixel short of a button on the block axis so the
 two are the same height on a row.
 
+On a coarse pointer the same list is restated at `--t-section` (16px) instead
+of `--t-body` (14px): iOS Safari zooms the page on focusing any control under
+16px, which is the jiggle a phone user does to get the page back after
+editing. Above 16px buys nothing, so the desk keeps `--t-body`.
+
 Two rules are deliberately **not** in `base.css`, and each app states its own:
 
 - **`p { margin: 0 }`.** An app laid out against the browser's default
@@ -299,6 +304,22 @@ because a dialog of four fields is better as one block than as three. It is a
 modifier and not a new default for the same reason: the dialogs that pass no
 footer are laid out against the panel being the scroller, and they stay that
 way.
+
+Below `40rem` the panel is a sheet rather than a keyhole: full width, flush to
+the bottom, rising with only a small top inset, capped at `100dvh` less that
+same inset and scrolling inside. `footer` still pins the foot exactly as it
+does at desk width. While a sheet is open the page behind it does not scroll —
+`body:has(.hatch-modal__overlay)` inside the same media query, pure CSS and no
+`Modal.tsx` effect, because `Modal` is not portalled and `:has()` stays correct
+when a dialog stacks over another rather than needing a mount/unmount count.
+
+`<Table>` always renders its scroll wrapper, whether or not `scroll` is passed.
+Above `40rem` an unwrapped table without `scroll` looks exactly as it always
+has — the wrapper carries no `overflow` rule of its own there. `scroll` opts a
+table into a sideways-scrolling box at any width, for the table that is wider
+than the page; below `40rem` every table scrolls that way automatically,
+`scroll` or not, because a table is the one thing on a page that genuinely
+cannot reflow to a phone's width.
 
 ### Pages that are not React apps
 

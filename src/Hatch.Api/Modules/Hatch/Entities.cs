@@ -225,6 +225,18 @@ public class EfHatchStatus
     public bool ExpressSkips { get; set; }
 
     /// <summary>
+    /// Whether a child standing here is carried on to the next column with no
+    /// session while its parent stands in the implementation column - see
+    /// <see cref="EfHatchIssue"/>'s parent/child relationship.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutParentPulls"/>) for the same reason as
+    /// <see cref="ExpressSkips"/>: it decides which gates the loop may pass
+    /// unattended, and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool ParentPulls { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave

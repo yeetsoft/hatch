@@ -11,6 +11,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   isDeferred: false,
   isWip: false,
   expressSkips: false,
+  parentPulls: false,
   color: '#336699',
   ...over,
 });

@@ -33,7 +33,18 @@
 
 /* A table is the one thing on an admin page that genuinely cannot reflow: its
    columns mean something in relation to each other. So it scrolls sideways
-   inside its own box rather than squeezing a date column to four characters. */
-.hatch-table-scroll {
+   inside its own box rather than squeezing a date column to four characters.
+
+   The wrapper itself is always present (Table.tsx always renders it) so a
+   scroll box can be added below the breakpoint with no markup change; the
+   bare .hatch-table-scroll carries no overflow rule above it; an unstyled
+   wrapper <div> changes nothing visually. */
+.hatch-table-scroll--scroll {
   overflow-x: auto;
+}
+
+@media (max-width: 40rem) {
+  .hatch-table-scroll {
+    overflow-x: auto;
+  }
 }

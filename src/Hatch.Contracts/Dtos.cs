@@ -67,7 +67,7 @@ public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 /// </param>
 public record StatusDto(
     int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
-    bool ExpressSkips = false);
+    bool ExpressSkips = false, bool ParentPulls = false);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
@@ -137,6 +137,14 @@ public record WipSectionRequest(string? Limit = null, IReadOnlyList<int>? Status
 /// and the caller says which it meant.
 /// </summary>
 public record ExpressSkipsRequest(bool ExpressSkips);
+
+/// <summary>
+/// Whether a child standing in this column is carried on to the next one with
+/// no session while its parent stands in the implementation column. One
+/// required boolean, for the reason <see cref="ExpressSkipsRequest"/> is: the
+/// same route both ticks and unticks it, and the caller says which it meant.
+/// </summary>
+public record ParentPullsRequest(bool ParentPulls);
 
 // ---- Issues ----
 
