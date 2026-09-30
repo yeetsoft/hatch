@@ -216,18 +216,18 @@ export const setAssignee = (key: string, request: AssigneeRequest) =>
     body: JSON.stringify(request),
   });
 
-/** *This one first.* Its own route rather than a field on the patch, and for
-    the same reason the assignee has one: writing it is closed to an API key,
-    because expedite decides what the loop reaches for first - see
-    IssueExpediteController.
+/** *This one first, or further.* Its own route rather than a field on the
+    patch, for the same reason the assignee has one: writing it is closed to
+    an API key, because priority decides what the loop reaches for first and,
+    at emergency, what it preempts - see IssueExpediteController.
 
-    The state is sent rather than a toggle, so two browsers looking at the same
-    card cannot flip it back and forth and leave the answer depending on which
-    request landed second. */
-export const setExpedited = (key: string, expedited: boolean) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/expedite`, {
+    The level is sent by name rather than as a step, so two browsers looking
+    at the same card cannot move it in conflicting directions and leave the
+    answer depending on which request landed second. */
+export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'emergency') =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/priority`, {
     method: 'PUT',
-    ...asJson({ expedited }),
+    ...asJson({ priority }),
   });
 
 /** Carried past a column marked *Express skips* with no session. Its own
@@ -235,7 +235,7 @@ export const setExpedited = (key: string, expedited: boolean) =>
     has one: writing it is closed to an API key, because express decides
     which gates the loop may pass unattended - see IssueExpressController.
 
-    The state is sent rather than a toggle, for the same reason `setExpedited`
+    The state is sent rather than a toggle, for the same reason `setPriority`
     sends one. */
 export const setExpress = (key: string, express: boolean) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/express`, {

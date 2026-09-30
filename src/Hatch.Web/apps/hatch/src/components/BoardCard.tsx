@@ -25,10 +25,10 @@ interface BoardCardProps {
 /** Owed an answer, and drawn as such wherever the card is drawn. */
 const askingClass = (card: IssueCard) => (card.openQuestions > 0 ? ' asking' : '');
 
-/** Somebody said this one first. Wherever the card is drawn, including the
-    preview under the cursor - a card being moved is exactly the card where
-    knowing it is the one going first matters. */
-const expeditedClass = (card: IssueCard) => (card.expedited ? ' expedited' : '');
+/** Somebody said this one first, or emergency-first. Wherever the card is
+    drawn, including the preview under the cursor - a card being moved is
+    exactly the card where knowing which one goes first matters. */
+const priorityClass = (card: IssueCard) => (card.priority === 'normal' ? '' : ` ${card.priority}`);
 
 /**
  * One card. A <Link> as well as a draggable, so middle-click, copy-link and
@@ -58,7 +58,7 @@ export function BoardCard({
     <Link
       ref={setNodeRef}
       to={`/issues/${card.key}`}
-      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${expeditedClass(card)}${found ? ' found' : ''}`}
+      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}`}
       // How the board finds the element again: the console's take scrolls to it and focuses it.
       data-issue-key={card.key}
       style={{ transform: CSS.Transform.toString(transform), transition }}
@@ -85,7 +85,7 @@ export function BoardCard({
  */
 export function CardPreview({ card, waiting = false, terminal = false }: CardProps) {
   return (
-    <div className={`hatch-card hatch-card-preview${askingClass(card)}${expeditedClass(card)}`}>
+    <div className={`hatch-card hatch-card-preview${askingClass(card)}${priorityClass(card)}`}>
       <CardFace card={card} waiting={waiting} terminal={terminal} />
     </div>
   );
@@ -109,9 +109,16 @@ function CardFace({ card, waiting, terminal }: Required<Omit<CardProps, 'card'>>
             the end of the head, because it is a fact about which card to read
             next and the eye is already at the left edge - where the stripe in
             App.css is drawing the same thing at arm's length. */}
-        {card.expedited && (
-          <span className="hatch-card-expedited" title="Expedited - this one goes first">
-            ↑
+        {card.priority !== 'normal' && (
+          <span
+            className={`hatch-card-expedited${card.priority === 'emergency' ? ' emergency' : ''}`}
+            title={
+              card.priority === 'emergency'
+                ? 'Emergency - the highest priority, first above everything expedited'
+                : 'Expedited - this one goes first'
+            }
+          >
+            {card.priority === 'emergency' ? '🚨' : '↑'}
           </span>
         )}
         {/* Express, beside expedite and drawn the same way - its own glyph and

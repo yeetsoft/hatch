@@ -19,7 +19,7 @@ import {
   patchIssuePlaybook,
   removeDependency,
   setAssignee,
-  setExpedited,
+  setPriority,
   setExpress,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
@@ -296,10 +296,10 @@ export function IssuePage() {
      all redraw from the server's answer rather than from the assumption that
      the press worked. A refusal lands in `error` above in the server's own
      words, and the control goes back to saying what the issue still holds. */
-  const saveExpedited = useCallback(
-    async (expedited: boolean) => {
+  const savePriority = useCallback(
+    async (priority: 'normal' | 'expedited' | 'emergency') => {
       try {
-        await setExpedited(key, expedited);
+        await setPriority(key, priority);
         await load();
       } catch (err) {
         setError(message(err));
@@ -309,7 +309,7 @@ export function IssuePage() {
   );
 
   /* Carried past a column marked Express skips, with no session. Its own call
-     for the reason `saveExpedited` is - its own endpoint, closed to an API
+     for the reason `savePriority` is - its own endpoint, closed to an API
      key - and otherwise exactly it. */
   const saveExpress = useCallback(
     async (express: boolean) => {
@@ -532,18 +532,18 @@ export function IssuePage() {
           </Field>
 
           {/* `as="div"` for the reason the fields above it are. The control
-              draws the current state, so this field says whether the issue is
-              expedited without anybody pressing anything - which is the point
-              of it being here as well as on the card. */}
+              draws the current level, so this field says how urgent the issue
+              is without anybody pressing anything - which is the point of it
+              being here as well as on the card. */}
           <Field
-            label="Expedite"
+            label="Priority"
             as="div"
-            hint="This one first: to the top of its column, and the first thing the dispatcher considers."
+            hint="Normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it."
           >
             <ExpediteControl
-              expedited={issue.expedited}
+              priority={issue.priority}
               directory={directory}
-              onChange={(expedited) => void saveExpedited(expedited)}
+              onChange={(priority) => void savePriority(priority)}
             />
           </Field>
 
