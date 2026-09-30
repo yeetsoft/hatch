@@ -1466,11 +1466,13 @@ matter under a hundred lines of tidying.
 
 ### Playbook
 
-`EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Prompt`, `Model`,
-`Effort`. Unique on `(from, to, types)`.
+`EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
+`Model`, `Effort`. Unique on `(from, to, types, shape)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
-some type from one column to the next. See [the dispatcher](#the-dispatcher).
+some type and shape from one column to the next. `Shape` is one of `any`
+(the issue's children are not consulted), `leaf` (it has none) or `parent` (it
+has at least one). See [the dispatcher](#the-dispatcher).
 
 ## The wall, the roles, and API keys
 
@@ -2680,11 +2682,22 @@ different boards, two different sentences, no second command.
 
 ### Playbooks
 
-A playbook row is `(from column, to column, issue types) → prompt, model,
-effort`. A row naming the issue's type beats a row naming every type, and ties
-go to the older row, so "Breakdown to Backlog, epics" can say something
-different from "Breakdown to Backlog, anything else" without either having to
-know about the other.
+A playbook row is `(from column, to column, issue types, issue shape) →
+prompt, model, effort`. Shape is the second axis beside types: `any` (the
+issue's children are not consulted), `leaf` (it has none) or `parent` (it has
+at least one) - so a parent's closeout and a childless issue's implementation,
+both `In Progress → In Review` for the same type, can be two different rows at
+two different prices instead of one row doing both jobs.
+
+Specificity is one number, 0 through 3, and the ordering it produces is
+type+shape > type-only > shape-only > neither: naming the type is worth more
+than naming the shape, so a row that names only a shape (1) never outranks one
+that names only a type (2) - only a row naming both (3) beats a type-only row.
+Underneath both axes, ties go to the older row. So "Breakdown to Backlog,
+epics" can say something different from "Breakdown to Backlog, anything else"
+without either having to know about the other, and "In Progress to In Review,
+stories, parents" can say something different from "In Progress to In Review,
+stories" the same way.
 
 The matrix exists because **"do the next increment" is not one job**. Turning a
 paragraph of intent into an epic with stories under it is the hardest thinking

@@ -20,9 +20,12 @@ import {
   PLAYBOOK_EFFORT_DEFAULT,
   PLAYBOOK_MODELS,
   PLAYBOOK_MODEL_DEFAULT,
+  PLAYBOOK_SHAPES,
+  PLAYBOOK_SHAPE_DEFAULT,
   type IssueType,
   type Playbook,
   type PlaybookCreateRequest,
+  type PlaybookShape,
   type Status,
 } from '../types';
 
@@ -72,6 +75,7 @@ export function PlaybooksPage() {
               <tr>
                 <th>Transition</th>
                 <th>Types</th>
+                <th>Shape</th>
                 <th>Model</th>
                 <th>Effort</th>
                 <th />
@@ -107,7 +111,13 @@ function Row({
   onDelete,
 }: {
   playbook: Playbook;
-  onPatch: (request: { types?: IssueType[]; prompt?: string; model?: string; effort?: string }) => void;
+  onPatch: (request: {
+    types?: IssueType[];
+    shape?: PlaybookShape;
+    prompt?: string;
+    model?: string;
+    effort?: string;
+  }) => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -128,6 +138,14 @@ function Row({
         </td>
         <td>
           <TypesCell types={playbook.types} onChange={(types) => onPatch({ types })} />
+        </td>
+        <td>
+          <Choice
+            label={`${transitionLabel(playbook)} shape`}
+            value={playbook.shape}
+            options={PLAYBOOK_SHAPES}
+            onChange={(shape) => onPatch({ shape: shape as PlaybookShape })}
+          />
         </td>
         <td>
           <Choice
@@ -156,7 +174,7 @@ function Row({
       </tr>
       {open && (
         <tr>
-          <td colSpan={5}>
+          <td colSpan={6}>
             <PromptCell prompt={playbook.prompt} onSave={(prompt) => onPatch({ prompt })} />
           </td>
         </tr>
@@ -247,6 +265,7 @@ function NewPlaybook({
   // until somebody notices.
   const [model, setModel] = useState<string>(PLAYBOOK_MODEL_DEFAULT);
   const [effort, setEffort] = useState<string>(PLAYBOOK_EFFORT_DEFAULT);
+  const [shape, setShape] = useState<PlaybookShape>(PLAYBOOK_SHAPE_DEFAULT);
 
   return (
     <Card>
@@ -276,6 +295,9 @@ function NewPlaybook({
         <Field label="Types" hint="Leave all unticked for every type." as="div">
           <TypesCell types={types} onChange={setTypes} />
         </Field>
+        <Field label="Shape" hint="Whether the issue's children matter: any, only a leaf, or only a parent.">
+          <Choice value={shape} options={PLAYBOOK_SHAPES} onChange={(s) => setShape(s as PlaybookShape)} />
+        </Field>
         <Field label="Model" hint="Which model the dispatched session runs on.">
           <Choice value={model} options={PLAYBOOK_MODELS} onChange={setModel} />
         </Field>
@@ -301,7 +323,7 @@ function NewPlaybook({
              that says nothing about why. */
           disabled={!prompt.trim()}
           onClick={() => {
-            onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort });
+            onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort, shape });
             setPrompt('');
             setTypes([]);
           }}

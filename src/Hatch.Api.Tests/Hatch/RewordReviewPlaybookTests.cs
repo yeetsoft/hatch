@@ -85,7 +85,7 @@ public class RewordReviewPlaybookTests
         var now = DateTimeOffset.UtcNow;
         EfHatchPlaybook Row(int from, int to, string types, string prompt) => new()
         {
-            FromStatusId = from, ToStatusId = to, Types = types, Prompt = prompt,
+            FromStatusId = from, ToStatusId = to, Types = types, Shape = "any", Prompt = prompt,
             Model = "sonnet", Effort = "high", CreatedAt = now, UpdatedAt = now,
         };
 

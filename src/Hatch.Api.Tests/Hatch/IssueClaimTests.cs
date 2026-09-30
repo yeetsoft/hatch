@@ -1319,6 +1319,7 @@ public class IssueClaimTests
             FromStatusId = status.Id,
             ToStatusId = doing.Id,
             Types = "",
+            Shape = "any",
             Prompt = "do the thing",
             Model = "sonnet",
             Effort = "medium",
