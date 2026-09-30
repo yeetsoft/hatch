@@ -33,12 +33,18 @@ public static class UtilizationStates
     public const string Stale = "stale";
 }
 
-/// <summary>The three windows a runner's heartbeat reports - see <see cref="RunnerUsageWindowDto"/>.</summary>
+/// <summary>The windows a runner's heartbeat reports - see <see cref="RunnerUsageWindowDto"/>.</summary>
 public static class UtilizationWindows
 {
     public const string Session = "session";
     public const string Weekly = "weekly";
     public const string WeeklyModel = "weeklyModel";
+
+    /// <summary>
+    /// The account's own extra-usage balance, off the CLI's <c>/usage</c>
+    /// probe between sessions - never in a session's own stream. See HA-173.
+    /// </summary>
+    public const string Extra = "extra";
 }
 
 /// <summary>What a row is painted, decided on the server so the rule lives in one file and the client paints what it is told.</summary>

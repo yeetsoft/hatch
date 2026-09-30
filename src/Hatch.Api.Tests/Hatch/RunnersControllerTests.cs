@@ -262,6 +262,33 @@ public class RunnersControllerTests
         Assert.Contains("63", row.Usage);
     }
 
+    /// <summary>
+    /// HA-173: a fourth window the session stream never carries, and a scoped
+    /// weekly one named by the account - both kept exactly as the heartbeat
+    /// sent them, the same as every window Hatch has never seen before.
+    /// </summary>
+    [Fact]
+    public async Task ABeatCarryingExtraUsageAndANamedScopedWindow_KeepsBothAsSent()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage:
+            [
+                new RunnerUsageWindowDto("extra", "Extra usage", 12, null),
+                new RunnerUsageWindowDto("weeklyModel", "Weekly (Opus 5)", 88, null),
+            ],
+            UsageReadAt: Now));
+
+        var row = await h.RowAsync();
+        Assert.Contains("\"extra\"", row.Usage);
+        Assert.Contains("\"Extra usage\"", row.Usage);
+        Assert.Contains("\"weeklyModel\"", row.Usage);
+        Assert.Contains("\"Weekly (Opus 5)\"", row.Usage);
+    }
+
     [Fact]
     public async Task ASecondBeatCarryingNoReading_LeavesTheStoredOneWhereItWas()
     {
