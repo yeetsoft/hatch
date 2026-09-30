@@ -26,7 +26,6 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
-using Npgsql;
 using Quartz;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -111,9 +110,20 @@ builder.Services.AddQuartz(q =>
         sb.UseSystemTextJsonSerializer();
     });
 });
+// The hosted service is the only thing that stops the scheduler. It waits for
+// its own background Start() to finish first, which nothing else can see:
+// Quartz reports IsStarted before the clustered job store's first check-in has
+// run, and a Shutdown() landing inside that check-in either threw or awaited a
+// cluster-manager task Quartz had already abandoned, forever (HA-171).
+//
+// Not waiting for running jobs, on purpose: Quartz waits with a bare
+// Task.WaitAll that no stop token reaches, so one slow job would hold a pod's
+// shutdown until it is killed. This is also what every shutdown already did -
+// the ApplicationStopping callback this replaced stopped the scheduler with
+// `false` before the hosted service got the chance to.
 builder.Services.AddQuartzHostedService(opt =>
 {
-    opt.WaitForJobsToComplete = true;
+    opt.WaitForJobsToComplete = false;
 });
 // AddQuartz only registers ISchedulerFactory; JobsInit and DevicesController
 // need IScheduler directly, and GetScheduler() returns the same underlying
@@ -418,49 +428,12 @@ using (var scope = app.Services.CreateScope())
     await init.WireUpTriggerableJob<BackfillChannelHistory>(BackfillChannelHistory.Name, BackfillChannelHistory.Group);
 }
 
-// Graceful shutdown. IHostApplicationLifetime runs every ApplicationStopping
-// callback through CancellationTokenSource.Cancel(throwOnFirstException:
-// false) and logs whatever comes out of it at Critical, worded as "An error
-// occurred stopping the application" - indistinguishable, from the log alone,
-// from the process itself having failed to stop. A scheduler that could not
-// shut down cleanly is worth a Warning that says so, not that.
-var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-var quartzConnectionString = builder.Configuration.GetConnectionString("Quartz")!;
-lifetime.ApplicationStopping.Register(() =>
-{
-    var scheduler = app.Services.GetRequiredService<IScheduler>();
-    if (!scheduler.IsStarted) return;
-
-    try
-    {
-        scheduler.Shutdown(waitForJobsToComplete: false).GetAwaiter().GetResult();
-
-        // Quartz's own cluster recovery only notices a stopped node once its
-        // qrtz_scheduler_state row goes stale past the check-in interval - so
-        // without this, a clean stop still leaves a surviving node's jobs
-        // unclaimed until that interval elapses. Deleting the row here is what
-        // makes a clean stop free the jobs immediately.
-        //
-        // This is only ever this instance's own row because instanceId is
-        // clusterwide-unique - HA-154 found that quartz.scheduler.instanceId is
-        // never configured here, so every replica currently carries the same
-        // default ("NON_CLUSTERED"). That is a pre-existing, separate defect
-        // (every replica's checkin collapses onto one row) and is not fixed by
-        // this change; it is flagged on the ticket rather than folded in here.
-        using var connection = new NpgsqlConnection(quartzConnectionString);
-        connection.Open();
-        using var command = new NpgsqlCommand(
-            "DELETE FROM qrtz_scheduler_state WHERE sched_name = @schedName AND instance_name = @instanceId",
-            connection);
-        command.Parameters.AddWithValue("schedName", scheduler.SchedulerName);
-        command.Parameters.AddWithValue("instanceId", scheduler.SchedulerInstanceId);
-        command.ExecuteNonQuery();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "The Quartz scheduler did not shut down cleanly.");
-    }
-});
+// A clean stop frees this node's cluster row. Attached here rather than through
+// AddQuartz because it needs the scheduler instance, and resolving IScheduler
+// from inside the scheduler's own construction would be a cycle.
+var scheduler = app.Services.GetRequiredService<IScheduler>();
+scheduler.ListenerManager.AddSchedulerListener(
+    ActivatorUtilities.CreateInstance<SchedulerCheckout>(app.Services, builder.Configuration.GetConnectionString("Quartz")!));
 
 ////////
 /// HTTP Server

@@ -64,8 +64,27 @@ jobs:
       # against the Postgres above, and Hatch.Cli.Tests - the runner behind
       # `hatch.sh work` and `hatch.sh go-to-work` - which needs neither a
       # database nor a network, since its wire and its sessions are stubs.
+      #
+      # A test that stops making progress is killed at two minutes and named,
+      # rather than spending the job's whole timeout in silence - which is how
+      # HA-171's hang looked: the Cli suite reported, then nothing for fourteen
+      # minutes. The dump of every thread it leaves is uploaded below.
       - name: Test
-        run: dotnet test src/Hatch.slnx --no-build --configuration Release
+        run: |
+          dotnet test src/Hatch.slnx --no-build --configuration Release \
+            --blame-hang-timeout 2m \
+            --blame-hang-dump-type mini \
+            --results-directory "${{ runner.temp }}/test-results"
+
+      # Only on failure, and only if there is anything: a green run leaves no
+      # dump, and a red one that did not hang leaves nothing worth keeping.
+      - name: Upload hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: ${{ runner.temp }}/test-results
+          if-no-files-found: ignore
 
   # The shippable `hatch`, for every platform this house runs on.
   #
