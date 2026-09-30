@@ -575,6 +575,21 @@ public sealed record ConfigCommand(
         else
             Say.Line("runner:           <not in a checkout>");
 
+        // Environment-only, like HATCH_HEARTBEAT beside it - never a line in
+        // FileNames, and so never a candidate for the loop below - but worth
+        // seeing here regardless, since it is the number a deploy is measured
+        // against.
+        var retryFold = fold("HATCH_RETRY_SECONDS");
+        var retryWhere = retryFold.From == Settings.Layer.Unset ? "  (default)" : $"  ({Where(retryFold.From)})";
+        var retrySeconds = retryFold.Value is { Length: > 0 } retryRaw && int.TryParse(retryRaw, out var parsedRetry) && parsedRetry >= 0
+            ? parsedRetry
+            : 90;
+
+        // Its own name is already longer than the column every other line
+        // pads to, so this is set apart with two spaces rather than forced
+        // into alignment with the rest.
+        Say.Line($"HATCH_RETRY_SECONDS:  {retrySeconds}{retryWhere}");
+
         foreach (var name in Settings.FileNames)
         {
             var (value, from) = fold(name);

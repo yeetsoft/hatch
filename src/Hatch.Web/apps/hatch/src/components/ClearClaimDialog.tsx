@@ -6,13 +6,11 @@ import type { IssueClaim } from '../types';
  * The speed bump in front of taking a ticket back off a runner.
  *
  * It exists for one sentence, and the sentence is the consequence rather than
- * "are you sure": **clearing the claim does not stop the runner.** The lease is
- * a lock on the board, not a handle on a process - the session keeps running,
- * keeps pushing, and may still move this ticket, because a move is not gated on
- * a token. What clearing does is make the ticket claimable again, so the next
- * pass is free to spawn a second session at it, and then two of them are
- * writing to one branch. That is worth knowing before pressing, and nowhere
- * else on the page says it.
+ * "are you sure": clearing the claim stops the runner, but not at once. Its
+ * next heartbeat - within a minute by default - is refused, and that is what
+ * ends the session; the ticket is claimable again from the moment the clear
+ * lands, not from the moment the runner notices. That gap is worth knowing
+ * before pressing, and nowhere else on the page says it.
  *
  * Presentational, like CloseSubtreeDialog, and rendered unconditionally for the
  * same reason: the modal's own focus, escape and scrim handling is the one that
@@ -44,9 +42,9 @@ export function ClearClaimDialog({
         </p>
 
         <p>
-          Clearing the claim <strong>does not stop the runner</strong>. That session keeps going, keeps pushing,
-          and may still move this ticket. It only makes {issueKey} claimable again — so the next pass may start a
-          second session on it, and the two would then both be writing to it.
+          Clearing the claim makes {issueKey} claimable again straight away, and stops the runner's session at its
+          next heartbeat — <strong>within a minute by default</strong>. Until then that session may still push or
+          move the ticket, so a second session claimed in the gap would be writing to it too.
         </p>
 
         <p className="text-muted">Clear it when the runner is known to be gone or known to be wrong.</p>

@@ -79,6 +79,20 @@ public static class Prompt
             lines.Add("");
         }
 
+        // A ticket one or more increments in a row have already spent money on
+        // and left where it was. Said before the decisions, which are the
+        // newer and more specific of the two: this is the older, more general
+        // context a session should read first.
+        if (work.LetGo > 0)
+        {
+            lines.Add("## This ticket was let go");
+            lines.Add("");
+            lines.Add($"The last {work.LetGo} increment(s) on this ticket ended without moving it, and were");
+            lines.Add("let go rather than flagged. The comments on the ticket say why, and what each one");
+            lines.Add("left behind - read them, and continue that work rather than starting over.");
+            lines.Add("");
+        }
+
         // Decisions that were asked for and given, on this ticket, before now.
         // Carried into the prompt rather than left for the agent to find in the
         // comment thread, because the one thing a session must not do is reopen
@@ -427,6 +441,9 @@ public static class Prompt
         "",
         $"{key} should be in \"{to}\" when you stop, and no further.",
         "Only the operator moves work into a terminal column.",
+        "An increment that leaves this ticket where it found it is recorded as having",
+        "done nothing, whatever else it spent its time on - so move it, or ask, before you",
+        "stop.",
         "",
         "Do not edit playbooks. The API refuses it, and the refusal is deliberate:",
         "an agent that could widen its own instructions and its own budget is a loop",

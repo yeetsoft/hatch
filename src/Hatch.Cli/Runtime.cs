@@ -63,6 +63,13 @@ public sealed record Runtime(
     public Runners Runners() => new(Board.Client, RunnerName);
 
     /// <summary>
+    /// The same board, quiet - what the idle poll reads with, since it says
+    /// nothing about weather today, the way a claim's own heartbeat does not
+    /// either. See <see cref="HatchClient.Quiet"/>.
+    /// </summary>
+    public Board QuietBoard => new(Board.Client.Quiet());
+
+    /// <summary>
     /// How a checkout is made current between increments - one path, and the
     /// base branch to reset it to. Replaceable so a test can assert the order a
     /// pass does things in - the claim, then the reset, then the spawn - without
@@ -112,7 +119,7 @@ public sealed record Runtime(
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName)),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain)),
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

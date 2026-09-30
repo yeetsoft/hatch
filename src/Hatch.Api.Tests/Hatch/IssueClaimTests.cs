@@ -88,6 +88,51 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task ATakeoverOfALapsedLease_WritesWhoStoppedAnsweringBeforeWhoHoldsItNow()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+        await h.TakeAsync(issue, "elsewhere:/checkouts/two");
+
+        Assert.Equal(
+            [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimLapsed, EfHatchIssueEvent.ClaimTaken],
+            await h.EventKindsAsync(issue));
+
+        var lapsed = (await h.EventsAsync(issue))[1];
+        Assert.Equal("Nathan on somewhere:/checkouts/one", lapsed.Payload!.Value.GetProperty("from").GetString());
+        Assert.Equal(Now, lapsed.Payload!.Value.GetProperty("heardAt").GetDateTimeOffset());
+    }
+
+    [SkippableFact]
+    public async Task AFreshTake_WritesNoLapse()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        Assert.Equal([EfHatchIssueEvent.ClaimTaken], await h.EventKindsAsync(issue));
+    }
+
+    [SkippableFact]
+    public async Task ATakeAfterAnOrdinaryRelease_WritesNoLapse()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        await h.Claims.ReleaseClaim(issue, token, default);
+
+        await h.TakeAsync(issue, "elsewhere:/checkouts/two");
+
+        Assert.Equal(
+            [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimTaken],
+            await h.EventKindsAsync(issue));
+    }
+
+    [SkippableFact]
     public async Task TwoTakesAgainstOnePreClaimState_ResolveToOneClaim()
     {
         await using var h = await NewAsync();
@@ -286,6 +331,12 @@ public class IssueClaimTests
     public async Task AHeartbeatAgainstAnExpiredClaimOfOnesOwn_IsRefused()
     {
         await using var h = await NewAsync();
+
+        // Lapsing off, so this is purely the TTL's own expiry and not the
+        // quiet clause landing on the same claim by coincidence of two
+        // windows that default to the same five minutes - see
+        // AQuietClaim_IsRefusedOnHeartbeatWithTheQuietReason for that one.
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
         var issue = await h.FileAsync();
         var token = await h.TakeAsync(issue);
 
@@ -559,6 +610,244 @@ public class IssueClaimTests
         Assert.All(events, e => Assert.Equal("host:/src", e.Actor));
     }
 
+    // ---- The outcome on a release ----
+
+    [SkippableFact]
+    public async Task AReleaseWithAnOutcome_RecordsItOnTheEvent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.Equal(ClaimOutcomes.Dropped, released.Payload!.Value.GetProperty("outcome").GetString());
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithNoOutcome_WritesThePayloadItAlwaysHas()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        await h.Claims.ReleaseClaim(issue, token, null, default);
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.False(released.Payload!.Value.TryGetProperty("outcome", out _));
+    }
+
+    [SkippableFact]
+    public async Task AnOutcomeThatIsNeitherValue_Is400()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.Equal(
+            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", or nothing at all",
+            BadRequest(await h.Claims.ReleaseClaim(issue, token, "quit", default)));
+
+        // Refused before anything was touched.
+        Assert.NotNull((await h.RowAsync(issue)).ClaimToken);
+    }
+
+    [SkippableFact]
+    public async Task AnOperatorsTokenlessClear_TakesNoOutcome()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+
+        // Named on a tokenless clear, and not refused for it - it is simply
+        // not read, the way an operator's clobber names no increment at all.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, "dropped", default));
+
+        var cleared = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimCleared);
+        Assert.False(cleared.Payload!.Value.TryGetProperty("outcome", out _));
+    }
+
+    // ---- A silent claim ----
+
+    [SkippableFact]
+    public async Task AQuietClaim_IsRefusedOnHeartbeatWithTheQuietReason()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        // Never a word - a --quiet session - so the clock runs from the take.
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        Assert.Equal(
+            "this claim has gone quiet for 5 minutes",
+            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+    }
+
+    [SkippableFact]
+    public async Task AQuietClaim_IsTakeableByAnotherRunner()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+        Assert.NotEqual(Guid.Empty, second.Token);
+    }
+
+    [SkippableFact]
+    public async Task AWordSaidJustBeforeTheWindow_KeepsTheClaimAlive()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
+        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default));
+
+        h.Time.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
+        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default));
+    }
+
+    // ---- Lapsed stall questions, answered on take ----
+
+    [SkippableFact]
+    public async Task ATakeAnswersALapsedStallQuestion_AndLeavesAProseQuestionAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var stall = await h.AskStallAsync(issue, Now);
+        var prose = await h.AskProseAsync(issue, Now, "what should this be called?");
+
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        var comments = await h.CommentsAsync(issue);
+        var answer = Assert.Single(comments, c => c.Kind == EfHatchComment.Answer);
+        Assert.Equal(stall, answer.AnswersId);
+        Assert.Equal(StallAnswers.TryAgain, answer.Body);
+        Assert.Equal("Hatch", answer.Author);
+
+        var answered = (await h.EventsAllAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.Answered);
+        Assert.Equal("Hatch", answered.Actor);
+        Assert.True(answered.Payload!.Value.GetProperty("lapsed").GetBoolean());
+        Assert.Equal(stall, answered.Payload!.Value.GetProperty("questionId").GetInt64());
+
+        // The prose question is a question nobody may guess the label for -
+        // never a stall question, never auto-answered.
+        Assert.DoesNotContain(comments, c => c.Kind == EfHatchComment.Answer && c.AnswersId == prose);
+    }
+
+    [SkippableFact]
+    public async Task AFreshStallQuestion_IsNotYetAnsweredOnATake()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.AskStallAsync(issue, Now);
+
+        // Not yet five minutes old.
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        Assert.DoesNotContain(await h.CommentsAsync(issue), c => c.Kind == EfHatchComment.Answer);
+    }
+
+    [SkippableFact]
+    public async Task ATakeThatLosesTheLineRecheck_AnswersNothing()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync();
+        var child = await h.FileAsync(parent);
+        await h.AskStallAsync(child, Now);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        // Two connections racing a take on the parent and the child, the same
+        // interleaving TwoTakesOnAParentAndItsChild_NeverBothKeepAClaim uses -
+        // one of the two takes is bound to lose the recheck and let go again.
+        var one = h.Connect();
+        var two = h.Connect();
+        var parentId = (await h.RowAsync(parent)).Id;
+        var childId = (await h.RowAsync(child)).Id;
+        var claims = TestClaims.With();
+
+        var mine = Guid.NewGuid();
+        var theirs = Guid.NewGuid();
+        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", h.Time.GetUtcNow(), default));
+        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", h.Time.GetUtcNow(), default));
+
+        Assert.NotNull(await claims.ConfirmLineAsync(one, parentId, mine, h.Time.GetUtcNow(), default));
+        Assert.Null(await claims.ConfirmLineAsync(two, childId, theirs, h.Time.GetUtcNow(), default));
+
+        // Neither of these bare writes goes through TakeClaim's own answering
+        // step, so the lapsed question on the child is untouched either way -
+        // which is exactly the state a losing take must leave it in.
+        Assert.DoesNotContain(await h.CommentsAsync(child), c => c.Kind == EfHatchComment.Answer);
+    }
+
+    [SkippableFact]
+    public async Task StallLapseMinutesOfZero_NeverAnswersAQuestionOnATake()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+        var issue = await h.FileAsync();
+        await h.AskStallAsync(issue, Now);
+
+        h.Time.Advance(TimeSpan.FromDays(1));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        Assert.DoesNotContain(await h.CommentsAsync(issue), c => c.Kind == EfHatchComment.Answer);
+    }
+
+    [SkippableFact]
+    public async Task StallLapseMinutesOfZero_NeverRefusesAHeartbeatAsQuiet()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        // Heartbeat well past what the default five-minute window would be,
+        // each beat inside the TTL and none of them carrying a word - only the
+        // TTL bounds how long between beats once lapsing is off.
+        for (var i = 0; i < 5; i++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default));
+        }
+    }
+
+    // ---- The window on the take ----
+
+    [SkippableFact]
+    public async Task TheTakesResponse_CarriesStallLapseSecondsAsMinutesTimesSixty()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 10);
+        var issue = await h.FileAsync();
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        Assert.Equal(600, taken.StallLapseSeconds);
+    }
+
+    [SkippableFact]
+    public async Task TheTakesResponse_CarriesZeroWhenLapsingIsOff()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+        var issue = await h.FileAsync();
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        Assert.Equal(0, taken.StallLapseSeconds);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -572,6 +861,9 @@ public class IssueClaimTests
         private readonly List<HatchContext> open = [];
         private int next = 1;
 
+        /// <summary>The rule this harness's controllers are built against - overridable per test, for the lapse window above all.</summary>
+        public IssueClaims Rule { get; set; } = TestClaims.With();
+
         /// <summary>
         /// A controller on a context of its own, because that is what an HTTP
         /// request is. It matters more here than anywhere else in these tests:
@@ -580,7 +872,7 @@ public class IssueClaimTests
         /// version of it the database stopped having - and a suite that shared
         /// one would be testing the tracker rather than the SQL.
         /// </summary>
-        public IssueClaimController Claims => new(Connect(), TestClaims.With(), Caller, Time);
+        public IssueClaimController Claims => new(Connect(), Rule, Caller, Time);
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
 
@@ -650,8 +942,76 @@ public class IssueClaimTests
                 .Reverse()
                 .ToList();
 
+        /// <summary>Every event on the issue, oldest first - unlike <see cref="EventsAsync"/>, not narrowed to the claim's own kinds.</summary>
+        public async Task<IReadOnlyList<IssueEventDto>> EventsAllAsync(string key) =>
+            Value(await Thread.GetEvents(key, default)).Reverse().ToList();
+
         public async Task<IReadOnlyList<string>> EventKindsAsync(string key) =>
             (await EventsAsync(key)).Select(e => e.Kind).ToList();
+
+        public async Task<IReadOnlyList<CommentDto>> CommentsAsync(string key) =>
+            Value(await Thread.GetComments(key, default));
+
+        /// <summary>
+        /// A stall question, written straight to the table with the shared
+        /// options and its own <c>asked</c> event - what a runner asks when an
+        /// increment does nothing, and what <see cref="BuildCheckController"/>
+        /// asks when a fixed build fails again. These tests are about what a
+        /// take does with one once it has gone quiet, not about who asks it.
+        /// </summary>
+        public async Task<long> AskStallAsync(string key, DateTimeOffset at)
+        {
+            var issue = await RowAsync(key);
+            var db = Connect();
+
+            var comment = new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = "hatch-agent",
+                Body = "an increment did nothing - what next?",
+                Kind = EfHatchComment.Question,
+                Options = Questions.WriteOptions(StallAnswers.Options()),
+                CreatedAt = at,
+            };
+            db.Comments.Add(comment);
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id,
+                Actor = "hatch-agent",
+                Kind = EfHatchIssueEvent.Asked,
+                At = at,
+            });
+
+            await db.SaveChangesAsync();
+            return comment.Id;
+        }
+
+        /// <summary>A question asked in prose - no options, and never a stall question however long it waits.</summary>
+        public async Task<long> AskProseAsync(string key, DateTimeOffset at, string body)
+        {
+            var issue = await RowAsync(key);
+            var db = Connect();
+
+            var comment = new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = "hatch-agent",
+                Body = body,
+                Kind = EfHatchComment.Question,
+                CreatedAt = at,
+            };
+            db.Comments.Add(comment);
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id,
+                Actor = "hatch-agent",
+                Kind = EfHatchIssueEvent.Asked,
+                At = at,
+            });
+
+            await db.SaveChangesAsync();
+            return comment.Id;
+        }
     }
 
     private static async Task<Harness> NewAsync()
@@ -738,6 +1098,9 @@ public class IssueClaimTests
 
     private static string? BadRequest<T>(ActionResult<T> result) =>
         Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString();
+
+    private static string? BadRequest(IActionResult result) =>
+        Assert.IsType<BadRequestObjectResult>(result).Value?.ToString();
 
     private static string Reason(IActionResult? result) => result switch
     {

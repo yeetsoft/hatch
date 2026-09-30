@@ -110,7 +110,7 @@ public sealed class Poll
         IReadOnlyList<ReviewCheckDto> review;
         try
         {
-            review = await runtime.Board.ReviewAsync(runtime.Checkouts, ct);
+            review = await runtime.QuietBoard.ReviewAsync(runtime.Checkouts, ct);
         }
         catch (HatchException e)
         {
@@ -227,7 +227,7 @@ public sealed class Poll
 
             try
             {
-                await runtime.Board.MergeCheckAsync(
+                await runtime.QuietBoard.MergeCheckAsync(
                     target.Key, verdict.ToRequest(target.Where.Remote!, runtime.RunnerName), ct);
             }
             catch (HatchException e)
@@ -295,7 +295,7 @@ public sealed class Poll
                 BuildCheckDto? kept;
                 try
                 {
-                    kept = await runtime.Board.BuildCheckAsync(
+                    kept = await runtime.QuietBoard.BuildCheckAsync(
                         target.Key,
                         new BuildCheckRequest(
                             target.Where.Remote!, branch, sha, read.Verdict,
@@ -354,7 +354,7 @@ public sealed class Poll
         IReadOnlyList<TrunkBuildDto> stored;
         try
         {
-            stored = await runtime.Board.TrunkBuildsAsync(ct);
+            stored = await runtime.QuietBoard.TrunkBuildsAsync(ct);
         }
         catch (HatchException e)
         {
@@ -407,7 +407,7 @@ public sealed class Poll
                 TrunkBuildDto? kept;
                 try
                 {
-                    kept = await runtime.Board.TrunkBuildAsync(
+                    kept = await runtime.QuietBoard.TrunkBuildAsync(
                         new TrunkBuildRequest(
                             checkout.Remote!, heads.Trunk, sha, read.Verdict,
                             read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),

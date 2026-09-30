@@ -183,6 +183,13 @@ public sealed record NightState
 
     public IReadOnlyList<string> Stalled { get; init; } = [];
 
+    /// <summary>
+    /// The tickets a first-in-a-row increment let go of quietly, rather than
+    /// flagged - its own list, because a restart mid-night must not lose the
+    /// difference between the two.
+    /// </summary>
+    public IReadOnlyList<string> LetGo { get; init; } = [];
+
     public IReadOnlyList<string> Interrupted { get; init; } = [];
 
     /// <summary>

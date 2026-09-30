@@ -112,7 +112,11 @@ foreach (var stray in strays)
 var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : here;
 var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, CancellationToken.None);
 
-using var client = new HatchClient(settings, runnerName);
+// A lambda rather than say.Complain directly: `say` is reassigned below to a
+// LiveTerminal once the readout is known to apply, and a call made after that
+// point should still say "waiting" through whichever terminal is current
+// rather than the plain one this line started with.
+using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
 var board = new Board(client);
 
 // Every way out through one door. A signal that is not handled kills the
@@ -407,6 +411,7 @@ internal partial class Program
         "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
         "                     repository the board binds that it has no checkout of",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
+        "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
         "",
         "A go-to-work whose own source changes under it asks to be restarted as the new",

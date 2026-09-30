@@ -159,7 +159,7 @@ public sealed class BuildIncrementTests
     // ---- Judging the increment ----
 
     private static async Task<(IncrementReport Report, Harness H)> RunAsync(
-        Func<Harness, BuildRun> build, string endsIn = "In Review", bool lost = false)
+        Func<Harness, BuildRun> build, string endsIn = "In Review", bool lost = false, int letGo = 0)
     {
         var h = new Harness();
         h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -176,7 +176,7 @@ public sealed class BuildIncrementTests
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
         var report = await h.Runtime.Increment().RunAsync(
-            Fixtures.BuildWork(Key), h.Root, "sonnet", "high", quiet: false, claim!, default, build: build(h));
+            Fixtures.BuildWork(Key, letGo: letGo), h.Root, "sonnet", "high", quiet: false, claim!, default, build: build(h));
 
         await claim!.ReleaseAsync();
         return (report, h);
@@ -206,7 +206,7 @@ public sealed class BuildIncrementTests
     [Fact]
     public async Task A_session_that_pushed_nothing_is_a_stall_flagged_with_the_checks_in_the_comment_and_a_question()
     {
-        var (report, h) = await RunAsync(_ => Judging(new BuildJudged(Pushed: false, Unknown: false)));
+        var (report, h) = await RunAsync(_ => Judging(new BuildJudged(Pushed: false, Unknown: false)), letGo: 1);
         using var _h = h;
 
         Assert.True(report.Stalled);
@@ -459,7 +459,7 @@ public sealed class BuildIncrementTests
     public async Task A_session_that_pushed_nothing_costs_one_increment_and_is_flagged()
     {
         using var h = new Harness();
-        Board(h);
+        Board(h, Fixtures.BuildWork(Key, letGo: 1));
         h.Forge.Answer = Failed("api");
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);

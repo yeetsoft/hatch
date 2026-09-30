@@ -83,6 +83,15 @@ public sealed record Settings
     /// </summary>
     public int HeartbeatSeconds { get; init; } = 20;
 
+    /// <summary>
+    /// How long <see cref="HatchClient.Send"/> keeps retrying a call Hatch has
+    /// not answered before it gives up - ninety seconds, which is meant to be
+    /// longer than a deploy with no health check ever leaves an operator
+    /// staring at nothing. Zero means exactly one attempt: retries switched
+    /// off, not a wait of no time at all.
+    /// </summary>
+    public int RetrySeconds { get; init; } = 90;
+
     /// <summary>Where each value came from, so <c>config --show</c> can say.</summary>
     public IReadOnlyDictionary<string, Layer> Sources { get; init; } =
         new Dictionary<string, Layer>(StringComparer.Ordinal);
@@ -143,6 +152,7 @@ public sealed record Settings
         var baseBranch = Read("HATCH_BASE_BRANCH");
         var runner = Read("HATCH_RUNNER");
         var heartbeat = Read("HATCH_HEARTBEAT");
+        var retry = Read("HATCH_RETRY_SECONDS");
         var reposRaw = Read("HATCH_REPOS");
         var workspace = Read("HATCH_WORKSPACE");
 
@@ -167,6 +177,10 @@ public sealed record Settings
         var pulse = 20;
         if (heartbeat is { } beat && int.TryParse(beat, out var parsed) && parsed >= 0) pulse = parsed;
 
+        var retrySeconds = 90;
+        if (retry is { } window && int.TryParse(window, out var parsedRetry) && parsedRetry >= 0)
+            retrySeconds = parsedRetry;
+
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
@@ -179,6 +193,7 @@ public sealed record Settings
             BaseBranch = baseBranch,
             Runner = runner,
             HeartbeatSeconds = pulse,
+            RetrySeconds = retrySeconds,
             Repos = repos,
             Workspace = workspace,
             Sources = sources,

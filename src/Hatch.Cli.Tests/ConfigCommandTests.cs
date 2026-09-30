@@ -514,6 +514,29 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("(does not exist yet)", Said);
     }
 
+    /// <summary>
+    /// HA-116: not settable from a file, like HATCH_HEARTBEAT beside it, but
+    /// still worth seeing - the ticket asks for it explicitly.
+    /// </summary>
+    [Fact]
+    public async Task Show_lists_the_retry_window_even_though_it_is_not_settable_from_a_file()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_RETRY_SECONDS:  90  (default)", Said);
+    }
+
+    [Fact]
+    public async Task Show_reports_an_overridden_retry_window_and_its_layer()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_RETRY_SECONDS"] = "30" })
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_RETRY_SECONDS:  30  (exported)", Said);
+    }
+
     [Fact]
     public async Task Show_says_it_is_not_in_a_checkout_when_it_is_not()
     {

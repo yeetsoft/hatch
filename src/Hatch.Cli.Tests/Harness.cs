@@ -377,14 +377,23 @@ public sealed class Harness : IDisposable
 
     private readonly HatchClient _client;
 
-    public Harness(TimeSpan? heartbeat = null)
+    /// <summary>
+    /// What <see cref="HatchClient.Send"/> measures its own retry window and
+    /// waits against - real time unless a test hands it a fake one, which is
+    /// what lets a test script a call that fails once or twice before it
+    /// answers without actually spending the backoff's own seconds on it.
+    /// </summary>
+    public TimeProvider Clock { get; }
+
+    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null)
     {
         Temp = Directory.CreateTempSubdirectory("hatch-test-").FullName;
         Root = Path.Combine(Temp, "checkout");
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
+        Clock = clock ?? TimeProvider.System;
         var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0 };
-        _client = new HatchClient(settings, "test:/checkout", Wire);
+        _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
         // sha PollTests' own Heads() helper gives "main" - so a test that
@@ -408,7 +417,7 @@ public sealed class Harness : IDisposable
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
-            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire)),
+            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock)),
             MakeClone = Clone.Factory,
             // A temp file rather than the real Settings.UserConfigPath() -
             // otherwise every test that takes --repo would read and write the
