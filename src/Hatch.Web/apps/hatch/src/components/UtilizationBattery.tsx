@@ -23,8 +23,8 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
  * as a full or an empty one. "We do not know when this comes back" and "it
  * comes back now" are not the same thing and must not look the same.
  *
- * Returns null when there is no battery - no token configured on this
- * installation. No element, no placeholder, no reserved space.
+ * Returns null when there is no battery - no runner of mine has reported a
+ * reading. No element, no placeholder, no reserved space.
  */
 export function UtilizationBattery({
   reading,
@@ -43,8 +43,8 @@ export function UtilizationBattery({
   const fraction = ringFraction(limit?.resetsAt, now);
   const label = batteryLabel(reading, now);
 
-  // The share of the disc that is ink. No session row at all - the `unknown`
-  // answer - draws an empty disc under an em dash rather than a made-up level.
+  // The share of the disc that is ink. No session row at all draws an empty
+  // disc under an em dash rather than a made-up level.
   const filled = limit === null ? 0 : Math.min(100, Math.max(0, limit.percent)) / 100;
 
   if (reading === null) return null;

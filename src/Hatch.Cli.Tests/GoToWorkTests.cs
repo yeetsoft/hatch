@@ -172,6 +172,41 @@ public sealed class GoToWorkTests
         Assert.True(beat.Mine);
     }
 
+    [Fact]
+    public async Task The_heartbeat_carries_the_readouts_reading()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var readAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        h.Runtime.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(readAt, beat.UsageReadAt);
+        var window = Assert.Single(beat.Usage!);
+        Assert.Equal("session", window.Window);
+        Assert.Equal("Session", window.Label);
+        Assert.Equal(42, window.Percent);
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_reading_yet_sends_none()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.Usage);
+        Assert.Null(beat.UsageReadAt);
+    }
+
     /// <summary>
     /// The same path "the workspace could not be reset" takes: nothing was
     /// spawned, so this ends the night without counting toward the

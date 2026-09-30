@@ -1745,4 +1745,30 @@ public class EfHatchRunner
     /// time, the same lazy expiry the rest of this table uses.
     /// </summary>
     public DateTimeOffset? ExhaustedUntil { get; set; }
+
+    /// <summary>
+    /// The account's usage windows, as this runner's own session last read
+    /// them off its <c>rate_limit_event</c> stream - JSON, an array of
+    /// <see cref="RunnerUsageWindowDto"/>. Written by a heartbeat that carries
+    /// a non-empty reading and never cleared: a reading never becomes wrong,
+    /// only old, so an incarnation that has just restarted mid-night holds no
+    /// reading until its next session's first event, rather than blanking the
+    /// one already stored.
+    /// </summary>
+    public string? Usage { get; set; }
+
+    /// <summary>
+    /// When this runner read <see cref="Usage"/>, its own word for it - stored
+    /// as reported, so an idle runner re-sending an hour-old reading on every
+    /// poll does not make it look new.
+    /// </summary>
+    public DateTimeOffset? UsageReadAt { get; set; }
+
+    /// <summary>
+    /// The person this runner works for - the calling key's owner, the same
+    /// resolution <c>--mine</c> takes, written on every beat because whose key
+    /// this is can change on the API Keys page and the row must follow. Null
+    /// is ordinary: a key that belongs to nobody.
+    /// </summary>
+    public Guid? ForPersonId { get; set; }
 }

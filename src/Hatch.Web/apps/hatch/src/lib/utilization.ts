@@ -94,9 +94,9 @@ export function agePhrase(readAt: string | null | undefined, now: Date): string 
 /**
  * The row the glyph in the nav is drawn from - the five-hour session window.
  *
- * Found by `window` rather than by position: the account decides the order and
+ * Found by `window` rather than by position: the runner decides the order and
  * this does not depend on it. Null when the reading carries no session row at
- * all, which is what `state: "unknown"` looks like.
+ * all - a runner could report a weekly window alone, between sessions.
  */
 export const sessionLimit = (reading: Utilization | null): UtilizationLimit | null =>
   reading?.limits.find((limit) => limit.window === 'session') ?? null;
@@ -111,19 +111,19 @@ export const toneClass = (tone: string | null | undefined): string =>
   `hatch-battery-${tone && TONES.has(tone) ? tone : 'normal'}`;
 
 /**
- * Whether there is a battery on this installation at all.
+ * Whether there is a battery for me at all.
  *
- * Null is the 204 - no token configured - and it is the common case: no
- * element, no placeholder, no reserved space, and nothing anywhere saying so.
- * Everything else, `unknown` included, draws: a nav that has lost contact
- * should say it has lost contact rather than quietly losing an element.
+ * Null is the 204 - no runner of mine has reported a reading - and it is the
+ * common case: a fresh install is in it, and so is anybody who has never run
+ * a runner. No element, no placeholder, no reserved space, and nothing
+ * anywhere saying so.
  */
 export const hasBattery = (reading: Utilization | null): reading is Utilization => reading !== null;
 
 /**
  * The number beside the glyph. An em dash when there is no reading behind it,
- * which is what `state: "unknown"` reads as - a battery that cannot say how
- * full it is must not say "0".
+ * which is what a reading with no session row at all reads as - a battery
+ * that cannot say how full it is must not say "0".
  */
 export const percentLabel = (limit: UtilizationLimit | null): string =>
   limit === null ? '—' : `${Math.round(limit.percent)}%`;
@@ -136,11 +136,10 @@ export const percentLabel = (limit: UtilizationLimit | null): string =>
  * reader reads in order.
  */
 export function batteryLabel(reading: Utilization | null, now: Date): string {
-  const limit = sessionLimit(reading);
+  if (reading === null) return 'Claude usage unknown — no runner of mine has reported one';
 
-  if (reading === null || reading.state === 'unknown' || limit === null) {
-    return 'Claude usage unknown — the account could not be reached';
-  }
+  const limit = sessionLimit(reading);
+  if (limit === null) return 'Claude session usage unknown — the session window has not been reported';
 
   const headline = `Claude session usage ${Math.round(limit.percent)}%, ${resetPhrase(limit.resetsAt, now)}`;
   return reading.state === 'stale' ? `${headline} (${agePhrase(reading.readAt, now)})` : headline;

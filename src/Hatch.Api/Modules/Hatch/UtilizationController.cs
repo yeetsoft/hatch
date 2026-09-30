@@ -1,35 +1,44 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// The account's own Claude headroom, proxied.
+/// My own Claude headroom - the battery in the nav strip.
 ///
-/// Read by the server and never by the browser: the subscription token is a
-/// credential, and a page that held one would be a page that leaked one. What
+/// Not the account's own endpoint, proxied: the reading is whatever this
+/// caller's own runners last reported on their heartbeat, off the session's own
+/// stream (see <see cref="RunnersController"/> and HA-134's decisions). What
 /// crosses the wire is Hatch's own vocabulary - <c>window</c>, <c>label</c>,
-/// <c>tone</c> - already reshaped by <see cref="ClaudeUsageClient"/>, so the
-/// day Anthropic renames a field there is one file to fix and no page that has
-/// gone blank.
+/// <c>tone</c> - and nothing shaped like the account it came from.
 ///
-/// <c>204 No Content</c> when no token is configured. That is the important
-/// answer here and it is not an error: an installation with no Claude
-/// subscription gets a Hatch with no battery, no errors, and no empty box where
-/// a battery should be. This is an enhancement to a tracker, not a dependency
-/// of one.
+/// <c>204 No Content</c> where no runner of this caller's has ever reported a
+/// reading. That is the important answer here and it is not an error: a fresh
+/// install is in that state, and so is anybody who has never run a runner. This
+/// is a nav widget, not a dispatch a caller asked something of, so an ownerless
+/// key answers the same <c>204</c> rather than the refusal
+/// <see cref="WorkController"/> gives a <c>--mine</c> pass - see
+/// <see cref="PrincipalAsync"/>'s remarks there.
 /// </summary>
 [ApiController]
 [Route("api/hatch/utilization")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class UtilizationController(UtilizationCache cache) : ControllerBase
+public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
 {
-    /// <summary><paramref name="refresh"/> is the modal's refresh control: it bypasses both the freshness window and the failure backoff, because it is one person asking once.</summary>
     [HttpGet]
-    public async Task<ActionResult<UtilizationReading>> Get([FromQuery] bool refresh, CancellationToken ct)
+    public async Task<ActionResult<UtilizationReading>> Get(CancellationToken ct)
     {
-        var reading = await cache.ReadAsync(refresh, ct);
+        var principal = await actors.PrincipalAsync(ct);
+        if (principal is null) return NoContent();
+
+        var runners = await db.Runners.AsNoTracking()
+            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
+            .ToListAsync(ct);
+
+        var reading = Utilization.Of(runners, time.GetUtcNow());
         return reading is null ? NoContent() : reading;
     }
 }

@@ -22,7 +22,6 @@ const limit = (over: Partial<UtilizationLimit> = {}): UtilizationLimit => ({
   percent: 17,
   tone: 'normal',
   resetsAt: at(90 * 60_000),
-  isActive: true,
   ...over,
 });
 
@@ -30,7 +29,6 @@ const reading = (over: Partial<Utilization> = {}): Utilization => ({
   state: 'ok',
   readAt: at(0),
   limits: [limit()],
-  credits: null,
   ...over,
 });
 
@@ -143,13 +141,13 @@ describe('toneClass', () => {
 });
 
 describe('hasBattery', () => {
-  /* The 204: no token configured. No element, no placeholder, no reserved
-     space - which is the property the whole story is built to protect. */
+  /* The 204: no runner of mine has reported a reading. No element, no
+     placeholder, no reserved space - which is the property the whole story is
+     built to protect. */
   it('is false only for the 204', () => {
     expect(hasBattery(null)).toBe(false);
     expect(hasBattery(reading())).toBe(true);
     expect(hasBattery(reading({ state: 'stale' }))).toBe(true);
-    expect(hasBattery(reading({ state: 'unknown', readAt: null, limits: [] }))).toBe(true);
   });
 });
 
@@ -180,13 +178,16 @@ describe('batteryLabel', () => {
     expect(batteryLabel(stale, NOW)).toBe('Claude session usage 17%, resets in 1h 30m (read 12 minutes ago)');
   });
 
-  /* Both degraded answers say the same thing out loud - the account could not
-     be reached - because that is all either of them knows. */
-  it('reads as unknown when there has never been a reading, and when there is none at all', () => {
-    const unknown = reading({ state: 'unknown', readAt: null, limits: [] });
+  it('reads as unknown when there is no battery at all', () => {
+    expect(batteryLabel(null, NOW)).toBe('Claude usage unknown — no runner of mine has reported one');
+  });
 
-    expect(batteryLabel(unknown, NOW)).toBe('Claude usage unknown — the account could not be reached');
-    expect(batteryLabel(null, NOW)).toBe('Claude usage unknown — the account could not be reached');
+  /* A runner could report a weekly window alone, between sessions - still a
+     reading, just not one with a session row to draw the glyph from. */
+  it('says the session window has not been reported when the reading carries no session row', () => {
+    const weeklyOnly = reading({ limits: [limit({ window: 'weekly', label: 'Weekly' })] });
+
+    expect(batteryLabel(weeklyOnly, NOW)).toBe('Claude session usage unknown — the session window has not been reported');
   });
 });
 

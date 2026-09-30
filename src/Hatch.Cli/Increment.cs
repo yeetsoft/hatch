@@ -635,7 +635,7 @@ public sealed class Increment(
             // line, so the foreach body never runs for the raw line that
             // carried one - but Read already updated Usage by the time it
             // returned.
-            _readout.SetUsage(render.Usage);
+            if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt);
         }, ct);
     }
 

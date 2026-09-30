@@ -10,7 +10,7 @@ export interface UtilizationState {
   /** Null both before the first answer and for the 204. The two are the same
       thing to draw - nothing at all - so nothing here tells them apart. */
   reading: Utilization | null;
-  /** Asks the server to go and look now, bypassing its freshness window. */
+  /** Asks Hatch to re-read its own row now. */
   refresh: () => Promise<void>;
 }
 
@@ -26,38 +26,37 @@ export interface UtilizationState {
  * Three things move it:
  *
  * - The first load.
- * - A two-minute poll. The server holds a reading for five, so this is what
- *   makes "no older than five minutes" true without anybody pressing anything;
- *   most of these polls are answered from the server's own cache.
+ * - A two-minute poll. The server no longer holds a reading for five minutes
+ *   of its own - it holds whatever a runner's heartbeat last reported - so
+ *   this is what notices a new one has arrived without anybody pressing
+ *   anything.
  * - `visibilitychange`. A backgrounded tab's timers are throttled to the point
  *   of stopping, so a tab brought forward after an hour would otherwise show an
  *   hour-old number until the next tick. Focus is not enough on its own: a tab
  *   revealed without being clicked is never focused.
  *
  * Nothing here reports an error. A failure to reach Hatch's own endpoint leaves
- * the last reading in place - and the endpoint's own degraded answers (`stale`,
- * `unknown`) are readings, not errors. The bar is not where a fetch failure
- * gets announced.
+ * the last reading in place - and the endpoint's own degraded answer (`stale`)
+ * is a reading, not an error. The bar is not where a fetch failure gets
+ * announced.
  */
 export function useUtilization(): UtilizationState {
   const [reading, setReading] = useState<Utilization | null>(null);
 
-  const load = useCallback(async (refresh: boolean) => {
+  const load = useCallback(async () => {
     try {
-      setReading(await getUtilization(refresh));
+      setReading(await getUtilization());
     } catch {
       // Deliberately silent - see the note above.
     }
   }, []);
 
-  const refresh = useCallback(() => load(true), [load]);
-
   useEffect(() => {
-    void load(false);
+    void load();
 
-    const timer = setInterval(() => void load(false), POLL_MS);
+    const timer = setInterval(() => void load(), POLL_MS);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void load(false);
+      if (document.visibilityState === 'visible') void load();
     };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -67,5 +66,5 @@ export function useUtilization(): UtilizationState {
     };
   }, [load]);
 
-  return { reading, refresh };
+  return { reading, refresh: load };
 }

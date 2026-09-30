@@ -243,6 +243,81 @@ public class RunnersControllerTests
             typeof(RunnerPatchRequest).GetProperties(), p => p.Name == "ExhaustedUntil" || p.Name == "Exhausted");
     }
 
+    // ---- The account's usage reading, and who it works for ----
+
+    [Fact]
+    public async Task ABeatCarryingAReading_StoresItWithTheCallersOwnerId()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var readAt = Now.AddMinutes(-1);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 63, null)], UsageReadAt: readAt));
+
+        var row = await h.RowAsync();
+        Assert.Equal(nathan.Id, row.ForPersonId);
+        Assert.Equal(readAt, row.UsageReadAt);
+        Assert.Contains("63", row.Usage);
+    }
+
+    [Fact]
+    public async Task ASecondBeatCarryingNoReading_LeavesTheStoredOneWhereItWas()
+    {
+        var h = await NewAsync();
+        var readAt = Now.AddMinutes(-1);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 63, null)], UsageReadAt: readAt));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.RowAsync();
+        Assert.Equal(readAt, row.UsageReadAt);
+        Assert.Contains("63", row.Usage);
+    }
+
+    [Fact]
+    public async Task ABeatFromAKeyThatBelongsToNobody_StoresTheReadingWithNoOwner_AndIsNotRefused()
+    {
+        var h = await NewAsync(program: true);
+
+        // Not refused: BeatAsync throws on anything but a value, so a heartbeat
+        // from an ownerless key reaching this line at all is the assertion.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 10, null)], UsageReadAt: Now));
+
+        var row = await h.RowAsync();
+        Assert.Null(row.ForPersonId);
+        Assert.Contains("10", row.Usage);
+    }
+
+    [Fact]
+    public async Task APercentPast100_IsClamped()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 140, null)], UsageReadAt: Now));
+
+        Assert.Contains("100", (await h.RowAsync()).Usage);
+        Assert.DoesNotContain("140", (await h.RowAsync()).Usage);
+    }
+
+    [Fact]
+    public async Task ForPersonId_IsWrittenOnEveryBeatLikeWhereAndRemotes()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        h.Actors.Principal = null;
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Null((await h.RowAsync()).ForPersonId);
+    }
+
     // ---- Where it runs ----
 
     [Fact]
@@ -665,6 +740,14 @@ public class RunnersControllerTests
         public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default));
 
         public async Task<RunnerDto> OneAsync() => Assert.Single(await ListAsync());
+
+        /// <summary>
+        /// The stored row itself, for the fields no wire DTO carries -
+        /// <see cref="EfHatchRunner.ForPersonId"/>, <see cref="EfHatchRunner.Usage"/>
+        /// and <see cref="EfHatchRunner.UsageReadAt"/> - none of which
+        /// <see cref="RunnerDto"/> answers; see HA-134's "out of scope".
+        /// </summary>
+        public async Task<EfHatchRunner> RowAsync() => await Db.Runners.AsNoTracking().SingleAsync();
 
         /// <summary>
         /// A lease, written straight onto the row. The endpoint that normally
