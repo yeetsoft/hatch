@@ -315,6 +315,14 @@ public record IssueClaimDto(
 /// The level's name - see <see cref="PriorityLevels"/> - <c>"normal"</c>,
 /// <c>"expedited"</c> or <c>"emergency"</c>.
 /// </param>
+/// <param name="WipLimit">
+/// How many of an epic's stories may be in progress at once, or null for
+/// <see cref="IssueWipLimitRequest.DefaultLimit"/> - meaningful on an epic and
+/// on nothing else. Readable by a key, like every other field a dispatch
+/// needs, and writable only by a person through
+/// <see cref="IssueWipLimitController"/>: a key that could raise its own
+/// epic's ceiling could pull more of its own stories into progress at once.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -342,7 +350,8 @@ public record IssueDto(
     IReadOnlyList<MergeCheckDto>? MergeChecks = null,
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
     bool Express = false,
-    string Priority = PriorityLevels.NormalName);
+    string Priority = PriorityLevels.NormalName,
+    int? WipLimit = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -984,6 +993,23 @@ public record PlaybookPatchRequest(
 /// method is a paragraph, which is what a description is.
 /// </remarks>
 public record IssuePlaybookRequest(string? Model, string? Effort);
+
+/// <summary>
+/// How many of an epic's stories may run at once. Null leaves it alone, and
+/// <c>""</c> clears it back to <see cref="DefaultLimit"/> - the same bulk rule
+/// every other clearable field in Hatch follows.
+/// </summary>
+/// <remarks>
+/// The default lives here, not on the entity, because the CLI prints it and
+/// cannot see <c>EfHatchIssue</c> - <c>EfHatchIssue.DefaultEpicWipLimit</c>
+/// aliases it, the way <c>EfHatchIssue.MaxClaimRunnerLength</c> aliases
+/// <see cref="ClaimRequest.MaxRunnerLength"/>.
+/// </remarks>
+public record IssueWipLimitRequest(string? Limit)
+{
+    /// <summary>What a null limit reads as: one story at a time.</summary>
+    public const int DefaultLimit = 1;
+}
 
 /// <summary>
 /// Who an issue is to belong to. Both fields null is the unassign; exactly one

@@ -4,7 +4,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
@@ -65,6 +66,16 @@ export const POLL_MS = 30 * 1000;
  *  closed: long enough to see where the eye was sent, short enough not to look
  *  like the card is selected. */
 export const FOUND_LINGER_MS = 2000;
+
+/** How long a touch has to hold still before it lifts a card. A deliberate
+ *  press-and-hold, long enough that the first frames of a real scroll exceed
+ *  TOUCH_LIFT_TOLERANCE_PX and cancel it. */
+const TOUCH_LIFT_DELAY_MS = 300;
+
+/** How far a touch may wander while holding still and still count as the
+ *  hold. Loose enough for a finger's natural wobble, tight enough that a
+ *  scroll gesture clears it almost immediately. */
+const TOUCH_LIFT_TOLERANCE_PX = 8;
 
 export function BoardPage() {
   // The card under the cursor and the column it is over, kept only for the
@@ -198,10 +209,14 @@ export function BoardPage() {
     });
   }, []);
 
-  // A few pixels before a drag begins, so the same element can be a link and a
-  // card - tapping one opens the issue, dragging one moves it.
+  // A few pixels before a mouse drag begins, so the same element can be a link
+  // and a card - tapping one opens the issue, dragging one moves it. A touch
+  // instead waits out a press-and-hold, so a swipe scrolls rather than lifts.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: TOUCH_LIFT_DELAY_MS, tolerance: TOUCH_LIFT_TOLERANCE_PX },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 

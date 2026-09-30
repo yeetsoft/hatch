@@ -47,6 +47,24 @@ describe('describe', () => {
     ).toBe('overrode the WIP limit — 6 of 5 into In Progress');
   });
 
+  it('names an epic wip limit set, with the unset side read as the default', () => {
+    expect(
+      describeEvent(event({ kind: 'wip_limit_changed', payload: { from: null, to: 3 } })),
+    ).toBe('stories at once: 1 → 3');
+  });
+
+  it('names an epic wip limit changed from one number to another', () => {
+    expect(
+      describeEvent(event({ kind: 'wip_limit_changed', payload: { from: 2, to: 3 } })),
+    ).toBe('stories at once: 2 → 3');
+  });
+
+  it('names an epic wip limit cleared, with the unset side read as the default', () => {
+    expect(
+      describeEvent(event({ kind: 'wip_limit_changed', payload: { from: 3, to: null } })),
+    ).toBe('stories at once: 3 → 1');
+  });
+
   it('names the runner that stopped answering and when, for a lapsed takeover', () => {
     expect(
       describeEvent(
