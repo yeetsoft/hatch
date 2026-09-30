@@ -208,6 +208,41 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-169: a <c>200</c> with a preemption notice is not a lost lease - the
+    /// lease is still good, so the heartbeat keeps beating past it, unlike the
+    /// lost-lease test right above this one.
+    /// </summary>
+    [Fact]
+    public async Task A_preemption_notice_is_not_a_lost_lease_and_the_heartbeat_keeps_going()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        ClaimPreemptedDto? notified = null;
+        claim!.OnPreempted = p => notified = p;
+
+        await Harness.Eventually(() => claim.Preempted is not null, "the preemption to be reported");
+        Assert.Equal("AER-9", claim.Preempted!.Key);
+        Assert.Equal("Trunk is down", claim.Preempted!.Title);
+        Assert.NotNull(notified);
+        Assert.Equal("AER-9", notified!.Key);
+        Assert.Null(claim.Lost);
+
+        // Unlike a lost lease: the lease is still good, and the put-down needs
+        // it, so the heartbeat keeps going rather than stopping.
+        var beats = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat");
+        await Harness.Eventually(
+            () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") > beats, "more heartbeats after the notice");
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task Any_other_failure_is_weather_and_the_next_tick_tries_again()
     {

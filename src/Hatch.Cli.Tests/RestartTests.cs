@@ -162,6 +162,7 @@ public sealed class RestartTests : IDisposable
             Moved = ["hatch:   moved    AER-1  landed"],
             Stalled = ["hatch:   stalled  AER-2  asked a question"],
             LetGo = ["hatch:   let go   AER-3  still in \"In Progress\""],
+            Preempted = ["hatch:   preempt  AER-5  put down for AER-9 - Trunk is down"],
         };
 
         Assert.True(state.Write(path));
@@ -177,6 +178,7 @@ public sealed class RestartTests : IDisposable
         Assert.Equal(state.Moved, back.Moved);
         Assert.Equal(state.Stalled, back.Stalled);
         Assert.Equal(state.LetGo, back.LetGo);
+        Assert.Equal(state.Preempted, back.Preempted);
     }
 
     [Fact]

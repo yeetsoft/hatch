@@ -8,7 +8,7 @@ public sealed class BannerTests
     private static IncrementReport Report(
         string key = "AER-1", string from = "In Progress", string to = "In Review", string ended = "In Review",
         bool moved = false, bool resolved = false, bool fixPushed = false, bool stalled = false,
-        bool lostLease = false, bool interrupted = false, int exitCode = 0, string? flag = null,
+        bool lostLease = false, bool interrupted = false, bool preempted = false, int exitCode = 0, string? flag = null,
         long? totalTokens = 1234, decimal? cost = 1.5m, int? turns = 12,
         DateTimeOffset? started = null, DateTimeOffset? ended2 = null) => new()
     {
@@ -22,6 +22,9 @@ public sealed class BannerTests
         Stalled = stalled,
         LostLease = lostLease,
         Interrupted = interrupted,
+        Preempted = preempted,
+        PreemptedKey = preempted ? "AER-9" : null,
+        PreemptedTitle = preempted ? "Trunk is down" : null,
         ExitCode = exitCode,
         Flag = flag,
         TotalTokens = totalTokens,
@@ -117,6 +120,14 @@ public sealed class BannerTests
     {
         var lines = Banner.Closing(Report(lostLease: true));
         Assert.StartsWith("🍳🍳🍳🍳🍳 STOPPING WORK ON AER-1", lines[0], StringComparison.Ordinal);
+    }
+
+    /// <summary>HA-169: a preemption is its own glyph, not the error pan.</summary>
+    [Fact]
+    public void APreemption_ClosesWithASiren()
+    {
+        var lines = Banner.Closing(Report(preempted: true, exitCode: 143));
+        Assert.StartsWith("🚨🚨🚨🚨🚨 STOPPING WORK ON AER-1", lines[0], StringComparison.Ordinal);
     }
 
     [Fact]

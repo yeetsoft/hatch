@@ -192,6 +192,9 @@ public sealed record NightState
 
     public IReadOnlyList<string> Interrupted { get; init; } = [];
 
+    /// <summary>The tickets put down for an emergency issue - its own list, the same reason <see cref="Interrupted"/> is.</summary>
+    public IReadOnlyList<string> Preempted { get; init; } = [];
+
     /// <summary>
     /// The last increment ran out of Claude usage, and this is when it expects
     /// to reset - carried the way <see cref="UntilAt"/> is, so a restart during

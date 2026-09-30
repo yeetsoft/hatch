@@ -426,6 +426,62 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-169: a preemption notice is not a lost lease - the runner still owns
+    /// the ticket, so the board read still carries its token, and the work log
+    /// is still posted, the direct opposite of the lost-lease test above.
+    /// </summary>
+    [Fact]
+    public async Task A_preemption_notice_puts_the_ticket_down_without_losing_the_lease()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+            Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nGot most of the way\n\nAnd then stopped.\n```"));
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return new SessionResult(143, "");
+            }
+
+            return new SessionResult(0, "");
+        };
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Preempted);
+        Assert.Equal("AER-9", report.PreemptedKey);
+        Assert.Equal("Trunk is down", report.PreemptedTitle);
+        Assert.False(report.LostLease);
+        Assert.True(report.Stalled);
+        Assert.Equal(ClaimOutcomes.Preempted, report.ReleaseOutcome);
+        Assert.Equal(143, report.ExitCode);
+
+        // This runner still owns the ticket, unlike a lost lease: the board
+        // read carries its token.
+        Assert.Contains("heldToken", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
+            StringComparison.OrdinalIgnoreCase);
+
+        // Money was spent either way, the same as every other path through here.
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_run_that_reported_its_bill_before_the_lease_went_still_posts_it()
     {

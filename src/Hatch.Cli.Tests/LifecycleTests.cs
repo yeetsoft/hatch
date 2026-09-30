@@ -253,6 +253,60 @@ public sealed class LifecycleTests
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("push ", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// HA-169: the mirror of <see cref="A_usage_limit_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one"/> -
+    /// a preemption takes the same push-then-one-comment path, not the stall
+    /// path, for the same reason a usage limit does.
+    /// </summary>
+    [Fact]
+    public async Task A_preemption_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one()
+    {
+        using var h = new Harness();
+        Board(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Wire.Replace("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+            Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        // Pushed before Leave finds the tree, so what Leave sees is already clean.
+        Assert.Equal(
+            [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
+            h.Workspace.Calls);
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments);
+        Assert.Contains("preempted by [AER-9](https://hatch.example/apps/hatch/issues/AER-9) - Trunk is down", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+
+        // No question is opened, and nothing blocks the next pass from picking
+        // this ticket straight back up.
+        Assert.DoesNotContain(comments, c => c.Kind == "question");
+    }
+
+    /// <summary>HA-169's mirror of <see cref="A_usage_limit_with_nothing_to_push_still_writes_the_one_comment"/>.</summary>
+    [Fact]
+    public async Task A_preemption_with_nothing_to_push_still_writes_the_one_comment()
+    {
+        using var h = new Harness();
+        Board(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
+        h.Wire.Replace("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+            Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var comment = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+        Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_recorded_pull_request_is_synced_and_none_is_not()
     {

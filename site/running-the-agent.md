@@ -256,6 +256,13 @@ stops taking tickets until the account resets — see
 [Bounds, timeouts and stopping](#bounds-timeouts-and-stopping) — without
 counting toward the three-failures stop either.
 
+**Being preempted is not a stall either.** The board can ask the runner
+holding the least important ticket to stand down for an emergency one. That
+runner still owns the ticket it was working, so it commits and pushes what it
+has — the same as running out of usage — says so on the ticket, naming the
+emergency issue, and goes straight on to pick that issue up next. No question
+is asked and nothing blocks the next dispatch.
+
 ### Bounds, timeouts and stopping
 
 None are set by default. An unattended run that stopped for a reason nobody
