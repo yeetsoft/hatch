@@ -804,6 +804,11 @@ An issue **already in** the implementation column is never gated. The move into
 review is not a dependency's to refuse, so work that started finishes rather
 than stalling half-written.
 
+The mirror gates the way out, not this rule: an issue with a child that is
+still open is not carried out of the implementation column either, because its
+children are the work — see [What makes an issue
+actionable](#what-makes-an-issue-actionable).
+
 **Satisfied means done.** An edge clears when the issue it names is in a
 terminal column — merged, not merely up for review. Anything softer and story
 two starts on top of story one's unmerged branch, which is the failure the whole
@@ -2713,7 +2718,7 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Eleven conditions, the last one a way out of the tenth rather than one more
+Twelve conditions, the last one a way out of the eleventh rather than one more
 gate. An issue is the loop's to pick up when it meets every one before it, and
 the sentence saying which one it failed is what `work/queue` reports:
 
@@ -2721,7 +2726,7 @@ the sentence saying which one it failed is what `work/queue` reports:
    most columns that is the column to their right: the end of the board is not a
    transition, and the step into a terminal column is the operator's — *only the
    operator decides that something shipped*. The review column is dispatched to
-   itself instead (see the ninth condition), and never into the column after it.
+   itself instead (see the tenth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -2755,7 +2760,13 @@ the sentence saying which one it failed is what `work/queue` reports:
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **The [WIP section](#wip) has room for it**, when the move is into it: the
+8. **None of its children are still open**, when the move is out of the column
+   where the code gets written. An issue standing there with at least one
+   child not in a terminal column is not itself the work — its children are —
+   so it is folded rather than carried into review. A deferred child counts as
+   open, the same rule [Dependency](#dependency) already holds for a blocker.
+   A childless issue is unaffected.
+9. **The [WIP section](#wip) has room for it**, when the move is into it: the
    load, not counting this issue, is below the limit. Said after the dependency
    above, which needs other work to land, and before the verdict below, which
    needs nothing at all once a branch is clean — a full section needs other
@@ -2763,33 +2774,33 @@ the sentence saying which one it failed is what `work/queue` reports:
    narrows the candidates to, and the limit is a fact about the board rather
    than the loop's policy: `work/{key}` is refused by it too, and overriding it
    is done on the board, by moving the card in.
-9. **In review, its branch conflicts with the trunk or its build failed.** An
-   issue in the review column is the loop's only when a [merge check](#merge-check)
-   says `conflicted`, or — on a branch that merges cleanly — when the
-   [build check](#build-check) on the branch's current tip says `failed`. Both
-   are decided by a runner and by code, never by a prompt, and conflicts come
-   first. The sentences for a passing build, a running one, one nobody has read
-   on this tip, no checks, no branch, more than one branch and an unchecked one
-   are what `hatch queue` prints. A clean branch that has merely fallen behind
-   the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-10. **A playbook covers that transition for that type — or it does not need
+10. **In review, its branch conflicts with the trunk or its build failed.** An
+    issue in the review column is the loop's only when a [merge check](#merge-check)
+    says `conflicted`, or — on a branch that merges cleanly — when the
+    [build check](#build-check) on the branch's current tip says `failed`. Both
+    are decided by a runner and by code, never by a prompt, and conflicts come
+    first. The sentences for a passing build, a running one, one nobody has read
+    on this tip, no checks, no branch, more than one branch and an unchecked one
+    are what `hatch queue` prints. A clean branch that has merely fallen behind
+    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
+11. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-11. **Unless it does not need a session at all.** An issue that is
+12. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the tenth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the eleventh condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository, a dependency or a full
-    section, only from needing a playbook.
+    date, an assignee, a question, a repository, a dependency, an open child or
+    a full section, only from needing a playbook.
 
-Eight of them — 1, 2, 5, 6, 7, 8, 9 and 10 — are facts about the issue, and
-`work/{key}` asks them too. The eleventh is as well, and `work/{key}` answers
+Nine of them — 1, 2, 5, 6, 7, 8, 9, 10 and 11 — are facts about the issue, and
+`work/{key}` asks them too. The twelfth is as well, and `work/{key}` answers
 it the same way `work/queue` does: `WorkDto.Hop`. The other two are the loop's
 policy and are asked only when the pass is asking; see [one more, on `next`
 alone](#one-more-on-next-alone).
