@@ -108,6 +108,19 @@ public sealed class IncrementReport
     public bool LostLease { get; set; }
 
     /// <summary>
+    /// The board asked this runner to stand down for an emergency ticket while
+    /// the session was running. Not a lost lease: this runner still owns the
+    /// ticket, so it tidies, commits and pushes rather than writing nothing.
+    /// </summary>
+    public bool Preempted { get; set; }
+
+    /// <summary>The emergency issue this runner was put down for.</summary>
+    public string? PreemptedKey { get; set; }
+
+    /// <summary>Its title, so the put-down comment can say why without a second call.</summary>
+    public string? PreemptedTitle { get; set; }
+
+    /// <summary>
     /// A cancellation reached deep enough into the increment - past the spawn
     /// itself, which already answers a Ctrl-C by stopping the session and
     /// returning normally - that nothing further could be read from or written
@@ -136,6 +149,7 @@ public sealed class IncrementReport
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
         Moved ? $"{From} -> {Ended}"
+        : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
         : FixPushed ? "fix pushed, build pending"
@@ -237,6 +251,19 @@ public sealed class Increment(
             // Ctrl-C comes down the caller's own token, which this is linked to.
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
             claim.OnLost = _ => stopping.Cancel();
+            claim.OnPreempted = p =>
+            {
+                report.Preempted = true;
+                report.PreemptedKey = p.Key;
+                report.PreemptedTitle = p.Title;
+
+                // Before the cancel, not after: BeatAsync reads Chatter.Line at
+                // the top of the next tick, so this is what gets onto the very
+                // next heartbeat - the card and the Runners page say the ticket
+                // is being put down while the session is still being torn down.
+                claim.Chatter.Line = $"putting {report.Key} down for {p.Key} - {p.Title}";
+                stopping.Cancel();
+            };
 
             var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found, build?.Found);
             report.ExitCode = result.ExitCode;
@@ -285,7 +312,7 @@ public sealed class Increment(
                 : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
                 : null;
 
-            if (claim.Lost is null && UsageLimit.Recognise(said, DateTimeOffset.UtcNow) is { } hit)
+            if (claim.Lost is null && claim.Preempted is null && UsageLimit.Recognise(said, DateTimeOffset.UtcNow) is { } hit)
             {
                 report.UsageLimitResetAt = hit.ResetAt;
                 report.UsageLimitResetKnown = hit.ResetKnown;
@@ -339,12 +366,12 @@ public sealed class Increment(
                 // board is told about its branch is theirs to say. Never on a
                 // usage limit either: there is no fix to judge, only a session
                 // that did not finish.
-                if (conflict is not null && claim.Lost is null && !report.UsageLimited) await JudgeAsync(report, conflict, ct);
+                if (conflict is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted) await JudgeAsync(report, conflict, ct);
 
                 // The same for a build increment, and the same reason: what it
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
-                if (build is not null && claim.Lost is null && !report.UsageLimited) await JudgeBuildAsync(report, build, ct);
+                if (build is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted) await JudgeBuildAsync(report, build, ct);
 
                 // Whatever the session asked for on its way out. This is the
                 // half of the loop that makes asking worth doing: an unattended
@@ -389,7 +416,7 @@ public sealed class Increment(
                 // the ticket to a new column while still leaving that branch
                 // unresolved. This guard runs regardless, so the branch is still
                 // said - but see below for who wins the claim's own verdict.
-                if (report.Stalled && !report.LostLease && !report.UsageLimited)
+                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted)
                 {
                     if (report.Asked > 0)
                     {
@@ -439,7 +466,8 @@ public sealed class Increment(
                 // still null) for everything else - a lost lease, a usage
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
-                if (report.Moved || report.Resolved || report.FixPushed) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
+                else if (report.Moved || report.Resolved || report.FixPushed) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {

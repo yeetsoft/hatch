@@ -15,6 +15,7 @@ public static class Banner
     private const string Egg = "🥚🥚🥚🥚🥚";
     private const string Chick = "🐣🐣🐣🐣🐣";
     private const string Pan = "🍳🍳🍳🍳🍳";
+    private const string Siren = "🚨🚨🚨🚨🚨";
 
     /// <summary>
     /// Before a session is spawned: the ticket, what the increment is for, the
@@ -75,7 +76,8 @@ public static class Banner
     /// the board moved, however the column reads afterward.
     /// </summary>
     private static string Glyph(IncrementReport report) =>
-        report.ExitCode != 0 || report.Interrupted || report.LostLease ? Pan
+        report.Preempted ? Siren
+        : report.ExitCode != 0 || report.Interrupted || report.LostLease ? Pan
         : report.Moved || report.Resolved || report.FixPushed ? Chick
         : Egg;
 

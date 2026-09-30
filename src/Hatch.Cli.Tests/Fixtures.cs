@@ -202,6 +202,10 @@ public static class Fixtures
         JsonSerializer.Serialize(
             new ClaimTakenDto(token, "hatch", DateTimeOffset.UnixEpoch, ttlSeconds, stallLapseSeconds), Json);
 
+    /// <summary>What a heartbeat answers with when this runner is the one being preempted.</summary>
+    public static string Preempted(string key, string title) =>
+        JsonSerializer.Serialize(new ClaimPreemptedDto(key, title), Json);
+
     // ---- The events a session emits ----
 
     public static string Init(string sessionId = "s-1") =>

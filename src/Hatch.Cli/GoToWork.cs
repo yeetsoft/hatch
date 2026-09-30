@@ -14,6 +14,7 @@ public sealed class Tally
     private readonly List<string> _stalled;
     private readonly List<string> _letGo;
     private readonly List<string> _interrupted;
+    private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
     private readonly DateTimeOffset _started;
 
@@ -30,6 +31,7 @@ public sealed class Tally
         _stalled = [.. carried?.Stalled ?? []];
         _letGo = [.. carried?.LetGo ?? []];
         _interrupted = [.. carried?.Interrupted ?? []];
+        _preempted = [.. carried?.Preempted ?? []];
 
         // The night's start and not this process's, so the elapsed time in the
         // morning covers the whole of it. A state file with no start in it is
@@ -168,6 +170,16 @@ public sealed class Tally
             return;
         }
 
+        // A sixth list, and not a failure: the board ordered this ticket put
+        // down for an emergency, which says nothing about whether the
+        // increment itself was going well - three of these in a row must not
+        // arm the three-strikes stop the way three broken increments should.
+        if (report.Preempted)
+        {
+            _preempted.Add($"hatch:   preempt  {report.Key}  {report.Outcome}");
+            return;
+        }
+
         // Three lists rather than two, because a let-go ticket is neither of
         // the other mornings: the moved ones are what the night got done, the
         // stalled ones are what is waiting on somebody, and the let-go ones are
@@ -221,6 +233,7 @@ public sealed class Tally
         Stalled = _stalled,
         LetGo = _letGo,
         Interrupted = _interrupted,
+        Preempted = _preempted,
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
     };
@@ -251,6 +264,7 @@ public sealed class Tally
         say.Lines(_stalled);
         say.Lines(_letGo);
         say.Lines(_interrupted);
+        say.Lines(_preempted);
     }
 }
 
@@ -1312,7 +1326,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var limit = report.UsageLimitResetAt is { } resetAt
                     ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
                     : null;
-                await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit);
+                var preempted = report.Preempted
+                    ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
+                    : null;
+                await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
             }
             finally
             {
