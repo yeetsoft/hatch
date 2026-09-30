@@ -187,7 +187,7 @@ public sealed class WorkCommand(Runtime runtime)
         if (work.Hop)
         {
             runtime.Say.Line($"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
-            runtime.Say.Line("# express: carried across with no session");
+            runtime.Say.Line($"# {(work.HopKind == HopKinds.Parent ? "parent pulled" : "express")}: carried across with no session");
             return 0;
         }
 
@@ -323,7 +323,7 @@ public sealed class WorkCommand(Runtime runtime)
                         return 2;
                     }
 
-                    runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  express, no session");
+                    runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  {Picker.HopReason(named.HopKind)}");
                     return 0;
                 }
 
@@ -428,7 +428,7 @@ public sealed class WorkCommand(Runtime runtime)
 
                     case Pick.Hopped:
                         var hop = picked.Hopped!;
-                        runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  express, no session");
+                        runtime.Say.Line($"hatch: {hop.Key}  {hop.From} -> {hop.To}  {hop.Reason}");
                         return 0;
                 }
 

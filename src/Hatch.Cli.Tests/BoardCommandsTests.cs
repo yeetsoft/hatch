@@ -548,6 +548,17 @@ public sealed class BoardCommandsTests
         Assert.Equal("AER-1  [task]  In Progress  -> In Review  (express, no session)", h.Said);
     }
 
+    [Fact]
+    public async Task The_queue_marks_a_pulled_row_with_no_session()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Parent) });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (parent pulled, no session)", h.Said);
+    }
+
     /// <summary>
     /// A conflict dispatch starts and ends in one column, so an arrow would read
     /// <c>In Review  -> In Review</c>. It says what it is instead, and names the

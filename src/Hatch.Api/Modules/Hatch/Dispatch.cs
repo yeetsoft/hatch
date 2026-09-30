@@ -158,14 +158,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
-                    var hop = issue.Express && status.ExpressSkips;
+                    var hopKind = HopKind(issue, status, family, statuses);
+                    var hop = hopKind is not null;
                     var blocked = Blocked(
                         issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
-                        assignees[issue.Id], repos, merged, built, hop, wip);
+                        assignees[issue.Id], repos, merged, built, hop, statuses, wip);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
                         hop && blocked is null,
+                        blocked is null ? hopKind : null,
                         blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null));
                 }
             }
@@ -408,6 +410,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// every other reason to hold the issue back still applies to it exactly as
     /// it applies to any other issue.
     /// </param>
+    /// <param name="statuses">
+    /// The board, for the same board-order comparison <see cref="FamilyGate.SiblingInFlight"/>
+    /// runs to decide <paramref name="hop"/> - needed again here so the
+    /// ParentPulls fold below can name which of its two reasons applies,
+    /// without re-deriving the rule <see cref="FamilyGate.Pulls"/> already
+    /// encodes.
+    /// </param>
     /// <param name="wip">
     /// How full the WIP section is, or null where the board has never turned it
     /// on - see <see cref="Wip.LoadAsync"/>. A fact about the board, not the
@@ -431,6 +440,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         IReadOnlyList<EfHatchMergeCheck> verdicts,
         IReadOnlyList<EfHatchBuildCheck> builds,
         bool hop,
+        List<EfHatchStatus> statuses,
         WipSection? wip)
     {
         if (from.IsTerminal)
@@ -528,9 +538,33 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // fold above still applies exactly as it applies to any other issue.
         if (hop) return null;
 
+        // A column that pulls its children is never "no playbook covers
+        // this" - it is one of these two, naming which of FamilyGate.Pulls's
+        // two conditions is unmet. A childless issue in such a column (e.g.
+        // plain Backlog) has nothing to pull, so it falls through unchanged.
+        if (from.ParentPulls && issue.ParentId is { } parentId)
+        {
+            return family.ParentStarted(parentId, statuses)
+                ? "a sibling is already in flight, so only one child is pulled through at a time"
+                : "its parent has not reached the implementation column, so nothing pulls it forward yet";
+        }
+
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
             : null;
+    }
+
+    /// <summary>
+    /// Whether this issue crosses the column it stands in with no session, and
+    /// which of the two reasons - see HopKinds. Asked by the scan, a named
+    /// dispatch and the write itself, so the three cannot disagree about what a
+    /// hop is.
+    /// </summary>
+    public static string? HopKind(EfHatchIssue issue, EfHatchStatus from, FamilyGate family, List<EfHatchStatus> statuses)
+    {
+        if (issue.Express && from.ExpressSkips) return HopKinds.Express;
+        if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
+        return null;
     }
 
     /// <summary>
@@ -598,7 +632,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
-    string? ClearNote = null);
+    string? HopKind = null, string? ClearNote = null);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
@@ -811,15 +845,17 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey);
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], []);
+    public static readonly FamilyGate None = new([], [], []);
 
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
+    private readonly Dictionary<long, int> _statusById;
 
-    private FamilyGate(Dictionary<long, List<long>> children, HashSet<long> open)
+    private FamilyGate(Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById)
     {
         _children = children;
         _open = open;
+        _statusById = statusById;
     }
 
     public static async Task<FamilyGate> ForAsync(
@@ -834,16 +870,18 @@ public sealed class FamilyGate
 
         var children = new Dictionary<long, List<long>>();
         var open = new HashSet<long>();
+        var statusById = new Dictionary<long, int>();
         foreach (var row in rows)
         {
             if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
+            statusById[row.Id] = row.StatusId;
 
             if (row.ParentId is not { } parent) continue;
             if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
             siblings.Add(row.Id);
         }
 
-        return new FamilyGate(children, open);
+        return new FamilyGate(children, open, statusById);
     }
 
     /// <summary>The direct children of this issue, in board order.</summary>
@@ -858,4 +896,48 @@ public sealed class FamilyGate
     /// </summary>
     public IReadOnlyList<long> OpenChildren(long issueId) =>
         Children(issueId).Where(_open.Contains).ToList();
+
+    /// <summary>Whether the parent's own column is Columns.Implementation.</summary>
+    public bool ParentStarted(long parentId, List<EfHatchStatus> statuses) =>
+        _statusById.TryGetValue(parentId, out var statusId)
+        && Columns.Implementation(statuses) is { } implementation
+        && statusId == implementation.Id;
+
+    /// <summary>
+    /// Whether a sibling of this issue is in flight - see HA-149: standing
+    /// strictly right, in board order, of the column this issue would be pulled
+    /// into, and not terminal.
+    /// </summary>
+    public bool SiblingInFlight(EfHatchIssue issue, List<EfHatchStatus> statuses)
+    {
+        if (issue.ParentId is not { } parentId) return false;
+        if (statuses.FirstOrDefault(s => s.Id == issue.StatusId) is not { } from) return false;
+        if (Columns.Target(statuses, from) is not { } target) return false;
+
+        var board = Columns.Board(statuses);
+        var targetIndex = board.FindIndex(s => s.Id == target.Id);
+
+        foreach (var siblingId in Children(parentId))
+        {
+            if (siblingId == issue.Id) continue;
+            if (!_statusById.TryGetValue(siblingId, out var siblingStatusId)) continue;
+
+            var siblingIndex = board.FindIndex(s => s.Id == siblingStatusId);
+            if (siblingIndex <= targetIndex) continue; // not pulled past yet, or deferred (-1)
+            if (board[siblingIndex].IsTerminal) continue;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether this issue's column may carry it one column right with no
+    /// session - see HA-149.
+    /// </summary>
+    public bool Pulls(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
+        issue.ParentId is { } parentId
+        && ParentStarted(parentId, statuses)
+        && !SiblingInFlight(issue, statuses);
 }
