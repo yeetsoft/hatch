@@ -79,7 +79,7 @@ public class MinimalStartupTests
 
         var logs = await AssertStartsAndServesAsync(hatch, quartz);
 
-        Assert.Empty(logs.AtErrorOrAbove);
+        Assert.True(logs.AtErrorOrAbove.Count == 0, string.Join(Environment.NewLine, logs.AtErrorOrAbove));
     }
 
     /// <summary>
