@@ -292,8 +292,14 @@ public sealed class ClaimTests
 
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
 
+        // stallLapse is generous relative to Harness.Beat - a two-failure gap
+        // is ~2 beats, nominally, but a loaded CI box can stretch a real
+        // Task.Delay well past its nominal length, and a stallLapse only a
+        // few beats wide turned this flaky there: an unlucky scheduling delay
+        // tripped the give-up before the third beat's success ever landed,
+        // which stops the heartbeat for good and hangs the Eventually below.
         var (claim, _) = await Claim.TakeAsync(
-            h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromMilliseconds(150));
+            h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromSeconds(2));
 
         await Harness.Eventually(
             () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 24,
