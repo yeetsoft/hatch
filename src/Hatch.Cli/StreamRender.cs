@@ -76,6 +76,9 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     /// </summary>
     public IReadOnlyList<UsageWindow> Usage { get; private set; } = [];
 
+    /// <summary>When <see cref="Usage"/> was last taken - this runner's own word for it, and the heartbeat's to carry unchanged.</summary>
+    public DateTimeOffset? UsageReadAt { get; private set; }
+
     /// <summary>The lines one event turns into, in order. Empty for the events that draw nothing.</summary>
     public IEnumerable<string> Read(string raw)
     {
@@ -117,12 +120,25 @@ public sealed partial class StreamRender(string root, RunFacts facts)
             info.TryGetProperty("unifiedWindows", out var windows) && windows.ValueKind == JsonValueKind.Object)
         {
             Usage = windows.EnumerateObject()
-                .Select(w => new UsageWindow(Label(w.Name), Double(w.Value, "utilization") ?? 0, ResetsAt(w.Value)))
+                .Select(w => new UsageWindow(
+                    Window(w.Name), Label(w.Name), Double(w.Value, "utilization") ?? 0, ResetsAt(w.Value)))
                 .ToList();
+            UsageReadAt = DateTimeOffset.UtcNow;
         }
 
         return [];
     }
+
+    /// <summary>
+    /// Hatch's own vocabulary for the window key, so the heartbeat hands the
+    /// server a key rather than a label to parse back.
+    /// </summary>
+    private static string Window(string key) => key switch
+    {
+        "five_hour" => "session",
+        "seven_day" => "weekly",
+        _ => "weeklyModel",
+    };
 
     /// <summary>
     /// The two windows the source is known to report, and the label for

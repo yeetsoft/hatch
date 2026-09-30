@@ -5,12 +5,13 @@ namespace Hatch.Api.Modules.Hatch;
 /// <summary>
 /// The Claude subscription token, or null.
 ///
-/// One member, and null is an ordinary value rather than a startup failure:
-/// an installation with no Claude subscription gets a Hatch with no battery,
-/// no errors, and no empty box where a battery should be. Everything
-/// downstream - <see cref="ClaudeUsageClient"/>, the cache, the endpoint -
-/// binds to this rather than to where the token happens to be kept, so moving
-/// it is a change to one class.
+/// One member, and null is an ordinary value rather than a startup failure: an
+/// installation with none of its runners in a container never needs one set at
+/// all. <see cref="SettingsController"/>'s <c>claude-token</c> route is the only
+/// reader - the container runner's entrypoint, <c>hatch runner-claude-token</c>,
+/// is the only thing that ever calls it - and binding to this interface rather
+/// than to where the token happens to be kept is what makes moving it a change
+/// to one class.
 /// </summary>
 public interface IClaudeCredential
 {

@@ -322,22 +322,17 @@ export const runImport = (request: ImportRequest) =>
 // ---- The battery ----
 
 /**
- * The account's Claude headroom, read by the server so no browser ever holds
- * the subscription token.
+ * My own Claude headroom, off whatever my own runners last reported on their
+ * heartbeat.
  *
  * A 204 arrives as an empty body, which `fetchJson` gives back as undefined,
  * and it is normalised to null the way `getNextWorkUnder` normalises its own.
- * It is the answer this endpoint gives most often on most installations - no
- * token is configured - and it is not a failure: it means there is no battery
- * here, and the component draws nothing at all.
- *
- * `refresh` bypasses the server's five-minute window. It is the modal's
- * refresh control and nothing else calls it that way.
+ * It is the answer this endpoint gives on a fresh install, and to anybody who
+ * has never run a runner - and it is not a failure: it means there is no
+ * battery here, and the component draws nothing at all.
  */
-export const getUtilization = (refresh = false) =>
-  fetchJson<Utilization | undefined>(`/api/hatch/utilization${refresh ? '?refresh=true' : ''}`).then(
-    (reading) => reading ?? null,
-  );
+export const getUtilization = () =>
+  fetchJson<Utilization | undefined>('/api/hatch/utilization').then((reading) => reading ?? null);
 
 // ---- What is waiting on a person ----
 

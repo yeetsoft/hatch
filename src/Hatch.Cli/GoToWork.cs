@@ -967,6 +967,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
     {
+        var usage = runtime.Readout.Snapshot();
+
         var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
@@ -980,7 +982,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Mine: mine,
                 Where: runtime.Where,
                 Exhausted: tally.ExhaustedUntil is not null,
-                ExhaustedUntil: tally.ExhaustedUntil),
+                ExhaustedUntil: tally.ExhaustedUntil,
+                // Absent before this loop's first rate_limit_event - a restart
+                // mid-night sends nothing rather than blanking what the server
+                // already holds for this account. See RunnerHeartbeatRequest.Usage.
+                Usage: usage.UsageReadAt is null ? null : usage.UsageWindows
+                    .Select(w => new RunnerUsageWindowDto(
+                        w.Window, w.Label, (int)Math.Round(w.Utilization * 100), w.ResetsAt))
+                    .ToList(),
+                UsageReadAt: usage.UsageReadAt),
             ct);
 
         // The one heartbeat answer that ends a run: this name is already the

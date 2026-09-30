@@ -204,19 +204,31 @@ public sealed class StreamRenderTests
 
         Assert.Empty(lines);
         Assert.Equal(2, render.Usage.Count);
-        Assert.Contains(render.Usage, w => w.Label == "Session" && w.Utilization == 0.63);
-        Assert.Contains(render.Usage, w => w.Label == "Weekly" && w.Utilization == 0.39);
+        Assert.Contains(render.Usage, w => w.Window == "session" && w.Label == "Session" && w.Utilization == 0.63);
+        Assert.Contains(render.Usage, w => w.Window == "weekly" && w.Label == "Weekly" && w.Utilization == 0.39);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1790657400), render.Usage.First(w => w.Label == "Session").ResetsAt);
     }
 
     [Fact]
-    public void AWindowTheSourceHasNoNameFor_IsLabelledWeeklyModel()
+    public void ARateLimitEvent_StampsUsageReadAt()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.RateLimitEvent(("five_hour", 0.63, null))).ToList();
+
+        Assert.NotNull(render.UsageReadAt);
+    }
+
+    [Fact]
+    public void AWindowTheSourceHasNoNameFor_IsLabelledWeeklyModel_AndKeyedWeeklyModel()
     {
         var render = new StreamRender("/tmp/checkout", new RunFacts());
 
         render.Read(Fixtures.RateLimitEvent(("seven_day_opus", 0.2, null))).ToList();
 
-        Assert.Equal("Weekly (model)", Assert.Single(render.Usage).Label);
+        var window = Assert.Single(render.Usage);
+        Assert.Equal("Weekly (model)", window.Label);
+        Assert.Equal("weeklyModel", window.Window);
     }
 
     [Fact]

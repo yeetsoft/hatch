@@ -89,7 +89,7 @@ export function SettingsPage() {
           </ol>
           <Field
             label="Token"
-            hint="An OAuth token for your own Claude subscription. It is what lets the bar say how much headroom the account has left, and it is entirely optional - without one Hatch simply has no battery. Stored obfuscated, and never read back."
+            hint="An OAuth token for your own Claude subscription. It is what a container runner's entrypoint authenticates the claude CLI it starts with - an install whose runners all run on somebody's own machine needs none. Stored obfuscated, and never read back."
           >
             <input
               type="password"

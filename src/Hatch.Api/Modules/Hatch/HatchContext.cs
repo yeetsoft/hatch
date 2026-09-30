@@ -153,6 +153,9 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // scale would refuse the number an operator types into the box.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.MaxSpend).HasPrecision(18, 2);
 
+        // jsonb for the reason EfHatchWorkLogEntry.ModelUsage below is.
+        modelBuilder.Entity<EfHatchRunner>().Property(r => r.Usage).HasColumnType("jsonb");
+
         // Cascade with the issue, the way comments and events do and for the
         // same reason: a meter reading for a ticket nobody kept is a row about
         // nothing. What the account spent in total is a separate record and

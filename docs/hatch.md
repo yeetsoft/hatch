@@ -1570,10 +1570,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
-| `/utilization` | GET | The account's Claude headroom, read by the server. `204` when no token is configured; `?refresh=true` bypasses the cache — see [the battery](#the-battery) |
+| `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
-| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the credential](#the-credential). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
+| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
@@ -1595,49 +1595,51 @@ up before anything is written, and the bulk path shares it.
 
 ## The battery
 
-The bar carries one element the board does not: how much Claude the
-account has left, and how long until it comes back. It is read from every page
-without opening another app, and it is drawn from `GET
-/api/hatch/utilization`.
+The bar carries one element the board does not: how much Claude *I* have
+left, and how long until it comes back. It is read from every page without
+opening another app, and it is drawn from `GET /api/hatch/utilization`.
 
-**Absent is a supported state, and it is the default.** An installation with no
-Claude subscription token gets a Hatch with no battery — no element, no
-placeholder, no reserved space, and nothing anywhere reporting an error. This
-is an enhancement to a tracker, not a dependency of one, and the `204` the
-endpoint answers with is what says so.
+**Absent is a supported state, and it is the default.** A person no runner has
+ever reported for gets a Hatch with no battery — no element, no placeholder, no
+reserved space, and nothing anywhere reporting an error. A fresh install is in
+that state, and so is anybody who has never run a runner. This is an
+enhancement to a tracker, not a dependency of one, and the `204` the endpoint
+answers with is what says so.
 
-### The credential
+### Where the reading comes from
 
-The token is a **secret-valued site setting**, `ClaudeSubscriptionToken`, set on
-Hatch's own **Settings** page and stored the way the Immich key and the
-Anthropic key already are: obfuscated at rest, redacted on read, never leaving
-the API. That page holds two settings and no others: this token, and
-`LocalPersonName` — what Hatch calls whoever is sitting at the machine
-("Local mode"), shown only where
-there is no wall, because with one the name comes from the grant. It lives in
-Hatch rather than on the admin app's Settings page so that an installation with
-no admin app — which is every installation that is only somebody's tracker —
-can still set both. It is an OAuth token for the operator's own Claude subscription, and
-like every other credential in Hatch it is the operator's to supply
-([`docs/ethos.md`](ethos.md)) — nothing about one household's account may be
-true of the artifact.
+Not a token Hatch holds and reads over HTTP — the session's own stream. Every
+runner already knows the account its sessions spend: the console draws bars
+for it, off the session's own `rate_limit_event` events, and this is that same
+reading, carried one hop further. The runner reports it on the heartbeat it
+already sends — `Usage` and `UsageReadAt` beside `Exhausted` in
+`RunnerHeartbeatRequest` — and Hatch keeps it against the person the calling
+key belongs to, the same resolution `--mine` already takes
+(`IActorDirectory.PrincipalAsync`). Bob's runner's numbers never appear under
+Alice's name, because each is kept on Bob's and Alice's own rows and the
+endpoint only ever answers the caller's own.
 
-A setting rather than an environment variable for a reason beyond habit: this
-credential is genuinely optional, the provisioning path cannot express an
-optional cluster secret, and an expiring token is re-pasted far more often than
-a cluster is provisioned. Leave it blank and there is no battery, which is a
-working configuration.
+This is HA-120's answered question — *session stream* over a Hatch-held
+battery — applied to the nav: it costs a number that only moves while a
+session runs, and it needs no credential pasted anywhere. What it buys is a
+battery that works on a fresh install, for anybody with a runner of their own,
+including a friend on `do-my-work` spending their own account.
 
-The token reaches the app through one interface, `IClaudeCredential`, whose one
-member answers "the token, or null". Null is an ordinary value there rather
-than a startup failure, and moving where the token lives is a change to one
-class.
+Where somebody has two runners, **the freshest whole reading wins**, not a
+per-window merge. One person has one Claude login, so two runners are two
+readings of one account, and stitching a session percentage from one against a
+weekly one taken an hour apart would be showing a number nobody's account ever
+had.
 
 ### What the endpoint answers
 
 `GET /api/hatch/utilization` is `[RequireRole(PersonRole.User, AcceptScope = "hatch")]` like the
-rest of the module. It answers `204 No Content` when no token is configured, and
-otherwise:
+rest of the module. It answers who is asking with
+`IActorDirectory.PrincipalAsync` — no principal (the wall is up and the caller
+is a key belonging to nobody) is `204`, the same as it is for nobody having a
+reading at all: this is a nav widget, not a dispatch that was asked to do
+something, so an ownerless key gets the same quiet nothing rather than the
+refusal a `--mine` pass gives. Otherwise:
 
 ```json
 {
@@ -1645,56 +1647,52 @@ otherwise:
   "readAt": "2026-09-07T08:12:03Z",
   "limits": [
     { "window": "session", "label": "Session", "percent": 17,
-      "tone": "normal", "resetsAt": "2026-09-07T12:00:00Z", "isActive": true }
-  ],
-  "credits": { "isEnabled": true, "monthlyLimit": null, "usedCredits": 0,
-               "currency": "USD", "spendLimitReached": false }
+      "tone": "normal", "resetsAt": "2026-09-07T12:00:00Z" }
+  ]
 }
 ```
 
-Every name in it is Hatch's own. The account's spelling stops at
-`ClaudeUsageClient`, so the day a field is renamed upstream there is one file to
-fix and no page that has gone blank — and a test asserts that not one of the
-account's field names survives into the body.
+Every name in it is Hatch's own — the runner already translated the account's
+spelling before it ever reached the wire, so there is nothing upstream left to
+rename underneath this endpoint.
 
-- `state` is the whole of the degraded story. `ok` — read within the freshness
-  window. `stale` — the account could not be reached and this is the last good
-  reading, whose age `readAt` gives. `unknown` — could not be reached and there
-  has never been a good reading, so `limits` is empty and `readAt` is null.
-- `window` is `session`, `weekly`, `weeklyModel` or `other`, in the order the
-  account listed them. `other` is the carry-through for a kind Hatch has never
-  seen: it is rendered, not dropped and not thrown on.
-- `label` is what the row is called on screen, decided on the server —
-  `Session`, `Weekly`, the account's own display name for a model-scoped row,
-  and for `other` the account's own kind with its underscores turned to spaces.
-  So a fourth kind draws a row with a plain name rather than a blank one, and
-  **no model name is written down in this repository**.
-- `tone` is `normal`, `warn` or `danger` — the *decision*, not the account's
-  word for it, so the rule lives in one file on the server and the client paints
-  what it is told. Severity upstream is an open vocabulary and only `normal` has
-  ever been observed, so a severity Hatch knows maps and anything else falls
-  back to the percentage (90 and up is danger, 75 and up is warn). Without that
-  fallback the first new word upstream would paint a spent window calm.
-- `credits` is null when the account reports no extra usage block at all, and
-  the modal then says nothing about credits.
+- `state` is the whole of the degraded story, and there are only two of them. `ok`
+  — read within the freshness window (five minutes). `stale` — outside it, and
+  still the last thing this account is known to have reported; `readAt` gives
+  its age. There is no third state: a reading is kept, not swept, so `unknown`
+  ("the account could not be reached") went with the account nothing reaches
+  any more.
+- `window` is `session`, `weekly` or `weeklyModel`, in the order the runner
+  reported them.
+- `label` is what the row is called on screen — `Session`, `Weekly`, or
+  `Weekly (model)` for a per-model weekly window, which arrives with no display
+  name of its own on the wire. **No model name is written down in this
+  repository.**
+- `tone` is `normal`, `warn` or `danger` — the *decision*, decided on the
+  server from the percentage alone (90 and up is danger, 75 and up is warn),
+  so the rule lives in one file and the client paints what it is told.
 
-### How often it is actually read
+### How old the reading is
 
-The reading is held by a process-wide cache, and the cache holds the last good
-one **forever** — not an `IMemoryCache` entry, because "the last good reading,
-however old" is exactly what an eviction policy would throw away and it is what
-a `stale` answer is made of.
+There is no upstream to poll, so there is no cache, no freshness floor, no
+failure backoff and no semaphore to collapse concurrent reads — all of that
+belonged to a reading Hatch fetched, and this one arrives on a heartbeat a
+runner was already sending. One number, `UsageReadAt`, and arithmetic against
+it at the moment somebody asks: `ok` inside five minutes of it, `stale`
+outside. The Refresh button in the modal re-reads Hatch's own row; there is
+nothing upstream left for it to bypass.
 
-Two floors bound how often somebody else's endpoint is asked:
+### The token, still
 
-- **Five minutes of freshness**, with a semaphore and a re-check inside it, so
-  twenty open tabs polling every two minutes are one upstream read.
-- **Sixty seconds after a failure.** Without it the failure path would be the
-  only path with no rate limit on it, and an outage would become a request per
-  tab per poll.
-
-`?refresh=true` ignores both. It is the modal's refresh control: one person
-pressing a button once, which is not what the floors exist to bound.
+`ClaudeSubscriptionToken` — the secret-valued site setting on Hatch's own
+**Settings** page — no longer feeds the battery, but it has not left. It is
+what the *container* runner's entrypoint (`containers/hatch-runner/`) reads to
+authenticate the `claude` CLI it starts, via `hatch runner-claude-token` and
+`GET /api/hatch/settings/claude-token`. An install whose runners all run on
+somebody's own machine needs none of this. It is stored the way the Immich key
+and the Anthropic key already are: obfuscated at rest, redacted on read, never
+leaving the API — and, like every other credential in Hatch, it is the
+operator's own to supply ([`docs/ethos.md`](ethos.md)).
 
 
 ## What is waiting on you

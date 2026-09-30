@@ -17,7 +17,7 @@ public sealed class ReadoutTests
         var inc = new IncrementSnapshot(
             "HA-120", "Console: a pinned readout", "In Progress -> In Review",
             "https://hatch.example.test/apps/hatch/issues/HA-120", Now, 0, Now, null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -33,7 +33,7 @@ public sealed class ReadoutTests
         var started = Now.AddMinutes(-12);
         var lastActivity = Now.AddSeconds(-14);
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, started, 84_000, lastActivity, "Bash  make test-api");
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -48,7 +48,7 @@ public sealed class ReadoutTests
     public void TheQuietTimer_TurnsColourPastTwoMinutes(int quietSeconds, bool expectColour)
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddSeconds(-quietSeconds), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
 
         var row = Readout.Draw(snapshot, Now, 200, color: true)[1];
 
@@ -59,7 +59,7 @@ public sealed class ReadoutTests
     public void TheQuietTimer_TurnsTheDangerColourPastTenMinutes()
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddMinutes(-11), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
 
         var row = Readout.Draw(snapshot, Now, 200, color: true)[1];
 
@@ -70,7 +70,7 @@ public sealed class ReadoutTests
     public void NoColour_MeansNoEscapeCodesAnywhere()
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddMinutes(-11), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -83,7 +83,7 @@ public sealed class ReadoutTests
     public void BetweenIncrements_ThereIsNoIssueOrAliveRow()
     {
         var idle = new IdleSnapshot("nothing on the board is an agent's to move", Now.AddSeconds(47));
-        var snapshot = new ReadoutSnapshot(null, idle, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(null, idle, RunnerSnapshot.Empty, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -97,7 +97,7 @@ public sealed class ReadoutTests
     [Fact]
     public void NoUsageReading_MeansNoUsageRowsAndNothingComplains()
     {
-        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, []);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -107,8 +107,8 @@ public sealed class ReadoutTests
     [Fact]
     public void AUsageWindow_DrawsATwentyCellBarAndAPercentageAndAReset()
     {
-        var window = new UsageWindow("Session", 0.63, Now.AddHours(2));
-        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [window]);
+        var window = new UsageWindow("session", "Session", 0.63, Now.AddHours(2));
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [window], null);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -132,7 +132,7 @@ public sealed class ReadoutTests
     [Fact]
     public void OneLine_NamesEveryWindowCompactly()
     {
-        var line = Readout.OneLine([new UsageWindow("Session", 0.63, null), new UsageWindow("Weekly", 0.39, null)]);
+        var line = Readout.OneLine([new UsageWindow("session", "Session", 0.63, null), new UsageWindow("weekly", "Weekly", 0.39, null)]);
 
         Assert.Equal("Session 63%, Weekly 39%", line);
     }
@@ -143,7 +143,7 @@ public sealed class ReadoutTests
     public void TheRunnerRow_NamesTheCharacterThePersonTheNightAndTheBound()
     {
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3) + TimeSpan.FromMinutes(12), 4.82m, "--max-spend 20");
-        var snapshot = new ReadoutSnapshot(null, null, runner, []);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -157,7 +157,7 @@ public sealed class ReadoutTests
     public void ARunnerWithNoBound_SaysNothingAboutOne()
     {
         var runner = new RunnerSnapshot("Chrissy", null, 1, TimeSpan.Zero, 0m, null);
-        var snapshot = new ReadoutSnapshot(null, null, runner, []);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -171,7 +171,7 @@ public sealed class ReadoutTests
     public void EveryRow_IsClippedToTheGivenWidth()
     {
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3), 4.82m, "--max-spend 20");
-        var snapshot = new ReadoutSnapshot(null, null, runner, []);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
 
         var rows = Readout.Draw(snapshot, Now, 10, color: false);
 

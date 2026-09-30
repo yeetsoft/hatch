@@ -67,7 +67,7 @@ public sealed class ReadoutStateTests
         var state = new ReadoutState();
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 3, TimeSpan.FromMinutes(5), 1.5m, null);
         state.SetRunner(runner);
-        state.SetUsage([new UsageWindow("Session", 0.5, null)]);
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now);
 
         state.BeginIncrement("HA-1", "A ticket", "W", null, Now);
         state.EndIncrement();
@@ -75,5 +75,18 @@ public sealed class ReadoutStateTests
         var snapshot = state.Snapshot();
         Assert.Equal(runner, snapshot.Runner);
         Assert.Single(snapshot.UsageWindows);
+    }
+
+    [Fact]
+    public void SetUsage_StampsTheInstantItWasRead_AndALaterCallMovesIt()
+    {
+        var state = new ReadoutState();
+
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now);
+        Assert.Equal(Now, state.Snapshot().UsageReadAt);
+
+        var later = Now.AddMinutes(10);
+        state.SetUsage([new UsageWindow("session", "Session", 0.6, null)], later);
+        Assert.Equal(later, state.Snapshot().UsageReadAt);
     }
 }
