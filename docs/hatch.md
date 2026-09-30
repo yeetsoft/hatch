@@ -3343,9 +3343,14 @@ None of it runs when the lease was lost, for the reason the conflict's does not.
 On the server. `work/queue` is the same walk `work/next` takes, reported rather
 than acted on, and `GetNextWork` is the first clear row of that scan rather
 than a second walk that happens to agree with it — so a runner asks two
-questions and cannot get two different boards. Everything
-above is decided in one place, in one order, in
-[`WorkController.cs`](../src/Hatch.Api/Modules/Hatch/WorkController.cs).
+questions and cannot get two different boards. Everything above is decided in
+one place, in one order: the routes are
+[`WorkController.cs`](../src/Hatch.Api/Modules/Hatch/WorkController.cs), and
+the one scan every route is built on — the walk, the fold and the sentence for
+each — is
+[`Dispatch.cs`](../src/Hatch.Api/Modules/Hatch/Dispatch.cs), registered in DI
+the way `RankService` is, so anything else that needs to ask what a pass would
+do asks it there instead of re-deriving a second opinion.
 
 The alternative was **the client**, and it is the cheaper thing to write:
 `queue` already parses the board, and folding the not-yet-ready and the

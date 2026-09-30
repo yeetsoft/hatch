@@ -203,7 +203,7 @@ public static class WorkLogRollup
     ///
     /// A day is 24 hours exactly. <paramref name="offsetMinutes"/> is a fixed
     /// offset and not a zone, so there is no DST seam to reason about - the same
-    /// simplification <c>WorkController.DayNumber</c> makes, for the same
+    /// simplification <c>Dispatch.DayNumber</c> makes, for the same
     /// reason.
     ///
     /// <c>from == to</c> is one bucket rather than none, which is what keeps an
