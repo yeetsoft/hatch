@@ -64,6 +64,27 @@ export function navFor(isAdmin: boolean): NavEntry[] {
   }).filter((entry): entry is NavEntry => entry !== null);
 }
 
+export interface NavRowFlat {
+  to: string;
+  label: string;
+  end?: boolean;
+  /** The group this row came from, or null for a top-level link - nothing to
+      head it with. */
+  groupLabel: string | null;
+}
+
+/** `navFor(isAdmin)`, flattened to one row per entry: a top-level link keeps
+    its place with no heading, and a group's rows each carry that group's
+    label, so the phone menu can draw a heading exactly where the label
+    changes. */
+export function navRows(isAdmin: boolean): NavRowFlat[] {
+  return navFor(isAdmin).flatMap((entry): NavRowFlat[] =>
+    entry.kind === 'link'
+      ? [{ to: entry.to, label: entry.label, end: entry.end, groupLabel: null }]
+      : entry.rows.map((row) => ({ to: row.to, label: row.label, groupLabel: entry.label })),
+  );
+}
+
 function matches(pathname: string, to: string): boolean {
   const path = pathname.toLowerCase();
   const target = to.toLowerCase();

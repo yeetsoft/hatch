@@ -26,6 +26,13 @@ export function TopBarPage() {
       blurb="The bar every Hatch app wears: where you are, the logo that links home, and the theme. One row, 48px, and nothing else."
     >
       <GallerySection
+        title="At phone width"
+        note="An iframe, not a narrowed box - the same reason Modal's and Table's phone specimens are. Both themes: toggle the switch on this page and the frame follows, same as any other specimen here."
+      >
+        <iframe className="gallery-phone-frame" src="/apps/design/top-bar" title="Top bar at phone width" />
+      </GallerySection>
+
+      <GallerySection
         title="As it ships"
         note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; every other app leaves the default and gets a centred, --measure-capped bar instead. Board is forced active here (the page this specimen actually renders on is not `/color`), Plan sits at rest, and Agents is forced open with defaultOpen, so a resting link, the active link and an open menu are all on the bar at once. Hover any of them to see the hover paint live."
       >
