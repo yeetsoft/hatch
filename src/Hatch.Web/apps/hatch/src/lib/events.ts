@@ -1,4 +1,5 @@
 import { overrideLine } from './wipOverride';
+import { DEFAULT_EPIC_WIP_LIMIT } from './wip';
 import type { IssueEvent } from '../types';
 
 /**
@@ -32,6 +33,15 @@ export function describe(event: IssueEvent): string {
   /* An override carries { limit, load, to } - no `from` - so it falls through
      to here unless it is read first. */
   if (event.kind === 'wip_overridden') return overrideLine(event.payload) ?? '';
+
+  /* An epic's own ceiling on how many stories run at once - see
+     EfHatchIssue.WipLimit. An unset side reads as the default rather than
+     "none", the same way IssueCommands.ShowAsync prints it. */
+  if (event.kind === 'wip_limit_changed') {
+    const fromLimit = typeof from === 'number' ? from : DEFAULT_EPIC_WIP_LIMIT;
+    const toLimit = typeof to === 'number' ? to : DEFAULT_EPIC_WIP_LIMIT;
+    return `stories at once: ${fromLimit} → ${toLimit}`;
+  }
 
   /* A takeover of a lease that lapsed rather than was let go: { from, heardAt },
      no `to` - the holder that stopped answering, and when it was last heard

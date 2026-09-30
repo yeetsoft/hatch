@@ -255,6 +255,12 @@ export const clearClaim = (key: string) =>
 
 export const patchIssuePlaybook = (key: string, request: IssuePlaybookRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/playbook`, { method: 'PATCH', ...asJson(request) });
+/** How many of an epic's stories may run at once. Its own route for
+    IssuePlaybookController's reason: writing it is closed to an API key,
+    because a key that could raise its own epic's ceiling could pull more of
+    its own stories into progress at once - see IssueWipLimitController. */
+export const setWipLimit = (key: string, limit: string) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/wip`, { method: 'PATCH', ...asJson({ limit }) });
 /** What an issue waits on. Both verbs answer with the whole issue, so the page
     repaints from one response instead of composing the new state itself, and
     there is no GET: the two lists ride the issue. */

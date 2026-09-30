@@ -307,6 +307,14 @@ public class EfHatchIssue
     public const int MaxClaimRunnerLength = ClaimRequest.MaxRunnerLength;
 
     /// <summary>
+    /// What a null <see cref="WipLimit"/> reads as - one story at once. An
+    /// alias of <see cref="IssueWipLimitRequest.DefaultLimit"/>, the way
+    /// <see cref="MaxClaimRunnerLength"/> aliases <see cref="ClaimRequest.MaxRunnerLength"/>,
+    /// so the CLI can read the same number without seeing this entity.
+    /// </summary>
+    public const int DefaultEpicWipLimit = IssueWipLimitRequest.DefaultLimit;
+
+    /// <summary>
     /// Room for a line of chatter. A sentence, not a log - what is stored is
     /// what a card draws under "working on it", and anything longer is
     /// truncated to this.
@@ -530,6 +538,20 @@ public class EfHatchIssue
     /// around.</para>
     /// </remarks>
     public bool Express { get; set; }
+
+    /// <summary>
+    /// How many of an epic's stories may be in progress at once. Means
+    /// something on an epic and nothing on any other type; null reads as
+    /// <see cref="DefaultEpicWipLimit"/>, not as unlimited.
+    /// </summary>
+    /// <remarks>
+    /// Written only through <see cref="IssueWipLimitController"/>, by a person
+    /// and never a key - the same reason <see cref="WipController"/>'s limits
+    /// are: a key that could raise its own epic's ceiling could pull more of
+    /// its own stories into progress at once. HA-112 is what holds stories to
+    /// it; this field is only the setting.
+    /// </remarks>
+    public int? WipLimit { get; set; }
 
     // ---- The claim ----
     //
@@ -1130,6 +1152,13 @@ public class EfHatchIssueEvent
     /// same as <see cref="PriorityChanged"/>.
     /// </summary>
     public const string ExpressChanged = "express_changed";
+
+    /// <summary>
+    /// An epic's <see cref="EfHatchIssue.WipLimit"/> was set, changed or
+    /// cleared. The payload carries both sides, the same as
+    /// <see cref="PriorityChanged"/>; an unset side is null, not the default.
+    /// </summary>
+    public const string WipLimitChanged = "wip_limit_changed";
 
     /// <summary>
     /// The issue was made to wait on another, or freed from one. Written on the

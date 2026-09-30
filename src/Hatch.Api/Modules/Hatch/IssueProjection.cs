@@ -162,7 +162,8 @@ public static class IssueProjection
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
                 buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
                 issue.Express,
-                PriorityLevels.Name(issue.Priority));
+                PriorityLevels.Name(issue.Priority),
+                issue.WipLimit);
         });
     }
 

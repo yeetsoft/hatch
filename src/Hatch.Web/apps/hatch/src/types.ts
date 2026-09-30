@@ -349,6 +349,11 @@ export interface Issue {
       `failedBuilds` - only a failed one is drawn. Absent from a board that
       predates them. */
   buildChecks?: BuildCheck[];
+  /** How many of an epic's stories may be in progress at once, or null for
+      DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
+      Readable by anybody a dispatch reaches and writable only by a person,
+      through its own route - see IssueWipLimitController. */
+  wipLimit: number | null;
 }
 
 /** An ordinary note, a question that needs deciding, the answer to one, or a
@@ -412,6 +417,7 @@ export type IssueEventKind =
   | 'assignee_changed'
   | 'priority_changed'
   | 'express_changed'
+  | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
   | 'claim_taken'
@@ -605,6 +611,16 @@ export interface IssuePatchRequest {
 export interface IssuePlaybookRequest {
   model?: string | null;
   effort?: string | null;
+}
+
+/** How many of an epic's stories may run at once. Null leaves it alone and
+    `''` clears it back to DEFAULT_EPIC_WIP_LIMIT, the same bulk rule every
+    other clearable field in Hatch follows.
+
+    Its own request because it is its own route: setting one is closed to an
+    API key, for IssuePlaybookRequest's reason - see IssueWipLimitController. */
+export interface IssueWipLimitRequest {
+  limit: string;
 }
 
 /** One edge: this issue waits on `dependsOnKey`. Open to an API key, unlike
