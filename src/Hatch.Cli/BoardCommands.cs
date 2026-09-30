@@ -37,8 +37,9 @@ public sealed class BoardCommands(Cli cli)
         "           not to you\", or \"assigned to nobody - a --mine pass takes only",
         "           your own\"",
         "",
-        "  A row marked \"!\" is expedited: somebody said this one first, and the",
-        "  pass considers every one of them before anything else, whatever column",
+        "  A row marked \"!!\" is emergency and a row marked \"! \" is expedited:",
+        "  somebody said this one first, and the pass considers every emergency",
+        "  row before every expedited row before anything else, whatever column",
         "  each sits in.",
         "",
         "  A row marked \"(express, no session)\" is a hop: the loop carries it on",
@@ -71,17 +72,21 @@ public sealed class BoardCommands(Cli cli)
             var terminal = status.IsDeferred ? " (deferred)" : status.IsTerminal ? " (terminal)" : "";
             var column = board.Issues.Where(i => i.StatusId == status.Id).ToList();
 
-            // What this command draws is a count, so this is where an expedited
-            // card is marked: how many of the column are going first. Said only
-            // where there are any, because a stock board has none and
-            // "(0 expedited)" on every row would be five lines of nothing.
-            var hurried = column.Count(i => i.Expedited);
+            // What this command draws is a count, so this is where the two
+            // levels above normal are marked: how many of the column are going
+            // first, most severe first. Said only where there are any, because
+            // a stock board has none and "(0 expedited)" on every row would be
+            // five lines of nothing.
+            var urgent = column.Count(i => i.Priority == PriorityLevels.EmergencyName);
+            var emergency = urgent > 0 ? $"  ({urgent} emergency)" : "";
+
+            var hurried = column.Count(i => i.Priority == PriorityLevels.ExpeditedName);
             var first = hurried > 0 ? $"  ({hurried} expedited)" : "";
 
             var express = column.Count(i => i.Express);
             var carried = express > 0 ? $"  ({express} express)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{first}{carried}");
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{carried}");
         }
 
         if (board.Wip is { } wip)
@@ -122,11 +127,12 @@ public sealed class BoardCommands(Cli cli)
     /// The top workable card of a column.
     /// </summary>
     /// <remarks>
-    /// The board arrives ordered by (status, expedited desc, rank, id), so "the
+    /// The board arrives ordered by (status, priority desc, rank, id), so "the
     /// top card" is the first survivor of the filter and no sorting happens
-    /// here - which is also how an expedited card comes back from this without
-    /// a line of code about it. A client with its own opinion about which
-    /// ticket is next is the drift the server's ordering exists to rule out.
+    /// here - which is also how an emergency or expedited card comes back from
+    /// this without a line of code about it. A client with its own opinion
+    /// about which ticket is next is the drift the server's ordering exists to
+    /// rule out.
     /// </remarks>
     public async Task<int> NextAsync(string[] args, CancellationToken ct)
     {
@@ -152,7 +158,12 @@ public sealed class BoardCommands(Cli cli)
         }
 
         var due = card.DueAt is { Length: > 0 } by ? $"  (due {by})" : "";
-        var first = card.Expedited ? "  (expedited)" : "";
+        var first = card.Priority switch
+        {
+            PriorityLevels.EmergencyName => "  (emergency)",
+            PriorityLevels.ExpeditedName => "  (expedited)",
+            _ => "",
+        };
         var carried = card.Express ? "  (express)" : "";
         cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{carried}{due}");
         return 0;
@@ -212,10 +223,13 @@ public sealed class BoardCommands(Cli cli)
     /// guessed width - status names are rows the operator renames.
     /// </summary>
     /// <remarks>
-    /// The <c>!</c> in front of an expedited row is the same idea one step
-    /// further: the column appears only when the answer holds one, so a board
-    /// with nothing expedited prints exactly what it printed before, and a
-    /// queue whose order has been reordered by somebody says which rows did it.
+    /// The <c>!!</c> or <c>! </c> in front of an emergency or expedited row is
+    /// the same idea one step further, and distinct from the singular
+    /// <c>!</c> the expedited-only board used - both two characters, so column
+    /// alignment is unaffected. The column appears only when the answer holds
+    /// one, so a board with nothing above normal prints exactly what it
+    /// printed before, and a queue whose order has been reordered by somebody
+    /// says which rows did it.
     ///
     /// <para>A conflict dispatch starts and ends in the same column, so an arrow
     /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
@@ -227,10 +241,17 @@ public sealed class BoardCommands(Cli cli)
         var keyWidth = queue.Max(q => q.Issue.Key.Length);
         var typeWidth = queue.Max(q => q.Issue.Type.Length) + 2;
         var columnWidth = queue.Max(q => q.FromStatus.Name.Length);
-        var anyFirst = queue.Any(q => q.Issue.Expedited);
+        var anyFirst = queue.Any(q => q.Issue.Priority != PriorityLevels.NormalName);
 
         return queue.Select(q =>
-                (anyFirst ? (q.Issue.Expedited ? "! " : "  ") : "")
+                (anyFirst
+                    ? q.Issue.Priority switch
+                    {
+                        PriorityLevels.EmergencyName => "!!",
+                        PriorityLevels.ExpeditedName => "! ",
+                        _ => "  ",
+                    }
+                    : "")
                 + q.Issue.Key.PadRight(keyWidth) + "  "
                 + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "

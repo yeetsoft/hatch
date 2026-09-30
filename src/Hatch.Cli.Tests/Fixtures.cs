@@ -37,14 +37,15 @@ public static class Fixtures
     public static IssueDto Issue(
         string key, string type = "task", string title = "A ticket", string description = "The brief.",
         string? modelOverride = null, string? effortOverride = null, string? parentKey = null,
-        bool expedited = false, string? pullRequestUrl = null, bool express = false) =>
+        bool expedited = false, string? pullRequestUrl = null, bool express = false, string? priority = null) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
             StatusId: 3, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
             ReadyAt: null, DueAt: null, PullRequestUrl: pullRequestUrl,
             ModelOverride: modelOverride, EffortOverride: effortOverride, Assignee: null,
             CreatedBy: "somebody", CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
-            Expedited: expedited, Express: express);
+            Expedited: expedited, Express: express,
+            Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName));
 
     public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
         new(key, "AER", type, title, 3, 1000, null, null, null);
@@ -111,10 +112,11 @@ public static class Fixtures
         string? matchedRemote = null) =>
         new(remote, canonical ?? remote, baseBranch, primary, matchedRemote);
 
-    public static QueueEntryDto Row(string key, string? blocked = null, bool expedited = false, bool hop = false) =>
+    public static QueueEntryDto Row(
+        string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null) =>
         new(
-            Issue(key, expedited: expedited, express: hop), Status(3, "In Progress"), Status(4, "In Review"), blocked,
-            Hop: hop);
+            Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
+            Status(4, "In Review"), blocked, Hop: hop);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(

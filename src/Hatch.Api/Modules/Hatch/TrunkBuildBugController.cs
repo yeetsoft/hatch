@@ -71,7 +71,7 @@ public class TrunkBuildBugController(
         var issues = new IssuesController(db, ranks, actors, claims, caller, time) { ControllerContext = ControllerContext };
         var created = await issues.CreateIssueAsync(
             new IssueCreateRequest(project, "bug", $"Build failing on {row.Trunk}", description, null, null, null),
-            expedited: true, ct);
+            PriorityLevels.Expedited, ct);
 
         if (created.Result is not CreatedAtActionResult { Value: IssueDto dto }) return created.Result!;
 

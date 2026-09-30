@@ -22,6 +22,7 @@ const card = (key: string, statusId: number): IssueCard => ({
   assignee: null,
   claim: null,
   expedited: false,
+  priority: 'normal',
   express: false,
 });
 

@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// unanswered question - see <see cref="EfHatchIssue.Express"/>.
 ///
 /// It is a gate-passer and not a sort key, the opposite of
-/// <see cref="EfHatchIssue.Expedited"/>: every fold an issue already meets
+/// <see cref="EfHatchIssue.Priority"/>: every fold an issue already meets
 /// still folds it, and this changes only whether a column marked for it needs
 /// a session at all.
 /// </summary>

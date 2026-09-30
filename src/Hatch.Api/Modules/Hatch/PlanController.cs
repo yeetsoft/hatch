@@ -63,7 +63,7 @@ public class PlanController(
                 i.DueAtHasTime,
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
-                i.Expedited,
+                i.Priority,
                 i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
@@ -89,8 +89,9 @@ public class PlanController(
                     IssueMoment.Format(c.DueAt, c.DueAtHasTime),
                     Assignee: await IssueProjection.ToAssigneeAsync(actors, c.AssigneePersonId, c.AssigneeApiKeyId, ct),
                     Claim: claims.Project(c.Claim, now),
-                    Expedited: c.Expedited,
-                    Express: c.Express),
+                    Expedited: c.Priority >= PriorityLevels.Expedited,
+                    Express: c.Express,
+                    Priority: PriorityLevels.Name(c.Priority)),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
 
@@ -136,7 +137,7 @@ public class PlanController(
                 i.DueAtHasTime,
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
-                i.Expedited,
+                i.Priority,
                 i.Express,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
@@ -216,8 +217,9 @@ public class PlanController(
                         IssueMoment.Format(row.DueAt, row.DueAtHasTime),
                         Assignee: assignees[id],
                         Claim: claims.Project(row.Claim, now),
-                        Expedited: row.Expedited,
-                        Express: row.Express),
+                        Expedited: row.Priority >= PriorityLevels.Expedited,
+                        Express: row.Express,
+                        Priority: PriorityLevels.Name(row.Priority)),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested

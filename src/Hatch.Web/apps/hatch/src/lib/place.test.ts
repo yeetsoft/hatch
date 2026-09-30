@@ -5,7 +5,12 @@ import type { IssueCard } from '../types';
 const INBOX = 1;
 const TODO = 2;
 
-const card = (key: string, statusId: number, rank: number, expedited = false): IssueCard => ({
+const card = (
+  key: string,
+  statusId: number,
+  rank: number,
+  priority: 'normal' | 'expedited' | 'emergency' = 'normal',
+): IssueCard => ({
   key,
   projectKey: 'AER',
   type: 'task',
@@ -18,7 +23,8 @@ const card = (key: string, statusId: number, rank: number, expedited = false): I
   openQuestions: 0,
   assignee: null,
   claim: null,
-  expedited,
+  expedited: priority !== 'normal',
+  priority,
   express: false,
 });
 
@@ -163,7 +169,7 @@ describe('place, with something expedited in the column', () => {
      column both ways round - the ordinary case, where a card was expedited
      where it already sat. */
   const hurried = [
-    card('AER-7', INBOX, 512, true),
+    card('AER-7', INBOX, 512, 'expedited'),
     card('AER-1', INBOX, 1024),
     card('AER-2', INBOX, 2048),
     card('AER-9', TODO, 1024),
@@ -198,7 +204,7 @@ describe('place, with something expedited in the column', () => {
      everything else - and that is where it has to be painted. */
   it('paints a drop above a high-ranked expedited card where the rank will put it', () => {
     const odd = [
-      card('AER-7', INBOX, 4096, true),
+      card('AER-7', INBOX, 4096, 'expedited'),
       card('AER-1', INBOX, 1024),
       card('AER-2', INBOX, 2048),
       card('AER-3', INBOX, 3072),
@@ -208,6 +214,38 @@ describe('place, with something expedited in the column', () => {
 
     expect(placed.beforeKey).toBe('AER-7');
     expect(keysIn(placed.issues, INBOX)).toEqual(['AER-7', 'AER-2', 'AER-3', 'AER-1']);
+  });
+});
+
+/* The same float, one level up: emergency above expedited above the rest -
+   the browser-side mirror of WorkControllerTests' three-level ordering. */
+describe('place, with an emergency card above an expedited one', () => {
+  const alarmed = [
+    card('AER-7', INBOX, 512, 'expedited'),
+    card('AER-1', INBOX, 1024),
+    card('AER-9', INBOX, 256, 'emergency'),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('serves the emergency card above the expedited one above the rest', () => {
+    const placed = place(alarmed, alarmed, 'AER-1', 'AER-9')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-9', 'AER-7', 'AER-1', 'AER-2']);
+  });
+
+  it('floats an emergency card dropped into another column above an expedited one there', () => {
+    const there = [
+      card('AER-7', TODO, 512, 'expedited'),
+      card('AER-9', INBOX, 1024, 'emergency'),
+    ];
+
+    const placed = place(there, there, 'AER-9', columnDroppableId(TODO))!;
+
+    // Dropped on the column, which is its rank-order bottom - and then above
+    // AER-7 all the same, because the float is the last word.
+    expect(placed.afterKey).toBe('AER-7');
+    expect(placed.beforeKey).toBeNull();
+    expect(keysIn(placed.issues, TODO)).toEqual(['AER-9', 'AER-7']);
   });
 });
 
@@ -268,7 +306,7 @@ describe('restorePoint', () => {
   /* The board serves the expedited card first, but the server places by rank:
      AER-3 is drawn at the top of its column and is still the bottom of it. */
   it('reads rank and not the order the board draws', () => {
-    const served = [card('AER-3', INBOX, 3072, true), card('AER-1', INBOX, 1024), card('AER-2', INBOX, 2048)];
+    const served = [card('AER-3', INBOX, 3072, 'expedited'), card('AER-1', INBOX, 1024), card('AER-2', INBOX, 2048)];
 
     expect(restorePoint(served, 'AER-3')).toEqual({ statusId: INBOX, afterKey: 'AER-2', beforeKey: null });
     expect(restorePoint(served, 'AER-1')).toEqual({ statusId: INBOX, afterKey: null, beforeKey: 'AER-2' });

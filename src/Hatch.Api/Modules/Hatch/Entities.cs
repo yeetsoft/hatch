@@ -470,34 +470,46 @@ public class EfHatchIssue
     /// <summary>
     /// <em>This one first.</em> Set by a person, honoured by both halves of
     /// Hatch: the board floats the card to the top of its column, and the
-    /// dispatcher considers every expedited candidate before anything else.
+    /// dispatcher considers every issue at a higher level before anything at a
+    /// lower one - see <see cref="Hatch.Contracts.PriorityLevels"/> for the
+    /// three levels and their order.
     /// </summary>
     /// <remarks>
     /// <para>A sort key, not a gate. Every fold still applies exactly as it
     /// applies to any other issue - an open question, an unmet dependency, a
     /// ready date in the future, a live claim, a missing playbook, a person's
-    /// name on the ticket and a terminal column all fold an expedited issue the
-    /// same (<see cref="WorkController"/>). This changes the order candidates
-    /// are <em>considered</em> in, and nothing else.</para>
+    /// name on the ticket and a terminal column all fold an expedited or
+    /// emergency issue the same (<see cref="WorkController"/>). This changes
+    /// the order candidates are <em>considered</em> in, and nothing else.</para>
     ///
-    /// <para>It marks the issue it is set on and nothing beneath it. Every type
-    /// in a walkable column is dispatchable, so a flag on one issue means
-    /// something wherever it is set - and "point tonight at this epic" is
-    /// already <c>work --under</c>, which is the subtree mechanism. A second one
-    /// beside it would be two answers to one question.</para>
+    /// <para>It marks the issue it is set on and nothing beneath it that
+    /// already exists. Every type in a walkable column is dispatchable, so a
+    /// level on one issue means something wherever it is set - and "point
+    /// tonight at this epic" is already <c>work --under</c>, which is the
+    /// subtree mechanism. A second one beside it would be two answers to one
+    /// question.</para>
+    ///
+    /// <para>Taken from the parent at filing <em>only when the parent is
+    /// Emergency</em>, and at no other time: a child filed under an emergency
+    /// parent is born emergency, the same as <see cref="Express"/> is taken
+    /// from an express parent. Expedited never inherits this way, and
+    /// reparenting an issue under an emergency parent does not mark it, nor
+    /// does reparenting one away unmark it - the level an issue is born with is
+    /// a fact about how it came to exist, not a fact that follows its parent
+    /// around.</para>
     ///
     /// <para>Writing it is closed to an API key
     /// (<see cref="IssueExpediteController"/>) for the reason writing an
-    /// assignee and a playbook is: expedite decides what the loop reaches for
+    /// assignee and a playbook is: priority decides what the loop reaches for
     /// first, so a key that could set one could put its own ticket at the front
     /// of every night. Reading is open, like everything else a dispatch needs -
     /// an agent is entitled to know why it was sent where it was sent.</para>
     /// </remarks>
-    public bool Expedited { get; set; }
+    public int Priority { get; set; }
 
     /// <summary>
     /// A gate-passer, not a sort key - the opposite shape from
-    /// <see cref="Expedited"/>. An issue marked express is carried past a
+    /// <see cref="Priority"/>. An issue marked express is carried past a
     /// column marked <see cref="EfHatchStatus.ExpressSkips"/> with no session,
     /// as long as it has no unanswered question; every other fold still holds
     /// it exactly as it holds any other issue (<see cref="WorkController"/>).
@@ -506,7 +518,7 @@ public class EfHatchIssue
     /// <remarks>
     /// <para>Set by a person
     /// (<see cref="IssueExpressController"/>), for the same reason as
-    /// <see cref="Expedited"/>: it decides which gates the loop may pass
+    /// <see cref="Priority"/>: it decides which gates the loop may pass
     /// unattended, and a key that could set it could carry its own ticket
     /// through the night unattended.</para>
     ///
@@ -1103,18 +1115,19 @@ public class EfHatchIssueEvent
     public const string EffortOverrideChanged = "effort_override_changed";
 
     /// <summary>
-    /// The issue was marked <em>this one first</em>, or unmarked - see
-    /// <see cref="EfHatchIssue.Expedited"/>. The payload carries both sides, so
-    /// the trail says which way it went rather than only that somebody touched
-    /// it: "who put this at the front of the night, and when" is the question a
-    /// flag that reorders a whole board has to be able to answer.
+    /// The issue's priority level changed - see
+    /// <see cref="EfHatchIssue.Priority"/>. The payload carries both sides by
+    /// name, so the trail says which way it went rather than only that
+    /// somebody touched it: "who put this at the front of the night, and
+    /// when" is the question a level that reorders a whole board has to be
+    /// able to answer.
     /// </summary>
-    public const string ExpeditedChanged = "expedited_changed";
+    public const string PriorityChanged = "priority_changed";
 
     /// <summary>
     /// The issue was marked express, or unmarked - see
     /// <see cref="EfHatchIssue.Express"/>. The payload carries both sides, the
-    /// same as <see cref="ExpeditedChanged"/>.
+    /// same as <see cref="PriorityChanged"/>.
     /// </summary>
     public const string ExpressChanged = "express_changed";
 

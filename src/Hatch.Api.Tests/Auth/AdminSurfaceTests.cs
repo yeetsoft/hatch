@@ -334,12 +334,13 @@ public class AdminSurfaceTests
         "AssigneeController.PutIssueAssignee",
 
         // The same edge read from the other side. An assignee holds a ticket
-        // off the night shift; expedite puts one at the front of it, so a key
+        // off the night shift; priority puts one at the front of it, so a key
         // that could set one could put its own ticket ahead of everything a
         // person filed, every night, with nothing looking wrong on the board.
         // Reading it is open - it rides IssueDto and IssueCardDto, both
         // Hatch-scoped - and only the write is here. See
-        // IssueExpediteController.
+        // IssueExpediteController, which cuts both its routes the same way.
+        "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
 
         // The night train's own edge. Express decides which gates the loop may
@@ -456,7 +457,7 @@ public class AdminSurfaceTests
 
     /// <summary>
     /// The routes under Modules/Hatch that name no scope, so a key is refused
-    /// them: a playbook, an override, a runner bound, an assignee, an expedite,
+    /// them: a playbook, an override, a runner bound, an assignee, a priority,
     /// the settings and the runner binary each choose what the next agent may
     /// do or spend. Each still asks for User - a person, not an Admin.
     /// </summary>
@@ -469,6 +470,7 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "WipController.PutWip",
         "AssigneeController.PutIssueAssignee",
+        "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
         "IssueExpressController.PutIssueExpress",
         "StatusesController.PutExpressSkips",

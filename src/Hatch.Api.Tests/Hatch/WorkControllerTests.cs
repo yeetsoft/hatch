@@ -1255,6 +1255,25 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_ListsEveryEmergencyCandidateBeforeEveryExpeditedOneBeforeEveryOtherOne()
+    {
+        var h = await NewAsync();
+        var judged = await h.FileAsync("story", "awaiting the operator", h.Review);
+        var underway = await h.FileAsync("story", "underway", h.InProgress);
+        var hurry = await h.FileAsync("bug", "expedited, in the leftmost column", h.Inbox);
+        var alarm = await h.FileAsync("bug", "emergency, further along", h.Todo);
+
+        await h.ExpediteAsync(hurry);
+        await h.EmergencyAsync(alarm);
+
+        // Emergency before expedited before everything else, whatever column
+        // each sits in - three files rather than two.
+        Assert.Equal(
+            new[] { alarm, hurry, judged, underway }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
     public async Task Queue_KeepsTheBoardsOwnOrderInsideEachHalf()
     {
         var h = await NewAsync();
@@ -1310,6 +1329,29 @@ public class WorkControllerTests
         // first, folded with exactly the sentence the same fold gives an
         // ordinary issue, and the pass goes on to the next one.
         Assert.Equal(Key(hurried), queue[0].Issue.Key);
+        Assert.NotNull(queue[0].Blocked);
+        Assert.Equal(queue.Single(e => e.Issue.Key == Key(ordinary)).Blocked, queue[0].Blocked);
+        Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnEmergencyIssueThatIsBlocked_IsFoldedWithTheSameSentenceAndThePassCarriesOn()
+    {
+        var h = await NewAsync();
+        var alarmed = await h.FileAsync("story", "emergency, waiting on a person", h.Todo, rank: 1024);
+        var ordinary = await h.FileAsync("story", "waiting on a person", h.Todo, rank: 2048);
+        var next = await h.FileAsync("story", "the one behind them", h.Todo, rank: 3072);
+        await h.AskAsync(alarmed, "per-node or global?");
+        await h.AskAsync(ordinary, "per-node or global?");
+
+        await h.EmergencyAsync(alarmed);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        // Priority carries nothing past its own reason: the row is considered
+        // first, folded with exactly the sentence the same fold gives an
+        // ordinary issue, and the pass goes on to the next one.
+        Assert.Equal(Key(alarmed), queue[0].Issue.Key);
         Assert.NotNull(queue[0].Blocked);
         Assert.Equal(queue.Single(e => e.Issue.Key == Key(ordinary)).Blocked, queue[0].Blocked);
         Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
@@ -3381,12 +3423,19 @@ public class WorkControllerTests
         /// <em>This one first</em>, written straight onto the row. What the
         /// route that writes it accepts and refuses - and above all who may
         /// press it - is <see cref="IssueExpediteControllerTests"/>'s business;
-        /// these tests are about what the dispatcher does with the flag once it
-        /// is set.
+        /// these tests are about what the dispatcher does with the level once
+        /// it is set.
         /// </summary>
         public async Task ExpediteAsync(EfHatchIssue issue)
         {
-            issue.Expedited = true;
+            issue.Priority = PriorityLevels.Expedited;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same, one level up - see <see cref="ExpediteAsync"/>.</summary>
+        public async Task EmergencyAsync(EfHatchIssue issue)
+        {
+            issue.Priority = PriorityLevels.Emergency;
             await Db.SaveChangesAsync();
         }
 

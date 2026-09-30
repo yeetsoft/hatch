@@ -30,6 +30,7 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   assignee: null,
   claim: null,
   expedited: false,
+  priority: 'normal',
   express: false,
 });
 

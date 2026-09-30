@@ -450,39 +450,55 @@ an API key; see [The one edge that is deliberately cut](#the-one-edge-that-is-de
 
 #### Expedite
 
-**One flag meaning *this one first*.** `Expedited` is a boolean on the issue,
-set by a person, and honoured by both halves of Hatch: the board floats the card
-to the top of its column, and the dispatcher considers every expedited candidate
-before anything else.
+**An issue sits at one of three levels, and emergency is the third.**
+`Priority` is an int on the issue — normal, expedited or emergency, in that
+order — set by a person, and honoured by both halves of Hatch: the board
+floats the card to the top of its column, and the dispatcher considers every
+emergency candidate before every expedited candidate before anything else.
+`PUT /api/hatch/issues/{key}/priority` sets the level by name; the older
+`PUT .../expedite` stays as a two-level alias (`{ expedited: true }` sets
+expedited, `false` sets normal), so a script or a browser tab written against
+the two-level flag does not break.
 
 Two things it deliberately is not.
 
 **It is a sort key, not a gate.** Every existing fold still applies. An open
 question, an unmet dependency, a ready date in the future, a live claim, a
 missing playbook, a person's name on the ticket and a terminal column fold an
-expedited issue exactly as they fold any other, with exactly the same sentence.
-Expedite changes the order candidates are *considered* in, and nothing else —
-so an expedited issue that is blocked is still blocked, and the pass carries on
-past it.
+expedited or emergency issue exactly as they fold any other, with exactly the
+same sentence. Priority changes the order candidates are *considered* in, and
+nothing else — so an emergency issue that is blocked is still blocked, and the
+pass carries on past it.
 
 **It marks the issue it is set on, not the subtree under it.** Every type in a
 walkable column is dispatchable — an epic in a breakdown column is broken down
-by the loop the same as a story is implemented — so a flag on one issue means
+by the loop the same as a story is implemented — so a level on one issue means
 something wherever it is set. "Point tonight at this epic" is already
 `work --under`, and a second subtree mechanism beside `ancestorKey` would be two
 answers to one question.
 
-On the board it is `(StatusId, Expedited desc, Rank, Id)`, served that way
+**It is taken from the parent at filing, and at no other time — but only from
+an emergency parent.** An issue created under an emergency parent is born
+emergency, whoever files it and however, the same as [express](#express) is
+taken from an express parent; its `created` event names the parent it took the
+level from (`emergencyFrom`). Expedited never inherits this way, and never has
+— filing under an expedited-but-not-emergency parent is not itself expedited.
+**Reparenting never touches it**: moving an issue under an emergency parent
+does not mark it, and moving it away does not unmark it — the level is a fact
+about how an issue came to exist, not one that follows a parent around.
+
+On the board it is `(StatusId, Priority desc, Rank, Id)`, served that way
 rather than sorted in the browser, so the board, the plan and the queue cannot
-disagree about where a card sits — and a card dropped above an expedited one
-comes to rest below it, because the float wins over the rank. In the dispatcher
-it is [two walks of the columns](#the-dispatcher) rather than a sort of the
-finished rows.
+disagree about where a card sits — and a card dropped above an emergency or
+expedited one comes to rest below it, because the float wins over the rank. In
+the dispatcher it is [three walks of the columns](#the-dispatcher) rather than
+a sort of the finished rows.
 
 Setting it is closed to an API key; see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). It follows that there is no
-`hatch expedite` verb — the CLI authenticates with a key, so the terminal shows
-the flag and sets it nowhere.
+`hatch expedite` or `hatch priority` verb — the CLI authenticates with a key,
+so the terminal shows the level (`board`'s counts, `next`'s and `show`'s
+suffix, and `queue`'s `!!`/`! ` marker) and sets it nowhere.
 
 `CreatedBy` is a **name**, not a foreign key to `People`. The audit trail has to
 read the same after a person row is deleted, and an API key's name goes in this
@@ -1360,7 +1376,7 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`expedited_changed`, `express_changed`, `dependency_added`,
+`priority_changed`, `express_changed`, `dependency_added`,
 `dependency_removed`, `claim_taken`, `claim_lapsed` (a take found a lease that
 had already gone quiet past its terms and is taking it over — payload
 `{ from, heardAt }`, the previous holder and when it was last heard from,
@@ -1573,30 +1589,33 @@ the same means. Reading is open, and deliberately: an agent has to be able to
 say whose ticket it is leaving alone, so both `GET /api/hatch/assignees` and the
 `assignee` on `IssueDto` are Hatch-scoped like everything else.
 
-**And so is expediting one**, which is the same edge as the assignee read from
-the other side. An assignee holds a ticket *off* the night shift; expedite puts
-one at the *front* of it — so a key that could set one could put its own ticket
-ahead of everything a person filed, every night, without anything looking wrong
-on the board. `PUT /api/hatch/issues/{key}/expedite` therefore lives on its own
-controller (`IssueExpediteController`) carrying no class-level scope, cut in the
-route by the same means. Reading is open like the rest: `expedited` rides
-`IssueDto` and `IssueCardDto`, because an agent is entitled to know why it was
-sent where it was sent. It follows that there is no `hatch expedite` verb — the
-CLI authenticates with a key, so the terminal *shows* the flag on `board`,
-`queue` and `show` and sets it nowhere.
+**And so is setting the priority level**, which is the same edge as the
+assignee read from the other side. An assignee holds a ticket *off* the night
+shift; priority puts one at the *front* of it — so a key that could set one
+could put its own ticket ahead of everything a person filed, every night,
+without anything looking wrong on the board. `PUT
+/api/hatch/issues/{key}/priority` and its legacy two-level alias `PUT
+.../expedite` therefore both live on `IssueExpediteController`, which carries
+no class-level scope and guards each action the same way, cut in the route by
+the same means. Reading is open like the rest: `priority` and the derived
+`expedited` both ride `IssueDto` and `IssueCardDto`, because an agent is
+entitled to know why it was sent where it was sent. It follows that there is
+no `hatch priority` or `hatch expedite` verb — the CLI authenticates with a
+key, so the terminal *shows* the level on `board`, `queue` and `show` and sets
+it nowhere.
 
 **And so is filing the bug a failing trunk's button offers (HA-95).** The bug
 `POST /api/hatch/trunk-builds/{id}/bug` files is expedited from the moment it
 exists, so a key that could press the button could put a ticket of its own
-choosing at the front of the night the same way a key that could expedite
+choosing at the front of the night the same way a key that could set priority
 directly could. `TrunkBuildBugController` therefore carries no class-level
-attribute either, cut by the same means as expedite; filing itself goes
-through `IssuesController.CreateIssueAsync`'s internal, expedited-aware
-overload, so the bug's number, rank, first column and `created` event are the
-ordinary ones and the flag is set in the same save rather than a second write
-after. Reading the trunk builds themselves stays Hatch-scoped, the way reading
-a build check is: a verdict about a sha is a fact any runner reads the same
-way, whichever repository it binds.
+attribute either, cut by the same means as priority; filing itself goes
+through `IssuesController.CreateIssueAsync`'s internal, level-aware overload,
+so the bug's number, rank, first column and `created` event are the ordinary
+ones and the level is set in the same save rather than a second write after.
+Reading the trunk builds themselves stays Hatch-scoped, the way reading a
+build check is: a verdict about a sha is a fact any runner reads the same way,
+whichever repository it binds.
 
 **A key's owner is cut the same way, and for the reason the assignee edge
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
@@ -1623,7 +1642,7 @@ carry its own ticket through the night with nobody reading it first, the same
 kind of widening a playbook or an assignee would be. `PUT
 /api/hatch/issues/{key}/express` lives on its own controller
 (`IssueExpressController`) carrying no class-level scope, cut by the same
-means as expedite. The column half cannot ride `PATCH /api/hatch/statuses/{id}`
+means as priority and expedite. The column half cannot ride `PATCH /api/hatch/statuses/{id}`
 — that route accepts the `hatch` scope on every action, so one more field on
 the ordinary status patch would have been a key ticking its own gate — so it
 gets its own action, `PUT /api/hatch/statuses/{id}/express-skips`, carrying a
@@ -1661,7 +1680,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
-| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
+| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section is a per-key failure, named in `failures` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section anyway, `409` (`WipRefusalDto`) otherwise, `403` from a key or a keyless runner |
@@ -1673,7 +1692,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
-| `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expedited }` — *this one first*, floated on the board and taken first by the dispatcher. Setting what it already holds writes nothing |
+| `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"normal"`, `"expedited"` or `"emergency"`, floated on the board and taken first by the dispatcher, most severe first. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
@@ -2151,14 +2171,16 @@ everything and finishes nothing; one worked right to left pushes whatever is
 furthest along over the line before it opens anything new. The second is what a
 person does when they mean to ship.
 
-**Except for what somebody expedited**, which is considered first wherever it
-sits. The scan walks the columns twice — every [expedited](#expedite) candidate
-right to left, then everything else right to left — so an expedited bug in the
-leftmost column is reached before a non-expedited story in the rightmost one,
-and inside each half the order is the board's own. Two passes rather than a sort
-of the finished rows, because the [published scan](#what-a-pass-skipped) is the
-explanation of what `next` picked, and a comparator applied afterwards would be
-a second opinion about the order.
+**Except for what somebody marked above normal**, which is considered first
+wherever it sits. The scan walks the columns three times — every
+[emergency](#expedite) candidate right to left, then every
+[expedited](#expedite) candidate right to left, then everything else right to
+left — so an emergency bug in the leftmost column is reached before an
+expedited story in the rightmost one, which is reached before a normal one in
+the rightmost one, and inside each third the order is the board's own. Three
+passes rather than a sort of the finished rows, because the [published
+scan](#what-a-pass-skipped) is the explanation of what `next` picked, and a
+comparator applied afterwards would be a second opinion about the order.
 
 `?ancestorKey=AER-1` asks the same question of one epic's subtree instead of the
 whole board — the same rule, narrower candidates, nothing else changed. It
@@ -3957,10 +3979,12 @@ about a ticket that did not move, and what it stops for.
 
 `hatch queue` reads the scan and prints it, one issue a line — key, type,
 column, and either the reason the pass would fold past it or the transition it
-is clear for, in the dispatcher's order: every [expedited](#expedite) row first
-whatever column it sits in, then the rest, and inside each half the rightmost
-column first and the order the board itself draws that column in. An expedited
-row is marked, so a queue reordered by one says why. A clear row that is a
+is clear for, in the dispatcher's order: every [emergency](#expedite) row
+first whatever column it sits in, then every [expedited](#expedite) row, then
+the rest, and inside each third the rightmost column first and the order the
+board itself draws that column in. An emergency row is marked `!!` and an
+expedited row `! ` — both two characters, so the columns after it still line
+up — so a queue reordered by one says why. A clear row that is a
 [hop](#the-hop) reads `-> <column>  (express, no session)` in place of the bare
 arrow, so it reads differently from a row `go-to-work` would spawn a session
 for even though both print no reason to fold past. A row that is clear only

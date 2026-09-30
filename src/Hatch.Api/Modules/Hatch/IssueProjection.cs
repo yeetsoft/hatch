@@ -158,10 +158,11 @@ public static class IssueProjection
                 issue.CreatedAt,
                 issue.UpdatedAt,
                 claims.Project(ClaimSnapshot.Of(issue), now),
-                issue.Expedited,
+                issue.Priority >= PriorityLevels.Expedited,
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
                 buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
-                issue.Express);
+                issue.Express,
+                PriorityLevels.Name(issue.Priority));
         });
     }
 

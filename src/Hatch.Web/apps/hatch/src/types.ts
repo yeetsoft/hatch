@@ -157,8 +157,16 @@ export interface IssueCard {
   claim: IssueClaim | null;
   /** *This one first.* The server serves an expedited card above every
       non-expedited one in its column, so nothing here sorts - see
-      IssueCardDto.Expedited. */
+      IssueCardDto.Expedited. Derived from `priority` - `priority !== 'normal'` -
+      and kept alongside it rather than replaced by it, so a reader that only
+      cares whether this one goes first does not have to know there are three
+      levels. */
   expedited: boolean;
+  /** The level's name - `'normal'`, `'expedited'` or `'emergency'` - see
+      IssueCardDto.Priority and PriorityLevels. The raw level, for the one place
+      that needs to tell expedited apart from emergency rather than collapse
+      them: the optimistic float in lib/place.ts. */
+  priority: 'normal' | 'expedited' | 'emergency';
   /** Carried past a column marked *Express skips* with no session, as long as
       it has no unanswered question. A gate-passer and not a sort key - the
       opposite of `expedited` - so nothing here sorts either. See
@@ -322,8 +330,10 @@ export interface Issue {
       dispatcher considers it before anything else - and nothing else changes,
       because it is a sort key and not a gate. Readable by anybody a dispatch
       reaches and writable only by a person, through its own route - see
-      IssueExpediteController. */
+      IssueExpediteController. Derived from `priority` - see IssueCard.expedited. */
   expedited: boolean;
+  /** The level's name - see IssueCard.priority and IssueDto.Priority. */
+  priority: 'normal' | 'expedited' | 'emergency';
   /** Carried past a column marked *Express skips* with no session, as long as
       it has no unanswered question - the opposite shape from `expedited`: a
       gate-passer, not a sort key. Taken from the parent at filing and at no
@@ -400,7 +410,7 @@ export type IssueEventKind =
   | 'model_override_changed'
   | 'effort_override_changed'
   | 'assignee_changed'
-  | 'expedited_changed'
+  | 'priority_changed'
   | 'express_changed'
   | 'dependency_added'
   | 'dependency_removed'
