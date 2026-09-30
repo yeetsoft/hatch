@@ -122,7 +122,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Claims, scan.Repos, scan.Wip, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, ct);
     }
 
     /// <summary>
@@ -289,6 +289,7 @@ public class WorkController(
             statuses,
             null,
             await DependencyGate.ForAsync(db, statuses, ct),
+            await FamilyGate.ForAsync(db, statuses, ct),
             new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
             RepositoryDeclaration.From(remote, standing, clones),
             await Wip.LoadAsync(db, claims, statuses, now, ct),
@@ -341,6 +342,7 @@ public class WorkController(
             issue, from, to, playbook, waiting,
             null, // a hop takes no ready-date fold of its own - see Dispatch.Blocked's loop parameter
             await DependencyGate.ForAsync(db, statuses, ct),
+            await FamilyGate.ForAsync(db, statuses, ct),
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
@@ -384,6 +386,10 @@ public class WorkController(
     /// The unmet dependencies, for the same reason and with the same guarantee:
     /// the scan's own, so a row it called clear cannot come back blocked here.
     /// </param>
+    /// <param name="family">
+    /// Every issue's children and which are open, with the same guarantee: the
+    /// scan's own, so a row it called clear cannot come back blocked here.
+    /// </param>
     /// <param name="claimed">
     /// Who holds what, and what this caller holds. Not the loop's policy: a
     /// claim is a fact about the issue, so an issue somebody named by hand is
@@ -395,7 +401,7 @@ public class WorkController(
     /// named by hand is refused by a full section too.
     /// </param>
     private async Task<WorkDto> ResolveAsync(
-        EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate,
+        EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate, FamilyGate family,
         ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
@@ -460,7 +466,7 @@ public class WorkController(
 
         var hop = to is not null && issue.Express && from.ExpressSkips;
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, loop, gate, claimed, Columns.Implementation(statuses),
+            issue, from, to, playbook, waiting, loop, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, wip);
         var hopped = hop && blocked is null;

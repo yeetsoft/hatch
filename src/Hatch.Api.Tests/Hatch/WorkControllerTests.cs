@@ -592,6 +592,70 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(last), null, default)).Blocked);
     }
 
+    // ---- Its children are still open ----
+    //
+    // The mirror of the dependency fold above: that one gates the move in to
+    // the implementation column, this one gates the move out of it. A parent
+    // standing there is not itself the work while a child is not yet closed -
+    // its children are - so it is folded rather than carried into review.
+
+    [Fact]
+    public async Task AParentWithAnOpenChild_IsFolded()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        await h.FileAsync("task", "not started", h.Todo, parentId: parent.Id);
+
+        Assert.Equal(
+            "its children are the work, and some are still open",
+            Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADeferredChild_IsFolded()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        await h.FileAsync("task", "shelved, not closed", h.Shelved, parentId: parent.Id);
+
+        // A deferred child is not terminal, so it is still open - the same
+        // rule a shelved blocker is held to.
+        Assert.Equal(
+            "its children are the work, and some are still open",
+            Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWhoseChildrenAreAllTerminal_IsClear()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        await h.FileAsync("task", "shipped", h.Done, parentId: parent.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AChildlessIssue_IsUnaffected()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nothing under it", h.InProgress);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithOpenChildren_IsUnaffectedLeftOfImplementation()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "still being broken down", h.Todo);
+        await h.FileAsync("task", "not started", h.Todo, parentId: parent.Id);
+
+        // Nothing else changes: still broken down, still lands in the
+        // backlog, still analysed. Only the move out of implementation folds.
+        Assert.Null(Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
+    }
+
     // ---- Which checkout a runner declares ----
     //
     // Opt-in, not a default: a request carrying none of remote, standing or
