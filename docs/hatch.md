@@ -232,8 +232,10 @@ a person — see ["the one edge that is deliberately
 cut"](#the-one-edge-that-is-deliberately-cut) — never through a status write, so
 the ordinarily key-writable `PATCH /api/hatch/statuses/{id}` cannot reach it.
 The limit itself is a row in `hatch."WipLimits"` (`Types`, `Limit`), one per
-slice of the board the flag is measured against; no row means no limit. This
-epic writes exactly one slice, `story,bug`.
+slice of the board the flag is measured against; no row means no limit. Hatch
+knows exactly two slices, `story,bug` and `epic`, in that fixed order — the
+section is one set of columns and any number of slices, each with its own
+limit, its own load and its own claimed-inbound count.
 
 `ExpressSkips` marks the columns an [express](#express) issue is carried past
 with no session — see [the hop](#the-hop). It is **not** a "whose column is
@@ -275,8 +277,9 @@ the flag existed.
 
 A migration flags `In Progress` and `In Review` on a board that still has
 columns of exactly those names, and writes no limit row — the WIP section is
-marked, but nothing changes until the operator types a number on the Statuses
-page. A renamed board seeds neither.
+marked, and from then on `board.wip` reports a real load for both slices, but
+nothing is drawn, refused or folded until the operator types a number on the
+Statuses page. A renamed board seeds neither.
 
 **Which column belongs to whom is not a field.** It is derived: a column an
 agent may leave is a column some [playbook](#playbooks) names as its `from`, for
@@ -808,16 +811,23 @@ waits and on it alone.
 
 ### WIP
 
-How full the [WIP section](#status) is right now, as one number against one
-limit — the read every later story shares (`Wip.LoadAsync` in
-`Modules/Hatch/Wip.cs`) rather than counting for itself.
+How full the [WIP section](#status) is right now — the read every later story
+shares (`Wip.LoadAsync` in `Modules/Hatch/Wip.cs`) rather than counting for
+itself.
 
-**The load** is every issue of a counted type sitting in a WIP column, plus
-every issue of a counted type outside the section that holds a live
-[claim](#claim) whose next column is itself a WIP column. Which columns count
-and which types count are exactly what `IsWip` and the `WipLimits` row already
-say — see [Status](#status) — narrowed the same way: a deferred or terminal
-column never counts, whatever it is flagged.
+**One section, any number of slices.** The section is one set of columns;
+each slice is a `WipLimits` row, keyed by the issue types it counts, with its
+own limit, its own load and its own claimed-inbound count. Hatch knows exactly
+two slices, `story,bug` and `epic`, always both and always in that order — a
+story or a bug counts toward the first, an epic toward the second, and a task
+toward neither. A slice with no row still exists and still reports a real
+load; it simply has no limit to gate or fold anything with.
+
+**A slice's load** is every issue of its counted types sitting in a WIP
+column, plus every issue of its counted types outside the section that holds a
+live [claim](#claim) whose next column is itself a WIP column. Which columns
+count is exactly what `IsWip` says — see [Status](#status) — narrowed the same
+way: a deferred or terminal column never counts, whatever it is flagged.
 
 **The claimed-inbound half** exists because a claim is what stops a second
 runner filling the same slot: an issue in a feeder column that a runner has
@@ -828,45 +838,54 @@ only while the claim is live — an unclaimed issue in a feeder column counts fo
 nothing — and it drops out of the load the instant the claim does, one second
 past the TTL, same as if it had never been claimed.
 
-`null` means no WIP at all: no column is flagged, or no limit row exists. A
-board that has never turned WIP on reads exactly as one that predates it.
+`board.wip` is null only where no column is flagged at all. Once a column is
+flagged, it is present with every slice's load, whether or not that slice has
+a limit — a board that has never turned WIP on reads exactly as one that
+predates it.
 
-Read at `GET /api/hatch/board`'s `wip` block, and printed as one line by
-`hatch board`.
+Read at `GET /api/hatch/board`'s `wip` block, and printed as one line per
+limited slice by `hatch board`.
 
 On the board itself the WIP columns read as one zone. A band spans each run of
 adjacent WIP columns - a section split by a column outside it draws two bands,
-both showing the same meter - reading `WIP 3 of 5` and, once claimed-inbound is
-non-zero, `(1 on the way)`. Tightness is one of four, each its own tint: *room*
-(two or more left), *tight* (one left), *full* (at the limit, said in the band
-as well as tinted, so the two do not depend on colour alone to be told apart),
-and *over* (past it). Picking up a story or a bug from outside the section
-previews the band with that card added, for as long as the drag lasts, and
-lights every column of the section as one target; a task, an epic, or a card
-already inside changes nothing. The count never follows the filter - it is
+both showing the same meter. It is drawn only where at least one slice has a
+limit, and reads one part per limited slice, joined by ` · ` - `WIP 3 of 5`
+for the first, and every part after it prefixed with its own types, pluralised,
+so an epic-only band reads `WIP epics 1 of 2`. Each part carries its own
+claimed-inbound aside, once non-zero - `(1 on the way)`. Tightness is one of
+four per slice, each its own tint: *room* (two or more left), *tight* (one
+left), *full* (at the limit, said in the band as well as tinted, so the two do
+not depend on colour alone to be told apart), and *over* (past it) - the band
+and the lit columns are tinted by whichever limited slice is tightest.
+Picking up a card from outside the section previews the slice covering its
+type alone - a story or a bug previews the first slice, an epic the second,
+and a task neither - for as long as the drag lasts, and lights every column of
+the section as one target. The count never follows the filter - it is
 `board.wip`'s own count, drawn whether or not the card counted is on screen.
-Where `board.wip` is null there is no band at all: nothing here asks about a
+Where no slice has a limit there is no band at all: nothing here asks about a
 drop into a full section or refuses one, either - that is the server's `409`,
 and the paragraph below is what a full section does with it.
 
 **The refusal.** A move whose `from` is outside the section and whose `to` is
-inside is refused with `409` while the load is at or over the limit - a move
-within the section or out of it, a task or an epic, and an issue already
-counted (inside the section, or outside it on a live claim headed in) are
-never refused. The body is `{ error, load, limit }` (`WipRefusalDto`), `error`
-the sentence and `load` the count *before* the move - the same `409` from
-`POST /issues/{key}/move`, `PATCH /issues/{key}` and `POST /issues/bulk`
-alike, and every door (the board, the issue page, the CLI, the bulk page)
-prints the same sentence. A person may say *move anyway* (`wipOverride: true`
-on a move or a patch; bulk takes no override), which writes `wip_overridden`
-beside `status_changed` - see [Issue event](#issue-event). Overriding is a
-person's call and not an agent's: a key or a keyless runner sending
-`wipOverride: true` is refused with `403`, whatever the load and even where no
-limit is set. On the board and on the issue page, the browser never sends that
-flag on its own first guess: the `409` raises a dialog quoting the sentence
-above and asking *move anyway?*, and only a press of *Move anyway* resends the
-same request with `wipOverride: true` - the event that follows names who
-pressed it.
+inside is refused with `409` while the slice covering the card's type is at or
+over its limit - a move within the section or out of it, a type no slice
+counts, a slice with no limit, and an issue already counted (inside the
+section, or outside it on a live claim headed in) are never refused. The body
+is `{ error, load, limit }` (`WipRefusalDto`), `error` the sentence naming the
+slice's own types and `load` that slice's count *before* the move - the same
+`409` from `POST /issues/{key}/move`, `PATCH /issues/{key}` and
+`POST /issues/bulk` alike, and every door (the board, the issue page, the CLI,
+the bulk page) prints the same sentence. In a batch, an issue counts only
+against its own slice: one epic admitted does not use up a story's slot, and
+the reverse. A person may say *move anyway* (`wipOverride: true` on a move or
+a patch; bulk takes no override), which writes `wip_overridden` beside
+`status_changed` - see [Issue event](#issue-event). Overriding is a person's
+call and not an agent's: a key or a keyless runner sending `wipOverride: true`
+is refused with `403`, whatever the load and even where no limit is set. On
+the board and on the issue page, the browser never sends that flag on its own
+first guess: the `409` raises a dialog quoting the sentence above and asking
+*move anyway?*, and only a press of *Move anyway* resends the same request
+with `wipOverride: true` - the event that follows names who pressed it.
 
 ### Claim
 
@@ -1484,9 +1503,9 @@ set its own owner could simply say it is whoever holds the tickets it wants.
 class — not one route carved out of it — so no key can mint a key, revoke one,
 or change whose it is; a person does that, at the API Keys page, on purpose.
 
-**And so is the WIP section and its limit.** Which columns are work in
-progress, and how much of one slice of the board may sit across them at once,
-is the operator's to set — a key that could raise the limit or empty the
+**And so is the WIP section and its limits.** Which columns are work in
+progress, and how much of each slice of the board may sit across them at once,
+is the operator's to set — a key that could raise a limit or empty the
 section could pull more of its own work in overnight, the loop stalling behind
 a ceiling it had just raised for itself. `PUT /api/hatch/wip` therefore lives
 on its own controller (`WipController`) carrying no class-level scope, cut in
@@ -1537,9 +1556,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
-| `/wip` | GET | `{ limit, types, statusIds }` — the flagged columns that are neither deferred nor terminal, in board order |
-| `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, statusIds? }`, the bulk rule throughout: `limit` is a string (`""` clears it, a whole number of one or more sets it), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
-| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: the section's limit, counted types, status ids, load and claimed-inbound part, or `null` where no column is flagged or no limit is set (see [WIP](#wip)) |
+| `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
+| `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
+| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Expedited desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section is a per-key failure, named in `failures` |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section anyway, `409` (`WipRefusalDto`) otherwise, `403` from a key or a keyless runner |

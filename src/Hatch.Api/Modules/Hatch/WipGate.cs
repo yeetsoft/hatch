@@ -14,17 +14,18 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 /// <remarks>
 /// It counts on from its own admissions the way <c>ColumnBottoms</c> counts on
-/// from its own ranks: a bulk request aimed at one free slot must not admit
-/// two stories into it, and nothing is saved between the issues a batch
-/// touches. It computes nothing <see cref="Wip"/> does not already answer -
-/// the load, the counted types, the section and whether an issue is already
+/// from its own ranks: a bulk request aimed at one free slot must not admit two
+/// stories into it, and nothing is saved between the issues a batch touches -
+/// kept per slice, so one epic admitted in a batch does not use up a story's
+/// slot. It computes nothing <see cref="Wip"/> does not already answer - the
+/// load, the counted types, the section and whether an issue is already
 /// counted all come from <see cref="Wip.LoadAsync"/>.
 /// </remarks>
 public sealed class WipGate(HatchContext db, IssueClaims claims, DateTimeOffset now)
 {
     private WipSection? _section;
     private bool _loaded;
-    private readonly HashSet<long> _admitted = [];
+    private readonly Dictionary<WipSlice, HashSet<long>> _admitted = [];
 
     /// <summary>
     /// Whether a move of <paramref name="issue"/> into <paramref name="toStatusId"/>
@@ -40,30 +41,34 @@ public sealed class WipGate(HatchContext db, IssueClaims claims, DateTimeOffset 
     {
         var section = await SectionAsync(ct);
 
-        // No limit, a move that does not enter the section, a move that
-        // never left it, an uncounted type, or an issue Wip already counts
-        // (inside the section, or outside it on a live claim headed in) -
-        // none of these can be refused, whatever the load.
+        // No section, a move that does not enter it, a move that never left
+        // it, a type no slice counts, or a slice with no limit - none of
+        // these can be refused, whatever the load.
         if (section is null) return WipVerdict.Pass;
         if (!section.Inside(toStatusId)) return WipVerdict.Pass;
         if (section.Inside(issue.StatusId)) return WipVerdict.Pass;
-        if (!section.Counts(type)) return WipVerdict.Pass;
-        if (section.Counted(issue) || _admitted.Contains(issue.Id)) return WipVerdict.Pass;
+        if (section.SliceFor(type) is not { Limit: { } limit } slice) return WipVerdict.Pass;
 
-        var load = section.Load + _admitted.Count;
-        if (load < section.Limit)
+        var admitted = _admitted.TryGetValue(slice, out var set) ? set : _admitted[slice] = [];
+
+        // An issue Wip already counts (inside the section, or outside it on a
+        // live claim headed in) cannot be refused either, whatever the load.
+        if (slice.Counted(issue) || admitted.Contains(issue.Id)) return WipVerdict.Pass;
+
+        var load = slice.Load + admitted.Count;
+        if (load < limit)
         {
-            _admitted.Add(issue.Id);
+            admitted.Add(issue.Id);
             return WipVerdict.Room;
         }
 
         if (wipOverride)
         {
-            _admitted.Add(issue.Id);
-            return WipVerdict.Overridden(section.Limit, load + 1);
+            admitted.Add(issue.Id);
+            return WipVerdict.Overridden(limit, load + 1);
         }
 
-        return WipVerdict.Refused(new WipRefusalDto(Wip.Sentence(load, section.Limit, section.Types), load, section.Limit));
+        return WipVerdict.Refused(new WipRefusalDto(Wip.Sentence(load, limit, slice.Types), load, limit));
     }
 
     private async Task<WipSection?> SectionAsync(CancellationToken ct)

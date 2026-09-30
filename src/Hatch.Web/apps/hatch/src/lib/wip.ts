@@ -7,7 +7,7 @@
    reading either off a hook, so a toggle or a limit edit is a computation the
    page can test without a server. */
 
-import type { IssueCard, Status, Wip, WipSection } from '../types';
+import type { IssueCard, IssueType, Status, Wip, WipSection, WipSliceSetting } from '../types';
 
 /** Why a column's box is disabled, or null when it may be ticked.
 
@@ -30,17 +30,27 @@ export function toggled(section: WipSection, statuses: Status[], id: number, on:
   return statuses.filter((s) => wanted.has(s.id)).map((s) => s.id);
 }
 
-/** What the limit field shows: blank for no limit, the number otherwise. */
-export function limitDraft(section: WipSection): string {
-  return section.limit === null ? '' : String(section.limit);
+/** What a slice's limit field shows: blank for no limit, the number otherwise. */
+export function limitDraft(slice: WipSliceSetting): string {
+  return slice.limit === null ? '' : String(slice.limit);
 }
 
-/** The field, trimmed, as the wire's `limit` - blank clears it. */
+/** The field, trimmed, as the wire's `limit`/`epicLimit` - blank clears it. */
 export function limitRequest(draft: string): string {
   return draft.trim();
 }
 
-/** How tight the section is: room for two or more, room for one, none left,
+/** How a set of issue types reads in a sentence - `stories and bugs`, `epics`.
+    Mirrors Hatch.Contracts.TypeWords.Plural. */
+export function plural(types: IssueType[]): string {
+  const words = types.map((t) => (t.endsWith('y') ? `${t.slice(0, -1)}ies` : `${t}s`));
+  if (words.length === 0) return 'issues';
+  if (words.length === 1) return words[0];
+  if (words.length === 2) return `${words[0]} and ${words[1]}`;
+  return `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}`;
+}
+
+/** How tight a slice reads: room for two or more, room for one, none left,
     or already past it. */
 export type Tightness = 'room' | 'tight' | 'full' | 'over';
 
@@ -55,11 +65,12 @@ export interface WipRun {
  * Each contiguous run of WIP columns in `columns` - the board's own drawn
  * order, deferred columns already gone - so a section split by a column
  * outside it comes back as two runs sharing one meter, and a deferred column
- * between two WIP ones (never drawn) does not split anything. `null` gives no
- * runs at all: no limit, no band.
+ * between two WIP ones (never drawn) does not split anything. No runs at all
+ * where there is no section, or where no slice has a limit: no limit, no
+ * band.
  */
 export function runs(columns: Status[], wip: Wip | null): WipRun[] {
-  if (!wip) return [];
+  if (!wip || !wip.slices.some((s) => s.limit !== null)) return [];
   const counted = new Set(wip.statusIds);
 
   const found: WipRun[] = [];
@@ -89,24 +100,48 @@ export function tightness(load: number, limit: number): Tightness {
   return 'over';
 }
 
-/**
- * The load the band draws: one more than the section holds while a counted
- * card sits outside it, mid-drag - the section's own load otherwise. `card`
- * is the one being dragged or just dropped; null leaves the band at rest.
- */
-export function preview(wip: Wip, card: IssueCard | null): number {
-  if (card && wip.types.includes(card.type) && !wip.statusIds.includes(card.statusId)) {
-    return wip.load + 1;
-  }
-  return wip.load;
+const TIGHTNESS_ORDER: Tightness[] = ['room', 'tight', 'full', 'over'];
+
+/** The tightest reading among the slices that have a limit, or null where
+    none does. */
+export function tightest(wip: Wip, loads: number[]): Tightness | null {
+  let worst: Tightness | null = null;
+  wip.slices.forEach((slice, i) => {
+    if (slice.limit === null) return;
+    const t = tightness(loads[i], slice.limit);
+    if (worst === null || TIGHTNESS_ORDER.indexOf(t) > TIGHTNESS_ORDER.indexOf(worst)) worst = t;
+  });
+  return worst;
 }
 
-/** The band's text: `WIP 3 of 5`, with the claimed-inbound count and the
-    tightness word appended where they apply. `load` may be the preview
-    rather than `wip.load` itself - the wording follows whichever it is
-    given. */
-export function meterText(wip: Wip, load: number): string {
-  const claimed = wip.claimedInbound > 0 ? ` (${wip.claimedInbound} on the way)` : '';
-  const state = load > wip.limit ? ' · over' : load === wip.limit ? ' · full' : '';
-  return `WIP ${load} of ${wip.limit}${claimed}${state}`;
+/**
+ * The load each slice's band draws, one entry per slice: one more than the
+ * slice holds while a card of its type sits outside the section, mid-drag -
+ * the slice's own load otherwise. `card` is the one being dragged or just
+ * dropped; null leaves every slice at rest.
+ */
+export function preview(wip: Wip, card: IssueCard | null): number[] {
+  return wip.slices.map((slice) =>
+    card && slice.types.includes(card.type) && !wip.statusIds.includes(card.statusId) ? slice.load + 1 : slice.load,
+  );
+}
+
+/** The band's text: `WIP 3 of 5 · epics 1 of 2`, with the claimed-inbound
+    count and the tightness word appended per slice where they apply. Every
+    part after the first is prefixed with its own types, pluralised, so a
+    section with only the epic slice limited reads `WIP epics 1 of 2`.
+    `loads` may hold the preview rather than each slice's own load - the
+    wording follows whichever it is given. */
+export function meterText(wip: Wip, loads: number[]): string {
+  const parts = wip.slices
+    .map((slice, i) => ({ slice, load: loads[i], prefix: i > 0 ? `${plural(slice.types)} ` : '' }))
+    .filter(({ slice }) => slice.limit !== null)
+    .map(({ slice, load, prefix }) => {
+      const limit = slice.limit!;
+      const claimed = slice.claimedInbound > 0 ? ` (${slice.claimedInbound} on the way)` : '';
+      const state = load > limit ? ' · over' : load === limit ? ' · full' : '';
+      return `${prefix}${load} of ${limit}${claimed}${state}`;
+    });
+
+  return `WIP ${parts.join(' · ')}`;
 }

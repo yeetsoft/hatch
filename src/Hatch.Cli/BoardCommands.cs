@@ -11,7 +11,7 @@ public sealed class BoardCommands(Cli cli)
         "usage: hatch board",
         "",
         "  The columns, and how many cards in each.",
-        "  Then how full the WIP section is, where a limit is set.",
+        "  Then how full each WIP slice is, where a limit is set.",
     ];
 
     public static readonly string[] NextUsage =
@@ -84,28 +84,38 @@ public sealed class BoardCommands(Cli cli)
             cli.Say.Line($"{status.Name}{terminal}: {column.Count}{first}{carried}");
         }
 
-        if (board.Wip is { } wip) cli.Say.Line(WipLine(board, wip));
+        if (board.Wip is { } wip)
+        {
+            foreach (var line in WipLines(board, wip)) cli.Say.Line(line);
+        }
 
         return 0;
     }
 
     /// <summary>
-    /// The one line <c>hatch board</c> prints for the WIP section, in the same
-    /// order the browser's band says the parts (HA-91): the count, then how much
-    /// of it is only claimed and not yet in, then which columns, then whether it
-    /// is full or over.
+    /// One line per slice with a limit, in the same order the browser's band
+    /// says the parts (HA-91): the count, then how much of it is only claimed
+    /// and not yet in, then which columns, then whether it is full or over. A
+    /// slice with no limit prints nothing, and a board where no slice has a
+    /// limit prints no WIP line at all.
     /// </summary>
-    public static string WipLine(BoardDto board, WipDto wip)
+    public static IReadOnlyList<string> WipLines(BoardDto board, WipDto wip)
     {
         var names = string.Join(", ", board.Statuses
             .Where(s => wip.StatusIds.Contains(s.Id))
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
             .Select(s => s.Name));
 
-        var claimed = wip.ClaimedInbound > 0 ? $" ({wip.ClaimedInbound} claimed on the way in)" : "";
-        var state = wip.Load > wip.Limit ? " - over the limit" : wip.Load == wip.Limit ? " - full" : "";
-
-        return $"WIP: {wip.Load} of {wip.Limit}{claimed} across {names}{state}";
+        return wip.Slices
+            .Where(s => s.Limit is not null)
+            .Select(slice =>
+            {
+                var limit = slice.Limit!.Value;
+                var claimed = slice.ClaimedInbound > 0 ? $" ({slice.ClaimedInbound} claimed on the way in)" : "";
+                var state = slice.Load > limit ? " - over the limit" : slice.Load == limit ? " - full" : "";
+                return $"WIP: {slice.Load} of {limit} {TypeWords.Plural(slice.Types)}{claimed} across {names}{state}";
+            })
+            .ToList();
     }
 
     /// <summary>

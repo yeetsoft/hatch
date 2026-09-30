@@ -53,24 +53,10 @@ public class WipController(HatchContext db, ICallerIdentity caller) : Controller
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
 
-        var clearingLimit = false;
-        int? limit = null;
-        if (request.Limit is not null)
-        {
-            var trimmed = request.Limit.Trim();
-            if (trimmed.Length == 0)
-            {
-                clearingLimit = true;
-            }
-            else if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) || parsed < 1)
-            {
-                return BadRequest($"a WIP limit is a whole number of one or more - not \"{trimmed}\"");
-            }
-            else
-            {
-                limit = parsed;
-            }
-        }
+        var (clearingLimit, limit, limitError) = ParseLimit(request.Limit, "a WIP limit");
+        if (limitError is not null) return BadRequest(limitError);
+        var (clearingEpicLimit, epicLimit, epicLimitError) = ParseLimit(request.EpicLimit, "an epic limit");
+        if (epicLimitError is not null) return BadRequest(epicLimitError);
 
         var ids = request.StatusIds?.Distinct().ToList();
         if (ids is not null)
@@ -86,28 +72,8 @@ public class WipController(HatchContext db, ICallerIdentity caller) : Controller
 
         var changed = false;
 
-        if (clearingLimit || limit is not null)
-        {
-            var row = await db.WipLimits.FirstOrDefaultAsync(w => w.Types == EfHatchWipLimit.StoriesAndBugs, ct);
-            if (clearingLimit)
-            {
-                if (row is not null)
-                {
-                    db.WipLimits.Remove(row);
-                    changed = true;
-                }
-            }
-            else if (row is null)
-            {
-                db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = limit!.Value });
-                changed = true;
-            }
-            else if (row.Limit != limit!.Value)
-            {
-                row.Limit = limit.Value;
-                changed = true;
-            }
-        }
+        if (await ApplyLimitAsync(EfHatchWipLimit.StoriesAndBugs, clearingLimit, limit, ct)) changed = true;
+        if (await ApplyLimitAsync(EfHatchWipLimit.Epics, clearingEpicLimit, epicLimit, ct)) changed = true;
 
         if (ids is not null)
         {
@@ -126,6 +92,48 @@ public class WipController(HatchContext db, ICallerIdentity caller) : Controller
         if (changed) await db.SaveChangesAsync(ct);
 
         return await Wip.SectionAsync(db, ct);
+    }
+
+    /// <summary>
+    /// The string rule every clearable WIP limit follows: absent leaves it
+    /// alone, blank clears it, a whole number of one or more sets it, anything
+    /// else is refused with <paramref name="noun"/> naming which limit. Parsed
+    /// before anything is touched, so a good field beside a bad one changes
+    /// neither.
+    /// </summary>
+    private static (bool Clearing, int? Limit, string? Error) ParseLimit(string? field, string noun)
+    {
+        if (field is null) return (false, null, null);
+
+        var trimmed = field.Trim();
+        if (trimmed.Length == 0) return (true, null, null);
+
+        return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1
+            ? (false, parsed, null)
+            : (false, null, $"{noun} is a whole number of one or more - not \"{trimmed}\"");
+    }
+
+    private async Task<bool> ApplyLimitAsync(string types, bool clearing, int? limit, CancellationToken ct)
+    {
+        if (!clearing && limit is null) return false;
+
+        var row = await db.WipLimits.FirstOrDefaultAsync(w => w.Types == types, ct);
+        if (clearing)
+        {
+            if (row is null) return false;
+            db.WipLimits.Remove(row);
+            return true;
+        }
+
+        if (row is null)
+        {
+            db.WipLimits.Add(new EfHatchWipLimit { Types = types, Limit = limit!.Value });
+            return true;
+        }
+
+        if (row.Limit == limit!.Value) return false;
+        row.Limit = limit.Value;
+        return true;
     }
 
     // ---- The one narrowing ----

@@ -90,12 +90,10 @@ public record StatusPatchRequest(
 // ---- WIP ----
 
 /// <summary>
-/// One slice of the board's WIP section, as both the read and the write answer
-/// it: what the limit is, which types it counts, and which columns count
-/// towards it right now.
+/// The board's WIP section, as the settings route reads it: one set of
+/// columns, and every slice Hatch knows - <c>story,bug</c> then <c>epic</c>,
+/// always both, in that order.
 /// </summary>
-/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once, or null for no limit.</param>
-/// <param name="Types">The issue types this slice counts - <c>["story", "bug"]</c>, the one slice this epic writes.</param>
 /// <param name="StatusIds">
 /// The flagged columns that actually count: <see cref="StatusDto.IsWip"/> is
 /// true and the column is neither deferred nor terminal, in board order. A flag
@@ -103,7 +101,15 @@ public record StatusPatchRequest(
 /// here and cleared by the next <see cref="WipSectionRequest"/> that names
 /// <see cref="StatusIds"/>, whatever it names - see <c>Wip.SectionAsync</c>.
 /// </param>
-public record WipSectionDto(int? Limit, IReadOnlyList<string> Types, IReadOnlyList<int> StatusIds);
+/// <param name="Slices">Always two entries, <c>story,bug</c> then <c>epic</c>.</param>
+public record WipSectionDto(IReadOnlyList<int> StatusIds, IReadOnlyList<WipSliceDto> Slices);
+
+/// <summary>
+/// One slice of the section: which types it counts, and what its limit is, or
+/// null where no row is held for it - a slice with no row still exists, and
+/// still has a load, it just gates nothing.
+/// </summary>
+public record WipSliceDto(IReadOnlyList<string> Types, int? Limit);
 
 /// <summary>
 /// A write to the section: absent or null leaves a field alone, the bulk rule
@@ -111,9 +117,9 @@ public record WipSectionDto(int? Limit, IReadOnlyList<string> Types, IReadOnlyLi
 /// <see cref="RunnerPatchRequest"/>.
 /// </summary>
 /// <param name="Limit">
-/// Absent or null leaves the limit alone; <c>""</c> (or whitespace) removes the
-/// row; a whole number of one or more sets it. Anything else is refused with a
-/// sentence.
+/// Absent or null leaves the stories-and-bugs limit alone; <c>""</c> (or
+/// whitespace) removes the row; a whole number of one or more sets it.
+/// Anything else is refused with a sentence.
 /// </param>
 /// <param name="StatusIds">
 /// Absent or null leaves the section alone; otherwise the whole section - not a
@@ -121,7 +127,8 @@ public record WipSectionDto(int? Limit, IReadOnlyList<string> Types, IReadOnlyLi
 /// <see cref="StatusDto.IsWip"/> true if it is named here and false otherwise.
 /// A deferred or terminal column named here is refused with a sentence.
 /// </param>
-public record WipSectionRequest(string? Limit = null, IReadOnlyList<int>? StatusIds = null);
+/// <param name="EpicLimit">The same rule as <paramref name="Limit"/>, for the epic slice.</param>
+public record WipSectionRequest(string? Limit = null, IReadOnlyList<int>? StatusIds = null, string? EpicLimit = null);
 
 /// <summary>
 /// Whether an express issue standing in this column is carried on to the next
@@ -742,24 +749,30 @@ public record FailingBuildDto(
 /// it may work on has one comparison to make instead of a flag to know about.
 /// </remarks>
 /// <param name="Wip">
-/// How full the WIP section is right now, or null where the board has never
-/// heard of WIP - no column flagged, or no limit row - so a board that has
-/// never turned this on serves exactly what it served before.
+/// How full the WIP section is right now, or null only where the board has
+/// never turned WIP on at all - no column flagged - so a board that has never
+/// turned this on serves exactly what it served before. Present, with both
+/// slices' limits null, wherever a column is flagged but no limit has been
+/// typed.
 /// </param>
 public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null);
 
 /// <summary>
 /// How full the WIP section is right now, the shape <c>GET /board</c> carries
-/// and <c>hatch board</c> prints one line from. Not <see cref="WipSectionDto"/>:
-/// that is the settings route's shape (a nullable limit, no load); this one is
-/// always a load against a limit that is known to exist.
+/// and <c>hatch board</c> prints its lines from. Not <see cref="WipSectionDto"/>:
+/// that is the settings route's shape (a nullable limit, no load); this one
+/// carries a load for every slice, whether or not it has a limit.
 /// </summary>
-/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once.</param>
-/// <param name="Types">The issue types this slice counts - the limit row's own types.</param>
 /// <param name="StatusIds">The counted columns, in board order. Never includes a deferred or terminal column, whatever it is flagged.</param>
+/// <param name="Slices">Always two entries, <c>story,bug</c> then <c>epic</c>.</param>
+public record WipDto(IReadOnlyList<int> StatusIds, IReadOnlyList<WipSliceLoadDto> Slices);
+
+/// <summary>One slice's load against its limit, or against no limit at all.</summary>
+/// <param name="Types">The issue types this slice counts.</param>
+/// <param name="Limit">How many issues of <paramref name="Types"/> may sit across the counted columns at once, or null for no limit.</param>
 /// <param name="Load">How many counted issues are on the board right now - inside the section, plus <paramref name="ClaimedInbound"/>.</param>
 /// <param name="ClaimedInbound">Of <paramref name="Load"/>, how many are outside the section but claimed and on their way in.</param>
-public record WipDto(int Limit, IReadOnlyList<string> Types, IReadOnlyList<int> StatusIds, int Load, int ClaimedInbound);
+public record WipSliceLoadDto(IReadOnlyList<string> Types, int? Limit, int Load, int ClaimedInbound);
 
 // ---- The importer ----
 

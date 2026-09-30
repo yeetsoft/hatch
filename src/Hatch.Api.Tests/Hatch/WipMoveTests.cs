@@ -307,6 +307,124 @@ public class WipMoveTests
         Assert.Equal(2, kinds.Count(k => k == EfHatchIssueEvent.StatusChanged));
     }
 
+    // ---- The epic slice ----
+
+    [Fact]
+    public async Task AnEpicMoveIntoAFullEpicSlice_Is409AndWritesNothing()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.EpicAsync(h.InProgress);
+        await h.EpicAsync(h.InProgress);
+        var moving = await h.EpicAsync(h.ToDo);
+        var eventsBefore = (await h.EventsAsync(moving)).Count;
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        var dto = Assert.IsType<WipRefusalDto>(refusal.Value);
+        Assert.Equal("the WIP section is full - 2 of 2 epics are in it", dto.Error);
+        Assert.Equal(2, dto.Load);
+        Assert.Equal(2, dto.Limit);
+
+        var after = Value(await h.Issues.GetIssue(moving, default));
+        Assert.Equal(h.ToDo, after.StatusId);
+        Assert.Equal(eventsBefore, (await h.EventsAsync(moving)).Count);
+    }
+
+    [Fact]
+    public async Task AStoryMoveIsNeverGatedByAFullEpicSlice()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.EpicAsync(h.InProgress);
+        await h.EpicAsync(h.InProgress);
+        var moving = await h.StoryAsync(h.ToDo);
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AnEpicMoveIsNeverGatedByAFullStoryAndBugSlice()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.StoryAsync(h.InProgress);
+        await h.StoryAsync(h.InProgress);
+        var moving = await h.EpicAsync(h.ToDo);
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task APersonsOverrideOfAnEpic_LandsTheMoveAndWritesTheEpicSlicesNumbers()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.EpicAsync(h.InProgress);
+        await h.EpicAsync(h.InProgress);
+        var moving = await h.EpicAsync(h.ToDo);
+
+        var result = await h.Issues.MoveIssue(
+            moving, new IssueMoveRequest(h.InProgress, null, null, WipOverride: true), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+
+        var overridden = Assert.Single(await h.EventsAsync(moving), e => e.Kind == EfHatchIssueEvent.WipOverridden);
+        var payload = overridden.Payload!.Value;
+        Assert.Equal(2, payload.GetProperty("limit").GetInt32());
+        Assert.Equal(3, payload.GetProperty("load").GetInt32());
+        Assert.Equal("In Progress", payload.GetProperty("to").GetString());
+    }
+
+    [Fact]
+    public async Task AKeysOverrideOfAnEpic_Is403()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.EpicAsync(h.InProgress);
+        await h.EpicAsync(h.InProgress);
+        var full = await h.EpicAsync(h.ToDo);
+        h.Caller.Key = AKey();
+
+        var refused = await h.Issues.MoveIssue(
+            full, new IssueMoveRequest(h.InProgress, null, null, WipOverride: true), default);
+
+        var obj = Assert.IsType<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(h.ToDo, Value(await h.Issues.GetIssue(full, default)).StatusId);
+    }
+
+    [Fact]
+    public async Task ABulkMoveOfTwoEpicsWithOneSlotFree_MovesTheFirstAndRefusesTheSecond()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.EpicAsync(h.InProgress);
+        var epicOne = await h.EpicAsync(h.ToDo);
+        var epicTwo = await h.EpicAsync(h.ToDo);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([epicOne, epicTwo], statusId: h.InProgress), default));
+
+        Assert.Equal([epicOne], result.Changed);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(epicTwo, failure.Key);
+        Assert.Equal("the WIP section is full - 2 of 2 epics are in it", failure.Reason);
+    }
+
+    [Fact]
+    public async Task ABatchMovingOneStoryAndOneEpic_CountsEachAgainstItsOwnSliceOnly()
+    {
+        var h = await NewAsync(withEpicLimit: 2);
+        await h.StoryAsync(h.InProgress);
+        await h.EpicAsync(h.InProgress);
+        var story = await h.StoryAsync(h.ToDo);
+        var epic = await h.EpicAsync(h.ToDo);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([story, epic], statusId: h.InProgress), default));
+
+        Assert.Equal([story, epic], result.Changed);
+        Assert.Empty(result.Failures);
+    }
+
     // ---- Harness ----
 
     private sealed class Harness
@@ -323,6 +441,8 @@ public class WipMoveTests
         public required int Done { get; init; }
 
         public Task<string> StoryAsync(int statusId) => IssueAsync("story", statusId);
+
+        public Task<string> EpicAsync(int statusId) => IssueAsync("epic", statusId);
 
         public async Task<string> IssueAsync(string type, int statusId)
         {
@@ -363,7 +483,7 @@ public class WipMoveTests
             Value(await Thread.GetEvents(key, default));
     }
 
-    private static async Task<Harness> NewAsync(bool withLimit = true)
+    private static async Task<Harness> NewAsync(bool withLimit = true, int? withEpicLimit = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -379,6 +499,12 @@ public class WipMoveTests
         if (withLimit)
         {
             db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = 2 });
+            await db.SaveChangesAsync();
+        }
+
+        if (withEpicLimit is { } epicLimit)
+        {
+            db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.Epics, Limit = epicLimit });
             await db.SaveChangesAsync();
         }
 
