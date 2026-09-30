@@ -139,6 +139,16 @@ export const setExpressSkips = (id: number, expressSkips: boolean) =>
     ...asJson({ expressSkips }),
   });
 
+/** Whether a child standing in this column is carried on to the next one with
+    no session while its parent stands in the implementation column. Its own
+    route for the same reason ExpressSkips has one: writing it is closed to an
+    API key - see StatusesController.PutParentPulls. */
+export const setParentPulls = (id: number, parentPulls: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/parent-pulls`, {
+    method: 'PUT',
+    ...asJson({ parentPulls }),
+  });
+
 // ---- Issues ----
 
 // ---- Playbooks ----

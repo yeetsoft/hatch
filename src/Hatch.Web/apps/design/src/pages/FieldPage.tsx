@@ -41,6 +41,24 @@ export function FieldPage() {
       </GallerySection>
 
       <GallerySection
+        title="On a coarse pointer"
+        note="iOS Safari zooms the page on focusing an input under 16px — the jiggle a phone user does to get the page back after editing. --t-section (16px) is the floor; above it buys nothing, which is why the desk keeps --t-body (14px)."
+      >
+        <div className="compare">
+          <div className="compare-half">
+            <Field label="Desktop, --t-body">
+              <input type="text" defaultValue="14px" />
+            </Field>
+          </div>
+          <div className="compare-half">
+            <Field label="Coarse pointer, --t-section">
+              <input type="text" defaultValue="16px" style={{ fontSize: 'var(--t-section)' }} />
+            </Field>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Input types"
         note="Every type base.css dresses looks the same: a typeless input (the browser's text), a search box, and a date and time pair. The search box keeps type=search for Escape and the browser's clear button, minus the native rounding. Placeholders are in the muted ink."
       >

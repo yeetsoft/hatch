@@ -207,3 +207,17 @@
     translate: 0 0;
   }
 }
+
+/* Below the breakpoint a panel is capped to what the viewport can actually
+   show: no wider than the screen less the house gutters, no taller than a
+   dvh cap, scrolling inside. Hover-open stays gated on (hover: hover)
+   elsewhere; this only bounds the box once it is open. */
+@media (max-width: 40rem) {
+  .hatch-menu__panel {
+    max-width: calc(100vw - 2 * var(--sp-4));
+  }
+
+  .hatch-menu__surface {
+    max-height: calc(100dvh - var(--sp-8));
+  }
+}

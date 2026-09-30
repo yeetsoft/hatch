@@ -97,3 +97,33 @@
   padding-top: var(--sp-4);
   border-top: 1px solid var(--line);
 }
+
+/* ---- Below the breakpoint, a sheet rather than a keyhole ----
+
+   A dialog that stays a 358px card with 16px gutters on a 390px screen is a
+   desk dialog seen through a keyhole. Below 40rem it rises from the bottom
+   instead: full width, flush to the screen's edges, with only a top inset
+   (--sp-6) left as overlay padding - which is also why the panel's own cap is
+   100dvh less that same rung rather than --sp-8, the desktop gap. */
+@media (max-width: 40rem) {
+  .hatch-modal__overlay {
+    align-items: flex-end;
+    padding: var(--sp-6) 0 0;
+  }
+
+  .hatch-modal__panel {
+    max-width: none;
+    max-height: calc(100dvh - var(--sp-6));
+    border-radius: var(--r) var(--r) 0 0;
+    overscroll-behavior: contain;
+  }
+
+  /* The body hold is CSS, not a Modal.tsx effect: Modal is deliberately not
+     portalled, so .hatch-modal__overlay is always some descendant of body for
+     exactly as long as a dialog is open, and :has() is true precisely then -
+     with zero JS and no mount/unmount counting to get wrong when a dialog
+     stacks over another (the close-subtree offer over the issue peek). */
+  body:has(.hatch-modal__overlay) {
+    overflow: hidden;
+  }
+}
