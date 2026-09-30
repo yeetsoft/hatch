@@ -1,3 +1,5 @@
+using Hatch.Api.Ef;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -77,18 +79,20 @@ public sealed class Runners(IOptions<HatchOptions> options)
     /// The line is the claim's while there is one and the row's when there is
     /// not, and that is the whole of why the row has a line at all: an
     /// increment's chatter already rides its lease, so this column only ever
-    /// carries what a runner said between tickets. <c>LastSeenAt</c> is the
-    /// later of the row's own and the claim's heartbeat, for the same reason:
-    /// a session mid-increment beats its claim far more often than it beats
-    /// its row, and a runner reading <em>Gone</em> because nothing has touched
-    /// the row in ninety seconds would be wrong while its claim is still being
-    /// renewed every minute.
+    /// carries what a runner said between tickets. <c>LastSeenAt</c> is read
+    /// alone and nowhere folded against the claim's own heartbeat: the claim
+    /// heartbeat and the claim release both touch the holding runner's row
+    /// themselves (<see cref="IssueClaimController"/>), so this column is
+    /// always current on its own - and reading it alone is load-bearing for
+    /// <see cref="Preemption"/>'s rule 5, where a runner that has just
+    /// released must read as free rather than gone in exactly the seconds
+    /// that matters.
     /// </remarks>
     public RunnerDto Project(EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim) => new(
         runner.Name,
         runner.Kind,
         runner.FirstSeenAt,
-        claim is { Claim.HeartbeatAt: { } beat } && beat > runner.LastSeenAt ? beat : runner.LastSeenAt,
+        runner.LastSeenAt,
         claim?.Key,
         claim is { } held ? held.Claim.Chatter : runner.Line,
         claim is { } at ? at.Claim.ChatterAt : runner.LineAt,
@@ -111,6 +115,53 @@ public sealed class Runners(IOptions<HatchOptions> options)
     /// </summary>
     public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName);
+
+    /// <summary>
+    /// Every live claim, by the runner holding it. The key is
+    /// <see cref="EfHatchIssue.ClaimRunner"/> read backwards, which is what
+    /// makes "what is this runner working" a question with one answer and no
+    /// second copy to keep in step - shared between <see cref="RunnersController"/>'s
+    /// own read and <see cref="Preemption"/>'s rule 5, rather than kept twice.
+    /// </summary>
+    public async Task<Dictionary<string, (string Key, ClaimSnapshot Claim)>> HeldAsync(
+        HatchContext db, IssueClaims claims, DateTimeOffset now, CancellationToken ct)
+    {
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => i.ClaimToken != null && i.ClaimRunner != null)
+            .Select(i => new
+            {
+                i.Project!.Key,
+                i.Number,
+                i.ClaimToken,
+                i.ClaimedBy,
+                i.ClaimRunner,
+                i.ClaimedAt,
+                i.ClaimHeartbeatAt,
+                i.ClaimChatter,
+                i.ClaimChatterAt,
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(i => (
+                Runner: i.ClaimRunner!,
+                Key: IssueKey.Format(i.Key, i.Number),
+                Claim: new ClaimSnapshot(
+                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
+                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt)))
+            .Where(i => claims.IsLive(i.Claim, now))
+            // A runner holds one ticket at a time by construction, and the most
+            // recent heartbeat is the one to draw if something ever leaves two
+            // behind - a row about the wrong ticket is worse than a row about
+            // none.
+            .GroupBy(i => i.Runner, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(i => i.Claim.HeartbeatAt)
+                    .Select(i => (i.Key, i.Claim))
+                    .First(),
+                StringComparer.Ordinal);
+    }
 
     /// <summary>
     /// One line at most, trimmed and capped - <see cref="IssueClaimController"/>'s

@@ -4,6 +4,7 @@ using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -290,7 +291,7 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl - 1));
-        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
 
         // Refreshed, so the lease outlives the TTL it was taken under - and
         // ClaimedAt stays where it was, because "how long has this been
@@ -386,7 +387,7 @@ public class IssueClaimTests
         // be the wrong trade, and the field is cosmetic. The first line only,
         // for the same reason.
         var wide = new string('x', EfHatchIssue.MaxClaimChatterLength + 40) + "\nand a second line";
-        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, wide), default));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, wide), default)).Result);
 
         Assert.Equal(
             new string('x', EfHatchIssue.MaxClaimChatterLength),
@@ -626,6 +627,22 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithPreemptedOutcome_RecordsItOnTheEvent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        // The board's own decision, not a choice the increment made - see
+        // WorkController.LetGoAsync, which skips over this outcome rather
+        // than counting or resetting on it.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Preempted, default));
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.Equal(ClaimOutcomes.Preempted, released.Payload!.Value.GetProperty("outcome").GetString());
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithNoOutcome_WritesThePayloadItAlwaysHas()
     {
         await using var h = await NewAsync();
@@ -646,7 +663,7 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         Assert.Equal(
-            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", or nothing at all",
+            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", \"preempted\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, "quit", default)));
 
         // Refused before anything was touched.
@@ -707,10 +724,10 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         h.Time.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
-        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default)).Result);
 
         h.Time.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
-        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
     }
 
     // ---- Lapsed stall questions, answered on take ----
@@ -820,7 +837,7 @@ public class IssueClaimTests
         for (var i = 0; i < 5; i++)
         {
             h.Time.Advance(TimeSpan.FromMinutes(4));
-            Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
         }
     }
 
@@ -848,6 +865,203 @@ public class IssueClaimTests
         Assert.Equal(0, taken.StallLapseSeconds);
     }
 
+    // ---- Preemption ----
+    //
+    // The five rules a claim heartbeat decides against, lazily and from the
+    // board as it stands - see Preemption.cs and docs/hatch.md, "The
+    // dispatcher", "Preemption".
+
+    [SkippableFact]
+    public async Task AnActionableEmergencyIssue_TellsTheSoleHeldRunnerItIsPreempted()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency, title: "put out this fire");
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+
+        Assert.Equal(emergency, told.Key);
+        Assert.Equal("put out this fire", told.Title);
+    }
+
+    [SkippableFact]
+    public async Task EmergencyWorkItself_IsNeverPreempted()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync(priority: PriorityLevels.Emergency); // actionable and unclaimed - rule 1 holds
+        var heartbeating = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var token = await h.TakeAsync(heartbeating);
+
+        // Rule 2: emergency work is never preempted, however the rest of the
+        // board looks.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(heartbeating, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task OnlyTheLastHeldIssueInBoardOrder_IsTold()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var earlier = await h.FileAsync();
+        var later = await h.FileAsync();
+        var earlierToken = await h.TakeAsync(earlier, "somewhere:/checkouts/one");
+        var laterToken = await h.TakeAsync(later, "elsewhere:/checkouts/two");
+
+        // The one holding the board's later card is last in the dispatcher's
+        // own order, and is the one told.
+        var told = Value(await h.Claims.Heartbeat(later, new ClaimHeartbeatRequest(laterToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        // The other hears nothing - not because it asked second, but because
+        // it is not last.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(earlier, new ClaimHeartbeatRequest(earlierToken, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task SwappingRank_SwapsWhichHeldIssueIsLast()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var one = await h.FileAsync();
+        var two = await h.FileAsync();
+        var oneToken = await h.TakeAsync(one, "somewhere:/checkouts/one");
+        var twoToken = await h.TakeAsync(two, "elsewhere:/checkouts/two");
+
+        // Same board, told the other way round: swap where the two cards sit
+        // rather than who claimed which, so it is the order and not the
+        // claim that decides.
+        var oneRank = (await h.RowAsync(one)).Rank;
+        var twoRank = (await h.RowAsync(two)).Rank;
+        await h.RerankAsync(one, twoRank);
+        await h.RerankAsync(two, oneRank);
+
+        var told = Value(await h.Claims.Heartbeat(one, new ClaimHeartbeatRequest(oneToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(two, new ClaimHeartbeatRequest(twoToken, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task FewerRunnersToldThanEmergencyIssues_TellsExactlyThatMany()
+    {
+        await using var h = await NewAsync();
+        var emergencyA = await h.FileAsync(priority: PriorityLevels.Emergency);
+        await h.FileAsync(priority: PriorityLevels.Emergency);
+        var best = await h.FileAsync();
+        var middle = await h.FileAsync();
+        var worst = await h.FileAsync();
+
+        var bestToken = await h.TakeAsync(best, "checkouts/best");
+        var middleToken = await h.TakeAsync(middle, "checkouts/middle");
+        var worstToken = await h.TakeAsync(worst, "checkouts/worst");
+
+        // Worst first - it is last in board order, so it is told first; the
+        // middle one then becomes last among what is left, and is told in
+        // turn.
+        var first = Value(await h.Claims.Heartbeat(worst, new ClaimHeartbeatRequest(worstToken, null), default));
+        Assert.Equal(emergencyA, first.Key);
+
+        var second = Value(await h.Claims.Heartbeat(middle, new ClaimHeartbeatRequest(middleToken, null), default));
+        Assert.Equal(emergencyA, second.Key);
+
+        // The best of the three is never told: by the time it would be last
+        // among the untold, two runners have already been told, which is as
+        // many as there are unclaimed emergency issues.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(best, new ClaimHeartbeatRequest(bestToken, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task ALiveRunnerHoldingNothing_BlocksPreemptionUntilItAges()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "checkouts/victim");
+        await h.AddRunnerAsync("checkouts/free", Now);
+
+        // A free runner takes the emergency ticket on its own next pass, so
+        // preempting while one exists would spend a session for nothing.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        // Once that row ages past its own horizon it no longer reads as live,
+        // and the same heartbeat is told.
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task TheSameRunnerHeartbeatingTwice_IsToldOnce()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "somewhere:/checkouts/one");
+
+        var first = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, first.Key);
+
+        // Its own next beat, still holding the ticket: the event the first
+        // beat wrote is the record that it was already told, so this one
+        // finds nobody left to tell it a second time.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        Assert.Single(await h.EventsAsync(victim), e => e.Kind == EfHatchIssueEvent.ClaimPreempted);
+        Assert.Single(await h.CommentsAsync(emergency), c => c.Kind == EfHatchComment.Note);
+    }
+
+    [SkippableFact]
+    public async Task AnEmergencyIssueThatIsItselfClaimed_TellsNobody()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        await h.TakeAsync(emergency, "checkouts/emergency-runner");
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task AnEmergencyIssueFoldedForAnUnrelatedReason_TellsNobody()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        await h.AskProseAsync(emergency, Now, "what should this be called?");
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        // Not actionable - waiting on a person, not on an agent - so rule 1
+        // never holds, the same as an emergency issue already claimed.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task APreemptedHeartbeat_IsStillAPlainSuccessAnOlderHatchReads()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        var result = await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default);
+
+        // Claim.cs:213 reads only answer.Ok - true of any 2xx, whatever shape
+        // the body takes. Here that is a value with no Result wrapping it,
+        // the same success shape TakeClaim already answers with.
+        Assert.Null(result.Result);
+        Assert.NotNull(result.Value);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -857,6 +1071,7 @@ public class IssueClaimTests
         public required StubCallerIdentity Caller { get; init; }
         public required int ProjectId { get; init; }
         public required int StatusId { get; init; }
+        public required int DoingStatusId { get; init; }
 
         private readonly List<HatchContext> open = [];
         private int next = 1;
@@ -865,14 +1080,44 @@ public class IssueClaimTests
         public IssueClaims Rule { get; set; } = TestClaims.With();
 
         /// <summary>
+        /// Who <see cref="Dispatch"/>'s scan may ask about - empty by default,
+        /// since these tests are not about assignment or a <c>--mine</c> pass.
+        /// </summary>
+        public StubActorDirectory Actors { get; } = new();
+
+        /// <summary>
+        /// The runner horizon <see cref="Preemption"/>'s rule 5 is judged
+        /// against - short enough that a test crosses it by advancing
+        /// <see cref="Time"/> rather than waiting out the shipped default.
+        /// </summary>
+        public const int RunnerGoneAfterSeconds = 60;
+
+        public Runners RunnersRule { get; } =
+            new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = RunnerGoneAfterSeconds }));
+
+        /// <summary>
         /// A controller on a context of its own, because that is what an HTTP
         /// request is. It matters more here than anywhere else in these tests:
         /// the claim's writes run outside the change tracker, so a controller
         /// handed a context that already materialised the row would read a
         /// version of it the database stopped having - and a suite that shared
         /// one would be testing the tracker rather than the SQL.
+        ///
+        /// <para><see cref="Preemption"/> and the <see cref="Dispatch"/> it
+        /// decides alongside share that same context, the way DI hands them
+        /// the same scoped one in a real request - not a connection of their
+        /// own.</para>
         /// </summary>
-        public IssueClaimController Claims => new(Connect(), Rule, Caller, Time);
+        public IssueClaimController Claims
+        {
+            get
+            {
+                var db = Connect();
+                var dispatch = new Dispatch(db, Actors, Rule, Time);
+                var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time);
+                return new IssueClaimController(db, Rule, Caller, Time, preemption);
+            }
+        }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
 
@@ -892,7 +1137,8 @@ public class IssueClaimTests
         }
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
-        public async Task<string> FileAsync(string? parent = null)
+        public async Task<string> FileAsync(
+            string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do")
         {
             var number = next++;
             var db = Connect();
@@ -909,10 +1155,11 @@ public class IssueClaimTests
                 ProjectId = ProjectId,
                 Number = number,
                 Type = "story",
-                Title = "a thing to do",
+                Title = title,
                 StatusId = StatusId,
                 ParentId = parentId,
                 Rank = 1024 * number,
+                Priority = priority,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
@@ -920,6 +1167,37 @@ public class IssueClaimTests
 
             await db.SaveChangesAsync();
             return IssueKey.Format("AER", number);
+        }
+
+        /// <summary>
+        /// This issue's own place in board order - the rank
+        /// <see cref="Preemption"/>'s rule 3 reads through the dispatcher's
+        /// scan - moved without refiling it.
+        /// </summary>
+        public async Task RerankAsync(string key, long rank)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var db = Connect();
+            await db.Issues.WithKey(projectKey, number).ExecuteUpdateAsync(s => s.SetProperty(i => i.Rank, rank));
+        }
+
+        /// <summary>
+        /// A runner row, written straight to the table the way
+        /// <c>RunnersControllerTests.cs</c> does - these tests are about what a
+        /// claim heartbeat does with a row, not about how one is created.
+        /// </summary>
+        public async Task AddRunnerAsync(string name, DateTimeOffset lastSeenAt)
+        {
+            var db = Connect();
+            db.Runners.Add(new EfHatchRunner
+            {
+                Name = name,
+                Kind = EfHatchRunner.LoopKind,
+                FirstSeenAt = lastSeenAt,
+                LastSeenAt = lastSeenAt,
+                State = EfHatchRunner.Running,
+            });
+            await db.SaveChangesAsync();
         }
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one") =>
@@ -1028,7 +1306,25 @@ public class IssueClaimTests
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var status = new EfHatchStatus { Name = "todo", SortOrder = 20 };
-        db.AddRange(project, status);
+        var doing = new EfHatchStatus { Name = "doing", SortOrder = 30 };
+        db.AddRange(project, status, doing);
+        await db.SaveChangesAsync();
+
+        // A playbook covering every type, so a Dispatch.ScanAsync scan reads
+        // an issue filed straight into "todo" as actionable rather than
+        // folding it with "no playbook covers this" - Preemption's own rule 1
+        // and rule 3 both walk a scan, not a bare row.
+        db.Playbooks.Add(new EfHatchPlaybook
+        {
+            FromStatusId = status.Id,
+            ToStatusId = doing.Id,
+            Types = "",
+            Prompt = "do the thing",
+            Model = "sonnet",
+            Effort = "medium",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
         await db.SaveChangesAsync();
 
         return new Harness
@@ -1041,6 +1337,7 @@ public class IssueClaimTests
             },
             ProjectId = project.Id,
             StatusId = status.Id,
+            DoingStatusId = doing.Id,
         };
     }
 

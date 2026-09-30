@@ -33,7 +33,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/issues/{key}/claim")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class IssueClaimController(
-    HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
+    HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -159,15 +159,23 @@ public class IssueClaimController(
 
     /// <summary>
     /// Still here. Refreshes the lease and, optionally, replaces the line it is
-    /// carrying.
+    /// carrying - and answers <see cref="ClaimPreemptedDto"/> in place of the
+    /// ordinary <c>204</c> where the board has chosen this runner's issue to
+    /// make room for an emergency one - see <see cref="Preemption"/> for the
+    /// five rules that decide it.
     /// </summary>
     /// <remarks>
-    /// No event, deliberately. A heartbeat is not a decision, and the trail
-    /// would be a row a minute for every running increment - the same argument
-    /// the work log makes about meter readings.
+    /// No event on an ordinary beat, deliberately. A heartbeat is not a
+    /// decision, and the trail would be a row a minute for every running
+    /// increment - the same argument the work log makes about meter readings.
+    /// A preempted one is the exception: it is the board's own decision, and
+    /// the event it writes is also the record that this runner has already
+    /// been told, so a later heartbeat - this one's own, or another runner's -
+    /// does not tell it, or anybody else, twice.
     /// </remarks>
     [HttpPost("heartbeat")]
-    public async Task<IActionResult> Heartbeat(string key, ClaimHeartbeatRequest request, CancellationToken ct)
+    public async Task<ActionResult<ClaimPreemptedDto>> Heartbeat(
+        string key, ClaimHeartbeatRequest request, CancellationToken ct)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
@@ -185,9 +193,39 @@ public class IssueClaimController(
         // The predicate can still refuse - the lease may have expired or been
         // retaken between that read and this write - and it is what actually
         // fences the write, so its answer is the one that decides.
-        return await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, now, ct)
-            ? NoContent()
-            : Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now));
+        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, now, ct))
+            return Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now));
+
+        // Only a lease that actually renewed touches the row - see "One column
+        // for liveness" on the ticket, and the remark on Runners.Project.
+        await TouchRunnerAsync(claim.Runner, now, ct);
+
+        if (await preemption.ForAsync(issue, ct) is not { } emergency) return NoContent();
+
+        var emergencyKey = IssueKey.Format(emergency.Project!.Key, emergency.Number);
+        var victimKey = IssueKey.Format(issue.Project!.Key, issue.Number);
+
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = HatchActor,
+            Kind = EfHatchIssueEvent.ClaimPreempted,
+            Payload = JsonSerializer.Serialize(new { emergencyKey, emergencyTitle = emergency.Title }),
+            At = now,
+        });
+        issue.UpdatedAt = now;
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = emergency.Id,
+            Author = HatchActor,
+            Body = $"{claim.ClaimedBy} on {claim.Runner} was preempted here, putting down {victimKey} - {issue.Title}.",
+            Kind = EfHatchComment.Note,
+            CreatedAt = now,
+        });
+
+        await db.SaveChangesAsync(ct);
+
+        return new ClaimPreemptedDto(emergencyKey, emergency.Title);
     }
 
     /// <summary>
@@ -227,7 +265,8 @@ public class IssueClaimController(
         {
             if (!ClaimOutcomes.IsValid(outcome))
                 return BadRequest(
-                    $"\"{outcome}\" is not an outcome - it is \"{ClaimOutcomes.Dropped}\", \"{ClaimOutcomes.Worked}\", or nothing at all");
+                    $"\"{outcome}\" is not an outcome - it is \"{ClaimOutcomes.Dropped}\", \"{ClaimOutcomes.Worked}\", " +
+                    $"\"{ClaimOutcomes.Preempted}\", or nothing at all");
             given = outcome;
         }
 
@@ -250,6 +289,12 @@ public class IssueClaimController(
         // is the state a DELETE was asking for. No event, because nothing here
         // did anything.
         if (!cleared) return NoContent();
+
+        // The runner's own release, and only that lane: the operator's
+        // tokenless clobber must not read as this runner having just been
+        // freshly heard from, or a runner that has gone unresponsive would
+        // suppress a preemption that should fire the moment it is forced off.
+        if (token is not null) await TouchRunnerAsync(claim.Runner, now, ct);
 
         Log(
             issue,
@@ -311,6 +356,26 @@ public class IssueClaimController(
             : "this claim has expired",
         _ => claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
     };
+
+    // ---- One column for liveness ----
+
+    /// <summary>
+    /// Bumps the holding runner's own row to now - an unconditional courtesy
+    /// write, with no token to fence against, matching
+    /// <see cref="IssueClaims.TryRefreshAsync"/>'s own <c>ExecuteUpdateAsync</c>
+    /// style rather than loading a tracked row for a second
+    /// <c>SaveChangesAsync</c>. A heartbeat racing the runner's own first
+    /// <c>POST /api/hatch/runners/{name}</c> matches no row and does nothing -
+    /// fine, there is nothing yet to bump. This is what keeps
+    /// <see cref="EfHatchRunner.LastSeenAt"/> the one fact
+    /// <see cref="Preemption"/>'s rule 5 reads, current the moment a claim
+    /// heartbeat or a claim release touches it, rather than only on the
+    /// runner's own next beat.
+    /// </summary>
+    private Task TouchRunnerAsync(string? runner, DateTimeOffset now, CancellationToken ct) =>
+        runner is null
+            ? Task.CompletedTask
+            : db.Runners.Where(r => r.Name == runner).ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
     // ---- Odds and ends ----
 

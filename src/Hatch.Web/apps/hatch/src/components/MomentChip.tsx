@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { momentTitle, momentWords, parseMoment, urgencyOf } from '../lib/schedule';
 
 /**
@@ -11,6 +12,7 @@ export function MomentChip({
   kind,
   value,
   muted = false,
+  expandable = false,
 }: {
   kind: 'ready' | 'due';
   value: string | null;
@@ -19,7 +21,15 @@ export function MomentChip({
    * cannot be late, and a done card glowing red is a board telling a lie.
    */
   muted?: boolean;
+  /**
+   * Lets a press swap the chip's words for momentTitle's unabbreviated form -
+   * the issue page's own use, where a coarse pointer has no hover to read the
+   * title from. Off by default: the board card and the peek dialog, both
+   * space-constrained, are unaffected.
+   */
+  expandable?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const moment = parseMoment(value);
   if (!moment) return null;
 
@@ -28,11 +38,28 @@ export function MomentChip({
   // which case the card is folded away entirely, or it has passed and has
   // nothing left to say. Only the due date warms.
   const urgency = kind === 'due' && !muted ? urgencyOf(moment, now) : 'later';
+  const label = kind === 'due' ? 'Due' : 'Ready';
+  const words = expanded ? momentTitle(moment) : momentWords(moment, now);
+
+  if (!expandable) {
+    return (
+      <span className={`hatch-chip hatch-chip-${urgency}`} title={`${label} ${momentTitle(moment)}`}>
+        <span className="hatch-chip-kind">{label}</span>
+        {words}
+      </span>
+    );
+  }
 
   return (
-    <span className={`hatch-chip hatch-chip-${urgency}`} title={`${kind === 'due' ? 'Due' : 'Ready'} ${momentTitle(moment)}`}>
-      <span className="hatch-chip-kind">{kind === 'due' ? 'Due' : 'Ready'}</span>
-      {momentWords(moment, now)}
-    </span>
+    <button
+      type="button"
+      className={`hatch-chip hatch-chip-${urgency}`}
+      title={`${label} ${momentTitle(moment)}`}
+      aria-expanded={expanded}
+      onClick={() => setExpanded((e) => !e)}
+    >
+      <span className="hatch-chip-kind">{label}</span>
+      {words}
+    </button>
   );
 }

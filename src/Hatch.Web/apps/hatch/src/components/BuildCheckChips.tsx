@@ -34,6 +34,8 @@ export function BuildCheckChips({ checks }: { checks: readonly BuildCheck[] | un
             </span>
           ))}
           {several ? ` in ${c.canonical}` : ''}
+          {' - '}
+          {c.sha.slice(0, 10)}
         </span>
       ))}
     </>

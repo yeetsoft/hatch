@@ -804,6 +804,11 @@ An issue **already in** the implementation column is never gated. The move into
 review is not a dependency's to refuse, so work that started finishes rather
 than stalling half-written.
 
+The mirror gates the way out, not this rule: an issue with a child that is
+still open is not carried out of the implementation column either, because its
+children are the work — see [What makes an issue
+actionable](#what-makes-an-issue-actionable).
+
 **Satisfied means done.** An edge clears when the issue it names is in a
 terminal column — merged, not merely up for review. Anything softer and story
 two starts on top of story one's unmerged branch, which is the failure the whole
@@ -965,12 +970,26 @@ server is what says what it is, the same argument `TtlSeconds` makes for
 itself.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped` or `worked` — absent is accepted exactly as it
-always has been, which covers the pick's own release, a restart, and an older
-CLI, and a value that is neither is `400`. It is read only where a token is
-given: the operator's tokenless clobber names no increment to have an outcome.
-The `claim_released` event carries it, and it is what `letGo` counts (see
-[Comment, question and answer](#comment-question-and-answer)).
+an optional `outcome`, `dropped`, `worked` or `preempted` — absent is accepted
+exactly as it always has been, which covers the pick's own release, a restart,
+and an older CLI, and a value that is none of the three is `400`. It is read
+only where a token is given: the operator's tokenless clobber names no
+increment to have an outcome. The `claim_released` event carries it, and it is
+what `letGo` counts (see [Comment, question and answer](#comment-question-and-answer))
+— except `preempted`, which it skips over, neither counted nor resetting the
+count: the board itself ordered that put-down, not a choice the increment
+made, and the runner's own account of what it pushed lands as its own comment,
+not as a dropped increment.
+
+**A heartbeat may answer that this runner has been preempted.** Ordinarily a
+heartbeat that refreshed the lease answers `204`. Where the board has chosen
+this runner's issue to make room for an emergency one — see
+[The dispatcher](#the-dispatcher), "Preemption" — it answers `200` instead,
+naming the emergency issue's key and title, and writes a `claim_preempted`
+event on the issue being asked to stand down and a comment on the emergency
+issue naming the runner and what it put down. An older `hatch` reads only
+whether the heartbeat succeeded (`Claim.cs`'s `answer.Ok`, true of any `2xx`)
+and is unaffected by the richer answer; only a CLI built for HA-169 acts on it.
 
 **The token is a fencing token, and it is a capability.** Every heartbeat and
 every release presents it, and a write whose token is not the one on the row is
@@ -1073,9 +1092,12 @@ opens only when a runner stops answering for five minutes and then comes back.
 It is named here rather than papered over.
 
 Taking, releasing and clearing each write an event naming the actor, so the
-trail says who took a ticket and who let it go. A heartbeat writes none: it is a
-meter reading rather than a decision, and the trail would otherwise be a row a
-minute for every running increment.
+trail says who took a ticket and who let it go. An ordinary heartbeat writes
+none: it is a meter reading rather than a decision, and the trail would
+otherwise be a row a minute for every running increment. A preempted one is
+the exception, because it is the board's own decision and not a meter
+reading — see "A heartbeat may answer that this runner has been preempted"
+above.
 
 **Its tests need a real Postgres**, and `make test-api-db` is how they get one —
 `make test-api` runs the same suite and skips them, saying so. That is not
@@ -2327,6 +2349,61 @@ place; see [where the loop's rules live](#where-the-loops-rules-live).
 `Playbook` is always null where `Hop` is true, even where one covers the move,
 so no client can spawn a session for a hop by accident.
 
+### Preemption
+
+**Who a claim heartbeat tells it has been preempted, decided lazily at each
+call from the board as it stands.** Nothing is nominated, reserved or written
+down in advance — that is what lets an emergency issue walk the board on one
+runner instead of a saga. `Modules/Hatch/Preemption.cs` is the one place that
+decides it, called from `IssueClaimController`'s heartbeat after a lease
+refreshes; the pool of who might be told is `Runners.HeldAsync`, the same one
+the Runners page draws from, so "what is this runner working" never has a
+second copy to fall out of step with the first.
+
+All five of these hold, or the heartbeating runner is told nothing:
+
+1. Some [emergency](#issue)-level issue is actionable and unclaimed — asked
+   through `Dispatch.ScanAsync` itself, never re-derived, with `offsetMinutes`
+   pinned to `0`: the heartbeat carries no timezone the way `work/next` does,
+   so a ready-dated emergency issue near a day boundary is judged against the
+   UTC day rather than the caller's own.
+2. The heartbeating runner's own issue is below emergency. Emergency work is
+   never preempted, which is what makes this a surplus queue rather than a
+   cascade.
+3. Its issue is last in the dispatcher's own order among every live claim
+   below emergency level that has not already been told. Ties break on issue
+   key, so two heartbeats can never both believe they lost — though in
+   practice there is no tie left to break, since the dispatcher's own order is
+   already the tie-break.
+4. Fewer runners have already been told than there are unclaimed actionable
+   emergency issues.
+5. No live runner is free — a live row in `Runners`, holding no live claim. A
+   free runner takes the emergency ticket on its own next pass, because
+   emergency is the top of the walk, so preempting while one exists would
+   spend a session to gain nothing.
+
+**"Already told" is read off the trail, not stored.** The `claim_preempted`
+event a preempted heartbeat writes (see [Claim](#claim)) doubles as the record
+that this issue's runner has already been asked to stand down: rule 3's pool is
+every live claim below emergency level *carrying no such event since its own
+current claim was taken*, the same way `WorkController.LetGoAsync` asks
+whether an issue's trail carries a release since its last status change,
+against `ClaimedAt` instead since there is no "declaimed" event. Excluding a
+told issue from the pool is what lets a second victim be found once the first
+has been, and it is also what makes the same runner's second heartbeat, before
+it releases, find nobody left to tell it — its own event is already on the
+row, so it answers a plain `204` the second time, having already reacted once.
+
+**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt` and
+nothing else, so the claim heartbeat and the claim release (the runner's own
+lane, not the operator's tokenless clobber) both touch the holding runner's
+row directly, the moment either happens — an unconditional `ExecuteUpdateAsync`
+against `Runners`, matching zero rows harmlessly where a heartbeat races the
+runner's own first `POST /api/hatch/runners/{name}`. Without this, a runner
+that has just released would read as *gone* rather than *free* for as long as
+its row's own last beat was stale, which is exactly the moment rule 5 needs to
+answer correctly.
+
 ### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 
 Every other dispatch ends in a different column, and this one ends where it
@@ -2641,7 +2718,7 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Eleven conditions, the last one a way out of the tenth rather than one more
+Twelve conditions, the last one a way out of the eleventh rather than one more
 gate. An issue is the loop's to pick up when it meets every one before it, and
 the sentence saying which one it failed is what `work/queue` reports:
 
@@ -2649,7 +2726,7 @@ the sentence saying which one it failed is what `work/queue` reports:
    most columns that is the column to their right: the end of the board is not a
    transition, and the step into a terminal column is the operator's — *only the
    operator decides that something shipped*. The review column is dispatched to
-   itself instead (see the ninth condition), and never into the column after it.
+   itself instead (see the tenth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -2683,7 +2760,13 @@ the sentence saying which one it failed is what `work/queue` reports:
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **The [WIP section](#wip) has room for it**, when the move is into it: the
+8. **None of its children are still open**, when the move is out of the column
+   where the code gets written. An issue standing there with at least one
+   child not in a terminal column is not itself the work — its children are —
+   so it is folded rather than carried into review. A deferred child counts as
+   open, the same rule [Dependency](#dependency) already holds for a blocker.
+   A childless issue is unaffected.
+9. **The [WIP section](#wip) has room for it**, when the move is into it: the
    load, not counting this issue, is below the limit. Said after the dependency
    above, which needs other work to land, and before the verdict below, which
    needs nothing at all once a branch is clean — a full section needs other
@@ -2691,33 +2774,33 @@ the sentence saying which one it failed is what `work/queue` reports:
    narrows the candidates to, and the limit is a fact about the board rather
    than the loop's policy: `work/{key}` is refused by it too, and overriding it
    is done on the board, by moving the card in.
-9. **In review, its branch conflicts with the trunk or its build failed.** An
-   issue in the review column is the loop's only when a [merge check](#merge-check)
-   says `conflicted`, or — on a branch that merges cleanly — when the
-   [build check](#build-check) on the branch's current tip says `failed`. Both
-   are decided by a runner and by code, never by a prompt, and conflicts come
-   first. The sentences for a passing build, a running one, one nobody has read
-   on this tip, no checks, no branch, more than one branch and an unchecked one
-   are what `hatch queue` prints. A clean branch that has merely fallen behind
-   the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-10. **A playbook covers that transition for that type — or it does not need
+10. **In review, its branch conflicts with the trunk or its build failed.** An
+    issue in the review column is the loop's only when a [merge check](#merge-check)
+    says `conflicted`, or — on a branch that merges cleanly — when the
+    [build check](#build-check) on the branch's current tip says `failed`. Both
+    are decided by a runner and by code, never by a prompt, and conflicts come
+    first. The sentences for a passing build, a running one, one nobody has read
+    on this tip, no checks, no branch, more than one branch and an unchecked one
+    are what `hatch queue` prints. A clean branch that has merely fallen behind
+    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
+11. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-11. **Unless it does not need a session at all.** An issue that is
+12. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the tenth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the eleventh condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository, a dependency or a full
-    section, only from needing a playbook.
+    date, an assignee, a question, a repository, a dependency, an open child or
+    a full section, only from needing a playbook.
 
-Eight of them — 1, 2, 5, 6, 7, 8, 9 and 10 — are facts about the issue, and
-`work/{key}` asks them too. The eleventh is as well, and `work/{key}` answers
+Nine of them — 1, 2, 5, 6, 7, 8, 9, 10 and 11 — are facts about the issue, and
+`work/{key}` asks them too. The twelfth is as well, and `work/{key}` answers
 it the same way `work/queue` does: `WorkDto.Hop`. The other two are the loop's
 policy and are asked only when the pass is asking; see [one more, on `next`
 alone](#one-more-on-next-alone).
