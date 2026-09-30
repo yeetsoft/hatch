@@ -21,6 +21,7 @@ import {
   setAssignee,
   setPriority,
   setExpress,
+  setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { ExpediteControl } from '../components/ExpediteControl';
@@ -62,6 +63,7 @@ import { openQuestions } from '../lib/questions';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useWipOverride } from '../lib/useWipOverride';
+import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
 import type {
@@ -265,6 +267,21 @@ export function IssuePage() {
     async (patch: Parameters<typeof patchIssuePlaybook>[1]) => {
       try {
         await patchIssuePlaybook(key, patch);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      }
+    },
+    [key, load],
+  );
+
+  /* How many of this epic's stories may run at once. Its own call for
+     `savePlaybook`'s reason - it is its own endpoint, and writing one is
+     closed to an API key - and otherwise exactly `savePlaybook`. */
+  const saveWipLimit = useCallback(
+    async (limit: string) => {
+      try {
+        await setWipLimit(key, limit);
         await load();
       } catch (err) {
         setError(message(err));
@@ -602,6 +619,12 @@ export function IssuePage() {
               onChange={(effort) => void savePlaybook({ effort })}
             />
           </Field>
+
+          {/* Epics only - a story's page draws nothing here. Retyping an epic
+              to something else leaves the value in place, unread. */}
+          {issue.type === 'epic' && (
+            <WipLimitField limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
+          )}
         </div>
       </Card>
 
@@ -1446,6 +1469,39 @@ function Comments({
 }
 
 /** The audit trail, collapsed. It is there to be looked up, not to be read. */
+/**
+ * How many of an epic's stories may run at once. Committed on blur, the way
+ * StatusesPage's LimitField is - blur-commit, re-sync when the value changes
+ * underneath - but bare rather than WipSliceSetting-shaped: an epic's limit
+ * is not a slice of the board, so it is not that component and not its
+ * helpers, only its pattern.
+ */
+function WipLimitField({ limit, onSetLimit }: { limit: number | null; onSetLimit: (limit: string) => void }) {
+  const [draft, setDraft] = useState(wipLimitDraft(limit));
+  const [known, setKnown] = useState(limit);
+
+  // Re-syncs when the issue changes underneath - see StatusesPage's ColorCell.
+  if (limit !== known) {
+    setKnown(limit);
+    setDraft(wipLimitDraft(limit));
+  }
+
+  return (
+    <Field label="Stories at once" hint={`Blank means ${DEFAULT_EPIC_WIP_LIMIT}.`}>
+      <input
+        inputMode="numeric"
+        value={draft}
+        placeholder={String(DEFAULT_EPIC_WIP_LIMIT)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const next = wipLimitRequest(draft);
+          if (next !== wipLimitDraft(limit)) onSetLimit(next);
+        }}
+      />
+    </Field>
+  );
+}
+
 function EventTrail({ events }: { events: IssueEvent[] }) {
   return (
     <Card>

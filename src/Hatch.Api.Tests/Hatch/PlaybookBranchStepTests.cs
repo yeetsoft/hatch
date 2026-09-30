@@ -70,7 +70,7 @@ public class PlaybookBranchStepTests
         var now = DateTimeOffset.UtcNow;
         EfHatchPlaybook Row(string types, string prompt) => new()
         {
-            FromStatusId = from.Id, ToStatusId = to.Id, Types = types, Prompt = prompt,
+            FromStatusId = from.Id, ToStatusId = to.Id, Types = types, Shape = "any", Prompt = prompt,
             Model = "sonnet", Effort = "high", CreatedAt = now, UpdatedAt = now,
         };
 

@@ -349,6 +349,11 @@ export interface Issue {
       `failedBuilds` - only a failed one is drawn. Absent from a board that
       predates them. */
   buildChecks?: BuildCheck[];
+  /** How many of an epic's stories may be in progress at once, or null for
+      DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
+      Readable by anybody a dispatch reaches and writable only by a person,
+      through its own route - see IssueWipLimitController. */
+  wipLimit: number | null;
 }
 
 /** An ordinary note, a question that needs deciding, the answer to one, or a
@@ -412,6 +417,7 @@ export type IssueEventKind =
   | 'assignee_changed'
   | 'priority_changed'
   | 'express_changed'
+  | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
   | 'claim_taken'
@@ -607,6 +613,16 @@ export interface IssuePlaybookRequest {
   effort?: string | null;
 }
 
+/** How many of an epic's stories may run at once. Null leaves it alone and
+    `''` clears it back to DEFAULT_EPIC_WIP_LIMIT, the same bulk rule every
+    other clearable field in Hatch follows.
+
+    Its own request because it is its own route: setting one is closed to an
+    API key, for IssuePlaybookRequest's reason - see IssueWipLimitController. */
+export interface IssueWipLimitRequest {
+  limit: string;
+}
+
 /** One edge: this issue waits on `dependsOnKey`. Open to an API key, unlike
     IssuePlaybookRequest - an edge is a statement about the work rather than
     about an agent's budget. See IssueDependenciesController. */
@@ -693,8 +709,17 @@ export const PLAYBOOK_EFFORTS: PlaybookEffort[] = ['low', 'medium', 'high', 'xhi
 /** Mirrors EfHatchPlaybook.DefaultEffort - see PLAYBOOK_MODEL_DEFAULT. */
 export const PLAYBOOK_EFFORT_DEFAULT: PlaybookEffort = 'medium';
 
-/** One row of the matrix: a transition, the types it speaks for, and what an
-    agent making that move is told and spent on. Mirrors PlaybookDto. */
+/** Whether the issue's children are consulted: not at all, or it must have
+    none or at least one. Exclusive, unlike types - a row speaks for one shape. */
+export type PlaybookShape = 'any' | 'leaf' | 'parent';
+
+export const PLAYBOOK_SHAPES: PlaybookShape[] = ['any', 'leaf', 'parent'];
+
+/** Mirrors EfHatchPlaybook.DefaultShape - see PLAYBOOK_MODEL_DEFAULT. */
+export const PLAYBOOK_SHAPE_DEFAULT: PlaybookShape = 'any';
+
+/** One row of the matrix: a transition, the types and shape it speaks for, and
+    what an agent making that move is told and spent on. Mirrors PlaybookDto. */
 export interface Playbook {
   id: number;
   fromStatusId: number;
@@ -703,6 +728,7 @@ export interface Playbook {
   toStatusName: string;
   /** Empty means every type. */
   types: IssueType[];
+  shape: PlaybookShape;
   prompt: string;
   /** An alias, or a pinned `claude-…` name an operator typed by hand. */
   model: string;
@@ -717,6 +743,7 @@ export interface PlaybookCreateRequest {
   prompt: string;
   model?: string;
   effort?: string;
+  shape?: PlaybookShape;
 }
 
 /** Null or absent leaves a field alone, as everywhere else in Hatch. */
@@ -727,6 +754,7 @@ export interface PlaybookPatchRequest {
   prompt?: string;
   model?: string;
   effort?: string;
+  shape?: PlaybookShape;
 }
 
 // ---- Work ----

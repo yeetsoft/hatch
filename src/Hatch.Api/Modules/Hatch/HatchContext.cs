@@ -129,6 +129,13 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(p => p.ToStatusId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Matches the PlaybookShape migration's own defaultValue, so a
+            // database built straight from this model - EnsureCreated, as the
+            // test suite's own database does - gets the same column default a
+            // sequential migration run leaves behind, and an INSERT that never
+            // names Shape still gets one.
+            e.Property(p => p.Shape).HasDefaultValue(EfHatchPlaybook.AnyShape);
         });
 
         // Cascade from both ends, which is the one place in this module where

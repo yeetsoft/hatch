@@ -313,6 +313,13 @@ public class AdminSurfaceTests
         // IssuePlaybookController.
         "IssuePlaybookController.PatchIssuePlaybook",
 
+        // How many of an epic's stories may be in progress at once, cut the
+        // same way as the playbook override just above: a key that could
+        // raise its own epic's ceiling could pull more of its own stories
+        // into progress at once. Reading rides IssueDto, open like the rest.
+        // See IssueWipLimitController.
+        "IssueWipLimitController.PatchIssueWipLimit",
+
         // The runners, and the same split drawn a third time. The heartbeat and
         // the read are a dispatcher's - a loop that could not say it was alive
         // would leave a control surface that could only ever be empty - and the
@@ -467,6 +474,7 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
         "IssuePlaybookController.PatchIssuePlaybook",
+        "IssueWipLimitController.PatchIssueWipLimit",
         "RunnersController.PatchRunner",
         "WipController.PutWip",
         "AssigneeController.PutIssueAssignee",

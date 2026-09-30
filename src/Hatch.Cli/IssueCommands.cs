@@ -89,6 +89,12 @@ public sealed class IssueCommands(Cli cli)
         else if (issue.Priority == PriorityLevels.ExpeditedName)
             cli.Say.Line("priority:  expedited - this one goes first");
         if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
+        if (issue.Type == "epic")
+        {
+            cli.Say.Line(issue.WipLimit is { } limit
+                ? $"stories at once: {limit}"
+                : $"stories at once: {IssueWipLimitRequest.DefaultLimit} (default)");
+        }
         if (issue.ParentKey is { Length: > 0 } parent) cli.Say.Line($"parent:   {parent}");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");
         if (issue.DependsOnKeys.Count > 0) cli.Say.Line($"depends:  {string.Join(", ", issue.DependsOnKeys)}");

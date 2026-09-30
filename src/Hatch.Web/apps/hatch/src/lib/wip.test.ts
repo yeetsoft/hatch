@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { limitDraft, limitRequest, meterText, plural, preview, runs, tightest, tightness, toggled, wipBlocked } from './wip';
+import {
+  limitDraft,
+  limitRequest,
+  meterText,
+  plural,
+  preview,
+  runs,
+  tightest,
+  tightness,
+  toggled,
+  wipBlocked,
+  wipLimitDraft,
+  wipLimitRequest,
+} from './wip';
 import { boardColumns } from './columns';
 import type { IssueCard, Status, Wip, WipSection, WipSlice, WipSliceSetting } from '../types';
 
@@ -124,6 +137,24 @@ describe('the limit field', () => {
 
   it('a blank field clears the limit', () => {
     expect(limitRequest('  ')).toBe('');
+  });
+});
+
+describe("an epic's stories-at-once field", () => {
+  it('shows no limit as a blank box', () => {
+    expect(wipLimitDraft(null)).toBe('');
+  });
+
+  it('shows a held limit as its number', () => {
+    expect(wipLimitDraft(3)).toBe('3');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(wipLimitRequest(' 3 ')).toBe('3');
+  });
+
+  it('a blank field clears the limit back to the default', () => {
+    expect(wipLimitRequest('  ')).toBe('');
   });
 });
 
