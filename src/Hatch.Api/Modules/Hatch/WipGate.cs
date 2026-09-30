@@ -52,8 +52,10 @@ public sealed class WipGate(HatchContext db, IssueClaims claims, DateTimeOffset 
         var admitted = _admitted.TryGetValue(slice, out var set) ? set : _admitted[slice] = [];
 
         // An issue Wip already counts (inside the section, or outside it on a
-        // live claim headed in) cannot be refused either, whatever the load.
-        if (slice.Counted(issue) || admitted.Contains(issue.Id)) return WipVerdict.Pass;
+        // live claim headed in, or standing behind a family member this same
+        // batch has already admitted) cannot be refused either, whatever the
+        // load.
+        if (slice.Counted(issue, admitted) || admitted.Contains(issue.Id)) return WipVerdict.Pass;
 
         var load = slice.Load + admitted.Count;
         if (load < limit)

@@ -146,6 +146,89 @@ public class WipTests
     }
 
     [Fact]
+    public async Task AStoryAndItsBugBothInTheSection_CountAsOneLine()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var story = await h.IssueAsync("story", h.InProgress);
+        await h.BugAsync(h.InReview, story);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(1, section!.SliceFor("story")!.Load);
+    }
+
+    [Fact]
+    public async Task AChainCrossingAnUncountedTask_StillCountsAsOneLine()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var grandparent = await h.IssueAsync("story", h.InProgress);
+        var task = await h.IssueAsync("task", h.ToDo, grandparent);
+        await h.BugAsync(h.InReview, task);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(1, section!.SliceFor("story")!.Load);
+    }
+
+    [Fact]
+    public async Task TwoUnrelatedStoriesInTheSection_CountAsTwo()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        await h.IssueAsync("story", h.InProgress);
+        await h.IssueAsync("story", h.InReview);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(2, section!.SliceFor("story")!.Load);
+    }
+
+    [Fact]
+    public async Task CountedIsTrueForABugOutsideTheSectionWhoseStoryParentStandsInIt()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var story = await h.IssueAsync("story", h.InProgress);
+        var bug = await h.BugAsync(h.ToDo, story);
+
+        var section = await h.LoadAsync();
+        var slice = section!.SliceFor("bug")!;
+
+        Assert.True(slice.Counted(await h.EntityAsync(bug)));
+    }
+
+    [Fact]
+    public async Task ClaimedInboundCountsTheFamilyOnceNotEachMember()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var story = await h.IssueAsync("story", h.InProgress);
+        var bug = await h.BugAsync(h.ToDo, story);
+        await h.ClaimAsync(bug);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.SliceFor("story")!.ClaimedInbound);
+    }
+
+    [Fact]
+    public async Task ClaimedInboundCountsAFamilyHeadingInEvenWhenNeitherIsInTheSectionYet()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var story = await h.IssueAsync("story", h.ToDo);
+        var bug = await h.BugAsync(h.ToDo, story);
+        await h.ClaimAsync(story);
+        await h.ClaimAsync(bug);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(1, section!.SliceFor("story")!.ClaimedInbound);
+    }
+
+    [Fact]
     public async Task SliceForATask_IsNull()
     {
         var h = await NewAsync();
@@ -287,13 +370,14 @@ public class WipTests
             return await Wip.LoadAsync(Db, Claims, statuses, Time.GetUtcNow(), default);
         }
 
-        public async Task<long> IssueAsync(string type, int statusId)
+        public async Task<long> IssueAsync(string type, int statusId, long? parentId = null)
         {
             var now = Time.GetUtcNow();
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             var issue = new EfHatchIssue
             {
                 ProjectId = ProjectId,
+                ParentId = parentId,
                 Number = project.NextIssueNumber,
                 Type = type,
                 Title = type,
@@ -307,6 +391,8 @@ public class WipTests
             await Db.SaveChangesAsync();
             return issue.Id;
         }
+
+        public Task<long> BugAsync(int statusId, long? parentId = null) => IssueAsync("bug", statusId, parentId);
 
         public async Task<EfHatchIssue> EntityAsync(long id) =>
             await Db.Issues.AsNoTracking().SingleAsync(i => i.Id == id);

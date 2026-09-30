@@ -108,6 +108,60 @@ public class WipMoveTests
         Assert.Equal("the WIP section is full - 2 of 2 stories and bugs are in it", failure.Reason);
     }
 
+    [Fact]
+    public async Task ABulkMoveOfAStoryAndItsBugTogether_BothLandUnderALimitOfOne()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        var story = await h.StoryAsync(h.ToDo);
+        var bug = await h.BugAsync(h.ToDo, story);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([story, bug], statusId: h.InProgress), default));
+
+        Assert.Equal([story, bug], result.Changed);
+        Assert.Empty(result.Failures);
+    }
+
+    [Fact]
+    public async Task ABugAdmittedBecauseItsStoryParentAlreadyStandsInTheSection_LandsDespiteTheFullLimit()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        var story = await h.StoryAsync(h.InProgress);
+        var bug = await h.BugAsync(h.ToDo, story);
+
+        var result = await h.Issues.MoveIssue(bug, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AnUnrelatedBugWithNoAncestorInside_IsStillRefusedUnderTheSameLimit()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        await h.StoryAsync(h.InProgress);
+        var bug = await h.BugAsync(h.ToDo);
+
+        var result = await h.Issues.MoveIssue(bug, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AStoryAndItsBugCarryFromToDoThroughInReviewUnderALimitOfOne()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        var story = await h.StoryAsync(h.ToDo);
+        var bug = await h.BugAsync(h.ToDo, story);
+
+        var storyIn = await h.Issues.MoveIssue(story, new IssueMoveRequest(h.InProgress, null, null), default);
+        Assert.Equal(h.InProgress, Value(storyIn).StatusId);
+
+        var bugIn = await h.Issues.MoveIssue(bug, new IssueMoveRequest(h.InProgress, null, null), default);
+        Assert.Equal(h.InProgress, Value(bugIn).StatusId);
+
+        var bugOn = await h.Issues.MoveIssue(bug, new IssueMoveRequest(h.InReview, null, null), default);
+        Assert.Equal(h.InReview, Value(bugOn).StatusId);
+    }
+
     // ---- The override ----
 
     [Fact]
@@ -444,14 +498,24 @@ public class WipMoveTests
 
         public Task<string> EpicAsync(int statusId) => IssueAsync("epic", statusId);
 
-        public async Task<string> IssueAsync(string type, int statusId)
+        public Task<string> BugAsync(int statusId, string? parentKey = null) => IssueAsync("bug", statusId, parentKey);
+
+        public async Task<string> IssueAsync(string type, int statusId, string? parentKey = null)
         {
+            long? parentId = null;
+            if (parentKey is not null)
+            {
+                IssueKey.TryParse(parentKey, out var parentProjectKey, out var parentNumber);
+                parentId = (await Db.Issues.WithKey(parentProjectKey, parentNumber).FirstAsync()).Id;
+            }
+
             var now = Time.GetUtcNow();
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             var number = project.NextIssueNumber++;
             var issue = new EfHatchIssue
             {
                 ProjectId = ProjectId,
+                ParentId = parentId,
                 Number = number,
                 Type = type,
                 Title = type,
@@ -483,7 +547,7 @@ public class WipMoveTests
             Value(await Thread.GetEvents(key, default));
     }
 
-    private static async Task<Harness> NewAsync(bool withLimit = true, int? withEpicLimit = null)
+    private static async Task<Harness> NewAsync(bool withLimit = true, int storyLimit = 2, int? withEpicLimit = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -498,7 +562,7 @@ public class WipMoveTests
 
         if (withLimit)
         {
-            db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = 2 });
+            db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = storyLimit });
             await db.SaveChangesAsync();
         }
 
