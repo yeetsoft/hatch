@@ -1153,6 +1153,78 @@ public class WorkControllerTests
         Assert.Empty(playbook.Types);
     }
 
+    [Fact]
+    public async Task Work_PrefersThePlaybookThatNamesTheTypeOverOneThatOnlyNamesTheShape()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "type-wins"));
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "", "shape-wins", shape: "leaf"));
+        await h.Db.SaveChangesAsync();
+
+        var task = await h.FileAsync("task", "a leaf that both rows could speak for", h.Todo);
+
+        Assert.Equal("type-wins", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_PrefersThePlaybookThatNamesTheShapeOverABareAnyRow()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "", "shape-wins", shape: "leaf"));
+        await h.Db.SaveChangesAsync();
+
+        var task = await h.FileAsync("task", "a leaf with no children", h.Todo);
+
+        // The seeded catch-all ("", any, sonnet) also covers this issue; the
+        // shape-specific row must outrank it even though neither names a type.
+        Assert.Equal("shape-wins", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_OnATrueTieInSpecificity_TheOlderRowWins()
+    {
+        var h = await NewAsync();
+        var older = Playbook(h.Todo, h.InProgress, "task", "older-wins");
+        var newer = Playbook(h.Todo, h.InProgress, "task", "newer-loses");
+        h.Db.Add(older);
+        await h.Db.SaveChangesAsync();
+        h.Db.Add(newer);
+        await h.Db.SaveChangesAsync();
+
+        Assert.True(older.Id < newer.Id);
+
+        var task = await h.FileAsync("task", "matched by two rows tied on specificity", h.Todo);
+
+        Assert.Equal("older-wins", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_ALeafShapedPlaybookDoesNotCoverAnIssueWithChildren()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "leaf-only", shape: "leaf"));
+        await h.Db.SaveChangesAsync();
+
+        var parent = await h.FileAsync("story", "has a child", h.Todo);
+        await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+
+        // The seeded catch-all is the only row left that can cover it - the
+        // leaf row does not, because this issue is a parent.
+        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key(parent), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_AParentShapedPlaybookDoesNotCoverAChildlessIssue()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "parent-only", shape: "parent"));
+        await h.Db.SaveChangesAsync();
+
+        var story = await h.FileAsync("story", "no children", h.Todo);
+
+        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key(story), null, default)).Playbook!.Model);
+    }
+
     // ---- The issue's own model and effort ----
 
     [Fact]
@@ -2796,6 +2868,49 @@ public class WorkControllerTests
         Assert.IsType<BadRequestObjectResult>(refused.Result);
     }
 
+    // ---- The shape axis ----
+
+    [Fact]
+    public async Task Playbooks_RefuseAShapeThatIsNotOneOfTheThree()
+    {
+        var h = await NewAsync();
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", "orphan"), default))
+            .Result);
+
+        Assert.Equal("a shape is one of any, leaf, parent - not \"orphan\"", refused.Value);
+    }
+
+    [Fact]
+    public async Task Playbooks_RefuseADuplicateTransitionTypesAndShape()
+    {
+        var h = await NewAsync();
+        await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", "leaf"), default);
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it again", "sonnet", "high", "leaf"), default))
+            .Result);
+
+        Assert.Equal("there is already a playbook for that transition, those types and that shape", refused.Value);
+    }
+
+    [Fact]
+    public async Task Playbooks_ASecondRowForTheSameTransitionAndTypesButADifferentShape_IsNotADuplicate()
+    {
+        var h = await NewAsync();
+        await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "leaf work", "sonnet", "high", "leaf"), default);
+
+        var created = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "parent work", "sonnet", "high", "parent"), default);
+
+        Assert.IsType<CreatedAtActionResult>(created.Result);
+    }
+
     // ---- The claim ----
     //
     // The sixth condition: an issue somebody is working right now is not one to
@@ -4036,11 +4151,12 @@ public class WorkControllerTests
     /// <summary>The display key of an issue these tests filed directly.</summary>
     private static string Key(EfHatchIssue issue) => IssueKey.Format("AER", issue.Number);
 
-    private static EfHatchPlaybook Playbook(int from, int to, string types, string model) => new()
+    private static EfHatchPlaybook Playbook(int from, int to, string types, string model, string shape = "any") => new()
     {
         FromStatusId = from,
         ToStatusId = to,
         Types = types,
+        Shape = shape,
         Prompt = "do the thing",
         Model = model,
         Effort = "high",

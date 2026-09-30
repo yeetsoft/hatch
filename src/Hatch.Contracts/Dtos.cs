@@ -936,8 +936,9 @@ public record ImportResultDto(IReadOnlyList<ImportedEpicDto> Epics, int IssueCou
 
 // ---- Playbooks ----
 
-/// <summary>One row of the matrix: a transition, the types it speaks for, and what to spend on them.</summary>
+/// <summary>One row of the matrix: a transition, the types and shape it speaks for, and what to spend on them.</summary>
 /// <param name="Types">Empty means every type.</param>
+/// <param name="Shape">One of "any", "leaf" or "parent" - whether the issue's children are consulted.</param>
 public record PlaybookDto(
     int Id,
     int FromStatusId,
@@ -945,6 +946,7 @@ public record PlaybookDto(
     int ToStatusId,
     string ToStatusName,
     IReadOnlyList<string> Types,
+    string Shape,
     string Prompt,
     string Model,
     string Effort,
@@ -956,7 +958,8 @@ public record PlaybookCreateRequest(
     IReadOnlyList<string>? Types,
     string Prompt,
     string? Model,
-    string? Effort);
+    string? Effort,
+    string? Shape = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 public record PlaybookPatchRequest(
@@ -965,7 +968,8 @@ public record PlaybookPatchRequest(
     IReadOnlyList<string>? Types,
     string? Prompt,
     string? Model,
-    string? Effort);
+    string? Effort,
+    string? Shape = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and

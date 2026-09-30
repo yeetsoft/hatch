@@ -1287,12 +1287,13 @@ public class EfHatchIssueEvent
 /// natural end. The operator writes these; agents read them.
 /// </remarks>
 [Table("Playbooks")]
-[Index(nameof(FromStatusId), nameof(ToStatusId), nameof(Types), IsUnique = true)]
+[Index(nameof(FromStatusId), nameof(ToStatusId), nameof(Types), nameof(Shape), IsUnique = true)]
 public class EfHatchPlaybook
 {
     public const int MaxTypesLength = 60;
     public const int MaxModelLength = 60;
     public const int MaxEffortLength = 10;
+    public const int MaxShapeLength = 10;
     public const int MaxPromptLength = 20_000;
 
     /// <summary>
@@ -1314,6 +1315,17 @@ public class EfHatchPlaybook
     /// <summary>A pinned model id, for the operator who wants exactly one.</summary>
     private const string FullModelPattern = "^claude-[a-z0-9][a-z0-9.-]{0,48}$";
 
+    public const string AnyShape = "any";
+    public const string LeafShape = "leaf";
+    public const string ParentShape = "parent";
+
+    /// <summary>
+    /// Whether the issue's children are consulted at all (<see cref="AnyShape"/>),
+    /// or it must have none (<see cref="LeafShape"/>) or at least one
+    /// (<see cref="ParentShape"/>).
+    /// </summary>
+    public static readonly string[] Shapes = [AnyShape, LeafShape, ParentShape];
+
     /// <summary>
     /// What a row created without an opinion takes. The middle of the range on
     /// both axes, deliberately: a playbook nobody has tuned yet should do the
@@ -1322,6 +1334,7 @@ public class EfHatchPlaybook
     /// </summary>
     public const string DefaultModel = "sonnet";
     public const string DefaultEffort = "medium";
+    public const string DefaultShape = AnyShape;
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
@@ -1345,6 +1358,16 @@ public class EfHatchPlaybook
     /// </summary>
     [MaxLength(MaxTypesLength)]
     public required string Types { get; set; }
+
+    /// <summary>
+    /// Whether the issue's children matter to this row: <see cref="AnyShape"/>
+    /// means they are not consulted, <see cref="LeafShape"/> means the issue
+    /// must have none, <see cref="ParentShape"/> means it must have at least
+    /// one. A fixed word, not a CSV like <see cref="Types"/> - a row speaks for
+    /// exactly one shape.
+    /// </summary>
+    [MaxLength(MaxShapeLength)]
+    public required string Shape { get; set; } = AnyShape;
 
     /// <summary>
     /// What the agent is told before it is shown the ticket. The ticket body is
@@ -1388,17 +1411,22 @@ public class EfHatchPlaybook
     public static string[] SplitTypes(string? types) =>
         string.IsNullOrEmpty(types) ? [] : types.Split(',', StringSplitOptions.RemoveEmptyEntries);
 
-    /// <summary>Whether this playbook speaks for an issue of this type.</summary>
-    public bool Covers(string issueType) =>
-        Types.Length == 0 || SplitTypes(Types).Contains(issueType);
+    /// <summary>Whether this playbook speaks for an issue of this type and shape.</summary>
+    public bool Covers(string issueType, bool isParent) =>
+        (Types.Length == 0 || SplitTypes(Types).Contains(issueType)) &&
+        (Shape == AnyShape || (Shape == ParentShape) == isParent);
 
     /// <summary>
     /// How closely it speaks for it. A playbook that names the type beats one
     /// that names every type, so "inbox to todo, epics" can say something
     /// different from "inbox to todo, anything else" without either having to
-    /// know about the other.
+    /// know about the other. A playbook that names the shape beats one that
+    /// does not, on the same footing - but naming the type still outweighs
+    /// naming the shape, so a row with a shape and no type (1) never outranks
+    /// a row with a type and no shape (2); only a row naming both (3) beats a
+    /// row naming just the type.
     /// </summary>
-    public int Specificity => Types.Length == 0 ? 0 : 1;
+    public int Specificity => (Types.Length == 0 ? 0 : 2) + (Shape == AnyShape ? 0 : 1);
 
     public static bool IsValidEffort(string? effort) =>
         effort is not null && Efforts.Contains(effort);
@@ -1407,6 +1435,9 @@ public class EfHatchPlaybook
         model is not null &&
         (ModelAliases.Contains(model) ||
          Regex.IsMatch(model, FullModelPattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
+
+    public static bool IsValidShape(string? shape) =>
+        shape is not null && Shapes.Contains(shape);
 }
 
 /// <summary>

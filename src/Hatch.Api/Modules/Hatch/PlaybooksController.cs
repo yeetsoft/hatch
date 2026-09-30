@@ -51,7 +51,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     public async Task<ActionResult<PlaybookDto>> CreatePlaybook(PlaybookCreateRequest request, CancellationToken ct)
     {
         var types = EfHatchPlaybook.NormalizeTypes(request.Types);
-        if (await Refusal(request.FromStatusId, request.ToStatusId, types, id: null, ct) is { } error)
+        var shape = request.Shape?.Trim() ?? EfHatchPlaybook.DefaultShape;
+        if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
+        if (await Refusal(request.FromStatusId, request.ToStatusId, types, shape, id: null, ct) is { } error)
             return BadRequest(error);
 
         var prompt = request.Prompt?.Trim() ?? "";
@@ -67,6 +69,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             FromStatusId = request.FromStatusId,
             ToStatusId = request.ToStatusId,
             Types = types,
+            Shape = shape,
             Prompt = prompt,
             Model = model,
             Effort = effort,
@@ -90,8 +93,10 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var from = request.FromStatusId ?? playbook.FromStatusId;
         var to = request.ToStatusId ?? playbook.ToStatusId;
         var types = request.Types is null ? playbook.Types : EfHatchPlaybook.NormalizeTypes(request.Types);
+        var shape = request.Shape?.Trim() ?? playbook.Shape;
+        if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
 
-        if (await Refusal(from, to, types, id, ct) is { } error) return BadRequest(error);
+        if (await Refusal(from, to, types, shape, id, ct) is { } error) return BadRequest(error);
 
         if (request.Prompt is not null)
         {
@@ -107,6 +112,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
         playbook.Types = types;
+        playbook.Shape = shape;
         playbook.Model = model;
         playbook.Effort = effort;
         playbook.UpdatedAt = time.GetUtcNow();
@@ -142,7 +148,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// Which column that is, is measured off the board as it stands and not
     /// named, the way every other rule about review is.
     /// </remarks>
-    private async Task<string?> Refusal(int from, int to, string types, int? id, CancellationToken ct)
+    private async Task<string?> Refusal(int from, int to, string types, string shape, int? id, CancellationToken ct)
     {
         var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
         if (!known.Contains(from)) return $"there is no column {from}";
@@ -161,10 +167,11 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         }
 
         var clash = await db.Playbooks
-            .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types && p.Id != id, ct);
+            .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types &&
+                           p.Shape == shape && p.Id != id, ct);
 
         return clash
-            ? "there is already a playbook for that transition and those types"
+            ? "there is already a playbook for that transition, those types and that shape"
             : null;
     }
 
@@ -198,6 +205,12 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             ? null
             : $"an effort is one of {string.Join(", ", EfHatchPlaybook.Efforts)} - not \"{effort}\"";
 
+    /// <summary>The same, for the shape axis.</summary>
+    internal static string? InvalidShape(string shape) =>
+        EfHatchPlaybook.IsValidShape(shape)
+            ? null
+            : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
+
     // ---- Reading back ----
 
     private async Task<PlaybookDto> LoadDtoAsync(int id, CancellationToken ct)
@@ -217,6 +230,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.ToStatusId,
         p.ToStatus?.Name ?? "",
         EfHatchPlaybook.SplitTypes(p.Types),
+        p.Shape,
         p.Prompt,
         p.Model,
         p.Effort,

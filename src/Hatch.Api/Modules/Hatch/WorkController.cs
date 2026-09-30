@@ -332,7 +332,10 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var now = time.GetUtcNow();
 
-        var playbook = to is null ? null : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, ct);
+        var family = await FamilyGate.ForAsync(db, statuses, ct);
+        var playbook = to is null
+            ? null
+            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, ct);
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
         var waiting = await UnlapsedWaitingAsync(questions, issue.Id, now, ct);
 
@@ -340,7 +343,6 @@ public class WorkController(
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
         var built = inReview ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
 
-        var family = await FamilyGate.ForAsync(db, statuses, ct);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, family, statuses);
         var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
@@ -448,7 +450,9 @@ public class WorkController(
                 Express: c.Express,
                 Priority: PriorityLevels.Name(c.Priority)));
 
-        var playbook = to is null ? null : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, ct);
+        var playbook = to is null
+            ? null
+            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, ct);
 
         // Both halves in one read: the open ones decide whether an agent is
         // dispatched at all, and the answered ones are what it is dispatched

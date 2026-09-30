@@ -154,7 +154,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 {
                     if (issue.Priority != level) continue;
 
-                    var playbook = Match(playbooks, status.Id, to.Id, issue.Type);
+                    var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0);
                     var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
@@ -577,26 +577,27 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     /// <summary>
     /// The playbook that speaks for this move. A row naming the issue's type
-    /// beats a row naming every type, and ties go to the older row - so adding
-    /// a specific rule never requires editing the general one.
+    /// beats a row naming only its shape, which beats a bare row naming
+    /// neither, and ties go to the older row - so adding a specific rule never
+    /// requires editing the general one.
     /// </summary>
-    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, CancellationToken ct) =>
+    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, bool isParent, CancellationToken ct) =>
         Match(
             await db.Playbooks.AsNoTracking()
                 .Include(p => p.FromStatus)
                 .Include(p => p.ToStatus)
                 .Where(p => p.FromStatusId == from && p.ToStatusId == to)
                 .ToListAsync(ct),
-            from, to, type);
+            from, to, type, isParent);
 
     /// <summary>
     /// The same rule against rows already in hand, which is how a scan matches
     /// a whole board's worth of transitions without a query a row. The matrix
     /// is small enough to read whole and the tie-break is arithmetic.
     /// </summary>
-    public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type) =>
+    public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent) =>
         playbooks
-            .Where(p => p.FromStatusId == from && p.ToStatusId == to && p.Covers(type))
+            .Where(p => p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent))
             .OrderByDescending(p => p.Specificity)
             .ThenBy(p => p.Id)
             .FirstOrDefault();

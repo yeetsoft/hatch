@@ -693,8 +693,17 @@ export const PLAYBOOK_EFFORTS: PlaybookEffort[] = ['low', 'medium', 'high', 'xhi
 /** Mirrors EfHatchPlaybook.DefaultEffort - see PLAYBOOK_MODEL_DEFAULT. */
 export const PLAYBOOK_EFFORT_DEFAULT: PlaybookEffort = 'medium';
 
-/** One row of the matrix: a transition, the types it speaks for, and what an
-    agent making that move is told and spent on. Mirrors PlaybookDto. */
+/** Whether the issue's children are consulted: not at all, or it must have
+    none or at least one. Exclusive, unlike types - a row speaks for one shape. */
+export type PlaybookShape = 'any' | 'leaf' | 'parent';
+
+export const PLAYBOOK_SHAPES: PlaybookShape[] = ['any', 'leaf', 'parent'];
+
+/** Mirrors EfHatchPlaybook.DefaultShape - see PLAYBOOK_MODEL_DEFAULT. */
+export const PLAYBOOK_SHAPE_DEFAULT: PlaybookShape = 'any';
+
+/** One row of the matrix: a transition, the types and shape it speaks for, and
+    what an agent making that move is told and spent on. Mirrors PlaybookDto. */
 export interface Playbook {
   id: number;
   fromStatusId: number;
@@ -703,6 +712,7 @@ export interface Playbook {
   toStatusName: string;
   /** Empty means every type. */
   types: IssueType[];
+  shape: PlaybookShape;
   prompt: string;
   /** An alias, or a pinned `claude-…` name an operator typed by hand. */
   model: string;
@@ -717,6 +727,7 @@ export interface PlaybookCreateRequest {
   prompt: string;
   model?: string;
   effort?: string;
+  shape?: PlaybookShape;
 }
 
 /** Null or absent leaves a field alone, as everywhere else in Hatch. */
@@ -727,6 +738,7 @@ export interface PlaybookPatchRequest {
   prompt?: string;
   model?: string;
   effort?: string;
+  shape?: PlaybookShape;
 }
 
 // ---- Work ----
