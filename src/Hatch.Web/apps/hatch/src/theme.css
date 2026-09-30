@@ -14,6 +14,19 @@ html, body, #root {
   height: 100%;
 }
 
+/* Below the phone breakpoint (lib/viewport.ts's PHONE_QUERY, restated here
+   because a media query can't read a custom property - see
+   docs/design-system-architecture.md, "The phone") the document itself is the
+   scroller, not a fixed-height box a nested element scrolls inside. height:
+   auto turns the fixed height off rather than adding min-height beside it -
+   with both declared, height wins and min-height does nothing. */
+@media (max-width: 40rem) {
+  html, body, #root {
+    height: auto;
+    min-height: 100%;
+  }
+}
+
 .text-muted {
   color: var(--muted);
 }
