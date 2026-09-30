@@ -1868,7 +1868,7 @@ refusal a `--mine` pass gives. Otherwise:
   "readAt": "2026-09-07T08:12:03Z",
   "limits": [
     { "window": "session", "label": "Session", "percent": 17,
-      "tone": "normal", "resetsAt": "2026-09-07T12:00:00Z" }
+      "resetsAt": "2026-09-07T12:00:00Z" }
   ]
 }
 ```
@@ -1883,15 +1883,43 @@ rename underneath this endpoint.
   its age. There is no third state: a reading is kept, not swept, so `unknown`
   ("the account could not be reached") went with the account nothing reaches
   any more.
-- `window` is `session`, `weekly` or `weeklyModel`, in the order the runner
-  reported them.
-- `label` is what the row is called on screen — `Session`, `Weekly`, or
+- `window` is `session`, `weekly`, `weeklyModel` or `extra`, in the order the
+  runner reported them.
+- `label` is what the row is called on screen — `Session`, `Weekly`,
   `Weekly (model)` for a per-model weekly window, which arrives with no display
-  name of its own on the wire. **No model name is written down in this
-  repository.**
-- `tone` is `normal`, `warn` or `danger` — the *decision*, decided on the
-  server from the percentage alone (90 and up is danger, 75 and up is warn),
-  so the rule lives in one file and the client paints what it is told.
+  name of its own on the wire, or `Extra usage` for the credits row. **No model
+  name is written down in this repository.**
+
+### The colour, and the two bars
+
+Every row's colour, and the battery's own, is decided on the client from the
+percentage alone — a ramp with seven control points, interpolated linearly in
+sRGB one shade per whole percent, from a bright green at 0% through green,
+yellow, orange and red to black at 100%
+(`src/Hatch.Web/apps/hatch/src/lib/utilization.ts`). The endpoint sends no
+colour and no tone: a ramp on the client beside a three-tone decision on the
+server would be two answers to one question, so the percent is the whole of
+what crosses the wire.
+
+The battery takes the colour of the **worst window** — the highest percentage
+among the rows — never the `extra` row's: a spent credit line is a monthly
+budget the operator chose to buy, not a window the account will refuse on, and
+painting the nav black over it would say "stop" about an account that can
+still run. The battery's tooltip and accessible name name that window whenever
+it is not the session's own.
+
+A window whose reset instant has already passed reads as **not started**: 0%,
+the 0% colour, and a phrase saying it has reset, rather than the stale
+percentage sitting there in whatever colour it last was.
+
+Opened, every row in the panel is two bars on one scale rather than a
+percentage and a `resets in` clause left for the reader to do the arithmetic
+on: the share of the window's allowance spent, and the share of its time
+that has gone. A usage bar that runs past the time bar says the account is
+spending ahead of the window's cadence; one that stops short says it is
+behind. A row with no reset instant draws its time bar as unknown — a dashed
+track — rather than empty or full, and the `extra` row draws no time bar at
+all: a monthly credit limit is not a window whose length Hatch knows.
 
 ### How old the reading is
 

@@ -852,20 +852,19 @@ export interface Plan {
 
 /** One limit window as the server describes it. Mirrors UtilizationLimit. */
 export interface UtilizationLimit {
-  /** `session` | `weekly` | `weeklyModel`. A string rather than a union of
-      three, because a runner may send a window Hatch has never named and that
-      row still renders rather than becoming a type error at the moment it
-      most needs to be a row. */
+  /** `session` | `weekly` | `weeklyModel` | `extra`. A string rather than a
+      union of four, because a runner may send a window Hatch has never named
+      and that row still renders rather than becoming a type error at the
+      moment it most needs to be a row. */
   window: string;
   /** What the row is called on screen, decided on the server: `Session`,
-      `Weekly`, or `Weekly (model)`. No model name is written down in Hatch. */
+      `Weekly`, `Weekly (model)`, or `Extra usage`. No model name is written
+      down in Hatch. */
   label: string;
   percent: number;
-  /** `normal` | `warn` | `danger` - the decision, already made. The client
-      paints what it is told; the rule lives in one file on the server. */
-  tone: string;
   /** Null on a window with nothing to run down to - the scoped weekly row
-      arrives that way. Drawn as unknown, not as full and not as empty. */
+      arrives that way, and the `extra` row always does. Drawn as unknown, not
+      as full and not as empty. */
   resetsAt: string | null;
 }
 

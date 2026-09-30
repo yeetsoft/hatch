@@ -109,20 +109,6 @@ public class UtilizationControllerTests
         Assert.Equal(readAt, reading.ReadAt);
     }
 
-    [SkippableTheory]
-    [InlineData(74, UtilizationTones.Normal)]
-    [InlineData(75, UtilizationTones.Warn)]
-    [InlineData(89, UtilizationTones.Warn)]
-    [InlineData(90, UtilizationTones.Danger)]
-    public async Task Tone_IsDecidedAtEachBoundary(int percent, string tone)
-    {
-        await using var h = await NewAsync();
-        h.Actors.Principal = h.Actors.AddPerson("Nathan");
-        await h.SeedAsync("here:/checkouts/one", h.Actors.Principal.Id, Now, ("session", percent));
-
-        Assert.Equal(tone, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Tone);
-    }
-
     /// <summary>
     /// The guard this test protected before the account it read from went
     /// away: criterion 10 says nothing vendor-shaped reaches the browser, and
@@ -153,7 +139,7 @@ public class UtilizationControllerTests
 
         // And the shape it does carry, so this test fails loudly if the answer
         // is renamed rather than merely cleaned of somebody else's names.
-        foreach (var ours in new[] { "\"state\"", "\"readAt\"", "\"limits\"", "\"window\"", "\"label\"", "\"tone\"", "\"resetsAt\"" })
+        foreach (var ours in new[] { "\"state\"", "\"readAt\"", "\"limits\"", "\"window\"", "\"label\"", "\"resetsAt\"" })
         {
             Assert.Contains(ours, json);
         }

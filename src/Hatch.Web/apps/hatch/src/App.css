@@ -3057,10 +3057,11 @@ button.hatch-option.chosen {
    the percentage in figures beside it, because a picture of a number is not a
    number.
 
-   Colour comes from --warn and --danger through .hatch-battery-warn and
-   .hatch-battery-danger below. The tone is the server's decision (it sends
-   `normal`, `warn` or `danger`); nothing here reads a percentage. A literal
-   colour in this block would be a bug - see the note at the top of this file. */
+   Colour is a chip, painted from --usage-color/--usage-ink (lib/utilization.ts,
+   usageVars) - the worst window's own place on the 101-step ramp, not a
+   three-tone decision made on the server. It is no longer furniture when
+   calm: the operator asked for green at zero. A literal colour in this block
+   would be a bug - see the note at the top of this file. */
 
 .hatch-battery {
   display: flex;
@@ -3069,8 +3070,8 @@ button.hatch-option.chosen {
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--r-ctl);
-  background: none;
-  color: var(--on-chrome);
+  background: var(--usage-color);
+  color: var(--usage-ink);
   font-size: var(--t-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -3079,7 +3080,7 @@ button.hatch-option.chosen {
 }
 
 .hatch-battery:hover {
-  background-color: var(--on-chrome-wash);
+  filter: brightness(1.08);
 }
 
 /* --chrome-glow rather than --on-chrome, the same reason the brand link's
@@ -3095,9 +3096,10 @@ button.hatch-option.chosen {
   flex: none;
 }
 
-/* The ring's own colour is the tone; the track under it is the wash the bar
-   already draws everything else with, so a nearly-spent window is still a
-   circle rather than a stub floating on the gradient. */
+/* The ring's own colour is currentColor - the chip's ink - so it reads against
+   whatever the worst window painted the chip; the track under it is the wash
+   the bar already draws everything else with, so a nearly-spent window is
+   still a circle rather than a stub floating on the gradient. */
 .hatch-battery-track {
   fill: none;
   stroke: var(--on-chrome-wash);
@@ -3129,67 +3131,24 @@ button.hatch-option.chosen {
   fill: currentColor;
 }
 
-/* The three tones, and the only place any of them names a colour. Normal is
-   the bar's own --on-chrome ink, so a calm battery is furniture rather than a
-   third thing competing with the nav. --warn and --danger cannot be ink on
-   this gradient (HA-25's "Tones on the bar" rule - they measure 1.0-1.8:1 on
-   it), so warn and danger are a fill under --on-accent ink instead of a
-   colour swap.
-
-   The rule the rest of this file follows from here: ink on the bar's own
-   ground or its wash is --on-chrome; ink on an accent fill - including a tone
-   chip that happens to sit on the bar - stays --on-accent, wherever the fill
-   sits. A warn chip grounds in --warn-ink rather than --warn: white on --warn
-   is the same 4.24:1 shortfall as --warn text on a white card app-wide
-   (see HA-26's "Contrast, measured"); --warn-ink clears it, 6.39 light and
-   12.13 dark. --danger chips are fine as they are. */
-.hatch-battery-normal {
-  color: var(--on-chrome);
-}
-
-.hatch-battery-warn {
-  background: var(--warn-ink);
-  color: var(--on-accent);
-}
-
-.hatch-battery-danger {
-  background: var(--danger);
-  color: var(--on-accent);
-}
-
-.hatch-battery-warn:hover {
-  /* A tone that is saying something keeps saying it on hover, rather than
-     fading into the bar's own wash. */
-  background: var(--warn-ink);
-}
-
-.hatch-battery-danger:hover {
-  background: var(--danger);
-}
-
 .hatch-battery-percent {
   line-height: 1;
 }
 
-/* The battery, re-inked as a row in the gear's panel at phone width
-   (.hatch-phone-menu, App.tsx). .hatch-battery above is authored for the
-   bar's own chrome gradient - color: var(--on-chrome), a hover in
-   --on-chrome-wash - but nested here it sits on the panel's --card surface
-   instead, where --on-chrome is the wrong ink. No media query needed:
+/* The battery, as a chip inside a row in the gear's panel at phone width
+   (.hatch-phone-menu, App.tsx), rather than a full-width fill - the row sits
+   on the panel's --card surface, and the chip carries the ramp colour inside
+   it the same way the bar's own battery does. No media query needed:
    .hatch-phone-menu only ever exists in the DOM when the viewport is phone
    width, so this costs nothing above the breakpoint. */
 .hatch-phone-menu .hatch-battery {
-  width: 100%;
-  justify-content: flex-start;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: 0;
-  color: var(--ink);
+  width: auto;
+  align-self: flex-start;
+  margin: var(--sp-2) var(--sp-3);
 }
 
-/* The hover fill .hatch-menu__item:hover already uses - a row in this panel,
-   hovered, should look like every other row in it. */
 .hatch-phone-menu .hatch-battery:hover {
-  background: var(--primary-bg);
+  filter: brightness(1.08);
 }
 
 /* The attention control: whether the loop is waiting on a person, at the right
@@ -3665,10 +3624,11 @@ button.hatch-option.chosen {
 .hatch-usage-row {
   display: grid;
   /* The label takes what is left; the number and the clause are fixed columns
-     so a stack of rows reads down rather than zig-zagging. */
+     so a stack of rows reads down rather than zig-zagging. The bars are a
+     second line, spanning every column below them. */
   grid-template-columns: 1fr auto auto;
   align-items: baseline;
-  gap: var(--sp-3);
+  gap: var(--sp-1) var(--sp-3);
   padding: var(--sp-2) var(--sp-2-5);
   border-radius: var(--r-in);
   background: var(--bg);
@@ -3677,9 +3637,6 @@ button.hatch-option.chosen {
 .hatch-usage-label {
   font-weight: 600;
   font-size: var(--t-body);
-  /* Stated rather than inherited: the row wears the tone class so that the
-     percentage can be painted with it, and a calm row's --muted must not drag
-     the name of the window down with it. */
   color: var(--ink);
 }
 
@@ -3687,8 +3644,9 @@ button.hatch-option.chosen {
   font-weight: 700;
   font-size: var(--t-body);
   font-variant-numeric: tabular-nums;
-  /* The row wears the tone class, so this is the tone the server decided. */
-  color: currentColor;
+  /* Ramp colour lives on the bars now, not the figure - only usage is
+     coloured, so the number reads as a number rather than another swatch. */
+  color: var(--ink);
 }
 
 .hatch-usage-reset {
@@ -3696,23 +3654,44 @@ button.hatch-option.chosen {
   color: var(--muted);
 }
 
-.hatch-usage-credits {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--sp-1) var(--sp-4);
-  margin: 0;
-  padding-top: var(--sp-3);
-  border-top: 1px solid var(--line);
-  font-size: var(--t-body);
+/* The two bars: usage over time, on one scale, one under the other, so
+   ahead-or-behind is a glance rather than a division. Spans every column of
+   the row it sits under. */
+.hatch-usage-bars {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
 }
 
-.hatch-usage-credits dt {
-  color: var(--muted);
+/* Outlined in --line-strong, copying .hatch-meter-bar's floor - so a yellow
+   fill on a light card and a black one on a dark card both show where they
+   end against the track, rather than the track and the fill blurring
+   together at either end of the ramp. */
+.hatch-usage-bar-track {
+  height: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-chip);
+  overflow: hidden;
+  background: var(--card);
 }
 
-.hatch-usage-credits dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
+.hatch-usage-bar-fill {
+  height: 100%;
+  background: var(--usage-color);
+}
+
+/* No reset instant to run down to - dashed, the way .hatch-battery-ring-unknown
+   already reads "we do not know when this comes back". */
+.hatch-usage-bar-track-unknown {
+  border-style: dashed;
+}
+
+/* The time bar is --muted, never a ramp colour: only usage is coloured, so
+   the two bars cannot be mistaken for each other. */
+.hatch-usage-time-fill {
+  height: 100%;
+  background: var(--muted);
 }
 
 .hatch-usage-foot {
