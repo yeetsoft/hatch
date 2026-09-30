@@ -1,6 +1,15 @@
 import { useCallback, useState } from 'react';
 import { Button, Card, Field, PageHeader, Table } from '@hatch/ui';
-import { createStatus, deleteStatus, getStatuses, getWip, patchStatus, putWip, setExpressSkips } from '../api/client';
+import {
+  createStatus,
+  deleteStatus,
+  getStatuses,
+  getWip,
+  patchStatus,
+  putWip,
+  setExpressSkips,
+  setParentPulls,
+} from '../api/client';
 import { StatusPill } from '../components/StatusPill';
 import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
@@ -111,6 +120,9 @@ export function StatusesPage() {
                 <th title="An express issue standing here is carried on to the next column with no session, as long as it has no unanswered question. The terminal column is never entered.">
                   Express skips
                 </th>
+                <th title="A child standing here is carried on to the next column with no session while its parent stands in the implementation column.">
+                  Parent pulls
+                </th>
                 <th>Order</th>
                 <th />
               </tr>
@@ -175,6 +187,17 @@ export function StatusesPage() {
                       checked={status.expressSkips}
                       aria-label={`${status.name} is skipped by express work`}
                       onChange={(e) => void act(() => setExpressSkips(status.id, e.target.checked))}
+                    />
+                  </td>
+                  {/* Its own route rather than a field on the patch, for the
+                      same reason Express skips has one - see
+                      StatusesController.PutParentPulls. */}
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.parentPulls}
+                      aria-label={`${status.name} pulls its children on`}
+                      onChange={(e) => void act(() => setParentPulls(status.id, e.target.checked))}
                     />
                   </td>
                   <td>

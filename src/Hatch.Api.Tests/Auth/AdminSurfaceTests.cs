@@ -354,6 +354,13 @@ public class AdminSurfaceTests
         // StatusesController.PutExpressSkips.
         "StatusesController.PutExpressSkips",
 
+        // The pull half of the same kind of edge: whether a child standing in
+        // a column is carried on to the next one with no session while its
+        // parent stands in the implementation column. Reading it is open, the
+        // same as ExpressSkips - only the write is here. See
+        // StatusesController.PutParentPulls.
+        "StatusesController.PutParentPulls",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -465,6 +472,7 @@ public class AdminSurfaceTests
         "IssueExpediteController.PutIssueExpedite",
         "IssueExpressController.PutIssueExpress",
         "StatusesController.PutExpressSkips",
+        "StatusesController.PutParentPulls",
         "ProjectsController.PutRepositories",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

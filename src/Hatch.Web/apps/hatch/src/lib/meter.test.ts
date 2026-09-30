@@ -10,6 +10,7 @@ const status = (id: number, name: string, sortOrder: number, isTerminal = false)
   isDeferred: false,
   isWip: false,
   expressSkips: false,
+  parentPulls: false,
   color: '#6b7280',
 });
 

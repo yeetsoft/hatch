@@ -62,6 +62,10 @@ export interface Status {
       with no session - see Issue.express. Not a "whose column is this" flag:
       who works a column is still derived from the playbook matrix. */
   expressSkips: boolean;
+  /** Whether a child standing here is carried on to the next column with no
+      session while its parent stands in the implementation column. Nothing
+      reads this yet. */
+  parentPulls: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;

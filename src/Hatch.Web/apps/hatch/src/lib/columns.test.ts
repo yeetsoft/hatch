@@ -10,6 +10,7 @@ const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Stat
   isDeferred: false,
   isWip: false,
   expressSkips: false,
+  parentPulls: false,
   color: '#6b7280',
   ...opts,
 });
