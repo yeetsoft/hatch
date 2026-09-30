@@ -2373,6 +2373,16 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--primary), var(--shadow);
 }
 
+/* The highest level: red rather than the expedited inset, so a column
+   carrying both never lets an emergency card read as merely expedited. */
+.hatch-card.emergency {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.hatch-card-preview.emergency {
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
+}
+
 /* And the badge, for everything the stripe cannot say: what it means, on hover,
    and to a reader who is not going by colour. */
 .hatch-card-expedited {
@@ -2385,6 +2395,34 @@ input.hatch-inline-title-input {
   font-size: var(--t-micro);
   font-weight: 700;
   line-height: 1.6;
+}
+
+/* The beacon: the emergency badge's own glyph, pulsing - the second thing on
+   this page (after .hatch-attention-lamp.lit, App.css:3117) allowed to move
+   without a person having moved it, for the same reason: this exists to be
+   noticed. Slower than the attention lamp's 2s blink, so the two don't read
+   as the same rhythm on a board carrying both. */
+.hatch-card-expedited.emergency {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  animation: hatch-emergency-beacon 3s ease-in-out infinite;
+}
+
+@keyframes hatch-emergency-beacon {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-card-expedited.emergency {
+    animation: none;
+  }
 }
 
 /* The control itself, on the issue page and in the summary: one button that
@@ -2418,6 +2456,15 @@ input.hatch-inline-title-input {
   color: var(--on-accent);
 }
 
+/* The highest level's own face, layered on top of .on the same way
+   .hatch-claim-quiet layers on .hatch-claim (App.css:1929-1937): .on stays
+   applying whenever priority is not normal, and .emergency only overrides
+   the colour. */
+.hatch-expedite.emergency {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
 /* What a reader who may not press it sees instead: the state as a word. An
    agent holding this page is refused the write and is still entitled to know
    why its ticket was reached first - see IssueExpediteController. */
@@ -2429,6 +2476,10 @@ input.hatch-inline-title-input {
 .hatch-expedite-said.on {
   color: var(--primary-ink);
   font-weight: 600;
+}
+
+.hatch-expedite-said.emergency {
+  color: var(--danger-ink);
 }
 
 /* In the summary the control sits on its own row under the title, with room for

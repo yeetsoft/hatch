@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal } from '@hatch/ui';
-import { getIssue, patchIssue, setExpedited, setExpress } from '../api/client';
+import { getIssue, patchIssue, setPriority, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { ExpediteControl } from './ExpediteControl';
 import { ExpressControl } from './ExpressControl';
@@ -23,10 +23,10 @@ interface Asked {
   pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
-  /** What the server last said about the flag, or undefined while the card's own value stands. */
-  expedited?: boolean;
-  expediteError?: string;
-  expediting?: boolean;
+  /** What the server last said about the level, or undefined while the card's own value stands. */
+  priority?: 'normal' | 'expedited' | 'emergency';
+  priorityError?: string;
+  priorityBusy?: boolean;
   /** A move is out for this card: the status picker's pill stays disabled
       until it answers. */
   moving?: boolean;
@@ -161,21 +161,22 @@ export function IssuePeek({
     [key, apply],
   );
 
-  /* This one first, or no longer. Its own endpoint - the write is closed to an
-     API key - and it repaints from the answer rather than from the press: the
-     server's value is what is drawn, and a refusal leaves the control saying
-     what the issue still holds with the sentence beside it. The board behind
-     the dialog is reloaded too, because the float moves the card. */
-  const expedite = useCallback(
-    async (next: boolean) => {
+  /* This one first, or further, or no longer. Its own endpoint - the write is
+     closed to an API key - and it repaints from the answer rather than from
+     the press: the server's value is what is drawn, and a refusal leaves the
+     control saying what the issue still holds with the sentence beside it.
+     The board behind the dialog is reloaded too, because the float moves the
+     card. */
+  const changePriority = useCallback(
+    async (next: 'normal' | 'expedited' | 'emergency') => {
       if (!key) return;
-      apply(key, { expediting: true, expediteError: undefined });
+      apply(key, { priorityBusy: true, priorityError: undefined });
       try {
-        const issue = await setExpedited(key, next);
-        apply(key, { expedited: issue.expedited, expediting: false });
+        const issue = await setPriority(key, next);
+        apply(key, { priority: issue.priority, priorityBusy: false });
         onExpedited();
       } catch (err) {
-        apply(key, { expediting: false, expediteError: message(err) });
+        apply(key, { priorityBusy: false, priorityError: message(err) });
       }
     },
     [key, apply, onExpedited],
@@ -275,19 +276,19 @@ export function IssuePeek({
 
         <p className="hatch-peek-title">{card.title}</p>
 
-        {/* The same control the issue page draws, so a card is expedited
+        {/* The same control the issue page draws, so a card's level changes
             without leaving the board. The card's own value until the server has
             said otherwise: the board is reloaded on a press, but the dialog
             stays open over it, and a control that waited for the refetch to
             catch up would read as not having noticed. */}
         <div className="hatch-peek-expedite">
           <ExpediteControl
-            expedited={asked.expedited ?? card.expedited}
+            priority={asked.priority ?? card.priority}
             directory={directory}
-            busy={asked.expediting ?? false}
-            onChange={(next) => void expedite(next)}
+            busy={asked.priorityBusy ?? false}
+            onChange={(next) => void changePriority(next)}
           />
-          {asked.expediteError && <span className="text-danger">{asked.expediteError}</span>}
+          {asked.priorityError && <span className="text-danger">{asked.priorityError}</span>}
           <ExpressControl
             express={asked.express ?? card.express}
             directory={directory}
