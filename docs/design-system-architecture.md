@@ -163,6 +163,33 @@ Three behaviours worth knowing before touching it:
   is harder to find than a stack trace, and `<TopBar>` always renders the switch
   — so a provider above it is a requirement, not a nicety.
 
+## The phone
+
+One breakpoint, `40rem`, governs layout everywhere it changes:
+[`apps/hatch/src/lib/viewport.ts`](../src/Hatch.Web/apps/hatch/src/lib/viewport.ts)
+exports it as `PHONE_QUERY`, and every app's CSS writes the same value in the
+same words, as a bare `@media (max-width: 40rem)`.
+
+That is a literal, and "The rules" §1 above says a literal is a bug — but a
+media query cannot read a custom property, so a breakpoint has nowhere else to
+live. It is the one width value the vocabulary's closed list does not reach:
+that rule governs color, radius, type and spacing values painted on the page,
+not the query that decides which rules apply. `viewport.ts` and the CSS are
+the two places it is written, and they are kept identical by hand, the same
+way the dark palette above is kept in sync by hand across its two blocks.
+
+Layout follows width — this breakpoint. Touch behaviour follows a different
+axis, `(pointer: coarse)`, already read in
+[`MarkdownEditor.tsx`](../src/Hatch.Web/apps/hatch/src/components/MarkdownEditor.tsx).
+The two are deliberately not conflated: an iPad has a coarse pointer and a
+desk-width screen, and either query trying to do both jobs would misclassify
+it.
+
+Below `40rem`, the document itself is the scroller — not a fixed-height shell
+with a nested element scrolling inside it. That is what lets an on-screen
+keyboard resize the visual viewport without leaving a nested scroller stranded,
+and it is what lets a mobile browser's chrome collapse on scroll at all.
+
 ## Adopting `@hatch/ui`
 
 ### The wiring
