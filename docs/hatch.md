@@ -542,6 +542,39 @@ that there is no `hatch express` verb — the CLI authenticates with a key, so
 the terminal shows the flag (`board`, `queue`, `show`, `next`) and sets it
 nowhere.
 
+#### Stories at once
+
+**One epic's own ceiling on how many of its stories run at once.** `WipLimit`
+is a nullable int on the issue, meaning something on an epic and nothing on
+any other type; null reads as **one** — `EfHatchIssue.DefaultEpicWipLimit`,
+the one constant that says so, aliasing `IssueWipLimitRequest.DefaultLimit` in
+`Hatch.Contracts` so the CLI can read the same number without seeing this
+entity. Holding stories to it — folding a story past the first N in progress —
+is a separate mechanism; this field is only the setting.
+
+It is not the [WIP](#wip) section above, whatever the shared vocabulary.
+*WIP* bounds how many issues of a *type* sit in progress across the whole
+board at once, in at most two slices everybody shares. This field bounds how
+many of *one epic's own children* run at once, and every epic has its own.
+Nothing here counts toward a WIP slice's load, and nothing there counts
+toward this.
+
+Written only through `PATCH /api/hatch/issues/{key}/wip` with `{ limit }` as a
+string — `""` clears it back to the default, a whole number of one or more
+sets it, anything else is refused with a sentence, and anything but an epic
+is refused with a sentence saying only an epic takes one — by a person and
+never a key, the same cut as [expedite](#expedite) and
+[express](#express): see [The one edge that is deliberately
+cut](#the-one-edge-that-is-deliberately-cut). Each change writes
+`wip_limit_changed` with `{ from, to }`. Reading is open, like everything else
+a dispatch needs: an agent is entitled to know how many of its siblings it is
+competing against, and it rides `IssueDto` like `ModelOverride` does.
+
+It follows that there is no `hatch` verb that sets it, as none sets expedite,
+express or a playbook — the CLI authenticates with a key, so `hatch show`
+prints it on an epic (`stories at once: 3`, or `stories at once: 1 (default)`
+where none is set) and sets it nowhere.
+
 #### Issue numbering
 
 The one concurrency-sensitive spot. Inside the create request: read the project,
@@ -842,7 +875,9 @@ waits and on it alone.
 
 How full the [WIP section](#status) is right now — the read every later story
 shares (`Wip.LoadAsync` in `Modules/Hatch/Wip.cs`) rather than counting for
-itself.
+itself. Not to be confused with [Stories at once](#stories-at-once): that one
+bounds a single epic's own children, this one bounds a type across the whole
+board.
 
 **One section, any number of slices.** The section is one set of columns;
 each slice is a `WipLimits` row, keyed by the issue types it counts, with its
@@ -1397,7 +1432,9 @@ except with its issue.
 Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`priority_changed`, `express_changed`, `dependency_added`,
+`priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories
+at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
+either side null rather than the default), `dependency_added`,
 `dependency_removed`, `claim_taken`, `claim_lapsed` (a take found a lease that
 had already gone quiet past its terms and is taking it over — payload
 `{ from, heardAt }`, the previous holder and when it was last heard from,
@@ -1676,6 +1713,18 @@ class-level one rather than tightening it. Reading both is open like the rest:
 `StatusDto`. It follows that there is no `hatch express` verb, the same as
 expedite.
 
+**And so is an epic's own [Stories at once](#stories-at-once).** A key that
+could raise its own epic's ceiling could pull more of its own stories into
+progress at once, the same widening the WIP section's own limit is cut
+against. `PATCH /api/hatch/issues/{key}/wip` therefore lives on its own
+controller (`IssueWipLimitController`) carrying no class-level scope, cut by
+the same means as the playbook override, and checked a second time in the
+action for `WipController.NotAPerson`'s reason: `RoleGate` is dormant wherever
+the wall is off, and a keyless runner there is a program too. Reading is
+open like the rest: `wipLimit` rides `IssueDto`, because an agent is entitled
+to know how many of its siblings it is competing against. It follows that
+there is no `hatch` verb that sets it, the same as expedite and express.
+
 One related edge is **not** cut, and is stated rather than papered over:
 **nothing stops a key answering its own question.** A key is what
 `hatch answer` types with and it is also what a spawned agent inherits; the
@@ -1711,6 +1760,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
+| `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it back to the default; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"normal"`, `"expedited"` or `"emergency"`, floated on the board and taken first by the dispatcher, most severe first. Setting what it already holds writes nothing; an unknown name is `400` |

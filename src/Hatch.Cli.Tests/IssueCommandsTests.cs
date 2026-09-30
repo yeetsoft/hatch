@@ -100,7 +100,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "express:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "express:", "stories at once:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -145,6 +145,46 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("express:  yes - carried past a column marked to skip, with no session", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_how_many_stories_an_epic_may_run_at_once()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("stories at once: 3", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_default_on_an_epic_with_no_limit_set()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = null });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("stories at once: 1 (default)", h.Said);
+    }
+
+    /// <summary>A value stranded on a retyped issue is not this type's to print.</summary>
+    [Fact]
+    public async Task Show_prints_no_such_line_for_a_story_even_holding_a_stranded_value()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "story", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("stories at once:", h.Said);
     }
 
     /// <summary>
