@@ -2997,6 +2997,18 @@ a night**, for the same reason: it is the loop working correctly on a busy board
 Every other way a heartbeat can fail — a timeout, a `500`, an origin that did not
 answer — changes nothing. The next tick tries again.
 
+**A `200` is neither a refusal nor a lost lease.** It is the board naming this
+runner as the one an emergency issue is preempting, and it is answered
+differently from every other heartbeat failure: the lease is still good, so
+the heartbeat keeps beating past it rather than stopping, and the session is
+cancelled the moment the notice arrives — the same way a lost lease cancels
+it, except this runner still owns the ticket. So it does what a lost lease
+never does: it tidies, commits — untracked files included — and pushes onto
+the issue's own branch, writes one comment naming the emergency issue and what
+was pushed (or why not, per checkout), and releases the claim with
+`preempted`. See [when an increment does nothing](#when-an-increment-does-nothing)
+for the one exemption this buys it.
+
 ### The workspace, between increments
 
 Every increment starts on the trunk, at the tip the remote has it at right now
@@ -3331,6 +3343,24 @@ a night, the same treatment a lost lease gets and for the same reason: this is
 the loop working correctly against a spent account, not a broken increment. See
 [runners on the board](#runners-on-the-board) for what a runner does about the
 account itself.
+
+**Neither is a preemption.** The board can order the runner holding the
+lowest-priority ticket to stand down for an emergency one — see
+[what a runner does, in order](#what-a-runner-does-in-order), where the `200`
+that says so arrives on the heartbeat. No stall comment is written and no
+question is opened, the same as a usage limit and for the same reason: nothing
+here is wrong with the ticket, and the ticket is left exactly where the
+session left it, free for the next pass. What *is* written is the one comment
+that section already describes: that this runner was preempted, which
+emergency issue took it, the branch and
+sha that were pushed (or why not, per checkout), and the `claude --resume`
+command — so this is not a case where nothing happens, only a case where
+nothing is asked of a person. The night's tally counts it as **preempted**, a
+list of its own beside *moved*, *stalled* and *interrupted* — not a failure,
+and not one of the three in a row that end a night, the same treatment a lost
+lease and a usage limit get and for the same reason: this is the loop working
+correctly on a busy board, not a broken increment. The very next pass finds
+the emergency issue at the top of the walk and picks it straight up.
 
 A question rather than a **flag field**, which was the obvious alternative and
 would have had to be taught three things a question already does: it blocks the

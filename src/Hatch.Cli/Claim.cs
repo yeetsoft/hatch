@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -94,6 +96,21 @@ public sealed class Claim : IAsyncDisposable
     /// because the increment is what owns the process.
     /// </summary>
     public Action<string>? OnLost { get; set; }
+
+    /// <summary>
+    /// The board's notice that this runner is the one an emergency ticket is
+    /// preempting - the emergency issue's key and title. Null while the lease
+    /// is good and nobody has been asked to stand down.
+    /// </summary>
+    public ClaimPreemptedDto? Preempted { get; private set; }
+
+    /// <summary>
+    /// What to do the moment a preemption notice arrives: stop the session, the
+    /// same as <see cref="OnLost"/> - but the lease is still good, so the
+    /// heartbeat keeps beating past it, which is what lets the put-down that
+    /// follows push and write its own comment.
+    /// </summary>
+    public Action<ClaimPreemptedDto>? OnPreempted { get; set; }
 
     /// <summary>
     /// How often to say "still here". A fifth of the lease, so four heartbeats
@@ -214,6 +231,36 @@ public sealed class Claim : IAsyncDisposable
             {
                 sent = line;
                 lastGood = DateTimeOffset.UtcNow;
+
+                // A 200 instead of the ordinary 204: the board has picked this
+                // runner to stand down for an emergency. The lease is still
+                // good - this is not a lost lease - so the loop keeps beating
+                // past it; only the increment above decides what to do about
+                // it. A malformed body is swallowed here and not let escape:
+                // an uncaught exception would fault the Task.Run this runs on,
+                // and nothing observes that fault until ReleaseAsync's `await
+                // beat` swallows it - so a bad body would silently kill the
+                // heartbeat until release, which is worse than missing one
+                // preemption notice.
+                if (Preempted is null && answer.Status == HttpStatusCode.OK)
+                {
+                    try
+                    {
+                        var preempted = System.Text.Json.JsonSerializer.Deserialize(
+                            answer.Body, HatchJson.Default.ClaimPreemptedDto);
+                        if (preempted is not null)
+                        {
+                            Preempted = preempted;
+                            OnPreempted?.Invoke(preempted);
+                        }
+                    }
+                    catch (System.Text.Json.JsonException)
+                    {
+                        // Not a preemption after all - weather, the same as any
+                        // other body this heartbeat does not understand.
+                    }
+                }
+
                 continue;
             }
 

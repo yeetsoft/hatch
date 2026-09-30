@@ -7,7 +7,7 @@ public sealed class TallyTests
 {
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
-        DateTimeOffset? usageLimitResetAt = null, bool letGo = false) =>
+        DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false) =>
         new()
         {
             Key = key,
@@ -21,6 +21,9 @@ public sealed class TallyTests
             Cost = cost,
             LostLease = lost,
             UsageLimitResetAt = usageLimitResetAt,
+            Preempted = preempted,
+            PreemptedKey = preempted ? "AER-9" : null,
+            PreemptedTitle = preempted ? "Trunk is down" : null,
         };
 
     [Fact]
@@ -70,6 +73,25 @@ public sealed class TallyTests
         // It still happened, and it still cost something.
         Assert.Equal(4, tally.Runs);
         Assert.Equal(4m, tally.Spent);
+    }
+
+    /// <summary>
+    /// HA-169: the board ordering a ticket put down for an emergency is not a
+    /// broken increment either - three of these in a row, each exiting non-zero
+    /// because the session was killed, must not arm the three-strikes stop.
+    /// </summary>
+    [Fact]
+    public void Three_preemptions_in_a_row_do_not_stop_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, moved: false, preempted: true));
+        tally.Record(Report("AER-2", exit: 143, moved: false, preempted: true));
+        tally.Record(Report("AER-3", exit: 143, moved: false, preempted: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+        Assert.Equal(3, tally.Runs);
     }
 
     [Fact]
@@ -187,6 +209,21 @@ public sealed class TallyTests
         Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("stalled  AER-2", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("usage    AER-3", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-169: a sixth list, and not the stalled one.</summary>
+    [Fact]
+    public void A_preempted_ticket_is_its_own_list_and_not_the_stalled_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, moved: false, preempted: true));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("preempt  AER-1", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
     }
 
     /// <summary>

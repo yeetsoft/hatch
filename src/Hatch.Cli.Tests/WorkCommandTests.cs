@@ -181,6 +181,61 @@ public sealed class WorkCommandTests
         Assert.Contains("hatch: AER-1", h.Say.Complained.Last());
     }
 
+    /// <summary>
+    /// HA-169: a preemption reaches <c>hatch work</c> too, and not only the
+    /// loop - the board can preempt any live claim. Mirrors
+    /// <c>LifecycleTests.A_preemption_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one</c>,
+    /// proving the fix to <c>WorkCommand.cs</c>'s own <c>LeaveAsync</c> call
+    /// site actually exercises the push and the one comment.
+    /// </summary>
+    [Fact]
+    public async Task A_preemption_pushes_and_writes_one_comment_through_hatch_work_too()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+            Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        Bookkeeping(h, "AER-1");
+
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Contains(h.Workspace.Calls, c => c.StartsWith("push ", StringComparison.Ordinal));
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments);
+        Assert.Contains("preempted by [AER-9](https://hatch.example/apps/hatch/issues/AER-9) - Trunk is down", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+    }
+
+    /// <summary>The nothing-to-push mirror, the same reason the loop's own test has one.</summary>
+    [Fact]
+    public async Task A_preemption_with_nothing_to_push_still_writes_one_comment_through_hatch_work()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+            Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        Bookkeeping(h, "AER-1");
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var comment = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+        Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task With_no_CLI_to_spawn_it_refuses_before_it_reads_the_board()
     {

@@ -7,6 +7,13 @@ namespace Hatch.Cli;
 /// </summary>
 public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, string? SessionId);
 
+/// <summary>
+/// What the board's preemption notice said, when the session ended because a
+/// heartbeat answered with one - everything <see cref="Lifecycle.LeaveAsync"/>
+/// needs to push what it left and write the one comment about it.
+/// </summary>
+public sealed record PreemptionInfo(string EmergencyKey, string EmergencyTitle, string? SessionId);
+
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
 /// <param name="Asked">Somebody has to say which branch, the question is on the ticket, and nothing is to be spawned.</param>
@@ -102,7 +109,15 @@ public sealed class Lifecycle(Runtime runtime)
     /// branch first, and write the one comment the story asks for instead of
     /// the ordinary tidy-up note.
     /// </param>
-    public async Task LeaveAsync(WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct, UsageLimitInfo? limit = null)
+    /// <param name="preempted">
+    /// The session ended because the board asked this runner to stand down for
+    /// an emergency ticket - the same push-then-one-comment path a usage limit
+    /// takes, for the same reason: the session did not get to say whether what
+    /// it left is fit to publish, so the runner does not either.
+    /// </param>
+    public async Task LeaveAsync(
+        WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct,
+        UsageLimitInfo? limit = null, PreemptionInfo? preempted = null)
     {
         var key = work.Issue.Key;
         var lines = new List<string>();
@@ -116,7 +131,7 @@ public sealed class Lifecycle(Runtime runtime)
             }
 
             var pushed = new List<(string Path, LimitPushed Result)>();
-            if (limit is not null)
+            if (limit is not null || preempted is not null)
                 foreach (var (path, baseBranch) in chosen.Resets)
                     pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(key, work.Issue.Title)));
 
@@ -134,6 +149,12 @@ public sealed class Lifecycle(Runtime runtime)
             if (limit is not null)
             {
                 await runtime.Board.CommentAsync(key, UsageLimitBody(limit, chosen, pushed, lines), ct);
+                return;
+            }
+
+            if (preempted is not null)
+            {
+                await runtime.Board.CommentAsync(key, PreemptedBody(preempted, chosen, pushed, lines), ct);
                 return;
             }
 
@@ -163,7 +184,36 @@ public sealed class Lifecycle(Runtime runtime)
             : "This runner ran out of Claude usage, and the reset time it gave could not be read - "
               + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt)}.";
 
-        body += "\n\n" + string.Join('\n', pushed.Select(p =>
+        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, limit.SessionId);
+    }
+
+    /// <summary>
+    /// The one comment a preemption writes: that the board put this ticket
+    /// down for an emergency, which issue that was, the branch and sha that
+    /// were pushed (or why not, per checkout), and the session to rejoin.
+    /// Modelled on <see cref="UsageLimitBody"/> almost line for line, for the
+    /// reason the story gives: the session did not get to say whether what it
+    /// left is fit to publish, so the runner does not either.
+    /// </summary>
+    private string PreemptedBody(
+        PreemptionInfo preempted, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
+    {
+        var origin = runtime.Board.Client.Origin;
+        var body = $"This runner was preempted by [{preempted.EmergencyKey}]({origin}/apps/hatch/issues/{preempted.EmergencyKey}) - {preempted.EmergencyTitle}.";
+
+        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, preempted.SessionId);
+    }
+
+    /// <summary>
+    /// The middle and the tail a usage limit's comment and a preemption's
+    /// share, word for word: what was pushed per checkout (or why not), the
+    /// ordinary tidy lines, and the session to rejoin.
+    /// </summary>
+    private static string PushedTidyAndResumeBody(
+        Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines,
+        string? sessionId)
+    {
+        var body = "\n\n" + string.Join('\n', pushed.Select(p =>
         {
             var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(p.Path.TrimEnd('/', '\\'))}: " : "";
             return p.Result.Outcome switch
@@ -176,7 +226,7 @@ public sealed class Lifecycle(Runtime runtime)
 
         if (tidyLines.Count > 0) body += "\n\n" + string.Join('\n', tidyLines);
 
-        body += limit.SessionId is { Length: > 0 } session
+        body += sessionId is { Length: > 0 } session
             ? $"\n\nJoin it with\n\n    claude --resume {session}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
