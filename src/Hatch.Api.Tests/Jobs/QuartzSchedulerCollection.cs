@@ -11,9 +11,9 @@ namespace Hatch.Api.Tests.Jobs;
 /// disposed and the static being cleared, every <c>GetScheduler</c> in the
 /// process resolves a logger off a disposed factory.</para>
 ///
-/// <para>Naming both classes into one collection is where xUnit enforces that,
-/// and it is the whole cost - five fast tests and two that need a Postgres,
-/// which no longer overlap.</para>
+/// <para>Naming every such class into one collection is where xUnit enforces
+/// that, and it is the whole cost - a handful of fast tests and three that need
+/// a Postgres, which no longer overlap.</para>
 /// </summary>
 [CollectionDefinition(Name)]
 public class QuartzSchedulerCollection

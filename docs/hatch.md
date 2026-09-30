@@ -969,12 +969,26 @@ server is what says what it is, the same argument `TtlSeconds` makes for
 itself.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped` or `worked` — absent is accepted exactly as it
-always has been, which covers the pick's own release, a restart, and an older
-CLI, and a value that is neither is `400`. It is read only where a token is
-given: the operator's tokenless clobber names no increment to have an outcome.
-The `claim_released` event carries it, and it is what `letGo` counts (see
-[Comment, question and answer](#comment-question-and-answer)).
+an optional `outcome`, `dropped`, `worked` or `preempted` — absent is accepted
+exactly as it always has been, which covers the pick's own release, a restart,
+and an older CLI, and a value that is none of the three is `400`. It is read
+only where a token is given: the operator's tokenless clobber names no
+increment to have an outcome. The `claim_released` event carries it, and it is
+what `letGo` counts (see [Comment, question and answer](#comment-question-and-answer))
+— except `preempted`, which it skips over, neither counted nor resetting the
+count: the board itself ordered that put-down, not a choice the increment
+made, and the runner's own account of what it pushed lands as its own comment,
+not as a dropped increment.
+
+**A heartbeat may answer that this runner has been preempted.** Ordinarily a
+heartbeat that refreshed the lease answers `204`. Where the board has chosen
+this runner's issue to make room for an emergency one — see
+[The dispatcher](#the-dispatcher), "Preemption" — it answers `200` instead,
+naming the emergency issue's key and title, and writes a `claim_preempted`
+event on the issue being asked to stand down and a comment on the emergency
+issue naming the runner and what it put down. An older `hatch` reads only
+whether the heartbeat succeeded (`Claim.cs`'s `answer.Ok`, true of any `2xx`)
+and is unaffected by the richer answer; only a CLI built for HA-169 acts on it.
 
 **The token is a fencing token, and it is a capability.** Every heartbeat and
 every release presents it, and a write whose token is not the one on the row is
@@ -1077,9 +1091,12 @@ opens only when a runner stops answering for five minutes and then comes back.
 It is named here rather than papered over.
 
 Taking, releasing and clearing each write an event naming the actor, so the
-trail says who took a ticket and who let it go. A heartbeat writes none: it is a
-meter reading rather than a decision, and the trail would otherwise be a row a
-minute for every running increment.
+trail says who took a ticket and who let it go. An ordinary heartbeat writes
+none: it is a meter reading rather than a decision, and the trail would
+otherwise be a row a minute for every running increment. A preempted one is
+the exception, because it is the board's own decision and not a meter
+reading — see "A heartbeat may answer that this runner has been preempted"
+above.
 
 **Its tests need a real Postgres**, and `make test-api-db` is how they get one —
 `make test-api` runs the same suite and skips them, saying so. That is not
@@ -2345,6 +2362,61 @@ place; see [where the loop's rules live](#where-the-loops-rules-live).
 `WorkDto.Hop` and `QueueEntryDto.Hop` say which rows are hops — on `WorkDto`,
 `Playbook` is always null where `Hop` is true, even where one covers the move,
 so no client can spawn a session for a hop by accident.
+
+### Preemption
+
+**Who a claim heartbeat tells it has been preempted, decided lazily at each
+call from the board as it stands.** Nothing is nominated, reserved or written
+down in advance — that is what lets an emergency issue walk the board on one
+runner instead of a saga. `Modules/Hatch/Preemption.cs` is the one place that
+decides it, called from `IssueClaimController`'s heartbeat after a lease
+refreshes; the pool of who might be told is `Runners.HeldAsync`, the same one
+the Runners page draws from, so "what is this runner working" never has a
+second copy to fall out of step with the first.
+
+All five of these hold, or the heartbeating runner is told nothing:
+
+1. Some [emergency](#issue)-level issue is actionable and unclaimed — asked
+   through `Dispatch.ScanAsync` itself, never re-derived, with `offsetMinutes`
+   pinned to `0`: the heartbeat carries no timezone the way `work/next` does,
+   so a ready-dated emergency issue near a day boundary is judged against the
+   UTC day rather than the caller's own.
+2. The heartbeating runner's own issue is below emergency. Emergency work is
+   never preempted, which is what makes this a surplus queue rather than a
+   cascade.
+3. Its issue is last in the dispatcher's own order among every live claim
+   below emergency level that has not already been told. Ties break on issue
+   key, so two heartbeats can never both believe they lost — though in
+   practice there is no tie left to break, since the dispatcher's own order is
+   already the tie-break.
+4. Fewer runners have already been told than there are unclaimed actionable
+   emergency issues.
+5. No live runner is free — a live row in `Runners`, holding no live claim. A
+   free runner takes the emergency ticket on its own next pass, because
+   emergency is the top of the walk, so preempting while one exists would
+   spend a session to gain nothing.
+
+**"Already told" is read off the trail, not stored.** The `claim_preempted`
+event a preempted heartbeat writes (see [Claim](#claim)) doubles as the record
+that this issue's runner has already been asked to stand down: rule 3's pool is
+every live claim below emergency level *carrying no such event since its own
+current claim was taken*, the same way `WorkController.LetGoAsync` asks
+whether an issue's trail carries a release since its last status change,
+against `ClaimedAt` instead since there is no "declaimed" event. Excluding a
+told issue from the pool is what lets a second victim be found once the first
+has been, and it is also what makes the same runner's second heartbeat, before
+it releases, find nobody left to tell it — its own event is already on the
+row, so it answers a plain `204` the second time, having already reacted once.
+
+**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt` and
+nothing else, so the claim heartbeat and the claim release (the runner's own
+lane, not the operator's tokenless clobber) both touch the holding runner's
+row directly, the moment either happens — an unconditional `ExecuteUpdateAsync`
+against `Runners`, matching zero rows harmlessly where a heartbeat races the
+runner's own first `POST /api/hatch/runners/{name}`. Without this, a runner
+that has just released would read as *gone* rather than *free* for as long as
+its row's own last beat was stale, which is exactly the moment rule 5 needs to
+answer correctly.
 
 ### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 

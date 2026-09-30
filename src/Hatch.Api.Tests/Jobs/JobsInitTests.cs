@@ -17,8 +17,19 @@ namespace Hatch.Api.Tests.Jobs;
 /// this asserts instead.</para>
 /// </summary>
 [Collection(QuartzSchedulerCollection.Name)]
-public class JobsInitTests
+public class JobsInitTests : IAsyncLifetime
 {
+    /// <summary>Every scheduler this test built, shut down when it ends - see <see cref="NewSchedulerAsync"/>.</summary>
+    private readonly List<IScheduler> schedulers = [];
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        foreach (var scheduler in schedulers)
+            await scheduler.Shutdown();
+    }
+
     /// <summary>
     /// A stand-in for whichever of SampleChannels/ReconcileCommands/… is being
     /// reasoned about. The gate reads Name, Group, Interval and ServesTheHouse
@@ -67,12 +78,24 @@ public class JobsInitTests
     /// hands back the same instance for the same name, and Quartz's default job
     /// store is in-memory, so this is a real scheduler with nothing behind it.
     /// Never started - registration is what is under test, not execution.
+    ///
+    /// <para>Never started is not the same as never running, though: its
+    /// scheduler thread is up from construction, parked in a
+    /// <c>Monitor.Wait</c> inside a thread-pool task until Shutdown() says
+    /// otherwise. Left alone it holds that pool thread for the life of the
+    /// process, and this class would otherwise leave six of them to every test
+    /// that runs after it - MinimalStartupTests, in this collection, first.</para>
     /// </summary>
-    private static async Task<IScheduler> NewSchedulerAsync() =>
-        await new StdSchedulerFactory(new System.Collections.Specialized.NameValueCollection
+    private async Task<IScheduler> NewSchedulerAsync()
+    {
+        var scheduler = await new StdSchedulerFactory(new System.Collections.Specialized.NameValueCollection
         {
             ["quartz.scheduler.instanceName"] = $"JobsInitTests-{Guid.NewGuid():N}",
         }).GetScheduler();
+
+        schedulers.Add(scheduler);
+        return scheduler;
+    }
 
     private static JobsInit Init(IScheduler scheduler, IHomeAssistantConnectionManager connections, params IAppJob[] jobs) =>
         new(scheduler, jobs, connections, NullLogger<JobsInit>.Instance);

@@ -18,8 +18,15 @@ run:
 
 test: test-api test-hatch test-web
 
+# Clamped like test-hatch below, and for the same reason: nobody is there to
+# press ^C. A test that hangs past two minutes is killed and named, and leaves
+# a dump of every thread under the test project's TestResults/ - a hang read
+# off its stacks rather than guessed at from a quiet log (HA-171). The whole
+# suite takes well under one.
+API_TEST_CLAMP = --blame-hang-timeout 2m --blame-hang-dump-type mini
+
 test-api:
-	dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
+	dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP)
 
 # The CLI - `hatch`, which lives in src/Hatch.Cli. Its own target because it
 # is what somebody editing the loop runs, and because it needs neither a
@@ -80,7 +87,7 @@ publish-hatch:
 # it finds should have been told exactly what to find.
 test-api-db: db
 	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
-		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
+		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP)
 
 # One `npm ci` at the workspace root, then each app in turn. The apps are still
 # named one at a time rather than run with `--workspaces` so that the "==>" line
