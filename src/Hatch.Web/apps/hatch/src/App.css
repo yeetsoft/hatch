@@ -13,6 +13,20 @@
   flex-direction: column;
 }
 
+/* Same reasoning as theme.css's html/body/#root override: below the phone
+   breakpoint the document scrolls, so this box takes only a floor rather than
+   an exact height. Gated behind the query and not applied unconditionally - on
+   the desk a page taller than the viewport depends on this box having an exact
+   height for .hatch-page's overflow-y: auto (below) to clip and scroll
+   against; a min-height alone would let it grow to fit instead, and no
+   scrollbar would ever appear. */
+@media (max-width: 40rem) {
+  .hatch-app {
+    height: auto;
+    min-height: 100%;
+  }
+}
+
 /* The layout Board, Plan, Agents and Manage sit in together, wherever
    PrimaryNav renders - the gradient bar's leading slot in this app, the
    gallery's own stage elsewhere. */
@@ -94,6 +108,17 @@
   gap: var(--sp-5);
 }
 
+/* Below the phone breakpoint the document is the scroller (.hatch-app, above),
+   so this box no longer clips or scrolls on its own - and its gutter is the
+   phone's --sp-4, not the desk's --sp-6/--sp-5. */
+@media (max-width: 40rem) {
+  .hatch-page,
+  .hatch-issue-page {
+    overflow-y: visible;
+    padding: var(--sp-4);
+  }
+}
+
 /* flex: none because the page is a column flex box with the viewport's height:
    without it every child is a shrinkable flex item, and a page taller than the
    screen squeezes its cards down to fit instead of overflowing into the scroll
@@ -122,6 +147,29 @@
   flex-direction: column;
   gap: var(--sp-4);
   padding: var(--sp-6) var(--sp-5) 0;
+}
+
+/* Below the phone breakpoint .hatch-app no longer offers a bounded height for
+   flex: 1 to divide up (above), so the board's classic grid - still what a
+   phone shows until the stacked-board story under HA-131 lands - takes its
+   height from the viewport directly.
+
+   48px is the bar's own --topbar-h (packages/ui/src/components/TopBar.css)
+   restated as a literal: that property is scoped to .hatch-topbar, a sibling
+   of .hatch-content (and so of this class) under .hatch-app, and a sibling
+   cannot read it. Every box here is border-box (base.css's `* { box-sizing:
+   border-box }`) and .hatch-content carries no padding of its own, so this
+   box's border-box bottom edge lands exactly on 100dvh - the same "fills the
+   space under the bar" the flex chain gives it on the desk. min-height, not
+   height: a floor is what keeps .hatch-board (below) from collapsing, and
+   letting this box grow past it when the filter row wraps to a second line is
+   the document scroll this story asks for, not a bug to fight. Keep this in
+   step with --topbar-h if the bar's own height ever changes. */
+@media (max-width: 40rem) {
+  .hatch-board-page {
+    min-height: calc(100dvh - 48px);
+    padding: var(--sp-4) var(--sp-4) 0;
+  }
 }
 
 /* ---- The board ---- */
