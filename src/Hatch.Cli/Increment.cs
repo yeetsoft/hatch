@@ -27,6 +27,26 @@ public sealed class IncrementReport
     public bool Stalled { get; set; }
 
     /// <summary>
+    /// This increment's own verdict on a stall: the first in a row, let go of
+    /// quietly rather than flagged. Not to be confused with the dispatch's own
+    /// <c>WorkDto.LetGo</c> - an <c>int</c>, the count of consecutive releases
+    /// already spent before this one started - which this bool is the answer
+    /// to: zero coming in, one going out.
+    /// </summary>
+    public bool LetGo { get; set; }
+
+    /// <summary>
+    /// What the claim is released with: <see cref="ClaimOutcomes.Worked"/> for
+    /// anything that changed something on the ticket's behalf - moved it,
+    /// resolved its conflict, pushed a build fix, or had the session ask its
+    /// own question - and <see cref="ClaimOutcomes.Dropped"/> for a stall,
+    /// flagged or let go alike. Left null for a lost lease, a usage limit, an
+    /// interrupted increment, and a board read that failed: none of those is
+    /// this increment's verdict to give, because none of them ran to one.
+    /// </summary>
+    public string? ReleaseOutcome { get; set; }
+
+    /// <summary>
     /// A conflict increment, and origin's branch merges with the trunk now. Not a
     /// stall, and not a move either: the ticket stays in review and that is the
     /// right place for it.
@@ -355,14 +375,71 @@ public sealed class Increment(
                     say.Complain(e.Message);
                 }
 
-                // And if the board says nothing happened, say so on the ticket.
+                // And if the board says nothing happened, say so on the ticket -
+                // once quietly, and only the second time in a row with a flag.
                 // Not for an increment whose lease went: writing a stall onto a
                 // ticket another runner now holds would flag their increment as
                 // ours, and the ticket did not move because we stopped - which
                 // the loop already knows. And not for a usage limit: that is not
                 // a stall, it is the one increment kind whose ticket is left
                 // clean and unquestioned on purpose.
-                if (report.Stalled && !report.LostLease && !report.UsageLimited) await FlagStallAsync(report, open, ct);
+                //
+                // Stalled and Moved are not mutually exclusive here: a conflict
+                // or build increment is judged by its branch above, and can move
+                // the ticket to a new column while still leaving that branch
+                // unresolved. This guard runs regardless, so the branch is still
+                // said - but see below for who wins the claim's own verdict.
+                if (report.Stalled && !report.LostLease && !report.UsageLimited)
+                {
+                    if (report.Asked > 0)
+                    {
+                        // The session already asked its own question on the way
+                        // out, and a question already does everything a stall
+                        // comment would: it blocks the next dispatch and badges
+                        // the card. A second comment here would say the same
+                        // thing back in different words.
+                        report.ReleaseOutcome = ClaimOutcomes.Worked;
+                    }
+                    else if (work.LetGo == 0)
+                    {
+                        // The first increment in a row to leave this ticket
+                        // where it found it is let go of quietly rather than
+                        // flagged: most of the time whatever happened is
+                        // weather, and a retry a few minutes later just works.
+                        // The ticket goes straight back onto the board, free
+                        // for the next pass to try again - one comment saying
+                        // why, and what to resume, and nothing that blocks it.
+                        var why = said is { Length: > 0 }
+                            ? $"the session ended with an error - \"{said}\""
+                            : "the session ended without moving it";
+
+                        await LetGo.LeftAsync(board, say, report.Key, why, report.SessionId, ct);
+                        report.LetGo = true;
+                        report.Flag = "let go";
+                        report.ReleaseOutcome = ClaimOutcomes.Dropped;
+                        say.Line("");
+                        say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
+                    }
+                    else
+                    {
+                        // The second increment in a row to do the same thing:
+                        // whatever the first one quietly let go of has
+                        // repeated, and that is worth a person's eye - flagged
+                        // exactly as every stall used to be, before this ticket.
+                        await FlagStallAsync(report, open, work.LetGo, ct);
+                        report.ReleaseOutcome = ClaimOutcomes.Dropped;
+                    }
+                }
+
+                // The claim's own verdict: worked for anything that changed
+                // something on the ticket's behalf, and that always wins over a
+                // stall reported alongside it - a conflict or build increment
+                // that moved the ticket did work, whatever its branch still
+                // needs. Left at whatever the guard above decided (Dropped, or
+                // still null) for everything else - a lost lease, a usage
+                // limit, and the "not known" reads above never reach a verdict
+                // at all.
+                if (report.Moved || report.Resolved || report.FixPushed) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {
@@ -659,8 +736,13 @@ public sealed class Increment(
     /// <para>Neither option is recommended, and that is not modesty.
     /// A recommendation is for a choice something knows the answer to, and the
     /// whole content of a stall is that nothing here knows why it happened.</para>
+    ///
+    /// <para>Reached only for the second increment in a row to leave a ticket
+    /// where it found it - <paramref name="letGo"/> counts the ones before
+    /// this that already went quietly (see <see cref="LetGo.LeftAsync"/>), so
+    /// it is always at least one here, and the comment says which one this is.</para>
     /// </remarks>
-    private async Task FlagStallAsync(IncrementReport report, int? open, CancellationToken ct)
+    private async Task FlagStallAsync(IncrementReport report, int? open, int letGo, CancellationToken ct)
     {
         // Nothing is written on a guess. If the questions could not be read,
         // whether this issue is already flagged is not known, and a second
@@ -694,6 +776,8 @@ public sealed class Increment(
               still in "{report.From}", under a playbook moving {report.From} -> {report.To}. The
               board is the report that counts, and it says nothing happened.
               """;
+
+        body += $"\n\nThis is the {Ordinal(letGo + 1)} increment in a row to leave this ticket here.";
 
         body += report.SessionId is { Length: > 0 } session
             ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
@@ -745,6 +829,28 @@ public sealed class Increment(
             report.Flag = "not flagged - the write was refused";
             say.Complain($"hatch: {report.Key} could not be flagged - a later pass may offer it again");
         }
+    }
+
+    /// <summary>
+    /// <c>2</c> as "second", the common case - a lone prior let-go turning
+    /// into this, its flagged sequel - through <c>10</c> named in full, and a
+    /// plain numeral suffixed past that: nobody needs "twelfth" read out, but
+    /// "12th" says exactly the same thing in fewer words.
+    /// </summary>
+    private static string Ordinal(int n)
+    {
+        string[] named = ["zeroth", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+        if (n >= 0 && n < named.Length) return named[n];
+
+        if (n % 100 is >= 11 and <= 13) return $"{n}th";
+
+        return (n % 10) switch
+        {
+            1 => $"{n}st",
+            2 => $"{n}nd",
+            3 => $"{n}rd",
+            _ => $"{n}th",
+        };
     }
 }
 

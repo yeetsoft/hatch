@@ -7,7 +7,7 @@ public sealed class TallyTests
 {
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
-        DateTimeOffset? usageLimitResetAt = null) =>
+        DateTimeOffset? usageLimitResetAt = null, bool letGo = false) =>
         new()
         {
             Key = key,
@@ -16,6 +16,7 @@ public sealed class TallyTests
             Ended = moved ? "In Review" : "In Progress",
             Moved = moved,
             Stalled = !moved,
+            LetGo = letGo,
             ExitCode = exit,
             Cost = cost,
             LostLease = lost,
@@ -186,5 +187,52 @@ public sealed class TallyTests
         Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("stalled  AER-2", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("usage    AER-3", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// HA-118: a ticket let go of quietly - the first increment in a row to
+    /// leave it where it found it - is neither moved nor stalled: it is its
+    /// own morning, so the next pass knows it is free rather than flagged.
+    /// </summary>
+    [Fact]
+    public void A_let_go_ticket_is_its_own_list_and_not_the_stalled_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", moved: false, letGo: true));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>A session that exited zero without moving its ticket still does not count toward three failures in a row.</summary>
+    [Fact]
+    public void A_let_go_ticket_that_exited_zero_does_not_count_toward_the_failure_streak()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 0, moved: false, letGo: true));
+        tally.Record(Report("AER-2", exit: 0, moved: false, letGo: true));
+        tally.Record(Report("AER-3", exit: 0, moved: false, letGo: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+    }
+
+    /// <summary>A non-zero exit still counts toward the streak, whether or not the ticket was let go.</summary>
+    [Fact]
+    public void A_let_go_ticket_that_exited_non_zero_still_counts_toward_the_failure_streak()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1, moved: false, letGo: true));
+        tally.Record(Report("AER-2", exit: 1, moved: false, letGo: true));
+        tally.Record(Report("AER-3", exit: 1, moved: false, letGo: true));
+
+        Assert.True(tally.ShouldStop());
+        Assert.Equal(3, tally.Fails);
     }
 }

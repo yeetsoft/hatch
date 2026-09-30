@@ -46,6 +46,17 @@ describe('describe', () => {
       describeEvent(event({ kind: 'wip_overridden', payload: { limit: 5, load: 6, to: 'In Progress' } })),
     ).toBe('overrode the WIP limit — 6 of 5 into In Progress');
   });
+
+  it('names the runner that stopped answering and when, for a lapsed takeover', () => {
+    expect(
+      describeEvent(
+        event({
+          kind: 'claim_lapsed',
+          payload: { from: 'Buster Bluth on here:/checkouts/one', heardAt: '2026-09-28T00:00:00Z' },
+        }),
+      ),
+    ).toBe('Buster Bluth on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
+  });
 });
 
 describe('short', () => {

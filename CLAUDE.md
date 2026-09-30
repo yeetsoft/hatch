@@ -98,11 +98,15 @@ reading the terminal, and that the next increment starts the moment yours ends.
   untracked files included — onto your issue's branch and pushes it for you,
   then says so on the ticket along with when it expects you back.
 - **Leave the ticket somewhere new.** An increment that ends with the ticket in
-  the column it started in is a *stall*: the loop comments, opens a question
-  against the issue, and moves on — and nothing further is dispatched there
-  until a person answers it. That guard exists so a bad ticket costs one
-  increment instead of a night, but a sentence you wrote about why you stopped
-  is worth more than the one it writes for you.
+  the column it started in is a *stall*, and the first one in a row is let go
+  quietly: the loop comments saying why, and moves on — the ticket is free for
+  the very next pass, since most of the time whatever happened is weather and
+  a retry a few minutes later just works. The second stall in a row on the
+  same ticket is flagged the way every stall used to be: the loop comments,
+  opens a question against the issue, and nothing further is dispatched there
+  until a person answers it. That guard exists so a ticket that is genuinely
+  stuck costs two increments and not a night, but a sentence you wrote about
+  why you stopped is worth more than the one it writes for you.
 - **Asking is a full stop, not a pause.** An open question blocks the ticket
   from being dispatched at all. Ask and stop — do not ask and keep building.
 - **Record the pull request**: `./scripts/hatch.sh pr AER-12 <url>`. It is a
@@ -220,9 +224,10 @@ here, because getting them wrong is not recoverable by reading further:
   never relative.
 - **Never move a ticket to a terminal or a deferred status.** Only the operator
   decides that something shipped, and only the operator decides that something
-  is not worth doing now. Implementation ends in *in progress*, with a comment
-  saying what landed and what did not; work that should be shelved is said on
-  the ticket.
+  is not worth doing now. An increment ends in the column its prompt's "Where
+  this increment ends" section names — not a fixed column, since a story or
+  task's target varies — with a comment saying what landed and what did not;
+  work that should be shelved is said on the ticket.
 - **End by saying what you did**, in a fenced block:
 
   ~~~

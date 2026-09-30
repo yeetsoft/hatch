@@ -349,7 +349,31 @@ public record ClaimRequest(string Runner)
 /// The capability. Presented by every heartbeat and by the release, and the
 /// only place it is ever handed out - it is on no read anywhere.
 /// </param>
-public record ClaimTakenDto(Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds);
+/// <param name="StallLapseSeconds">
+/// The window this claim goes quiet under - the same one a stall question
+/// lapses by, in seconds, or <c>0</c> when lapsing is off. The server is what
+/// honours it, so the server is what says what it is, the same reason
+/// <paramref name="TtlSeconds"/> rides back rather than being configured on
+/// both sides.
+/// </param>
+public record ClaimTakenDto(Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0);
+
+/// <summary>
+/// How a release said an increment ended, on <c>DELETE …/claim?token=…</c> -
+/// what a runner may name, and nothing else. Absent is accepted exactly as it
+/// always has been: the pick's own release, a restart, and an older CLI all
+/// send no outcome at all.
+/// </summary>
+public static class ClaimOutcomes
+{
+    /// <summary>The increment spent itself and left the ticket where it found it.</summary>
+    public const string Dropped = "dropped";
+
+    /// <summary>The increment moved the ticket, or otherwise finished what it set out to do.</summary>
+    public const string Worked = "worked";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked;
+}
 
 /// <summary>
 /// Still here. The token is the whole authorization; the line is optional and
@@ -991,6 +1015,15 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <paramref name="Playbook"/> is always null on a hop, even where one covers
 /// the move, so no client can spawn a session for it by accident.
 /// </param>
+/// <param name="LetGo">
+/// How many increments in a row let this ticket go without moving it: this
+/// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
+/// counted back to the first release whose outcome was
+/// <see cref="ClaimOutcomes.Worked"/>, a status change, or an answer a person
+/// wrote - whichever comes first. A release with no outcome, and an answer
+/// written by a lapse, are skipped rather than counted or stopped at. Zero on
+/// a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1003,7 +1036,8 @@ public record WorkDto(
     string? IssueUrl,
     string Kind = WorkKinds.Advance,
     IReadOnlyList<CommentDto>? Messages = null,
-    bool Hop = false);
+    bool Hop = false,
+    int LetGo = 0);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only
@@ -1063,13 +1097,20 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// </param>
 /// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 /// <param name="Hop">As on <see cref="WorkDto"/>.</param>
+/// <param name="ClearNote">
+/// Why a row that carries no <paramref name="Blocked"/> is clear at all, where
+/// that is not otherwise obvious - today, only that a stall question lapsed
+/// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
+/// every row that is clear for the ordinary reason, which is most of them.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
     StatusDto? ToStatus,
     string? Blocked,
     string Kind = WorkKinds.Advance,
-    bool Hop = false);
+    bool Hop = false,
+    string? ClearNote = null);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what
@@ -1651,6 +1692,18 @@ public static class StallAnswers
         new(TryAgain,
             "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
     ];
+
+    /// <summary>
+    /// Whether a question offered exactly this pair - the labels alone, in
+    /// either order, and nothing else. A question with a different label, a
+    /// third option, or asked in prose is never a stall question, however much
+    /// its body reads like one: the label is what a runner acts on, not the
+    /// prose around it.
+    /// </summary>
+    public static bool IsStall(IReadOnlyList<QuestionOptionDto>? options) =>
+        options is { Count: 2 } &&
+        options.Select(o => o.Label).OrderBy(l => l, StringComparer.Ordinal)
+            .SequenceEqual(Options().Select(o => o.Label).OrderBy(l => l, StringComparer.Ordinal));
 }
 
 /// <summary>

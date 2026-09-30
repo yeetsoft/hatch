@@ -76,6 +76,8 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_RUNNER` | What the board calls this runner. Default: a character from the cast list, chosen once per checkout - see `hatch config` |
 | `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
 | `HATCH_WORKSPACE` | A directory this runner owns entirely, where it clones every repository the board binds that it has no checkout of |
+| `HATCH_HEARTBEAT` | Seconds of silence before the renderer says what it is still waiting on. `0` turns it off |
+| `HATCH_RETRY_SECONDS` | Seconds a call keeps retrying while Hatch does not answer, backing off between tries. `90` by default, `0` for exactly one attempt |
 
 **The key lives outside the artifact**: never a tracked file, never a value in
 a commit, never pasted into a ticket. Hatch is built to be cloned by other
@@ -467,3 +469,12 @@ reasons: no playbook leads out of that column for that type, an open
 question, a person's name on it, a ready date not yet arrived, another
 runner's claim, or — once the runner declares what it has — a project bound
 to repositories it has no checkout of.
+
+**`hatch: could not reach <origin> for 90s - ...`** Hatch was unreachable for
+longer than `HATCH_RETRY_SECONDS` (a deploy, usually, or a longer outage) — a
+brief gap of no more than that many seconds costs a call nothing, since it
+retries underneath this message rather than failing on the first blip. If a
+claim's heartbeat keeps failing for longer than that ticket's
+`StallLapseSeconds` altogether, the session gives up on its own and stops
+rather than keep working a ticket the board may already have handed to
+somebody else — the next pass finds out on its own next attempt.

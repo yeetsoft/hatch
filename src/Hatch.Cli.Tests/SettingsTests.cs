@@ -315,6 +315,44 @@ public sealed class SettingsTests : IDisposable
     }
 
     /// <summary>
+    /// Read and layered exactly as <c>HATCH_HEARTBEAT</c> is - environment-only,
+    /// same default-on-nonsense rule, and <c>0</c> is a valid window rather than
+    /// nonsense: it means exactly one attempt, not "no window at all".
+    /// </summary>
+    [Fact]
+    public void The_retry_window_defaults_to_ninety_and_takes_a_number_and_refuses_a_negative_one()
+    {
+        var origin = Env(("HATCH_BASE", "https://mine"));
+        var none = Path.Combine(_temp, "none");
+
+        Assert.True(Settings.TryLoad(null, origin, out var byDefault, out _, none));
+        Assert.Equal(90, byDefault.RetrySeconds);
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_RETRY_SECONDS", "30")), out var overridden, out _, none));
+        Assert.Equal(30, overridden.RetrySeconds);
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_RETRY_SECONDS", "0")), out var off, out _, none));
+        Assert.Equal(0, off.RetrySeconds);
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_RETRY_SECONDS", "-5")), out var bad, out _, none));
+        Assert.Equal(90, bad.RetrySeconds);
+    }
+
+    /// <summary>
+    /// Not settable from a file - the same reason <c>HATCH_HEARTBEAT</c> is not:
+    /// a line naming it in <c>scripts/.env</c> or the per-user file is an
+    /// unrecognised name and is skipped, loudly, rather than read.
+    /// </summary>
+    [Fact]
+    public void HATCH_RETRY_SECONDS_is_not_one_of_the_names_a_file_may_set()
+    {
+        Assert.DoesNotContain("HATCH_RETRY_SECONDS", Settings.FileNames);
+    }
+
+    /// <summary>
     /// A settings file that follows the person rather than the checkout is the
     /// whole point, so it must not be inside one.
     /// </summary>

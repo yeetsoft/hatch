@@ -13,6 +13,9 @@ internal static class TestClaims
     /// <summary>The TTL every harness here uses unless it is testing expiry - five minutes, the shipped default.</summary>
     public const int Ttl = 300;
 
-    public static IssueClaims With(int ttlSeconds = Ttl) =>
-        new(Options.Create(new HatchOptions { ClaimTtlSeconds = ttlSeconds }));
+    /// <summary>The stall lapse window every harness here uses unless it is testing the lapse itself - five minutes, the shipped default.</summary>
+    public const int StallLapseMinutes = 5;
+
+    public static IssueClaims With(int ttlSeconds = Ttl, int stallLapseMinutes = StallLapseMinutes) =>
+        new(Options.Create(new HatchOptions { ClaimTtlSeconds = ttlSeconds, StallLapseMinutes = stallLapseMinutes }));
 }

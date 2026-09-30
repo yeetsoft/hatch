@@ -918,6 +918,35 @@ sides, because the server is what honours it and so is what says what it is. A
 client holding a heartbeat four minutes old cannot otherwise tell a runner about
 to go from one that is fine.
 
+**A claim that has gone quiet is not live either, however recently it was
+heartbeat.** *Quiet* here is a hard rule, not the card's amber dot below: the
+later of `ClaimedAt` and `ClaimChatterAt` — the last time anybody said
+anything, or the take itself where nobody ever has — is judged against
+`Hatch:StallLapseMinutes`, five minutes by default, the same window a stall
+question lapses by (see [Comment, question and answer](#comment-question-and-answer)).
+A `--quiet` session sends no chatter at all, so its claim is measured from when
+it was taken. Every reader treats a quiet claim exactly as it treats an expired
+one — the dispatcher, the board, the issue page, the Runners page, and a take —
+because `IssueClaims.IsLive` is the one place both conditions are asked, and
+nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
+refused `409` with `this claim has gone quiet for 5 minutes`, beside the three
+reasons a heartbeat could already be refused, and checked before "expired"
+where a claim happens to qualify as both. `Hatch:StallLapseMinutes = 0` turns
+this off entirely — every claim is then judged on its TTL alone — and a
+negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
+already has. The window rides back with the take as `stallLapseSeconds`, in
+seconds, `0` when lapsing is off — the server is what honours it, so the
+server is what says what it is, the same argument `TtlSeconds` makes for
+itself.
+
+**A release may say how the increment ended.** `DELETE …/claim?token=…` takes
+an optional `outcome`, `dropped` or `worked` — absent is accepted exactly as it
+always has been, which covers the pick's own release, a restart, and an older
+CLI, and a value that is neither is `400`. It is read only where a token is
+given: the operator's tokenless clobber names no increment to have an outcome.
+The `claim_released` event carries it, and it is what `letGo` counts (see
+[Comment, question and answer](#comment-question-and-answer)).
+
 **The token is a fencing token, and it is a capability.** Every heartbeat and
 every release presents it, and a write whose token is not the one on the row is
 refused — which is what stops a runner whose lease expired mid-increment from
@@ -939,8 +968,8 @@ type — so siblings and cousins are unaffected and run in parallel. The
 dispatcher folds a relative with the same sentence a claim on the issue itself
 prints, naming the relative (`Nathan is working AER-12, above this, from
 host:/path/to/checkout, last heard from 2 minutes ago`), and `POST …/claim`
-answers `409` with it. A relative's claim past its TTL folds nothing, exactly as
-an issue's own expired claim does.
+answers `409` with it. A relative's claim past its TTL, or gone quiet, folds
+nothing, exactly as an issue's own expired or quiet claim does.
 
 The take cannot fence this in its `WHERE`: a conditional `UPDATE` fences one row
 and a line of the tree is many, so a take on a parent and a take on its child
@@ -981,13 +1010,26 @@ the Comments thread. See [Comment, question and answer](#comment-question-and-an
 for what *read* means, and [What a runner does](#what-a-runner-does-in-order)
 for how a message reaches a session.
 
-**Clearing a claim does not stop the runner.** The operator's
-`DELETE .../claim` takes the lease off the row and nothing else: that session
-keeps running, keeps pushing, and may still move the ticket, because moves are
-not gated on a token. What clearing does is make the issue claimable again, so
-the next pass may spawn a second session at it and the two would then both be
-writing to it. It is the sentence the confirmation on the issue page leads with,
-and the reason to press it is a runner known to be gone or known to be wrong.
+**Clearing a claim stops the runner, but not at once.** The operator's
+`DELETE .../claim` takes the lease off the row straight away, so the issue is
+claimable again from that instant — but the session that held it does not know
+yet. It finds out at its next heartbeat, refused with "this claim was cleared",
+and that is what ends it: the heartbeat calls `OnLost`, and the runner cancels
+the session rather than let it keep pushing against a claim it no longer holds.
+That is a beat away, not gone in the same instant — within a minute by default —
+so a second session claimed in the gap may briefly be writing to the ticket
+alongside the first. It is the sentence the confirmation on the issue page leads
+with, and the reason to press it is a runner known to be gone or known to be
+wrong.
+
+**A take over a lapsed lease says so on the trail, before it says who holds it
+now.** When a take finds a token still on the row whose lease is no longer
+live — silence past the TTL, or any other reason the row stopped being kept
+up — it writes a `claim_lapsed` event naming who stopped answering and when
+they were last heard from, immediately before the `claim_taken` event for the
+runner taking it over. A take against a row nothing held, or a row a release
+left clean, writes no `claim_lapsed` — the event is for a takeover, not for
+every take.
 
 **The guarantee lives in a predicate on the write.** Reading the row first is
 unavoidable — a refusal has to name who holds it, and that sentence can only be
@@ -1238,6 +1280,51 @@ nobody kept, and the sentence the next agent's prompt carries is the same
 sentence a person reads six months later. A second column saying it in numbers
 is a second thing that can come to disagree with the first.
 
+**A stall question that nobody answers lapses.** A *stall question* is an open
+question whose options are exactly the labels `StallAnswers.Options()` offers
+(`leave it`, `try again`) — the ones a runner asks when an increment does
+nothing, and the ones the server asks when a fixed build fails again (see
+[build check](#build-check)). Any other options, or none at all, and it is
+never a stall question, however much its body reads like one. It has *lapsed*
+once two things are both true: it has been open at least `Hatch:StallLapseMinutes`
+(five minutes by default), and the issue's newest [event](#issue-event) is at
+least that old too — a comment, a status change, anything at all, resets the
+second half without touching the first, so an issue somebody is still looking
+at does not lapse just because the question itself is old. A lapsed stall
+question does not fold the issue: the dispatcher's unanswered-question count
+leaves it out, though it still shows as open everywhere else — the issue page,
+the questions list — until it is actually answered. `hatch queue` names a row
+that is clear only because of the lapse, e.g. `clear for To Do -> In Progress
+- its stall question lapsed after 5 minutes untouched` (`clearNote` on
+`QueueEntryDto`). `Hatch:StallLapseMinutes = 0` turns lapsing off entirely — for
+a question and for a [claim](#claim) alike — and a negative value falls back to
+the default.
+
+**Taking the claim answers what lapsed.** When a claim on the issue is taken
+and kept, each lapsed stall question on it is answered `try again`
+(`StallAnswers.TryAgain`) as a real answer: a comment of kind `answer`, its
+`answersId` pointing at the question, written as `Hatch` rather than as the
+caller, and the `answered` event beside it carries `lapsed: true` in its
+payload. Because it is a real answer the issue page, the questions list and
+the next session's *Decisions already made* all read it exactly as they would
+a person's — the point is to hand a fresh increment the stall and the answer
+together, among the decisions already made, rather than have it ask the same
+thing again. A take that loses [the line-of-the-tree recheck](#claim) answers
+nothing: the lease it took is released, and the question is left exactly as it
+was.
+
+**`letGo` counts a ticket's trailing dropped increments.** A runner's release
+may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped` or
+`&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
+`work/next` and a queue row is this issue's releases, newest first, whose
+outcome was `dropped`, counted back to the first of: a release whose outcome
+was `worked`, a `status_changed`, or an `answered` event written by a person.
+A release with no outcome is skipped over — it neither counts nor stops the
+count, which is what keeps an older CLI's releases, a restart, and the pick's
+own release from reading as a string of drops — and so is an answer written by
+a lapse, since it settled nothing a person decided. `0` on a client too old to
+read the field.
+
 **A message is not every comment, on purpose.** The server cannot tell an
 operator's comment from the session's own — both arrive on the same key under
 the same name — so delivering every comment would feed a session its own commit
@@ -1265,13 +1352,20 @@ Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `expedited_changed`, `express_changed`, `dependency_added`,
-`dependency_removed`, `claim_taken`, `claim_released`, `claim_cleared`,
+`dependency_removed`, `claim_taken`, `claim_lapsed` (a take found a lease that
+had already gone quiet past its terms and is taking it over — payload
+`{ from, heardAt }`, the previous holder and when it was last heard from,
+written immediately before the `claim_taken` for the runner taking over),
+`claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
+rather than serialized as null where the release named none), `claim_cleared`,
 `merge_check_changed`, `build_check_changed`, `wip_overridden` (a move into a
 full [WIP](#wip) section, let through because a person said *move anyway* -
 payload `{ limit, load, to }`, `load` counting the card itself, written beside
 `status_changed` only when the move would otherwise have been refused),
 `commented`, `messaged`, `message_delivered` (the payload
-names the comment and the runner), `asked`, `answered`,
+names the comment and the runner), `asked`, `answered` (payload `{ questionId,
+lapsed }`, `lapsed: true` only where a take answered a stall question nobody
+had - see [Comment, question and answer](#comment-question-and-answer)),
 `imported`.
 
 Nothing renders this, and it has been written since the first release anyway,
@@ -1572,15 +1666,15 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expedited }` — *this one first*, floated on the board and taken first by the dispatcher. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
-| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL. `409` naming the holder where something live already has it — including the same runner asking twice |
-| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, and on a lease that is over. `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
-| `/issues/{key}/claim?token=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
+| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
+| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
@@ -2543,7 +2637,9 @@ the sentence saying which one it failed is what `work/queue` reports:
    only a ticket assigned to the caller's own person or key, and folds every
    other one — see [one more, on `next` alone](#one-more-on-next-alone).
 5. **It holds no unanswered question.** It is waiting on a person, and another
-   agent sent at it would ask the same thing again or guess at the answer.
+   agent sent at it would ask the same thing again or guess at the answer. A
+   lapsed stall question does not count here - see [Comment, question and
+   answer](#comment-question-and-answer).
 6. **The project's [repositories](#repository) match a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
@@ -3468,8 +3564,16 @@ with nobody to rebuild it is the loop it started as.
 Three things that look like reasons to stop are not. **A lost lease** is the
 loop working correctly on a busy board — the ticket went to a runner already
 further into it — and does not count toward the three. **A board that did not
-answer** is a minute of bad network, and a loop that ended on one is a loop
-somebody has to sit with. And **a busy board** is a wait, not an ending: every
+answer** rides the gap out on its own: every call retries, backing off, for up
+to `HATCH_RETRY_SECONDS` (90s by default, `0` for exactly one attempt) before
+it is even read as a failure — so a deploy with no health check costs the loop
+nothing it would not have spent anyway. The one exception is a claim's own
+heartbeat: one that keeps failing for longer than `StallLapseSeconds`
+altogether — whether every beat in that stretch failed outright, or each spent
+its own retry budget and still failed — gives up on its own, sets `Lost` and
+stops the session exactly as a `409` does, on the understanding that a lease
+gone quiet that long is one the board's own rule may already have let
+somebody else take. And **a busy board** is a wait, not an ending: every
 candidate being worked elsewhere is a report, and it is deliberately not the
 sentence an empty board gets.
 
@@ -3542,6 +3646,14 @@ would drift the moment an operator cleared a claim out from under the runner
 holding it. The row's own line is therefore only ever what a runner said
 *between* tickets — "nothing on the board is an agent's to move", "AER-12 moved"
 — because an increment's chatter already rides its lease.
+
+**A claim's heartbeat counts as the runner being heard from, too.** A loop
+beats its own row only between tickets, but a session well into a long
+increment can beat its *claim* every minute the whole time — see
+[Claim](#claim). `RunnerDto.LastSeenAt` is the later of the two, so a runner
+reads *Working AER-12* for as long as either is fresh, and does not read
+*Gone* out from under a session that is still there and still renewing its
+lease, only quiet on its own row.
 
 **Two horizons, and only one of them is a setting.** A row is *idle* while it is
 being heard from, *gone* once its last heartbeat is older than
@@ -3842,7 +3954,12 @@ column first and the order the board itself draws that column in. An expedited
 row is marked, so a queue reordered by one says why. A clear row that is a
 [hop](#the-hop) reads `-> <column>  (express, no session)` in place of the bare
 arrow, so it reads differently from a row `go-to-work` would spawn a session
-for even though both print no reason to fold past. `hatch queue AER-1`
+for even though both print no reason to fold past. A row that is clear only
+because a stall question lapsed reads `clear for <column> -> <column> - its
+stall question lapsed after 5 minutes untouched` instead of the bare arrow, for
+the same reason: a row clear for the ordinary reason and one clear because
+nobody answered in time are both "clear", and only one of them is worth a
+second look. `hatch queue AER-1`
 scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical

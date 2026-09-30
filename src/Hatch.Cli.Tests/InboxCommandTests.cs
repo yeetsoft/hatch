@@ -226,8 +226,12 @@ public sealed class InboxCommandTests : IDisposable
     [Fact]
     public async Task A_connection_that_never_happened_is_skipped()
     {
+        // RetrySeconds: 0 - this is about what a connection failure that never
+        // clears maps to, not about how long HatchClient.Send spends retrying
+        // one, which HatchClientTests covers.
         using var down = new HatchClient(
-            new Settings { Base = "https://hatch.example", Key = "k", HeartbeatSeconds = 0 }, "x", new Refuses());
+            new Settings { Base = "https://hatch.example", Key = "k", HeartbeatSeconds = 0, RetrySeconds = 0 },
+            "x", new Refuses());
         var command = new InboxCommand(new Board(down), _h.Say, new StringReader(""), new FrozenClock(Now));
 
         Assert.Equal(0, await command.RunAsync(["AER-1", "--hook", "stop"], default));

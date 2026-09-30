@@ -401,6 +401,7 @@ export type IssueEventKind =
   | 'dependency_added'
   | 'dependency_removed'
   | 'claim_taken'
+  | 'claim_lapsed'
   | 'claim_released'
   | 'claim_cleared'
   | 'merge_check_changed'

@@ -654,9 +654,13 @@ on a named ticket is `hatch work AER-12`.
 An increment that ran is followed by the next one immediately; the interval is
 only what to do when there was nothing to do.
 
-**A ticket that did not move is a stall.** The loop comments on it saying so and
-opens a question against it, and nothing further is dispatched at that ticket
-until somebody answers. One bad ticket costs one increment instead of a night.
+**A ticket that did not move is a stall, and the first one in a row is let go
+quietly.** The loop comments saying why, and moves on — the ticket is free for
+the very next pass, since most of the time whatever happened is weather and a
+retry a few minutes later just works. Only the **second** stall in a row on the
+same ticket is flagged: the loop comments, opens a question against it, and
+nothing further is dispatched at that ticket until somebody answers. A ticket
+that is genuinely stuck costs two increments instead of a night.
 
 #### Bounds, timeouts and stopping
 

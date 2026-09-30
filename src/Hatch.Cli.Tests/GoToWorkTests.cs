@@ -60,6 +60,50 @@ public sealed class GoToWorkTests
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
 
+    /// <summary>
+    /// HA-118: the claim's own verdict rides along with the release - dropped
+    /// for the ticket a pass leaves where it found it, so the board's own
+    /// count of consecutive let-goes is what decides whether the next one is
+    /// let go quietly again or flagged.
+    /// </summary>
+    [Fact]
+    public async Task A_pass_that_leaves_its_ticket_where_it_found_it_releases_the_claim_dropped()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>The same release, for a pass that actually moved the ticket.</summary>
+    [Fact]
+    public async Task A_pass_that_moves_its_ticket_releases_the_claim_worked()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        // The dispatch starts in progress; the post-run read (the second call
+        // to this route - the first is the pick itself) says it landed in
+        // review, the ordinary shape of an increment that did its job.
+        h.Wire.Once(
+            "GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.Work("AER-1", from: "In Progress", to: "In Review"), Fixtures.Json));
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", to: "In Review"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_tree_that_will_not_reset_ends_the_night_and_gives_the_ticket_back()
     {
@@ -729,7 +773,11 @@ public sealed class GoToWorkTests
         Assert.Equal(1, carried.Runs);
         Assert.Equal(1.5m, carried.Spent);
         Assert.Equal(1, carried.Restarts);
-        Assert.Single(carried.Stalled);
+        // The one ticket a pass spent money on was left where it found it -
+        // the first time in a row, so it is let go of quietly rather than
+        // flagged, and carried in its own list.
+        Assert.Empty(carried.Stalled);
+        Assert.Single(carried.LetGo);
     }
 
     [Fact]
@@ -932,7 +980,7 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("3 increment(s) in 2h", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("$6.50, 1 restart(s)", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("moved    AER-9", StringComparison.Ordinal));
-        Assert.Contains(h.Say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
     }
 
     [Fact]

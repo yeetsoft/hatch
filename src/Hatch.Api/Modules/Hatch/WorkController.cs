@@ -183,7 +183,8 @@ public class WorkController(
             r.To is null ? null : ToStatusDto(r.To),
             r.Blocked,
             r.Kind,
-            r.Hop)).ToList();
+            r.Hop,
+            r.ClearNote)).ToList();
     }
 
     /// <summary>
@@ -313,7 +314,7 @@ public class WorkController(
 
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
-        var open = await Questions.OpenCountsAsync(db, ct);
+        var open = await Questions.DispatchCountsAsync(db, claims.StallLapseSeconds, now, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
@@ -386,17 +387,18 @@ public class WorkController(
                     if (issue.Expedited != expedited) continue;
 
                     var playbook = Match(playbooks, status.Id, to.Id, issue.Type);
-                    open.TryGetValue(issue.Id, out var waiting);
+                    var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var hop = issue.Express && status.ExpressSkips;
                     var blocked = Blocked(
-                        issue, status, to, playbook, waiting, loop, gate, claimed, implementation,
+                        issue, status, to, playbook, summary.Waiting, loop, gate, claimed, implementation,
                         assignees[issue.Id], repos, merged, built, hop, wip);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
-                        hop && blocked is null));
+                        hop && blocked is null,
+                        blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null));
                 }
             }
         }
@@ -406,7 +408,22 @@ public class WorkController(
 
     /// <summary>One issue the pass looked at, and what it decided.</summary>
     private sealed record ScanRow(
-        EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop);
+        EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
+        string? ClearNote = null);
+
+    /// <summary>
+    /// Why a row that carries no <see cref="ScanRow.Blocked"/> is clear at all -
+    /// see <see cref="QueueEntryDto.ClearNote"/>. The only caller today is a
+    /// lapsed stall question, so this is the one sentence rather than a switch.
+    /// </summary>
+    private static string ClearNote(int lapseSeconds) =>
+        $"its stall question lapsed after {Minutes(lapseSeconds)} untouched";
+
+    private static string Minutes(int seconds)
+    {
+        var minutes = seconds / 60;
+        return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+    }
 
     /// <summary>
     /// A finished pass, or the argument it would not accept. A refusal carries
@@ -802,7 +819,7 @@ public class WorkController(
 
         var playbook = to is null ? null : await MatchAsync(from.Id, to.Id, issue.Type, ct);
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
+        var waiting = await UnlapsedWaitingAsync(questions, issue.Id, now, ct);
 
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
@@ -910,7 +927,7 @@ public class WorkController(
         // dispatched at all, and the answered ones are what it is dispatched
         // knowing.
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
+        var waiting = await UnlapsedWaitingAsync(questions, issue.Id, claimed.Now, ct);
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
 
@@ -964,7 +981,101 @@ public class WorkController(
             IssueUrl(issueDto.Key),
             KindOf(issue, from, to, merged, built),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
-            hopped);
+            hopped,
+            await LetGoAsync(issue.Id, ct));
+    }
+
+    // ---- Waiting, past a lapsed stall question ----
+
+    /// <summary>
+    /// A named issue's own open-question count, the dispatcher's way: every
+    /// open question but a lapsed stall one - see
+    /// <see cref="Questions.DispatchCountsAsync"/>, this method's counterpart
+    /// for a whole scan. Two reads rather than one because a single named
+    /// dispatch has no scan-wide newest-event map to share.
+    /// </summary>
+    private async Task<int> UnlapsedWaitingAsync(
+        IReadOnlyList<QuestionDto> questions, long issueId, DateTimeOffset now, CancellationToken ct)
+    {
+        var open = questions.Where(q => q.Answers.Count == 0).ToList();
+        if (open.Count == 0) return 0;
+
+        var newestEventAt = await Questions.NewestEventAtAsync(db, issueId, ct);
+
+        return open.Count(q => !(StallAnswers.IsStall(q.Options)
+            && Questions.IsLapsed(q.AskedAt, newestEventAt, claims.StallLapseSeconds, now)));
+    }
+
+    // ---- Let go ----
+
+    /// <summary>
+    /// How many increments in a row let this ticket go without moving it - see
+    /// <see cref="WorkDto.LetGo"/>. One query over this issue's own trail,
+    /// newest first, stopped at the first event that resets the count.
+    /// </summary>
+    private async Task<int> LetGoAsync(long issueId, CancellationToken ct)
+    {
+        var events = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.IssueId == issueId)
+            .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
+            .Select(e => new { e.Kind, e.Payload })
+            .ToListAsync(ct);
+
+        var letGo = 0;
+        foreach (var e in events)
+        {
+            if (e.Kind == EfHatchIssueEvent.StatusChanged) break;
+
+            if (e.Kind == EfHatchIssueEvent.ClaimReleased)
+            {
+                var outcome = ReleaseOutcome(e.Payload);
+                if (outcome == ClaimOutcomes.Dropped) { letGo++; continue; }
+                if (outcome == ClaimOutcomes.Worked) break;
+                continue; // no outcome: skipped over, neither counted nor stopped at
+            }
+
+            if (e.Kind == EfHatchIssueEvent.Answered)
+            {
+                if (!IsLapsedAnswer(e.Payload)) break;
+                continue; // an answer written by a lapse: skipped over, the same as a bare release
+            }
+        }
+
+        return letGo;
+    }
+
+    /// <summary>A release's own outcome, or null where it did not say - see <see cref="ClaimOutcomes"/>.</summary>
+    private static string? ReleaseOutcome(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty("outcome", out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Whether an <c>answered</c> event's payload marks it as written by a lapse rather than by a person.</summary>
+    private static bool IsLapsedAnswer(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty("lapsed", out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

@@ -212,7 +212,8 @@ empty panel says "nothing is up for review" rather than nothing.
 the runner is heard from and amber once it has gone quiet, and the issue page
 says which checkout holds it and the last line it printed. A claim expires on
 its own when a runner dies. Clearing one by hand makes the ticket claimable
-again; it does not stop the runner.
+again at once; the runner finds out and stops at its next heartbeat, within a
+minute by default.
 
 ## What an agent does with a ticket
 

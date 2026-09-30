@@ -47,16 +47,23 @@ public sealed record NotClaimed(string Sentence, bool Held);
 /// </remarks>
 public sealed class Claim : IAsyncDisposable
 {
+    /// <summary>The release's own budget - see <see cref="ReleaseAsync"/>.</summary>
+    private static readonly TimeSpan ReleaseBudget = TimeSpan.FromSeconds(10);
+
     private readonly HatchClient _client;
+    private readonly HatchClient _quiet;
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _interval;
+    private readonly TimeSpan? _stallLapse;
     private Task? _heartbeat;
     private int _released;
 
-    private Claim(HatchClient client, string key, Guid token, int ttlSeconds, TimeSpan interval)
+    private Claim(HatchClient client, string key, Guid token, int ttlSeconds, TimeSpan interval, TimeSpan? stallLapse)
     {
         _client = client;
+        _quiet = client.Quiet();
         _interval = interval;
+        _stallLapse = stallLapse;
         Key = key;
         Token = token;
         TtlSeconds = ttlSeconds;
@@ -101,8 +108,15 @@ public sealed class Claim : IAsyncDisposable
     /// Take the lease, and start saying so. Answers the claim, or the reason it
     /// was refused.
     /// </summary>
+    /// <param name="stallLapse">
+    /// Overrides what the take answered in <c>StallLapseSeconds</c> - null
+    /// takes that, so a test can hand the heartbeat a window measured in
+    /// milliseconds rather than waiting out real minutes. See <see
+    /// cref="BeatAsync"/>.
+    /// </param>
     public static async Task<(Claim? Held, NotClaimed? Refused)> TakeAsync(
-        HatchClient client, string key, string runner, CancellationToken ct, TimeSpan? interval = null)
+        HatchClient client, string key, string runner, CancellationToken ct, TimeSpan? interval = null,
+        TimeSpan? stallLapse = null)
     {
         var answer = await client.Send(
             HttpMethod.Post, $"/api/hatch/issues/{key}/claim", new ClaimRequest(runner), ct);
@@ -124,7 +138,8 @@ public sealed class Claim : IAsyncDisposable
             return (null, new NotClaimed("the claim came back without a token", Held: false));
 
         var claim = new Claim(
-            client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds));
+            client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds),
+            stallLapse ?? (taken.StallLapseSeconds > 0 ? TimeSpan.FromSeconds(taken.StallLapseSeconds) : null));
         claim._heartbeat = Task.Run(() => claim.BeatAsync(claim._stop.Token), CancellationToken.None);
         return (claim, null);
     }
@@ -135,15 +150,31 @@ public sealed class Claim : IAsyncDisposable
     /// rather than when a heartbeat happened to fire.
     /// </summary>
     /// <remarks>
-    /// Nothing in here may take a night's run down. A refused heartbeat is a
-    /// lost lease and is reported as one; every other failure is a blip, and the
-    /// next tick tries again - a timeout, a 500 and an origin that did not
-    /// answer are all reasons to ask again in a minute and none of them is a
-    /// reason to stop an increment that is doing fine.
+    /// <para>Nothing in here may take a night's run down. A refused heartbeat is
+    /// a lost lease and is reported as one; every other failure is a blip on its
+    /// own - each beat already spent up to <see cref="Settings.RetrySeconds"/>
+    /// retrying inside <see cref="HatchClient.Send"/> before it came back here
+    /// at all - and the next tick tries again.</para>
+    ///
+    /// <para><b>Unless the blips add up to more than <see cref="_stallLapse"/>
+    /// altogether.</b> This is a client-side mitigation and not a guarantee -
+    /// the server's own quiet-claim rule is what actually lets somebody else
+    /// take the ticket - but a runner that cannot reach Hatch has no way to know
+    /// whether it still holds the lease, and going quiet on its own, once it has
+    /// been that long, is what keeps it from spending real work on a ticket the
+    /// board may already have handed to somebody else. Checked before each
+    /// attempt rather than only after one fails, so a beat already past the
+    /// window gives up without spending another retry's worth of time finding
+    /// out the call still fails - which keeps the give-up within about one
+    /// heartbeat interval of the window, not the window plus a retry's slack.
+    /// A <see cref="_stallLapse"/> of zero or null - lapsing off, install-wide -
+    /// never gives up this way: every failure reads as weather, as it always
+    /// has.</para>
     /// </remarks>
     private async Task BeatAsync(CancellationToken ct)
     {
         string? sent = null;
+        var lastGood = DateTimeOffset.UtcNow;
 
         while (!ct.IsCancellationRequested)
         {
@@ -153,6 +184,13 @@ public sealed class Claim : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
+                return;
+            }
+
+            if (_stallLapse is { } lapse && lapse > TimeSpan.Zero && DateTimeOffset.UtcNow - lastGood >= lapse)
+            {
+                Lost = $"no answer from Hatch for over {(int)lapse.TotalSeconds}s";
+                OnLost?.Invoke(Lost);
                 return;
             }
 
@@ -166,12 +204,16 @@ public sealed class Claim : IAsyncDisposable
                 ? new ClaimHeartbeatRequest(Token, null)
                 : new ClaimHeartbeatRequest(Token, line);
 
-            var answer = await _client.Send(
+            // Quiet: a heartbeat says nothing about weather today, whatever
+            // HatchClient.Send spent retrying underneath it - see docs/hatch.md,
+            // "What it stops for".
+            var answer = await _quiet.Send(
                 HttpMethod.Post, $"/api/hatch/issues/{Key}/claim/heartbeat", body, ct);
 
             if (answer.Ok)
             {
                 sent = line;
+                lastGood = DateTimeOffset.UtcNow;
                 continue;
             }
 
@@ -182,7 +224,9 @@ public sealed class Claim : IAsyncDisposable
                 return;
             }
 
-            // Anything else is weather.
+            // Anything else is weather - lastGood is left alone, and the check
+            // at the top of the next iteration is what decides whether this
+            // stretch of it has gone on long enough to give up.
         }
     }
 
@@ -191,7 +235,15 @@ public sealed class Claim : IAsyncDisposable
     /// on its way out, then presents the token - which is what lets a runner
     /// release its own lease and nobody else's.
     /// </summary>
-    public async Task ReleaseAsync()
+    /// <param name="outcome">
+    /// One of <see cref="ClaimOutcomes"/> - whether this increment moved the
+    /// ticket or left it where it found it - or null, which is what every
+    /// release sent before this one meant and what a pick's own throwaway
+    /// release, a restart, and an attached session's still mean: nothing is
+    /// said about how the increment went, because none of them ran one to
+    /// completion.
+    /// </param>
+    public async Task ReleaseAsync(string? outcome = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
 
@@ -212,10 +264,32 @@ public sealed class Claim : IAsyncDisposable
             }
         }
 
-        // Not through the throwing lane: a release that was refused is a lease
-        // that has already gone, which is the state a DELETE was asking for.
-        await _client.Send(
-            HttpMethod.Delete, $"/api/hatch/issues/{Key}/claim?token={Token}", null, CancellationToken.None);
+        // Its own budget, and not the caller's token: this already runs on the
+        // way out of an interrupt, so CancellationToken.None would mean a
+        // Ctrl-C against a dead origin sits through the full retry window
+        // before the process is free to exit. Ten seconds, not ninety - a
+        // best-effort release is worth a short wait and not a long one. Timed
+        // against the client's own clock, so a test can drive the same fake
+        // one the retries inside Send are waiting on rather than the ten
+        // real seconds this would otherwise cost.
+        using var budget = new CancellationTokenSource(ReleaseBudget, _client.Clock);
+
+        var path = outcome is { Length: > 0 }
+            ? $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
+            : $"/api/hatch/issues/{Key}/claim?token={Token}";
+
+        try
+        {
+            // Not through the throwing lane: a release that was refused is a
+            // lease that has already gone, which is the state a DELETE was
+            // asking for.
+            await _client.Send(HttpMethod.Delete, path, null, budget.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The budget ran out against an origin that never answered - still
+            // best-effort, and still not worth failing the release over.
+        }
     }
 
     public async ValueTask DisposeAsync()

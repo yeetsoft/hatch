@@ -77,13 +77,18 @@ public sealed class Runners(IOptions<HatchOptions> options)
     /// The line is the claim's while there is one and the row's when there is
     /// not, and that is the whole of why the row has a line at all: an
     /// increment's chatter already rides its lease, so this column only ever
-    /// carries what a runner said between tickets.
+    /// carries what a runner said between tickets. <c>LastSeenAt</c> is the
+    /// later of the row's own and the claim's heartbeat, for the same reason:
+    /// a session mid-increment beats its claim far more often than it beats
+    /// its row, and a runner reading <em>Gone</em> because nothing has touched
+    /// the row in ninety seconds would be wrong while its claim is still being
+    /// renewed every minute.
     /// </remarks>
     public RunnerDto Project(EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim) => new(
         runner.Name,
         runner.Kind,
         runner.FirstSeenAt,
-        runner.LastSeenAt,
+        claim is { Claim.HeartbeatAt: { } beat } && beat > runner.LastSeenAt ? beat : runner.LastSeenAt,
         claim?.Key,
         claim is { } held ? held.Claim.Chatter : runner.Line,
         claim is { } at ? at.Claim.ChatterAt : runner.LineAt,

@@ -236,6 +236,8 @@ public sealed class BoardCommands(Cli cli)
                 + q.FromStatus.Name.PadRight(columnWidth) + "  "
                 + (q.Blocked is { Length: > 0 } why
                     ? why
+                    : q.ClearNote is { Length: > 0 } note
+                    ? $"clear for {q.FromStatus.Name} -> {q.ToStatus?.Name ?? "?"} - {note}"
                     : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)
                     : q.Kind == WorkKinds.Build ? Builds.Words(q.Issue)
                     : q.Hop ? $"-> {q.ToStatus?.Name ?? "?"}  (express, no session)"
