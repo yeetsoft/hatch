@@ -261,6 +261,17 @@
   --measure: 600px;
 }
 
+/* A genuine phone-width viewport, not a narrowed container - see the note on
+   ModalPage/TablePage. Modal and Table's phone rules are @media (max-width:
+   40rem), which reads this browsing context's width; only an iframe has one
+   narrower than the window behind it. */
+.gallery-phone-frame {
+  width: 390px;
+  height: 700px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
 .stage-page {
   display: flex;
   flex-direction: column;
