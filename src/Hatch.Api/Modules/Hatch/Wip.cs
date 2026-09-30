@@ -95,6 +95,10 @@ public static class Wip
             })
             .ToListAsync(ct);
 
+        var parents = await db.Issues.AsNoTracking()
+            .Select(i => new { i.Id, i.ParentId })
+            .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
+
         var slices = new List<WipSlice>();
         foreach (var types in sliceTypes)
         {
@@ -106,10 +110,17 @@ public static class Wip
                 .Select(r => r.Id)
                 .ToHashSet();
 
-            var claimedInbound = ofType.Count(r => !sectionIds.Contains(r.StatusId) && counted.Contains(r.Id));
+            // A line of the tree costs the section one slot: where an ancestor
+            // and a descendant are both counted, only the family's root - the
+            // one with no further counted ancestor - is charged against the
+            // limit.
+            var familyRoots = counted.Where(id => !HasAncestorIn(id, counted, parents)).ToHashSet();
+
+            var claimedInbound = ofType.Count(r =>
+                !sectionIds.Contains(r.StatusId) && familyRoots.Contains(r.Id));
 
             var limit = limits.GetValueOrDefault(string.Join(",", types));
-            slices.Add(new WipSlice(types, limit, counted, claimedInbound));
+            slices.Add(new WipSlice(types, limit, counted, familyRoots.Count, claimedInbound, parents));
         }
 
         return new WipSection(section, slices);
@@ -117,6 +128,25 @@ public static class Wip
 
     private static async Task<Dictionary<string, int?>> RowsAsync(HatchContext db, CancellationToken ct) =>
         await db.WipLimits.AsNoTracking().ToDictionaryAsync(w => w.Types, w => (int?)w.Limit, ct);
+
+    /// <summary>
+    /// Whether any ancestor of <paramref name="id"/> is in <paramref name="set"/> -
+    /// the walk that makes a line of the tree one unit rather than one per
+    /// counted node on it, the same seen-guarded climb
+    /// <see cref="ClaimLineage.Holder"/> makes to find a live claim above.
+    /// </summary>
+    internal static bool HasAncestorIn(long id, IReadOnlySet<long> set, IReadOnlyDictionary<long, long?> parents)
+    {
+        var seen = new HashSet<long> { id };
+        var at = parents.GetValueOrDefault(id);
+        while (at is { } pid && seen.Add(pid))
+        {
+            if (set.Contains(pid)) return true;
+            at = parents.GetValueOrDefault(pid);
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// The sentence a refusal or an override names - "the WIP section is full -
@@ -167,15 +197,19 @@ public sealed class WipSlice
 {
     private readonly IReadOnlySet<string> _types;
     private readonly IReadOnlySet<long> _counted;
+    private readonly IReadOnlyDictionary<long, long?> _parents;
 
-    internal WipSlice(IReadOnlyList<string> types, int? limit, IReadOnlySet<long> counted, int claimedInbound)
+    internal WipSlice(
+        IReadOnlyList<string> types, int? limit, IReadOnlySet<long> counted,
+        int load, int claimedInbound, IReadOnlyDictionary<long, long?> parents)
     {
         Types = types;
         Limit = limit;
-        Load = counted.Count;
+        Load = load;
         ClaimedInbound = claimedInbound;
         _types = types.ToHashSet();
         _counted = counted;
+        _parents = parents;
     }
 
     public IReadOnlyList<string> Types { get; }
@@ -187,12 +221,17 @@ public sealed class WipSlice
     public bool Counts(string type) => _types.Contains(type);
 
     /// <summary>
-    /// Whether this issue is one of the ones <see cref="Load"/> was summed from:
-    /// in the section, or outside it and holding a live claim whose next column
-    /// is in the section. <see cref="Load"/> is always exactly the count of
-    /// issues this is true for.
+    /// Whether this issue is counted against <see cref="Load"/>: directly - in
+    /// the section, or outside it and holding a live claim whose next column is
+    /// in the section - or because a line of the tree costs the section one
+    /// slot and an ancestor of this issue is counted, directly or (within one
+    /// request) by <paramref name="alsoAdmitted"/>, the moves a batch has
+    /// already let through but not yet saved.
     /// </summary>
-    public bool Counted(EfHatchIssue issue) => _counted.Contains(issue.Id);
+    public bool Counted(EfHatchIssue issue, IReadOnlyCollection<long>? alsoAdmitted = null) =>
+        _counted.Contains(issue.Id)
+        || Wip.HasAncestorIn(issue.Id, _counted, _parents)
+        || (alsoAdmitted is { Count: > 0 } && Wip.HasAncestorIn(issue.Id, alsoAdmitted.ToHashSet(), _parents));
 
     public WipSliceLoadDto ToDto() => new(Types, Limit, Load, ClaimedInbound);
 }

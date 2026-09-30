@@ -893,6 +893,12 @@ live [claim](#claim) whose next column is itself a WIP column. Which columns
 count is exactly what `IsWip` says — see [Status](#status) — narrowed the same
 way: a deferred or terminal column never counts, whatever it is flagged.
 
+A line of the tree costs the section one slot, not one per counted issue on
+it: where an ancestor and a descendant are both counted, the nearer one's
+presence is what lets the other cross into a section that already holds it,
+and the load counts the family once, wherever in it the root happens to
+stand — inside the section, or outside it on a live claim heading in.
+
 **The claimed-inbound half** exists because a claim is what stops a second
 runner filling the same slot: an issue in a feeder column that a runner has
 already taken is effectively on its way into the section, and letting it
@@ -2844,12 +2850,15 @@ the sentence saying which one it failed is what `work/queue` reports:
    open, the same rule [Dependency](#dependency) already holds for a blocker.
    A childless issue is unaffected.
 9. **The [WIP section](#wip) has room for it**, when the move is into it: the
-   load, not counting this issue, is below the limit. Said after the dependency
-   above, which needs other work to land, and before the verdict below, which
-   needs nothing at all once a branch is clean — a full section needs other
-   work to leave. The load is always the board's own, whatever `ancestorKey`
-   narrows the candidates to, and the limit is a fact about the board rather
-   than the loop's policy: `work/{key}` is refused by it too, and overriding it
+   load, not counting this issue, is below the limit, nor counting any
+   ancestor of this issue already standing in it — a family crosses together,
+   at the cost of the one slot its nearest counted member already spent. Said
+   after the dependency above, which needs other work to land, and before the
+   verdict below, which needs nothing at all once a branch is clean — a full
+   section needs other work to leave. The load is always the board's own,
+   whatever `ancestorKey` narrows the candidates to, and the limit is a fact
+   about the board rather than the loop's policy: `work/{key}` is refused by
+   it too, and overriding it
    is done on the board, by moving the card in.
 10. **In review, its branch conflicts with the trunk or its build failed.** An
     issue in the review column is the loop's only when a [merge check](#merge-check)
