@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { conflictTitle, conflictWords, conflictedChecks } from '../lib/mergeCheck';
 import type { MergeCheck } from '../types';
 
 /**
  * The issue's branch, said to conflict with the trunk: a chip beside the pull
- * request's, one per repository that does, naming the files on hover.
+ * request's, one per repository that does, naming the files behind a press.
  *
  * Draws nothing for a clean verdict, no branch, more than one, or no verdict at
  * all - a chip for every branch that is fine would be a chip on every page in
@@ -16,10 +17,33 @@ export function MergeConflictChips({ checks }: { checks: readonly MergeCheck[] }
   return (
     <>
       {conflicted.map((c) => (
-        <span key={c.canonical} className="hatch-chip hatch-chip-conflict" title={conflictTitle(c, several)}>
-          {conflictWords(c, several)}
-        </span>
+        <ConflictChip key={c.canonical} check={c} several={several} />
       ))}
+    </>
+  );
+}
+
+function ConflictChip({ check, several }: { check: MergeCheck; several: boolean }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="hatch-chip hatch-chip-conflict"
+        title={conflictTitle(check, several)}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {conflictWords(check, several)}
+      </button>
+      {open && (
+        <ul className="hatch-chip-files">
+          {check.files.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

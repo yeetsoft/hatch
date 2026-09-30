@@ -433,8 +433,8 @@ export function IssuePage() {
             <span className="hatch-issue-key">{issue.key}</span>
             <TypeBadge type={issue.type} />
             {issue.parentKey && <Link to={`/issues/${issue.parentKey}`}>↳ {issue.parentKey}</Link>}
-            <MomentChip kind="ready" value={issue.readyAt} />
-            <MomentChip kind="due" value={issue.dueAt} muted={stopped} />
+            <MomentChip kind="ready" value={issue.readyAt} expandable />
+            <MomentChip kind="due" value={issue.dueAt} muted={stopped} expandable />
             <PullRequestLink url={issue.pullRequestUrl} />
             <MergeConflictChips checks={issue.mergeChecks} />
             <BuildCheckChips checks={issue.buildChecks} />

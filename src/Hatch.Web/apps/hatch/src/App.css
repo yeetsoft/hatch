@@ -1007,6 +1007,14 @@
   font-size: var(--t-label);
 }
 
+/* What a phone's chrome actually leaves, the same reason Modal.css and
+   Menu.css already use it (HA-161). */
+@media (max-width: 40rem) {
+  .hatch-cascade-list {
+    max-height: 40dvh;
+  }
+}
+
 /* ---- Dates ----
 
    The two chips a card can carry: `Ready`, drawn only while an issue is still
@@ -1106,6 +1114,33 @@
 .hatch-chip-link:focus-visible {
   border-color: var(--primary);
   text-decoration: underline;
+}
+
+/* MomentChip and MergeConflictChips grow a button variant that toggles a
+   press-to-reveal. A bare <button> carries the browser's own face; .hatch-chip
+   already supplies the border, radius and padding (all higher specificity than
+   base.css's generic `button` rule), so only the native chrome and the font
+   need resetting - the same shape .hatch-inline-title already uses to make a
+   button read as a heading. */
+button.hatch-chip {
+  appearance: none;
+  background: none;
+  font: inherit;
+  font-size: var(--t-label);
+  text-align: left;
+}
+
+/* The conflict chip's file list, dropped to its own line under the button
+   that opens it - flex-basis: 100% is the same trick .hatch-peek-status
+   uses. */
+.hatch-chip-files {
+  flex-basis: 100%;
+  margin: var(--sp-1) 0 0;
+  padding: 0 0 0 var(--sp-4);
+  list-style: none;
+  font-size: var(--t-micro);
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 /* A card only visible because its column's fold was opened. Held back rather
@@ -1382,6 +1417,15 @@
   display: flex;
   gap: var(--sp-5);
   flex-wrap: wrap;
+}
+
+/* One field per row, full width - the controls card's own fields have no
+   width of their own, so a column flex context is what makes each stretch to
+   fill it (Field.tsx's own box already stacks label over control). */
+@media (max-width: 40rem) {
+  .hatch-issue-controls {
+    flex-direction: column;
+  }
 }
 
 /* A heading that is also a button: it has to look like the heading, not like
@@ -1807,6 +1851,18 @@ input.hatch-inline-title-input {
   margin-left: auto;
 }
 
+/* The shared left edge above is a desk-width argument - a phone already
+   stacks these rows under long titles, so there is no edge left to share.
+   .hatch-meter and .hatch-meter-bar are already min-width: 0 internally
+   (above), so this is safe to shrink. */
+@media (max-width: 40rem) {
+  .hatch-progress-row > .hatch-meter {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 0;
+  }
+}
+
 /* ---- Depends on / Blocks, on the issue page ----
 
    Two lists of edges in one card, drawn with the Progress card's own list and
@@ -1886,6 +1942,18 @@ input.hatch-inline-title-input {
   min-width: 0;
 }
 
+/* The answer box's input keeps a comfortable floor and wraps under the button
+   rather than being squeezed to nothing. */
+@media (max-width: 40rem) {
+  .hatch-answer-box {
+    flex-wrap: wrap;
+  }
+
+  .hatch-answer-box input {
+    flex: 1 1 12rem;
+  }
+}
+
 .hatch-events summary {
   cursor: pointer;
 }
@@ -1903,6 +1971,16 @@ input.hatch-inline-title-input {
   padding: var(--sp-2) 0;
   font-size: var(--t-label);
   border-top: 1px solid var(--line);
+}
+
+/* A long trail description, or a comment with two badges and a MessageState,
+   can otherwise push the row past the screen - the same shape
+   .hatch-worklog-head and .hatch-claim-facts already wrap this way. */
+@media (max-width: 40rem) {
+  .hatch-event,
+  .hatch-comment-head {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- The work log, on the issue page ----
@@ -2870,6 +2948,15 @@ button.hatch-option.chosen {
   min-width: 18rem;
 }
 
+/* The floor above is wider than a phone's content box (358px at 390px, after
+   .hatch-issue-page's --sp-4 gutters) - shrink to the box rather than past
+   it. */
+@media (max-width: 40rem) {
+  .hatch-issue-picker {
+    min-width: min(18rem, 100%);
+  }
+}
+
 /* The closed face. <button> in base.css has no border and a control's padding,
    so this restates the select's appearance rather than inheriting it. */
 .hatch-issue-picker-button {
@@ -3654,6 +3741,14 @@ button.hatch-option.chosen {
   /* So the field does not collapse in the flex row of .hatch-issue-controls -
      the same reason the parent picker sets one. */
   min-width: 11rem;
+}
+
+/* The floor above is wider than a phone's content box - shrink to it rather
+   than past it, the same reason the issue picker's floor does above. */
+@media (max-width: 40rem) {
+  .hatch-assignee-field select {
+    min-width: min(11rem, 100%);
+  }
 }
 
 /* Quieter than a primary button and louder than a link: taking a ticket is a
