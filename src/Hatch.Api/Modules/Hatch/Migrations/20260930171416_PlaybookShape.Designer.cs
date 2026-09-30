@@ -433,8 +433,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<string>("Shape")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("any");
 
                     b.Property<int>("ToStatusId")
                         .HasColumnType("integer");
