@@ -188,6 +188,7 @@ public class WorkController(
             r.Blocked,
             r.Kind,
             r.Hop,
+            r.HopKind,
             r.ClearNote)).ToList();
     }
 
@@ -297,17 +298,19 @@ public class WorkController(
     }
 
     /// <summary>
-    /// Carries an express issue across the column it stands in, with no
-    /// session - the loop's own write, on the loop's own say-so. Judged fresh
-    /// as the move is made, with the same <see cref="Dispatch.Blocked"/> a
-    /// named dispatch is judged by, so a stale runner cannot carry an issue the
-    /// server would no longer carry.
+    /// Carries an express issue, or a child its parent pulls, across the
+    /// column it stands in, with no session - the loop's own write, on the
+    /// loop's own say-so. Judged fresh as the move is made, with the same
+    /// <see cref="Dispatch.Blocked"/> a named dispatch is judged by, so a
+    /// stale runner cannot carry an issue the server would no longer carry.
     /// </summary>
     /// <remarks>
     /// Takes no claim: a claim protects a session that runs for minutes, and a
     /// hop is one write. Writes <c>status_changed</c> naming the caller as the
-    /// actor and carrying <c>express: true</c>, the same event a move writes,
-    /// so a card that passed a gate with nobody present says so on its trail.
+    /// actor and carrying <c>express: true</c> or <c>pulled: true</c>,
+    /// whichever of <see cref="HopKinds"/> carried it - the same event a move
+    /// writes, so a card that passed a gate with nobody present says so on its
+    /// trail.
     /// </remarks>
     [HttpPost("{key}/hop")]
     public async Task<ActionResult<IssueDto>> HopWork(
@@ -337,16 +340,18 @@ public class WorkController(
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
         var built = inReview ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
 
-        var hop = to is not null && issue.Express && from.ExpressSkips;
+        var family = await FamilyGate.ForAsync(db, statuses, ct);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, family, statuses);
+        var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting,
             null, // a hop takes no ready-date fold of its own - see Dispatch.Blocked's loop parameter
             await DependencyGate.ForAsync(db, statuses, ct),
-            await FamilyGate.ForAsync(db, statuses, ct),
+            family,
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop,
+            repos, merged, built, hop, statuses,
             await Wip.LoadAsync(db, claims, statuses, now, ct));
 
         if (blocked is not null) return Conflict(blocked);
@@ -355,11 +360,15 @@ public class WorkController(
         var target = Columns.Advance(statuses, from)!;
         var actor = await caller.ActorNameAsync(ct);
 
+        var payload = hopKind == HopKinds.Parent
+            ? JsonSerializer.Serialize(new { from = from.Name, to = target.Name, pulled = true })
+            : JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true });
+
         issue.Events.Add(new EfHatchIssueEvent
         {
             Actor = actor,
             Kind = EfHatchIssueEvent.StatusChanged,
-            Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
+            Payload = payload,
             At = now,
         });
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
@@ -464,11 +473,12 @@ public class WorkController(
             .Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical)))
             .ToList();
 
-        var hop = to is not null && issue.Express && from.ExpressSkips;
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, family, statuses);
+        var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting, loop, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop, wip);
+            repos, merged, built, hop, statuses, wip);
         var hopped = hop && blocked is null;
 
         return new WorkDto(
@@ -500,6 +510,7 @@ public class WorkController(
             Dispatch.KindOf(issue, from, to, merged, built),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
+            hopped ? hopKind : null,
             await LetGoAsync(issue.Id, ct));
     }
 

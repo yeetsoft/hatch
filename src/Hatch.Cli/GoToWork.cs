@@ -1143,7 +1143,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     idle.Clear();
                     busy.Clear();
                     var hop = picked.Hopped!;
-                    var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  express, no session";
+                    var hopLine = $"{hop.Key}  {hop.From} -> {hop.To}  {hop.Reason}";
                     line.Line = hopLine;
                     runtime.Say.Line($"hatch: {hopLine}");
                     return Pass.Hopped;

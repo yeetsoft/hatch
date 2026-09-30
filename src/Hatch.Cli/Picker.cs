@@ -47,7 +47,7 @@ public sealed class PickFailedException(string key, Exception inner) : Exception
 /// <see cref="Pick.Hopped"/> carries beside <see cref="Picked.Outcome"/>, the
 /// way <see cref="Pick.Claimed"/> carries <see cref="Picked.Work"/>.
 /// </summary>
-public sealed record HoppedIssue(string Key, string From, string To);
+public sealed record HoppedIssue(string Key, string From, string To, string Reason);
 
 /// <param name="Busy">One line per candidate that was taken, naming the key and who has it.</param>
 /// <param name="Chosen">
@@ -110,6 +110,10 @@ public sealed class Picker(
 
     private readonly bool _clones = workspace is not null;
 
+    /// <summary>The label a hop row prints, naming which of the two reasons carried it.</summary>
+    public static string HopReason(string? hopKind) =>
+        hopKind == HopKinds.Parent ? "parent pulled, no session" : "express, no session";
+
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)
     {
@@ -169,7 +173,7 @@ public sealed class Picker(
                 }
 
                 return new Picked(Pick.Hopped, null, null, queue, busy, Checkouts: checkouts,
-                    Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?"));
+                    Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?", HopReason(entry.HopKind)));
             }
 
             var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat);
