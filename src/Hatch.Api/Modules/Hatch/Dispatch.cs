@@ -78,6 +78,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct));
 
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
+        var family = await FamilyGate.ForAsync(db, statuses, ct);
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var open = await Questions.DispatchCountsAsync(db, claims.StallLapseSeconds, now, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
@@ -159,7 +160,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var hop = issue.Express && status.ExpressSkips;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, gate, claimed, implementation,
+                        issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
                         assignees[issue.Id], repos, merged, built, hop, wip);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
@@ -170,7 +171,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, claimed, repos, wip, null);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, null);
     }
 
     /// <summary>
@@ -314,16 +315,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <para>The order is what it costs to change the answer, most fundamental
     /// first: a terminal column, no column after this one, a terminal next
     /// column, a live claim, a ready date, an assignee, an unanswered question,
-    /// a repository the caller has no checkout of, an unmet dependency, a full
-    /// WIP section, the verdict on an issue's branch, and last a missing
-    /// playbook. A column with nowhere an agent may go is a fact about the
-    /// board and no argument alters it; a ready date needs time; a question
+    /// a repository the caller has no checkout of, an unmet dependency, an open
+    /// child, a full WIP section, the verdict on an issue's branch, and last a
+    /// missing playbook. A column with nowhere an agent may go is a fact about
+    /// the board and no argument alters it; a ready date needs time; a question
     /// needs a person; a repository needs a clone; a dependency needs other
-    /// work to land; a full section needs other work to leave; a clean branch
-    /// with a build that passes, is running or has not been read needs nothing
-    /// at all; and a missing playbook needs the operator, which
-    /// is last because it is only worth saying about an issue that is otherwise
-    /// a candidate.</para>
+    /// work to land; an open child needs its own session or its own close; a
+    /// full section needs other work to leave; a clean branch with a build that
+    /// passes, is running or has not been read needs nothing at all; and a
+    /// missing playbook needs the operator, which is last because it is only
+    /// worth saying about an issue that is otherwise a candidate.</para>
     ///
     /// <para>The verdict is asked only of the review column, which is
     /// dispatched to itself (<see cref="Columns.Target"/>) and only when its
@@ -376,6 +377,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// dependency is a fact about the work, so an issue somebody named by hand
     /// is refused too, and somebody who disagrees removes the edge.
     /// </param>
+    /// <param name="family">
+    /// Every issue's children and which of them are open - see
+    /// <see cref="FamilyGate"/>. Not the loop's policy: a story's tasks are the
+    /// work, so a named dispatch is folded by an open one too, and somebody who
+    /// disagrees closes or defers the child.
+    /// </param>
     /// <param name="claimed">
     /// Who is holding this issue, and what the caller holds itself. Not the
     /// loop's policy either, and for the same reason: a second agent sent at a
@@ -416,6 +423,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         int waiting,
         LoopScope? loop,
         DependencyGate gate,
+        FamilyGate family,
         ClaimGate claimed,
         EfHatchStatus? implementation,
         AssigneeDto? assignee,
@@ -494,6 +502,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
         }
+
+        // The mirror of the dependency fold above: that one gates the move in,
+        // this one gates the move out. An issue standing in the implementation
+        // column with a child that is not yet closed is not itself the work -
+        // its children are - so it is folded rather than carried into review.
+        if (from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
+            return "its children are the work, and some are still open";
 
         // A full section needs other work to leave, so it is said after a
         // dependency, which needs other work to land, and before a missing
@@ -591,10 +606,10 @@ public sealed record ScanRow(
 /// </summary>
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
-    ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip, string? Failure)
+    FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip, string? Failure)
 {
     public static Scan Refused(string why) =>
-        new([], [], null, DependencyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, null, why);
+        new([], [], null, DependencyGate.None, FamilyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, null, why);
 }
 
 /// <summary>
@@ -785,3 +800,62 @@ public sealed class DependencyGate
 /// is the issue's own, and the ancestor's key when it is not.
 /// </summary>
 public sealed record UnmetEdge(string BlockerKey, string? HolderKey);
+
+// ---- Family ----
+
+/// <summary>
+/// Every issue's direct children, read once as <c>(Id, ParentId, StatusId)</c>
+/// in board order, and which of them are open - the input to the fold that
+/// keeps an issue with unfinished children out of review.
+/// </summary>
+public sealed class FamilyGate
+{
+    /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
+    public static readonly FamilyGate None = new([], []);
+
+    private readonly Dictionary<long, List<long>> _children;
+    private readonly HashSet<long> _open;
+
+    private FamilyGate(Dictionary<long, List<long>> children, HashSet<long> open)
+    {
+        _children = children;
+        _open = open;
+    }
+
+    public static async Task<FamilyGate> ForAsync(
+        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct)
+    {
+        var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
+
+        var rows = await db.Issues.AsNoTracking()
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Select(i => new { i.Id, i.ParentId, i.StatusId })
+            .ToListAsync(ct);
+
+        var children = new Dictionary<long, List<long>>();
+        var open = new HashSet<long>();
+        foreach (var row in rows)
+        {
+            if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
+
+            if (row.ParentId is not { } parent) continue;
+            if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
+            siblings.Add(row.Id);
+        }
+
+        return new FamilyGate(children, open);
+    }
+
+    /// <summary>The direct children of this issue, in board order.</summary>
+    public IReadOnlyList<long> Children(long issueId) =>
+        _children.TryGetValue(issueId, out var kids) ? kids : [];
+
+    /// <summary>
+    /// The direct children whose column is not terminal. A deferred child
+    /// counts as open - <see cref="Deferrals"/> and <c>EfHatchIssueDependency</c>
+    /// already hold that a shelved blocker does not satisfy a gate, and this is
+    /// the same rule, not a new one.
+    /// </summary>
+    public IReadOnlyList<long> OpenChildren(long issueId) =>
+        Children(issueId).Where(_open.Contains).ToList();
+}
