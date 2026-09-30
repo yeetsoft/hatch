@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
@@ -22,6 +23,8 @@ import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
+import { navRows } from './lib/nav';
+import { usePhone } from './lib/viewport';
 
 export function App() {
   return (
@@ -32,7 +35,8 @@ export function App() {
 }
 
 function AppShell() {
-  const { me } = useMe();
+  const { me, isAdmin } = useMe();
+  const isPhone = usePhone();
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
@@ -45,23 +49,57 @@ function AppShell() {
           appName="Hatch"
           homeHref={appHref('/')}
           width="full"
-          leading={<PrimaryNav tone="accent" />}
+          /* Below the phone breakpoint PrimaryNav is absent rather than
+             hidden by CSS - its triggers must not sit in the tab order when
+             the same pages are reached from the gear's panel instead. */
+          leading={isPhone ? undefined : <PrimaryNav tone="accent" />}
           trailing={
-            <>
-              {/* What the bar says about this session rather than about the
-                  board. Draws nothing until a runner of mine has reported a
-                  reading - a fresh install, and anybody who has never run
-                  one, are both in that state. */}
-              <NavUtilization />
-              {/* Last, at the right end of the bar: whether the loop is
-                  waiting on a person. Unlike the one above it this always draws
-                  something - "nothing is waiting" is an answer, and it is the
-                  one it gives most of the time. */}
+            isPhone ? (
+              /* The one thing a phone user must always see: never narrower or
+                 quieter than it is on a desk. The battery moves into the
+                 gear's panel below instead - see .hatch-phone-menu. */
               <NavAttention />
-            </>
+            ) : (
+              <>
+                {/* What the bar says about this session rather than about the
+                    board. Draws nothing until a runner of mine has reported a
+                    reading - a fresh install, and anybody who has never run
+                    one, are both in that state. */}
+                <NavUtilization />
+                {/* Last, at the right end of the bar: whether the loop is
+                    waiting on a person. Unlike the one above it this always draws
+                    something - "nothing is waiting" is an answer, and it is the
+                    one it gives most of the time. */}
+                <NavAttention />
+              </>
+            )
           }
           menu={
             <>
+              {isPhone && (
+                /* Everything the primary nav shows on the desk, flattened
+                   with the battery folded in as a row - order: -1 in
+                   App.css draws this ahead of Theme without TopBar.tsx's own
+                   DOM order (Theme first) ever changing. */
+                <div className="hatch-phone-menu">
+                  {navRows(isAdmin).map((row, index, rows) => (
+                    <Fragment key={row.to}>
+                      {row.groupLabel !== null && row.groupLabel !== rows[index - 1]?.groupLabel ? (
+                        <div className="hatch-menu__row">
+                          <span className="hatch-menu__row-label">{row.groupLabel}</span>
+                        </div>
+                      ) : null}
+                      <Menu.Item as={NavLink} to={row.to} end={row.end}>
+                        {row.label}
+                      </Menu.Item>
+                    </Fragment>
+                  ))}
+                  <hr className="hatch-menu__divider" />
+                  {/* No-ops until a runner of mine has reported a reading -
+                      the same condition that hides it on the desk. */}
+                  <NavUtilization />
+                </div>
+              )}
               <Menu.Item as={NavLink} to="/settings">Settings</Menu.Item>
               {/* A static file shipped beside this bundle rather than a route,
                   so a plain anchor and a real page navigation - a NavLink
