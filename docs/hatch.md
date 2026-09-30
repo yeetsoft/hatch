@@ -252,12 +252,11 @@ it.
 
 `ParentPulls` marks the columns a child is carried on out of, with no session,
 while its parent stands in the implementation column — seeded true on
-`Backlog` and, as of this writing, read by nothing: it is the flag HA-146's
-other tasks are built against, and the pull itself lands separately. Set only
-by a person, through its own route (`PUT
-/api/hatch/statuses/{id}/parent-pulls`), for the same reason `ExpressSkips`
-is: it decides which gates the loop may pass unattended. Neither `POST
-/api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set it either.
+`Backlog` and read by [the hop](#the-hop). Set only by a person, through its
+own route (`PUT /api/hatch/statuses/{id}/parent-pulls`), for the same reason
+`ExpressSkips` is: it decides which gates the loop may pass unattended.
+Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can
+set it either.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
@@ -2277,16 +2276,24 @@ missing configuration:
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, one last check before the ordinary refusal: is
-this a [hop](#the-hop)? An issue that is [express](#express) and stands in a
-column marked [`ExpressSkips`](#status) needs no playbook at all — the pass
-calls the row clear, and the caller carries it across itself with
-`POST /api/hatch/work/{key}/hop` rather than spawning a session. Every refusal
-above this one still applies to an express issue exactly as it applies to any
-other: the hop answers only "does this column still need a session", and
-nothing about a live claim, a ready date, an assignee, a question, a
-repository or a dependency is any different for it. Only where none of those
-folds it either, and it is not a hop, does the pass fall through to the
-ordinary refusal: no playbook covers this transition for this type.
+this a [hop](#the-hop)? Two things are judged the same way here. An issue that
+is [express](#express) and stands in a column marked
+[`ExpressSkips`](#status) needs no playbook at all — the pass calls the row
+clear, and the caller carries it across itself with
+`POST /api/hatch/work/{key}/hop` rather than spawning a session. So does a
+child standing in a column marked [`ParentPulls`](#status), whose parent
+stands in the implementation column and none of whose siblings is further
+along — but where the column is so marked and one of those two conditions is
+not yet met, the row is folded with a sentence naming which one, rather than
+falling through to "no playbook covers this": "its parent has not reached the
+implementation column, so nothing pulls it forward yet", or "a sibling is
+already in flight, so only one child is pulled through at a time". Every
+refusal above this one still applies to either kind of hop exactly as it
+applies to any other issue: a hop answers only "does this column still need a
+session", and nothing about a live claim, a ready date, an assignee, a
+question, a repository or a dependency is any different for it. Only where
+none of those folds it either, and it is not a hop, does the pass fall through
+to the ordinary refusal: no playbook covers this transition for this type.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -2308,7 +2315,10 @@ named a ticket is owed the sentence saying why it cannot move.
 
 **The loop's own write, on the loop's own say-so.** Take an issue that is
 [express](#express) and stands in a column marked
-[`ExpressSkips`](#status), with no unanswered question, and
+[`ExpressSkips`](#status), with no unanswered question — or a child standing
+in a column marked [`ParentPulls`](#status), whose parent stands in the
+implementation column and none of whose siblings is standing further along,
+in board order, than the column this issue would be pulled into — and
 `POST /api/hatch/work/{key}/hop` carries it one column right — the same
 column `Columns.Advance` would send a session to — and spawns nothing. No
 model runs, nothing is spent, and no work-log row is written, because a hop is
@@ -2325,17 +2335,21 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 `hatch queue`:
 
 - The issue is blocked by some other fold — a claim, a ready date, an
-  assignee, a question, a repository, a dependency, a terminal next column.
-  The sentence is exactly the one `Blocked` already gives for that fold.
-- The issue is clear, but is not a hop — not express, or standing in a column
-  nothing has ticked. A session moves this issue, and a hop does not.
+  assignee, a question, a repository, a dependency, a terminal next column, or
+  (for a child of a `ParentPulls` column) a parent that has not reached the
+  implementation column, or a sibling already in flight. The sentence is
+  exactly the one `Blocked` already gives for that fold.
+- The issue is clear, but is not a hop — not express, not a child its parent
+  pulls, or standing in a column nothing has ticked. A session moves this
+  issue, and a hop does not.
 
 Otherwise the move is made: the issue's rank is set with
 `RankService.BottomAsync`, the same as any other move, and the history gets one
 `status_changed` event naming the caller as the actor and carrying
-`{ from, to, express: true }` — the same shape `IssuesController.MoveIssue`
-writes, with one more field, so a card that passed a gate with nobody present
-says so on its own trail.
+`{ from, to, express: true }`, or `{ from, to, pulled: true }` where a parent
+pulled it rather than express carrying it — the same shape
+`IssuesController.MoveIssue` writes, with one more field, so a card that
+passed a gate with nobody present says so on its own trail.
 
 **Why the server performs the hop, on its own route, rather than the CLI
 calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
@@ -2798,6 +2812,17 @@ the sentence saying which one it failed is what `work/queue` reports:
     one still has to hold — a hop is not an escape from a live claim, a ready
     date, an assignee, a question, a repository, a dependency, an open child or
     a full section, only from needing a playbook.
+
+    A child standing in a column marked [`ParentPulls`](#status) is the same
+    kind of hop, for a different reason: its parent stands in the
+    implementation column, and none of its siblings is standing further
+    along, in board order, than the column this issue would be pulled into.
+    Where the column is so marked but one of those two is not yet true, the
+    refinement is its own two-sentence fold rather than a fall-through to the
+    eleventh condition's "no playbook covers this": "its parent has not
+    reached the implementation column, so nothing pulls it forward yet", or "a
+    sibling is already in flight, so only one child is pulled through at a
+    time".
 
 Nine of them — 1, 2, 5, 6, 7, 8, 9, 10 and 11 — are facts about the issue, and
 `work/{key}` asks them too. The twelfth is as well, and `work/{key}` answers

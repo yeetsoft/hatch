@@ -42,8 +42,9 @@ public sealed class BoardCommands(Cli cli)
         "  row before every expedited row before anything else, whatever column",
         "  each sits in.",
         "",
-        "  A row marked \"(express, no session)\" is a hop: the loop carries it on",
-        "  itself with no session, rather than spawning one.",
+        "  A row marked \"(express, no session)\" or \"(parent pulled, no session)\" is a",
+        "  hop: the loop carries it on itself with no session, rather than spawning",
+        "  one.",
     ];
 
     /// <summary>
@@ -261,7 +262,7 @@ public sealed class BoardCommands(Cli cli)
                     ? $"clear for {q.FromStatus.Name} -> {q.ToStatus?.Name ?? "?"} - {note}"
                     : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)
                     : q.Kind == WorkKinds.Build ? Builds.Words(q.Issue)
-                    : q.Hop ? $"-> {q.ToStatus?.Name ?? "?"}  (express, no session)"
+                    : q.Hop ? $"-> {q.ToStatus?.Name ?? "?"}  ({Picker.HopReason(q.HopKind)})"
                     : $"-> {q.ToStatus?.Name ?? "?"}"))
             .ToList();
     }

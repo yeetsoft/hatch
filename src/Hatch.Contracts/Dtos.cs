@@ -1103,6 +1103,10 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <paramref name="Playbook"/> is always null on a hop, even where one covers
 /// the move, so no client can spawn a session for it by accident.
 /// </param>
+/// <param name="HopKind">
+/// Which of <see cref="HopKinds"/> carried this hop, or null where
+/// <paramref name="Hop"/> is false - see HA-149.
+/// </param>
 /// <param name="LetGo">
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
@@ -1125,6 +1129,7 @@ public record WorkDto(
     string Kind = WorkKinds.Advance,
     IReadOnlyList<CommentDto>? Messages = null,
     bool Hop = false,
+    string? HopKind = null,
     int LetGo = 0);
 
 /// <summary>
@@ -1151,6 +1156,16 @@ public static class WorkKinds
     /// pushed a new tip, and the build on that tip is judged later, by the board.
     /// </summary>
     public const string Build = "build";
+}
+
+/// <summary>Which of the two reasons carried a hop - see WorkDto.HopKind.</summary>
+public static class HopKinds
+{
+    /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
+    public const string Express = "express";
+
+    /// <summary>A child a parent pulls, in a column marked ParentPulls - see HA-149.</summary>
+    public const string Parent = "parent";
 }
 
 /// <summary>
@@ -1185,6 +1200,7 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// </param>
 /// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 /// <param name="Hop">As on <see cref="WorkDto"/>.</param>
+/// <param name="HopKind">As on <see cref="WorkDto"/>.</param>
 /// <param name="ClearNote">
 /// Why a row that carries no <paramref name="Blocked"/> is clear at all, where
 /// that is not otherwise obvious - today, only that a stall question lapsed
@@ -1198,6 +1214,7 @@ public record QueueEntryDto(
     string? Blocked,
     string Kind = WorkKinds.Advance,
     bool Hop = false,
+    string? HopKind = null,
     string? ClearNote = null);
 
 /// <summary>

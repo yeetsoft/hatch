@@ -67,6 +67,7 @@ public static class Fixtures
         string kind = WorkKinds.Advance,
         IReadOnlyList<CommentDto>? messages = null,
         bool hop = false,
+        string? hopKind = null,
         int letGo = 0) =>
         new(
             Issue: issue ?? Issue(key),
@@ -81,6 +82,7 @@ public static class Fixtures
             Kind: kind,
             Messages: messages,
             Hop: hop,
+            HopKind: hop ? hopKind ?? HopKinds.Express : null,
             LetGo: letGo);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
@@ -113,10 +115,11 @@ public static class Fixtures
         new(remote, canonical ?? remote, baseBranch, primary, matchedRemote);
 
     public static QueueEntryDto Row(
-        string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null) =>
+        string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null,
+        string? hopKind = null) =>
         new(
             Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
-            Status(4, "In Review"), blocked, Hop: hop);
+            Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(

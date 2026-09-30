@@ -1975,6 +1975,130 @@ public class WorkControllerTests
         Assert.Equal(h.InProgress, moved.StatusId);
     }
 
+    // ---- Parent pulls, the hop ----
+    //
+    // A child standing in a column flagged ParentPulls, whose parent stands in
+    // the implementation column and none of whose siblings is in flight, is a
+    // hop too - carried across with no session, the same as an express issue,
+    // but naming the other reason. See HA-149.
+
+    [Fact]
+    public async Task Queue_ListsAPulledChildAsClearAndAHopCarryingTheParentKind()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+
+        var work = Value(await h.Work.GetWork(Key(child), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Parent, work.HopKind);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task Hop_OnAPulledChild_MovesItAndWritesPulledRatherThanExpress()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var moved = Value(await h.Work.HopWork(Key(child), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == child.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("pulled").GetBoolean());
+        Assert.False(payload.TryGetProperty("express", out _));
+    }
+
+    [Fact]
+    public async Task AChildWhoseParentHasNotStarted_IsFoldedNamingThat()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.Todo);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Equal(
+            "its parent has not reached the implementation column, so nothing pulls it forward yet",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AChildWithASiblingInFlight_IsFoldedNamingThat()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        await h.FileAsync("task", "already pulled through", h.InProgress, parentId: parent.Id);
+        var child = await h.FileAsync("task", "the child", h.Inbox, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Equal(
+            "a sibling is already in flight, so only one child is pulled through at a time",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ADeferredSibling_NeverHoldsBackTheOneThatPulls()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        await h.FileAsync("task", "shelved, not in flight", h.Shelved, parentId: parent.Id);
+        var child = await h.FileAsync("task", "the child", h.Inbox, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task AChildlessIssueInAParentPullsColumn_KeepsTheNoPlaybookFold()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "nobody's parent and nobody's child", h.Inbox);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        Assert.Equal(
+            "no playbook covers \"inbox\" to \"todo\" for a story - add one on the Playbooks page",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressChildInAParentPullsColumn_StillHopsAsExpress_WhenTheParentHasNotStarted()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.Todo);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.ExpressAsync(child);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Express, entry.HopKind);
+    }
+
     // ---- An issue in review ----
 
     [Fact]
@@ -3526,6 +3650,20 @@ public class WorkControllerTests
         {
             var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
             status.ExpressSkips = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// <em>ParentPulls</em>, written straight onto the column - what the
+        /// route that writes it accepts and refuses is
+        /// <c>StatusesController.PutParentPulls</c>'s own tests; these tests
+        /// are about what the dispatcher does with a ticked column once it is
+        /// there - see HA-149.
+        /// </summary>
+        public async Task TickParentPullsAsync(int statusId)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.ParentPulls = true;
             await Db.SaveChangesAsync();
         }
 
