@@ -15,6 +15,13 @@ public static class HatchModule
         // land in one SaveChanges.
         services.AddScoped<RankService>();
 
+        // Scoped for the same reason: it holds a scoped HatchContext. Not for
+        // WorkController's sake - it builds its own from its own primary-ctor
+        // params, so WorkControllerTests.cs never has to change - but for
+        // every other consumer of "what would a pass do" that takes it through
+        // ordinary DI instead.
+        services.AddScoped<Dispatch>();
+
         // Singleton, because it is a pure function with a class around it: it
         // reads a string and returns a tree, and touches neither the database
         // nor the clock.
