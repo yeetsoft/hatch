@@ -81,7 +81,9 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
  *   shortens the page it sits in, and a browser will clamp a scroll box that
  *   suddenly has less to scroll. Left alone, typing near the bottom of a long
  *   description would walk the page upwards. Nothing paints between the two, so
- *   putting the offset back is enough.
+ *   putting the offset back is enough. Below the phone breakpoint there is no
+ *   scrolling ancestor - the document itself scrolls - so the fallback there is
+ *   `window.scrollY`.
  * - **A dragged handle wins.** The height an operator chose by hand is an
  *   answer, not a stale measurement: once the inline height is not the one this
  *   wrote, it stops writing. Toggling back to preview and into the editor again
@@ -109,14 +111,18 @@ export function useAutoGrow(value: string) {
     }
 
     const scroller = scrollParent(el);
-    const scrollTop = scroller?.scrollTop;
+    const before = scroller ? scroller.scrollTop : window.scrollY;
 
     el.style.height = '';
     const height = `${grownHeight(el.offsetHeight, el.scrollHeight, el.offsetHeight - el.clientHeight)}px`;
     el.style.height = height;
     state.applied = height;
 
-    if (scroller && scrollTop !== undefined && scroller.scrollTop !== scrollTop) scroller.scrollTop = scrollTop;
+    if (scroller) {
+      if (scroller.scrollTop !== before) scroller.scrollTop = before;
+    } else if (window.scrollY !== before) {
+      window.scrollTo(window.scrollX, before);
+    }
   }, [value]);
 
   return ref;

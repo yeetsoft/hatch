@@ -1432,9 +1432,43 @@ input.hatch-inline-title-input {
    top bar, the nav, the page's padding and the card's own head. The max() is
    what stops a short window from clamping a box below the height it opened at -
    between the two, opening at a size and immediately being smaller than it is
-   the worse failure, and the page scrolls either way. */
-.hatch-grows {
-  max-height: max(30rem, calc(100dvh - 14rem));
+   the worse failure, and the page scrolls either way.
+
+   Fine-pointer only: on a coarse pointer the box has no ceiling of its own and
+   grows with its content instead, because past a cap the textarea becomes a
+   second scroller and iOS does not chain a touch-drag from an inner scroller
+   to its ancestor - see HA-156. */
+@media (pointer: fine) {
+  .hatch-grows {
+    max-height: max(30rem, calc(100dvh - 14rem));
+  }
+}
+
+/* Belt to useAutoGrow's own height-matching: with no cap, a stray rounding
+   pixel must never turn the box back into its own scroller. */
+@media (pointer: coarse) {
+  .hatch-grows {
+    overflow-y: hidden;
+  }
+}
+
+/* Save and Cancel for a description edited at phone width, pinned above the
+   keyboard rather than left in the section head a box that just grew has
+   pushed off screen. `bottom` is written inline from useKeyboardInset() -
+   window.visualViewport's read of where the keyboard ends - and this fixed
+   position is what that offset moves off the true bottom when it is 0, i.e.
+   wherever visualViewport is unsupported. Same layer as .hatch-confirmations:
+   over the page, under Modal's 100. */
+@media (max-width: 40rem) {
+  .hatch-description-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--card);
+    border-top: 1px solid var(--line);
+  }
 }
 
 .hatch-child-list,

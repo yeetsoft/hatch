@@ -13,8 +13,9 @@
 
 import { useState, type ReactNode } from 'react';
 import { Button } from '@hatch/ui';
+import { editDraft, isDirty, openDraft, receiveKnown, revert } from '../lib/draft';
 import { renderMarkdown } from '../lib/markdown';
-import { normalizeEol } from '../lib/text';
+import { useKeyboardInset, usePhone } from '../lib/viewport';
 import { MarkdownEditor } from './MarkdownEditor';
 
 export function DescriptionEditor({
@@ -49,18 +50,17 @@ export function DescriptionEditor({
   /** The height the box opens at, which differs for the same reason. */
   rows?: number;
 }) {
-  const [draft, setDraft] = useState(value);
-  const [known, setKnown] = useState(value);
+  const [draft, setDraft] = useState(() => openDraft(value));
   const [preview, setPreview] = useState(true);
   const [saving, setSaving] = useState(false);
+  const phone = usePhone();
+  const inset = useKeyboardInset();
 
   // Same reasoning as the title's - see InlineTitle on the issue page. A save
-  // landing underneath the editor is the new stored text, and a draft written
-  // against the old one must not be left sitting on top of it.
-  if (value !== known) {
-    setKnown(value);
-    setDraft(value);
-  }
+  // landing underneath the editor is the new stored text - but a draft in
+  // progress is never replaced (HA-156): receiveKnown keeps a dirty draft's
+  // text and flags it `changed` instead of silently overwriting it.
+  if (value !== draft.known) setDraft((d) => receiveKnown(d, value));
 
   // Its own state rather than a `busy` prop: this is exactly the span of the
   // promise it is already awaiting, and two booleans for one await is two
@@ -68,16 +68,21 @@ export function DescriptionEditor({
   async function submit() {
     if (saving) return;
     setSaving(true);
-    const ok = await onSave(draft);
+    const ok = await onSave(draft.text);
     setSaving(false);
     // A refusal leaves the draft, the view and the scroll exactly as they
     // were: nothing typed is lost to a failed request.
     if (ok) setPreview(true);
   }
 
-  // Line endings alone are not an edit: the editor's text is always `\n`, and
-  // a stored description may not be.
-  const dirty = normalizeEol(draft) !== normalizeEol(value);
+  // Discards the draft and goes back to the stored text - Cancel and "take
+  // the new version" (below) are the same action.
+  function cancel() {
+    setDraft(revert(draft));
+    setPreview(true);
+  }
+
+  const dirty = isDirty(draft);
 
   return (
     <>
@@ -86,8 +91,10 @@ export function DescriptionEditor({
         <div className="hatch-section-actions">
           <Button onClick={() => setPreview(!preview)}>{preview ? 'Edit' : 'Preview'}</Button>
           {/* Offered on the draft differing alone, in both views - which is
-              what makes Edit, Preview, Save work. */}
-          {dirty && (
+              what makes Edit, Preview, Save work. At phone width Save moves to
+              the bar pinned above the keyboard (below), so the box that just
+              grew cannot push it off screen. */}
+          {dirty && !phone && (
             <Button variant="primary" loading={saving} onClick={() => void submit()}>
               Save
             </Button>
@@ -97,13 +104,20 @@ export function DescriptionEditor({
 
       {error && <p className="text-danger">{error}</p>}
 
+      {draft.changed && (
+        <p className="text-muted">
+          The description changed while this was being edited.{' '}
+          <Button onClick={() => setDraft(revert(draft))}>Take the new version</Button>
+        </p>
+      )}
+
       {preview ? (
         // The draft, not the stored text: Preview shows what Save would write.
-        draft.trim() ? (
+        draft.text.trim() ? (
           // Sanitized by renderMarkdown - nothing from the database is trusted markup.
           <div
             className={`hatch-markdown${previewClassName ? ` ${previewClassName}` : ''}`}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(draft) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(draft.text) }}
           />
         ) : (
           <p className="text-muted">No description yet.</p>
@@ -112,12 +126,26 @@ export function DescriptionEditor({
         // `rows` is the height it opens at and the floor it never goes back
         // under; the editor measures its own growth.
         <MarkdownEditor
-          value={draft}
-          onChange={setDraft}
+          value={draft.text}
+          onChange={(text) => setDraft(editDraft(draft, text))}
           rows={rows}
           className={editorClassName}
           ariaLabel="Description"
         />
+      )}
+
+      {/* Save and Cancel, pinned above the keyboard at phone width so they
+          are never out of reach while the description is dirty - AC3. Above
+          the breakpoint the section head keeps them, unchanged. */}
+      {dirty && phone && (
+        <div className="hatch-description-bar" style={{ bottom: `${inset}px` }}>
+          <div className="hatch-form-actions">
+            <Button onClick={cancel}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={() => void submit()}>
+              Save
+            </Button>
+          </div>
+        </div>
       )}
     </>
   );

@@ -42,3 +42,26 @@ export function usePhone(): boolean {
 
   return isPhone;
 }
+
+/** How far the keyboard has pushed the visual viewport's bottom edge above
+    the layout viewport's, in px. 0 wherever `visualViewport` is unsupported -
+    there a `position: fixed; bottom: 0` row already sits at the true bottom,
+    which is AC3's fallback. */
+export function useKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  return inset;
+}
