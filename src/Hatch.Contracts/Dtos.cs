@@ -67,7 +67,7 @@ public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 /// </param>
 public record StatusDto(
     int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
-    bool ExpressSkips = false, bool ParentPulls = false);
+    bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
@@ -145,6 +145,13 @@ public record ExpressSkipsRequest(bool ExpressSkips);
 /// same route both ticks and unticks it, and the caller says which it meant.
 /// </summary>
 public record ParentPullsRequest(bool ParentPulls);
+
+/// <summary>
+/// Whether this column is where an issue filed by a program is born. One
+/// required boolean, for the reason <see cref="ExpressSkipsRequest"/> is: the
+/// same route both ticks and unticks it, and the caller says which it meant.
+/// </summary>
+public record AgentFilesRequest(bool AgentFiles);
 
 // ---- Issues ----
 
