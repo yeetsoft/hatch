@@ -26,19 +26,24 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
     {
         var now = time.GetUtcNow();
 
-        // Rule 2: emergency work is never preempted - this is what makes a
-        // surplus queue instead of a cascade.
-        if (issue.Priority >= PriorityLevels.Emergency) return null;
-
         // "actionable for some unattended pass" - the same question GetQueue
         // asks, not "actionable for this caller's own checkout": the caller's
         // own repository situation is what its own next call, after freeing
         // itself, judges.
         var scan = await dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
 
+        // Rule 2: emergency work is never preempted - this is what makes a
+        // surplus queue instead of a cascade. This issue is the caller's own
+        // held one, checked by its effective level rather than its own row:
+        // a task inheriting emergency from its epic is never told, exactly as
+        // one that is emergency on its own row. DependencyGate's tree is
+        // whole-board, so Effective answers for this issue whether or not
+        // scan.Rows enumerates it.
+        if (scan.Gate.Effective(issue.Id).Level >= PriorityLevels.Emergency) return null;
+
         // Rule 1: some emergency issue is actionable and unclaimed.
         var emergencyRows = scan.Rows
-            .Where(r => r.Issue.Priority == PriorityLevels.Emergency && r.Blocked is null)
+            .Where(r => r.EffectivePriority == PriorityLevels.Emergency && r.Blocked is null)
             .ToList();
         if (emergencyRows.Count == 0) return null;
 
@@ -48,7 +53,7 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         // own order and not a second opinion about it.
         var heldBelow = scan.Rows
             .Select((row, index) => (row, index))
-            .Where(x => x.row.Issue.Priority < PriorityLevels.Emergency)
+            .Where(x => x.row.EffectivePriority < PriorityLevels.Emergency)
             .Where(x => claims.IsLive(ClaimSnapshot.Of(x.row.Issue), now))
             .ToList();
 

@@ -147,6 +147,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // expedited issue that is blocked is folded with exactly the sentence
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
+        var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal })
         {
             foreach (var status in Enumerable.Reverse(statuses))
@@ -156,7 +157,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
                 foreach (var issue in column)
                 {
-                    if (issue.Priority != level) continue;
+                    if (effective[issue.Id].Level != level) continue;
 
                     var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0);
                     var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
@@ -172,7 +173,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         KindOf(issue, status, to, merged, built),
                         hop && blocked is null,
                         blocked is null ? hopKind : null,
-                        blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null));
+                        blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null,
+                        effective[issue.Id].Level,
+                        effective[issue.Id].FromKey));
                 }
             }
         }
@@ -689,7 +692,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
-    string? HopKind = null, string? ClearNote = null);
+    string? HopKind = null, string? ClearNote = null, int EffectivePriority = PriorityLevels.Normal,
+    string? EffectiveFrom = null);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
