@@ -144,6 +144,7 @@ public class IssuesController(
             .ThenBy(i => i.Number)
             .Select(i => new
             {
+                i.Id,
                 ProjectKey = i.Project!.Key,
                 i.Number,
                 i.Type,
@@ -167,9 +168,13 @@ public class IssuesController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
+        var priorities = await PriorityTree.ForAsync(db, ct);
 
         var cards = new List<IssueCardDto>(rows.Count);
         foreach (var i in rows)
+        {
+            var (effective, effectiveFrom) = priorities.Effective(i.Id);
+
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
                 i.ProjectKey,
@@ -185,9 +190,12 @@ public class IssuesController(
                 // docstring exists to prevent.
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct),
                 Claim: claims.Project(i.Claim, now),
-                Expedited: i.Priority >= PriorityLevels.Expedited,
+                Expedited: effective >= PriorityLevels.Expedited,
                 Express: i.Express,
-                Priority: PriorityLevels.Name(i.Priority)));
+                Priority: PriorityLevels.Name(effective),
+                PriorityOwn: PriorityLevels.Name(i.Priority),
+                PriorityFrom: effectiveFrom));
+        }
 
         return cards;
     }
@@ -240,11 +248,6 @@ public class IssuesController(
             // it and however - see EfHatchIssue.Express.
             var expressFrom = parent.Issue?.Express == true ? parent.Issue : null;
 
-            // The same, for priority - but only Emergency inherits this way.
-            // Expedited never has, and reparenting under an emergency parent
-            // after filing does not mark a child - see EfHatchIssue.Priority.
-            var priorityFrom = parent.Issue?.Priority == PriorityLevels.Emergency ? parent.Issue : null;
-
             var issue = new EfHatchIssue
             {
                 ProjectId = project.Id,
@@ -260,7 +263,7 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 Express = expressFrom is not null,
-                Priority = priorityFrom is not null ? PriorityLevels.Emergency : priority,
+                Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -271,18 +274,10 @@ public class IssuesController(
             // fails here rather than writing a second AER-12 - and the unique
             // index on (ProjectId, Number) is the backstop under that.
             project.NextIssueNumber++;
-            object createdPayload = (expressFrom, priorityFrom) switch
+            object createdPayload = expressFrom switch
             {
-                (null, null) => new { type = issue.Type, title = issue.Title },
-                ({ } e, null) => new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(e, ct) },
-                (null, { } p) => new { type = issue.Type, title = issue.Title, emergencyFrom = await KeyOfAsync(p, ct) },
-                ({ } e, { } p) => new
-                {
-                    type = issue.Type,
-                    title = issue.Title,
-                    expressFrom = await KeyOfAsync(e, ct),
-                    emergencyFrom = await KeyOfAsync(p, ct),
-                },
+                null => new { type = issue.Type, title = issue.Title },
+                { } e => new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(e, ct) },
             };
             issue.Events.Add(Event(actor, EfHatchIssueEvent.Created, createdPayload, now));
             db.Issues.Add(issue);

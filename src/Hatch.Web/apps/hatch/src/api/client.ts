@@ -44,6 +44,7 @@ import type {
   ProjectPatchRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
+  QueueEntry,
   Runner,
   RunnerDownloads,
   RunnerPatchRequest,
@@ -307,6 +308,18 @@ export const getNextWorkUnder = (ancestorKey: string) =>
   fetchJson<Work | undefined>(
     `/api/hatch/work/next?ancestorKey=${encodeURIComponent(ancestorKey)}&offsetMinutes=${-new Date().getTimezoneOffset()}`,
   ).then((work) => work ?? null);
+
+/**
+ * Every issue a pass would look at, in the order it looks, each with the
+ * sentence saying why it cannot be advanced - or nothing, where it can. See
+ * WorkController.GetQueue.
+ *
+ * No `ancestorKey`, `remote`, `standing` or `clones`: a browser holds no
+ * checkouts and must not claim to, and nothing here narrows the scan to a
+ * subtree yet.
+ */
+export const getQueue = () =>
+  fetchJson<QueueEntry[]>(`/api/hatch/work/queue?offsetMinutes=${-new Date().getTimezoneOffset()}`);
 
 // ---- Comments and events ----
 

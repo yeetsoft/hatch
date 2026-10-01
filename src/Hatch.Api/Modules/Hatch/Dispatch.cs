@@ -774,6 +774,57 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
         ByCanonical is not null && ByCanonical.TryGetValue(canonical, out var raw) ? raw : null;
 }
 
+// ---- Priority ----
+
+/// <summary>
+/// The parent/key/priority of every issue, read once, and the question
+/// "what priority is live here" answered against it by walking to the
+/// nearest ancestor - including the issue itself - that is not Normal.
+/// </summary>
+public sealed class PriorityTree
+{
+    /// <summary>An empty tree, for a caller that needs the shape but has nothing loaded - so <c>DependencyGate.None</c> needs no dictionary literal of its own.</summary>
+    public static readonly PriorityTree Empty = new(new());
+
+    private readonly Dictionary<long, (long? ParentId, string Key, int Priority)> _rows;
+
+    internal PriorityTree(Dictionary<long, (long?, string, int)> rows) => _rows = rows;
+
+    public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
+    {
+        var rows = await db.Issues.AsNoTracking()
+            .Select(i => new { i.Id, i.ParentId, i.Priority, ProjectKey = i.Project!.Key, i.Number })
+            .ToListAsync(ct);
+
+        return new PriorityTree(rows.ToDictionary(
+            r => r.Id,
+            r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority)));
+    }
+
+    internal bool TryGet(long id, out (long? ParentId, string Key, int Priority) row) => _rows.TryGetValue(id, out row);
+
+    /// <summary>
+    /// The priority live on this issue: its own, if set, or the nearest
+    /// ancestor's that is not Normal. <c>FromKey</c> is null when the level
+    /// found is the issue's own, or when the walk never leaves Normal.
+    /// </summary>
+    public (int Level, string? FromKey) Effective(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (TryGet(id, out var row) && row.Priority != PriorityLevels.Normal)
+                return (row.Priority, id == issueId ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (PriorityLevels.Normal, null);
+    }
+}
+
 // ---- Dependencies ----
 
 /// <summary>
@@ -796,13 +847,13 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
 public sealed class DependencyGate
 {
     /// <summary>A gate that blocks nothing, for a refused scan - so <c>Scan.Gate</c> is never null and no call site needs a <c>!</c>.</summary>
-    public static readonly DependencyGate None = new([], []);
+    public static readonly DependencyGate None = new([], PriorityTree.Empty);
 
     private readonly Dictionary<long, List<string>> _unmetByIssue;
-    private readonly Dictionary<long, (long? ParentId, string Key)> _tree;
+    private readonly PriorityTree _tree;
 
     private DependencyGate(
-        Dictionary<long, List<string>> unmetByIssue, Dictionary<long, (long?, string)> tree)
+        Dictionary<long, List<string>> unmetByIssue, PriorityTree tree)
     {
         _unmetByIssue = unmetByIssue;
         _tree = tree;
@@ -822,17 +873,13 @@ public sealed class DependencyGate
             .Select(d => new { d.IssueId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
-        var tree = await db.Issues.AsNoTracking()
-            .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number })
-            .ToListAsync(ct);
+        var tree = await PriorityTree.ForAsync(db, ct);
 
         return new DependencyGate(
             unmet.GroupBy(r => r.IssueId).ToDictionary(
                 g => g.Key,
                 g => g.Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList()),
-            tree.ToDictionary(
-                r => r.Id,
-                r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number))));
+            tree);
     }
 
     /// <summary>
@@ -857,15 +904,18 @@ public sealed class DependencyGate
         {
             if (_unmetByIssue.TryGetValue(id, out var blockers))
             {
-                var holder = id == issueId ? null : _tree.TryGetValue(id, out var row) ? row.Key : null;
+                var holder = id == issueId ? null : _tree.TryGet(id, out var row) ? row.Key : null;
                 return blockers.Select(b => new UnmetEdge(b, holder)).ToList();
             }
 
-            at = _tree.TryGetValue(id, out var found) ? found.ParentId : null;
+            at = _tree.TryGet(id, out var found) ? found.ParentId : null;
         }
 
         return [];
     }
+
+    /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
+    public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
 }
 
 /// <summary>

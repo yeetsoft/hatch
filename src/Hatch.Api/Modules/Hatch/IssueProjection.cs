@@ -67,6 +67,8 @@ public static class IssueProjection
             .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
             .ToDictionaryAsync(r => r.Id, r => IssueKey.Format(r.ProjectKey, r.Number), ct);
 
+        var priorities = await PriorityTree.ForAsync(db, ct);
+
         var childRows = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId != null && ids.Contains(i.ParentId!.Value))
             .OrderBy(i => i.Number)
@@ -134,6 +136,7 @@ public static class IssueProjection
         return issues.ToDictionary(issue => issue.Id, issue =>
         {
             var projectKey = issue.Project?.Key ?? projectKeys[issue.ProjectId];
+            var (effective, effectiveFrom) = priorities.Effective(issue.Id);
 
             return new IssueDto(
                 IssueKey.Format(projectKey, issue.Number),
@@ -158,11 +161,13 @@ public static class IssueProjection
                 issue.CreatedAt,
                 issue.UpdatedAt,
                 claims.Project(ClaimSnapshot.Of(issue), now),
-                issue.Priority >= PriorityLevels.Expedited,
+                effective >= PriorityLevels.Expedited,
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
                 buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
                 issue.Express,
+                PriorityLevels.Name(effective),
                 PriorityLevels.Name(issue.Priority),
+                effectiveFrom,
                 issue.WipLimit);
         });
     }
