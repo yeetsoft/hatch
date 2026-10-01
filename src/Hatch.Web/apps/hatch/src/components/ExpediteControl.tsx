@@ -35,11 +35,16 @@ const WORD: Record<Priority, string> = {
  */
 export function ExpediteControl({
   priority,
+  inheritedFrom = null,
   directory,
   busy = false,
   onChange,
 }: {
+  /** This issue's own level - what a press cycles, never the effective one. */
   priority: Priority;
+  /** The ancestor the effective level came from, or null when it is this
+      issue's own. Display only - a press still cycles `priority` unchanged. */
+  inheritedFrom?: string | null;
   /** Everybody who could own an issue, and who the caller is. Null while it is still loading. */
   directory: AssigneeDirectory | null;
   /** A press is in flight. The button stays where it is and stops answering. */
@@ -47,6 +52,7 @@ export function ExpediteControl({
   onChange: (priority: Priority) => void;
 }) {
   const me = directory?.me ?? null;
+  const inherited = inheritedFrom ? ` · inherited from ${inheritedFrom}` : '';
 
   /* `kind === 'person'` as well as "somebody is here": the write is closed to
      an API key, so a key holding this page would be offered a press that could
@@ -60,6 +66,7 @@ export function ExpediteControl({
         className={`hatch-expedite-said${priority !== 'normal' ? ' on' : ''}${priority === 'emergency' ? ' emergency' : ''}`}
       >
         {WORD[priority]}
+        {inherited}
       </span>
     );
   }
@@ -80,6 +87,7 @@ export function ExpediteControl({
       onClick={() => onChange(NEXT[priority])}
     >
       {priority === 'emergency' ? '🚨 Emergency' : priority === 'expedited' ? '↑ Expedited' : 'Expedite'}
+      {inherited}
     </button>
   );
 }

@@ -19,6 +19,8 @@ const card = (key: string, parentKey: string | null, projectKey = 'AER'): IssueC
   claim: null,
   expedited: false,
   priority: 'normal',
+  priorityOwn: 'normal',
+  priorityFrom: null,
   express: false,
 });
 

@@ -15,7 +15,9 @@ public sealed class IssueCommands(Cli cli)
         "",
         "  An expedited or emergency ticket says so: somebody marked it \"this one",
         "  first\", and the board and the dispatcher both reach for it before",
-        "  anything else, emergency before expedited before the rest.",
+        "  anything else, emergency before expedited before the rest. A level an",
+        "  issue only holds because an ancestor carries it names that ancestor:",
+        "  \"expedited - this one goes first (inherited from AER-12)\".",
         "  An express ticket says so too: standing in a column marked to skip, it",
         "  is carried on with no session. There is no verb here that sets either -",
         "  the CLI holds a key, and both are a person's write.",
@@ -84,10 +86,11 @@ public sealed class IssueCommands(Cli cli)
         // Said only where it is set, the way the parent, the dates and the
         // edges below are. Nearly every ticket is normal, and a line saying so
         // on every read of every one of them is a line nobody reads.
+        var inherited = issue.PriorityFrom is { Length: > 0 } from ? $" (inherited from {from})" : "";
         if (issue.Priority == PriorityLevels.EmergencyName)
-            cli.Say.Line("priority:  emergency - top of the walk, before anything else");
+            cli.Say.Line($"priority:  emergency - top of the walk, before anything else{inherited}");
         else if (issue.Priority == PriorityLevels.ExpeditedName)
-            cli.Say.Line("priority:  expedited - this one goes first");
+            cli.Say.Line($"priority:  expedited - this one goes first{inherited}");
         if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
         if (issue.Type == "epic")
         {
