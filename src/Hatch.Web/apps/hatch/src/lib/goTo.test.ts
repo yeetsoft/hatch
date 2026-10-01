@@ -32,6 +32,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   isWip: false,
   expressSkips: false,
   parentPulls: false,
+  agentFiles: false,
   color: '#336699',
   ...over,
 });

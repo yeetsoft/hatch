@@ -7,6 +7,7 @@ import {
   getWip,
   patchStatus,
   putWip,
+  setAgentFiles,
   setExpressSkips,
   setParentPulls,
 } from '../api/client';
@@ -14,7 +15,7 @@ import { StatusPill } from '../components/StatusPill';
 import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
-import { limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
+import { agentFilesBlocked, limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
 import type { Status, WipSliceSetting } from '../types';
 
 export function StatusesPage() {
@@ -136,6 +137,14 @@ export function StatusesPage() {
                 the implementation column.
               </dd>
             </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Agent files here</dt>
+              <dd className="text-muted">
+                An issue filed by an agent is born in this column rather than the leftmost one. One column at a
+                time - ticking this unticks whichever column held it - and with none ticked, agent-filed issues are
+                born leftmost.
+              </dd>
+            </div>
           </dl>
         </Card>
       )}
@@ -157,6 +166,9 @@ export function StatusesPage() {
                 </th>
                 <th title="A child standing here is carried on to the next column with no session while its parent stands in the implementation column.">
                   Parent pulls
+                </th>
+                <th title="An issue filed by an agent is born in this column rather than the leftmost one. One column at a time - ticking this unticks whichever column held it - and with none ticked, agent-filed issues are born leftmost.">
+                  Agent files here
                 </th>
                 <th>Order</th>
                 <th />
@@ -233,6 +245,20 @@ export function StatusesPage() {
                       checked={status.parentPulls}
                       aria-label={`${status.name} pulls its children on`}
                       onChange={(e) => void act(() => setParentPulls(status.id, e.target.checked))}
+                    />
+                  </td>
+                  {/* Its own route for the same reason Parent pulls has one, and guarded
+                      the way WIP is: a deferred or a done column is refused by the server
+                      - see StatusesController.PutAgentFiles - so it is disabled here first,
+                      the way lib/wip.ts's agentFilesBlocked says why. */}
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.agentFiles}
+                      disabled={agentFilesBlocked(status) !== null}
+                      title={agentFilesBlocked(status) ?? undefined}
+                      aria-label={`${status.name} is where agents file`}
+                      onChange={(e) => void act(() => setAgentFiles(status.id, e.target.checked))}
                     />
                   </td>
                   <td>
