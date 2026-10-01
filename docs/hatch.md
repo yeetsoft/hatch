@@ -4255,18 +4255,31 @@ something** — see HA-129 for the operator's brief. `s` stops the runner after
 the increment in flight finishes, pushes and is written up — press again to
 undo it, which the legend says while it is armed; `c` asks for confirmation
 (`y` to confirm, any other key to take it back) and then ends the run exactly
-as Ctrl-C does, process tree and all. Keys are read exactly where the readout
-draws, and only when this process's own standard input is itself a terminal —
-a pipe, a service, or a container with no TTY reads no keys and draws no
-legend, and `go-to-work`, `do-my-work` and `hatch work` all say so once at
-startup, naming Ctrl-C and `--stop-file` as the ways to stop instead.
+as Ctrl-C does, process tree and all. `p` pauses the runner — still
+heartbeating, so its row never drifts from idle to gone, but nothing further
+is picked up — and press again to resume, which (HA-133) happens straight
+away rather than waiting out the rest of the interval; a board that has this
+runner paused outranks a local resume, so a `p` pressed here cannot read as
+having un-paused a runner the board itself is holding still. `k` asks for
+confirmation the same way `c` does (`y` to confirm, any other key to take it
+back) and then ends the increment in flight without touching the ticket
+further — the loop moves straight on to the next one, the same as any other
+increment that spawned nothing new to wait on. `?` swaps the one-line legend
+for a longer one naming every key in full, and back again on a second
+press — the one key here that changes what is drawn and not what the runner
+will do, so it writes nothing to the log. Keys are read exactly where the
+readout draws, and only when this process's own standard input is itself a
+terminal — a pipe, a service, or a container with no TTY reads no keys and
+draws no legend, and `go-to-work`, `do-my-work` and `hatch work` all say so
+once at startup, naming Ctrl-C and `--stop-file` as the ways to stop instead.
 `--no-keys` turns the keyboard off outright on all three commands, and draws
 the readout exactly as before minus the legend row and with no startup line —
 nobody needs telling about a control they switched off. A key that means
 nothing does nothing and says nothing; every key that changes what the runner
-will do writes one line to the log, so a redirected run read the next morning
-still says what was asked, and when. Ctrl-C is unchanged, and works at any
-moment whether keys are on or off, including while a confirmation is
+will do writes one line to the log — `?` is the one exception, since it
+changes the display and not the runner — so a redirected run read the next
+morning still says what was asked, and when. Ctrl-C is unchanged, and works
+at any moment whether keys are on or off, including while a confirmation is
 outstanding — a second way to reach the same cancellation, never a
 replacement for it.
 

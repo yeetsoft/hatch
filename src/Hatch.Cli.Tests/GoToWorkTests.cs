@@ -869,6 +869,111 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--stop-file", StringComparison.Ordinal));
     }
 
+    // ---- The keyboard: p, k and ? (HA-133) ----
+
+    [Fact]
+    public async Task A_keyboard_pause_claims_nothing_and_resumes_before_the_interval_elapses()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        var runtime = h.Runtime with { Clock = clock };
+
+        // Pressed before the loop's first beat - exactly the keyboard's own
+        // read, not the board's.
+        runtime.Controls.Press('p');
+
+        var running = new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1", "--interval", "3600"], default);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("paused from the keyboard", StringComparison.Ordinal)),
+            "the paused line");
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+
+        // A second press resumes it, and the nap wakes on the very next slice
+        // rather than waiting out the rest of the hour-long interval.
+        runtime.Controls.Press('p');
+        clock.Advance(TimeSpan.FromSeconds(5));
+
+        await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    [Fact]
+    public async Task A_board_pause_outranks_a_local_resume_and_the_idle_line_still_names_the_board()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("paused", null, null, null, null));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Wire.Count("POST", "/api/hatch/runners/test%3A%2Fcheckout") > 0, "the first heartbeat");
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
+            "the board's own paused line");
+
+        // A local p cannot read as having un-paused a board-paused runner.
+        h.Runtime.Controls.Press('p');
+        await Task.Delay(50);
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("the board has this runner paused", StringComparison.Ordinal));
+
+        cts.Cancel();
+        await running;
+    }
+
+    [Fact]
+    public async Task A_skipped_increment_is_followed_immediately_by_the_next_queued_ticket()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+
+        // Both offered at first - the same swap-the-queue technique the
+        // tree-that-cannot-be-prepared test above uses, standing in for a
+        // board that would not really offer AER-1 straight back once it has
+        // been skipped.
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
+
+        var skippedFirst = false;
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            if (!skippedFirst && request.Prompt.Contains("AER-1", StringComparison.Ordinal))
+            {
+                skippedFirst = true;
+                h.Wire.Replace(
+                    "GET", Queue, HttpStatusCode.OK,
+                    System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+
+                // The keyboard's k, confirmed with y - the equivalent
+                // injection HA-132 used for s, one key further.
+                h.Runtime.Controls.Press('k');
+                h.Runtime.Controls.Press('y');
+            }
+            else
+            {
+                onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            }
+
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        // Neither claim stall ended the night - the first ticket's own skip
+        // is followed straight on by the second, queued ticket.
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+    }
+
     // ---- The hop ----
 
     [Fact]
