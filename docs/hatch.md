@@ -487,22 +487,39 @@ same sentence. Priority changes the order candidates are *considered* in, and
 nothing else — so an emergency issue that is blocked is still blocked, and the
 pass carries on past it.
 
-**It marks the issue it is set on, not the subtree under it.** Every type in a
-walkable column is dispatchable — an epic in a breakdown column is broken down
-by the loop the same as a story is implemented — so a level on one issue means
-something wherever it is set. "Point tonight at this epic" is already
-`work --under`, and a second subtree mechanism beside `ancestorKey` would be two
-answers to one question.
+**It is inherited, live, from the nearest ancestor that sets one.** An issue
+is at the first level other than normal found on itself or on its ancestors,
+nearest first; normal is not a stop on the way up, so a story under a paused
+epic is paused unless the story sets its own level, and a task under that
+story set to expedited keeps its own regardless of what the epic or the story
+say above it. This reverses what this section used to argue — that a level
+means something only on the issue it is set on, because every type in a
+walkable column is dispatchable and a second subtree mechanism beside
+`ancestorKey` would be two answers to one question. The dispatchability
+argument still holds, but a level that reached nothing under it could not
+actually pause or expedite a subtree: an epic marked paused with its stories
+still running is not paused in any sense a person watching the board would
+recognize. Inheritance answers that without a second mechanism — setting a
+level on an epic is the one write, and every descendant that does not set its
+own reads it from there.
 
-**It is taken from the parent at filing, and at no other time — but only from
-an emergency parent.** An issue created under an emergency parent is born
-emergency, whoever files it and however, the same as [express](#express) is
-taken from an express parent; its `created` event names the parent it took the
-level from (`emergencyFrom`). Expedited never inherits this way, and never has
-— filing under an expedited-but-not-emergency parent is not itself expedited.
-**Reparenting never touches it**: moving an issue under an emergency parent
-does not mark it, and moving it away does not unmark it — the level is a fact
-about how an issue came to exist, not one that follows a parent around.
+**It is computed at read, never stored or copied.** `PriorityTree.Effective`
+and `DependencyGate.Effective` (`Dispatch.cs`) walk the (id, parent, own
+level) map up from the issue to the first ancestor whose own level is not
+normal, and that walk is what the board, the dispatcher and `hatch show` read
+as the issue's priority; the level actually stored on the row is a separate
+field, and the ancestor it was read from — or nothing, when the level is the
+issue's own — travels alongside it. This reverses emergency's original rule
+— taken from the parent at filing, and at no other time, with the `created`
+event naming the parent it was copied from — because a copied level is an
+override the parent could never take back: setting an epic to emergency after
+a child already exists would reach nothing already filed, and moving a child
+out from under an emergency parent would leave it emergency forever, with no
+write left to undo. Reading the level from the tree on every request instead
+of copying it onto the row at birth is what lets reparenting change the
+effective level at once, both ways, and what lets a person raise or lower an
+epic's level and have every descendant that hasn't set its own answer
+differently from the next read — not the next time it happens to be refiled.
 
 On the board it is `(StatusId, Priority desc, Rank, Id)`, served that way
 rather than sorted in the browser, so the board, the plan and the queue cannot
@@ -2394,7 +2411,9 @@ wherever it sits. The scan walks the columns three times — every
 [expedited](#expedite) candidate right to left, then everything else right to
 left — so an emergency bug in the leftmost column is reached before an
 expedited story in the rightmost one, which is reached before a normal one in
-the rightmost one, and inside each third the order is the board's own. Three
+the rightmost one, and inside each third the order is the board's own. The
+level that puts a candidate in the first or second walk may be its own or
+inherited from an ancestor — the walk does not care which. Three
 passes rather than a sort of the finished rows, because the [published
 scan](#what-a-pass-skipped) is the explanation of what `next` picked, and a
 comparator applied afterwards would be a second opinion about the order.

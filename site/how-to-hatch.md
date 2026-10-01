@@ -146,11 +146,16 @@ To Do, which is reached before a normal one in To Do. Two things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
   blocked is still blocked.
-- It marks one issue, not the subtree under it. To point a night at one epic,
-  scope the runner with `hatch go-to-work --under AER-1` instead.
+- It is inherited: a level set on an epic reaches everything under it that
+  does not set its own level, both expedited and emergency. Raising an epic
+  to emergency is enough to put every story and task under it ahead of
+  everything else — nothing has to be set on each one by hand.
 
-A child filed under an emergency parent is born emergency; expedited never
-inherits that way.
+A story under that epic can still set its own level, which wins over whatever
+the epic says above it. To point a night at one epic without changing
+anybody's priority, scope the runner with `hatch go-to-work --under AER-1`
+instead — that narrows which issues a session looks at; priority decides the
+order among them.
 
 Only a person can set it. An agent that could put its own ticket ahead of
 everything you filed, every night, would look fine on the board and be wrong.

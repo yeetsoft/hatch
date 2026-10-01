@@ -237,9 +237,12 @@ dispatcher's path`, or the same `under <key>`. Exit 0.
 ### `hatch show AER-12`
 
 Three reads: the issue, the statuses, the comments. Prints the header
-`<Key>  [<type>]  <Title>`, `status:`, then only when non-normal
-`priority:  emergency - top of the walk, before anything else` or
-`priority:  expedited - this one goes first`, `parent:`, `children:`,
+`<Key>  [<type>]  <Title>`, `status:`, then only when the effective level is
+non-normal `priority:  emergency - top of the walk, before anything else` or
+`priority:  expedited - this one goes first`, with an `(inherited from <key>)`
+suffix when the level came from an ancestor rather than the issue itself —
+`priority:  expedited - this one goes first (inherited from HA-12)` — then
+`parent:`, `children:`,
 `depends:`, `blocks:`, `ready:`, `due:`; the description verbatim; then
 `--- N comment(s) ---` with each as
 `[<timestamp>] <author>:` and its body. A missing issue: `hatch: <key> -
