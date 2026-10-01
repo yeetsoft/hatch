@@ -184,7 +184,7 @@ public sealed class ReadoutTests
     [Fact]
     public void KeysOn_DrawsALegendNamingBothKeys()
     {
-        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.None);
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.None);
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
@@ -196,7 +196,7 @@ public sealed class ReadoutTests
     [Fact]
     public void KeysOff_DrawsNoLegendRowAtAll()
     {
-        var controls = new ControlsSnapshot(KeysOn: false, StopArmed: false, Confirming.None);
+        var controls = new ControlsSnapshot(KeysOn: false, StopArmed: false, Paused: false, LongLegend: false, Confirming.None);
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
@@ -208,7 +208,7 @@ public sealed class ReadoutTests
     [Fact]
     public void StopArmed_SaysHowToUndoIt()
     {
-        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: true, Confirming.None);
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: true, Paused: false, LongLegend: false, Confirming.None);
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
@@ -219,7 +219,7 @@ public sealed class ReadoutTests
     [Fact]
     public void ConfirmingCancel_AsksTheQuestion()
     {
-        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.Cancel);
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.Cancel);
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
@@ -230,11 +230,73 @@ public sealed class ReadoutTests
     [Fact]
     public void TheLegendRow_IsClippedAtANarrowWidthToo()
     {
-        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.None);
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.None);
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var rows = Readout.Draw(snapshot, Now, 10, color: false);
 
         Assert.All(rows, r => Assert.True(r.Length <= 10));
+    }
+
+    // ---- The keyboard's p, k and ? (HA-133) ----
+
+    [Fact]
+    public void Paused_DrawsThePausedRowNamingTheKeyboard()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: true, LongLegend: false, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("paused from the keyboard", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfirmingSkip_AsksTheQuestion()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.Skip);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("skip this increment?", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfirmingSkip_OutranksStopArmed()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: true, Paused: false, LongLegend: false, Confirming.Skip);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("skip this increment?", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LongLegend_DrawsOneRowPerKeyEachAFullSentence()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: true, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var rows = Readout.Draw(snapshot, Now, 200, color: false);
+        var legend = rows.TakeLast(5).ToList();
+
+        Assert.Equal(5, legend.Count);
+        foreach (var key in new[] { "s", "c", "p", "k", "?" })
+            Assert.Contains(legend, r => r.TrimStart().StartsWith(key, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LongLegend_ToggledOff_DrawsTheShortLegendAgain()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("s stop after this increment", row, StringComparison.Ordinal);
+        Assert.Contains("k skip this increment", row, StringComparison.Ordinal);
+        Assert.Contains("? more", row, StringComparison.Ordinal);
     }
 }

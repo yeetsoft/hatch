@@ -79,6 +79,11 @@ public sealed class Wire : HttpMessageHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        // A real server call would observe this - and HA-133's own tests tell
+        // a skip apart from a Ctrl-C by which of two tokens a board call sees
+        // already cancelled, which needs this double to actually notice one.
+        ct.ThrowIfCancellationRequested();
+
         var uri = request.RequestUri!;
         var call = new Call(
             request.Method.Method,

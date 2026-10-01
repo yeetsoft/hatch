@@ -555,10 +555,11 @@ export function IssuePage() {
           <Field
             label="Priority"
             as="div"
-            hint="Normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it."
+            hint="Normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it. A level set on an ancestor reaches here too, until this issue sets its own."
           >
             <ExpediteControl
-              priority={issue.priority}
+              priority={issue.priorityOwn}
+              inheritedFrom={issue.priorityFrom}
               directory={directory}
               onChange={(priority) => void savePriority(priority)}
             />

@@ -545,11 +545,23 @@ public sealed class WorkCommand(Runtime runtime)
                 // that treated a hard ticket as a broken command would be one more
                 // thing an operator has to work around.
                 increment = runtime.Increment();
-                report = await increment.RunAsync(
-                    work, chosen.Root, model, effort, quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
-                    found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
-                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
-                    runnerName: runtime.RunnerName, incrementNumber: 1);
+
+                using var skip = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                void OnSkip() => skip.Cancel();
+                runtime.Controls.Skipped += OnSkip;
+                try
+                {
+                    report = await increment.RunAsync(
+                        work, chosen.Root, model, effort, quiet, claim, skip.Token, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
+                        found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
+                        built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                        runnerName: runtime.RunnerName, incrementNumber: 1);
+                }
+                finally
+                {
+                    runtime.Controls.Skipped -= OnSkip;
+                }
+
                 owned = !report.LostLease;
                 releaseOutcome = report.ReleaseOutcome;
                 return 0;

@@ -31,6 +31,8 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   claim: null,
   expedited: false,
   priority: 'normal',
+  priorityOwn: 'normal',
+  priorityFrom: null,
   express: false,
 });
 

@@ -23,6 +23,8 @@ const card = (key: string, statusId: number): IssueCard => ({
   claim: null,
   expedited: false,
   priority: 'normal',
+  priorityOwn: 'normal',
+  priorityFrom: null,
   express: false,
 });
 

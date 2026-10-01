@@ -212,6 +212,13 @@ public sealed class Tally
         // nothing about whether the last increment worked.
         if (report.LostLease) return;
 
+        // Nor is a skip. It is the loop working correctly on an operator's own
+        // say-so, and three of them in a row must neither end a night nor
+        // reset the streak - the same reasoning a lost lease gets, for the
+        // same reason: neither one is a verdict on whether the last increment
+        // actually worked.
+        if (report.Skipped) return;
+
         // A failed increment on its own is not a reason to stop - a ticket can
         // be wrong, or a test can be flaky, and the next ticket is a different
         // question. Three in a row is something else: whatever is broken is
@@ -872,7 +879,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 return true;
             }
 
-            if (told is { State: RunnerStates.Paused })
+            var boardPaused = told is { State: RunnerStates.Paused };
+            var keyboardPaused = tally.Controls?.Snapshot().Paused ?? false;
+
+            if (boardPaused || keyboardPaused)
             {
                 // Still heartbeating, so the row does not drift from idle to
                 // gone while it is deliberately doing nothing - a paused loop
@@ -880,18 +890,28 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // apart.
                 idle.Clear();
                 busy.Clear();
-                line.Line = "paused - waiting to be set running again";
+                line.Line = boardPaused
+                    ? "paused - waiting to be set running again"
+                    : "paused from the keyboard (p to resume)";
                 runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
                 await SayQuietlyAsync(paused, now, interval, once,
-                    digest: "paused",
+                    digest: boardPaused ? "paused" : "paused-keyboard",
                     still: "hatch: still paused",
                     inFull: () =>
                     {
-                        runtime.Say.Line("hatch: the board has this runner paused - nothing will be picked up until it is set running");
+                        runtime.Say.Line(boardPaused
+                            ? "hatch: the board has this runner paused - nothing will be picked up until it is set running"
+                            : "hatch: paused from the keyboard - nothing will be picked up until it is set running again (p)");
                         return Task.CompletedTask;
                     });
 
-                if (!await NapAsync(interval, tally, ct)) return false;
+                // The board wins the sentence above when both are true, and
+                // wins the wake here too: a local p cannot read as having
+                // un-paused a board-paused runner, and resumes straight away,
+                // without waiting on a stale board answer, when it is the only
+                // reason this loop is paused.
+                if (!await NapAsync(interval, tally, ct, wake: () => !boardPaused && tally.Controls?.Snapshot() is { Paused: false }))
+                    return false;
                 continue;
             }
 
@@ -1363,12 +1383,28 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // What the loop does carry is the ticket's own model and effort,
             // which arrive folded into the playbook already.
             increment = runtime.Increment();
-            var report = await increment.RunAsync(
-                work, chosen.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
-                quiet, claim, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
-                found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
-                built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
-                runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
+
+            // The keyboard's k cancels only this linked source, never the
+            // pass's own ct - so lifecycle.LeaveAsync below, which keeps using
+            // ct directly, survives a skip rather than being cancelled by it.
+            using var skip = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            void OnSkip() => skip.Cancel();
+            runtime.Controls.Skipped += OnSkip;
+
+            IncrementReport report;
+            try
+            {
+                report = await increment.RunAsync(
+                    work, chosen.Root, work.Playbook?.Model ?? "", work.Playbook?.Effort ?? "",
+                    quiet, claim, skip.Token, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
+                    found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
+                    built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
+            }
+            finally
+            {
+                runtime.Controls.Skipped -= OnSkip;
+            }
 
             tally.Record(report);
             releaseOutcome = report.ReleaseOutcome;
@@ -1506,7 +1542,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// then rather than an interval later, and an <c>--until</c> at three in the
     /// morning lands at three in the morning however long the interval is.
     /// </summary>
-    private async Task<bool> NapAsync(int seconds, Tally tally, CancellationToken ct)
+    private async Task<bool> NapAsync(int seconds, Tally tally, CancellationToken ct, Func<bool>? wake = null)
     {
         var left = seconds;
         while (left > 0)
@@ -1523,6 +1559,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             left -= slice;
             if (tally.ShouldStop()) return false;
+
+            // Finished waiting, go around again - the same answer an ordinary
+            // completed nap gives, which is what lets the loop re-evaluate
+            // everything from the top rather than only the one condition that
+            // just cleared.
+            if (wake?.Invoke() == true) return true;
         }
 
         return true;

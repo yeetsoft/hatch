@@ -2,6 +2,8 @@ import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import './Modal.css';
 
+export type ModalWidth = 'default' | 'narrow';
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -12,6 +14,10 @@ export interface ModalProps {
       so a dialog ends in its actions however much is above them. Left off, the
       panel is the scroller it has always been. */
   footer?: ReactNode;
+  /** The house width every caller gets unless it asks otherwise. `narrow` is
+      for a dialog whose content is a reading measure of its own, not the
+      house's 720px. */
+  width?: ModalWidth;
 }
 
 /**
@@ -61,7 +67,7 @@ export interface ModalProps {
  * listeners fire on the same event before either close commits, so without
  * this check one Escape would close both.
  */
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, width = 'default' }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<Element | null>(null);
@@ -108,7 +114,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`hatch-card hatch-modal__panel${framed ? ' hatch-modal__panel--framed' : ''}`}
+        className={`hatch-card hatch-modal__panel${framed ? ' hatch-modal__panel--framed' : ''}${width === 'narrow' ? ' hatch-modal__panel--narrow' : ''}`}
       >
         <div className="hatch-modal__head">
           <h3 id={titleId}>{title}</h3>

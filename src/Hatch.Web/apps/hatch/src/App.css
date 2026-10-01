@@ -3841,7 +3841,7 @@ button.hatch-option.chosen {
    end against the track, rather than the track and the fill blurring
    together at either end of the ramp. */
 .hatch-usage-bar-track {
-  height: 6px;
+  height: 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-chip);
   overflow: hidden;
@@ -3923,7 +3923,7 @@ button.hatch-option.chosen {
    used to. */
 .hatch-queue-row {
   display: grid;
-  grid-template-columns: auto auto auto auto auto 1fr;
+  grid-template-columns: auto auto auto auto auto auto 1fr;
   align-items: center;
   gap: 0 var(--sp-2);
   padding: var(--sp-1-5) var(--sp-2);
@@ -3996,7 +3996,7 @@ button.hatch-option.chosen {
      width line under the ordinal, marker, key, badge and pill rather than
      being clipped, so a phone reads it without scrolling sideways. */
   .hatch-queue-row {
-    grid-template-columns: auto auto auto auto auto;
+    grid-template-columns: auto auto auto auto auto auto;
     row-gap: var(--sp-1);
   }
 

@@ -23,8 +23,10 @@ interface Asked {
   pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
-  /** What the server last said about the level, or undefined while the card's own value stands. */
-  priority?: 'normal' | 'expedited' | 'emergency';
+  /** What the server last said about the issue's own level and where the
+      effective one came from, or undefined while the card's own value stands. */
+  priorityOwn?: 'normal' | 'expedited' | 'emergency';
+  priorityFrom?: string | null;
   priorityError?: string;
   priorityBusy?: boolean;
   /** A move is out for this card: the status picker's pill stays disabled
@@ -173,7 +175,7 @@ export function IssuePeek({
       apply(key, { priorityBusy: true, priorityError: undefined });
       try {
         const issue = await setPriority(key, next);
-        apply(key, { priority: issue.priority, priorityBusy: false });
+        apply(key, { priorityOwn: issue.priorityOwn, priorityFrom: issue.priorityFrom, priorityBusy: false });
         onExpedited();
       } catch (err) {
         apply(key, { priorityBusy: false, priorityError: message(err) });
@@ -283,7 +285,8 @@ export function IssuePeek({
             catch up would read as not having noticed. */}
         <div className="hatch-peek-expedite">
           <ExpediteControl
-            priority={asked.priority ?? card.priority}
+            priority={asked.priorityOwn ?? card.priorityOwn}
+            inheritedFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
             directory={directory}
             busy={asked.priorityBusy ?? false}
             onChange={(next) => void changePriority(next)}

@@ -46,7 +46,12 @@ export function UtilizationModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={me ? `${me.name}'s Claude usage` : 'My Claude usage'}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={me ? `${me.name}'s Claude usage` : 'My Claude usage'}
+      width="narrow"
+    >
       <div className="hatch-usage">
         <ul className="hatch-usage-rows">
           {reading.limits.map((limit, at) => {

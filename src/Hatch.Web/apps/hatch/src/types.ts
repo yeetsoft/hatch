@@ -170,6 +170,12 @@ export interface IssueCard {
       that needs to tell expedited apart from emergency rather than collapse
       them: the optimistic float in lib/place.ts. */
   priority: 'normal' | 'expedited' | 'emergency';
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCardDto.PriorityOwn. */
+  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  /** The ancestor `priority` was inherited from, or null when the effective
+      level is this issue's own, or Normal. See IssueCardDto.PriorityFrom. */
+  priorityFrom: string | null;
   /** Carried past a column marked *Express skips* with no session, as long as
       it has no unanswered question. A gate-passer and not a sort key - the
       opposite of `expedited` - so nothing here sorts either. See
@@ -337,6 +343,13 @@ export interface Issue {
   expedited: boolean;
   /** The level's name - see IssueCard.priority and IssueDto.Priority. */
   priority: 'normal' | 'expedited' | 'emergency';
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCard.priorityOwn and IssueDto.PriorityOwn. */
+  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  /** The ancestor `priority` was inherited from, or null when the effective
+      level is this issue's own, or Normal. See IssueCard.priorityFrom and
+      IssueDto.PriorityFrom. */
+  priorityFrom: string | null;
   /** Carried past a column marked *Express skips* with no session, as long as
       it has no unanswered question - the opposite shape from `expedited`: a
       gate-passer, not a sort key. Taken from the parent at filing and at no

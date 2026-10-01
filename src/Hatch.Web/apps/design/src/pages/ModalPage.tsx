@@ -7,7 +7,7 @@ import { GalleryPage, GallerySection } from '../components/Gallery';
    inline in the page could show the paint and none of that, and the behaviour
    is the part worth checking. */
 
-type Which = 'short' | 'form' | 'long' | 'pinned' | 'title' | null;
+type Which = 'short' | 'form' | 'long' | 'pinned' | 'title' | 'narrow' | null;
 
 export function ModalPage() {
   const [open, setOpen] = useState<Which>(null);
@@ -36,6 +36,7 @@ export function ModalPage() {
           <Button onClick={() => setOpen('form')}>A form</Button>
           <Button onClick={() => setOpen('long')}>Long content</Button>
           <Button onClick={() => setOpen('title')}>A long title</Button>
+          <Button onClick={() => setOpen('narrow')}>Narrow width</Button>
         </div>
       </GallerySection>
 
@@ -135,6 +136,16 @@ export function ModalPage() {
           A long title wraps and pushes the close control down with it. The close stays where it started, at
           the top right, because a control that moves to the middle of a heading is a control nobody finds
           twice.
+        </Text>
+        <div className="row row--top">
+          <Button onClick={close}>Close</Button>
+        </div>
+      </Modal>
+
+      <Modal open={open === 'narrow'} onClose={close} title="Claude usage" width="narrow">
+        <Text tone="muted">
+          520px rather than the house 720px — a reading measure for the usage panel's own rows, not a general
+          dialog width.
         </Text>
         <div className="row row--top">
           <Button onClick={close}>Close</Button>
