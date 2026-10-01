@@ -2544,6 +2544,25 @@ place; see [where the loop's rules live](#where-the-loops-rules-live).
 `Playbook` is always null where `Hop` is true, even where one covers the move,
 so no client can spawn a session for a hop by accident.
 
+### Running an epic
+
+Once every direct child of an epic standing in the WIP section is terminal or
+deferred, the epic itself is dispatched to the next column under [the
+verification playbook](#playbooks).
+
+The session checks each acceptance criterion against the trunk, one at a
+time, and comments the verdict on the epic. If every criterion holds — or the
+only ones that do not were shelved with a deferred child — it moves the epic
+on, and the operator closes it: see [what only the operator
+does](#what-only-the-operator-does) for why closing it is never the session's
+to do.
+
+Where there are gaps, the session files them under the epic — one story or
+bug per gap — and leaves the epic where it is. A filed gap flows like any
+other work, and the epic is folded here until it ships; then the epic is
+verified again. A deferred child's own criteria are named in the verdict, not
+refiled as new work.
+
 ### Preemption
 
 **Who a claim heartbeat tells it has been preempted, decided lazily at each
@@ -2879,7 +2898,7 @@ what to change. The reworded text does not say the merge is in progress, because
 for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
-Eight rows are seeded, for the same reason the columns are: a Hatch whose agent
+Nine rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken. A
 feature that does nothing until somebody fills in a table is the same failure,
 so the eighth is the stock review playbook, for every type, at `sonnet` and
@@ -2899,6 +2918,16 @@ says which transition their playbook is the playbook for. Rows that are not
 there are not restored either: deleting a playbook is how an operator takes a
 column back from the loop, and a migration that re-seeded one would be handing
 it back.
+
+The epic row on `In Progress → In Review` is the verification playbook: it
+tells the session to check the epic's own acceptance criteria against the
+trunk, not just that every child has closed — see [running an
+epic](#running-an-epic). `VerifyEpicPlaybook` rewrites the row only where it
+still reads the seeded text, byte for byte, and leaves a retuned model or
+effort alone; it seeds the row only where nothing already covers an epic on
+that move and that shape, which is the one place it adds a row, and only on a
+board that does not already have one — so the count stays at nine on a
+standard fresh install.
 
 ## The unattended loop
 
