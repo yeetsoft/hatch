@@ -2428,6 +2428,395 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Express, entry.HopKind);
     }
 
+    // ---- The pull: an epic and its stories (HA-113) ----
+    //
+    // An epic standing in a column outside the WIP section whose next column
+    // is inside it, with something filed under it, is carried in with no
+    // session - the same hop an express issue gets, naming its own reason.
+    // While it stands inside the section, a story or bug under it, itself
+    // standing in a column ticked ExpressSkips, is carried the same way,
+    // naming the epic that carried it.
+
+    [Fact]
+    public async Task Queue_ListsAnEpicEnteringTheSectionAsClearAndAHopCarryingTheEpicKind()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
+        Assert.Null(entry.HopUnder);
+
+        var work = Value(await h.Work.GetWork(Key(epic), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Epic, work.HopKind);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task Hop_OnAnEpicEnteringTheSection_MovesItAndWritesEpicOnTheTrail()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(epic), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == epic.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("epic").GetBoolean());
+        Assert.False(payload.TryGetProperty("express", out _));
+    }
+
+    [Fact]
+    public async Task AnEpicWithNoChildren_IsFoldedNamingNothingIsFiledUnderIt()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(FamilyGate.NothingUnder, entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Hop_OnAChildlessEpicEnteringTheSection_Is409CarryingThatSentenceAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+
+        var result = await h.Work.HopWork(Key(epic), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal(FamilyGate.NothingUnder, response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == epic.Id)).Events);
+    }
+
+    [Fact]
+    public async Task AnEpicWithOnlyATaskUnderIt_IsCarried()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.FileAsync("task", "just a task", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task AFullEpicSlice_FoldsAnEpicEnteringTheSection()
+    {
+        var h = await NewAsync();
+        await h.EpicWipAsync(1, h.InProgress, h.Review);
+        await h.FileAsync("epic", "already inside", h.InProgress, rank: 256);
+
+        var epic = await h.FileAsync("epic", "waiting to get in", h.Todo, rank: 1024);
+        await h.FileAsync("story", "under it", h.Todo, parentId: epic.Id, rank: 1025);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 epics are in it - nothing more is pulled in until something leaves",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+
+        var result = await h.Work.HopWork(Key(epic), null, null, null, default);
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains("the WIP section is full", response.Value?.ToString());
+    }
+
+    [Fact]
+    public async Task Queue_ListsAStoryUnderARunningEpicInATickedColumnAsAHopCarryingUnderTheEpic()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+        Assert.Equal(Key(epic), entry.HopUnder);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Under, work.HopKind);
+        Assert.Equal(Key(epic), work.HopUnder);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task Hop_OnAStoryUnderARunningEpic_MovesItAndWritesUnderOnTheTrail()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(story), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == story.Id);
+        var e = Assert.Single(row.Events);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(Key(epic), payload.GetProperty("under").GetString());
+        Assert.False(payload.TryGetProperty("express", out _));
+        Assert.False(payload.TryGetProperty("epic", out _));
+    }
+
+    [Fact]
+    public async Task ABugUnderARunningEpic_IsCarriedTheSameWay()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var bug = await h.FileAsync("bug", "a bug under E", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(bug));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task ATaskUnderARunningEpic_IsNotCarried()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var task = await h.FileAsync("task", "a task under E", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ABugUnderAStoryUnderAnEpic_IsNotCarried()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S, not itself in the ticked column", h.InProgress, parentId: epic.Id);
+        var bug = await h.FileAsync("bug", "under the story, not under E", h.Inbox, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(bug));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task TheStoriesPull_HoldsWithTheEpicInReviewToo()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.Review);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task AStoryUnderARunningEpic_InAnUntickedColumn_IsFoldedByTheOrdinaryPlaybookRule()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S, nothing ticks inbox", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Equal(
+            "no playbook covers \"inbox\" to \"todo\" for a story - add one on the Playbooks page",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AStoryUnderAnEpicThatIsNotRunning_IsUnaffected()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E, not inside the section", h.Todo);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ARunningEpicsStory_FoldedByAnUnansweredQuestionBeforeTheHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+        await h.AskAsync(story, "per-node or global?");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Contains("unanswered question", entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ARunningEpicsStory_FoldedByALiveClaimOnTheEpic()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+        await h.ClaimAsync(epic, by: "Ada");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.NotNull(entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AStoryWithAnUnmetDependency_IsStillCarriedToToDo_TheDependencyOnlyGatesTheMoveIntoInProgress()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var blocker = await h.FileAsync("story", "not done yet", h.Todo);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+        await h.DependsAsync(story, blocker);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task WithToDoTicked_AStoryUnderE_InToDo_IsHeldByTheSectionLimitAndEpicLimit()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.FileAsync("story", "already inside", h.InProgress, rank: 256);
+
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 512);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id, rank: 1024);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task GoToWorkUnderE_CarriesEsStories()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, Key(epic), default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task AnExpressIssueInATickedReviewWithAConflict_IsNotAHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Review);
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+        await h.ExpressAsync(issue);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+        Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == issue.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task AStoryUnderARunningEpic_StandingInATickedReviewWithAConflict_IsNotAHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Review);
+        await h.ConflictPlaybookAsync();
+        var epic = await h.FileAsync("epic", "E", h.Review);
+        var story = await h.FileAsync("story", "S, up for review too", h.Review, parentId: epic.Id);
+        await h.VerdictAsync(story, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+        Assert.False(entry.Hop);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+
+        var result = await h.Work.HopWork(Key(story), null, null, null, default);
+        Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == story.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task TheOverlap_AStoryUnderARunningEpicInAColumnTickedBoth_HopsAsUnderNotParent()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.TickParentPullsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "E, in the implementation column", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+        Assert.Equal(Key(epic), entry.HopUnder);
+    }
+
     // ---- An issue in review ----
 
     [Fact]
@@ -3604,6 +3993,7 @@ public class WorkControllerTests
         // no limit row here - WipFold's SliceFor check folds nothing for either.
         var task = await h.FileAsync("task", "not counted", h.Todo, rank: 1024);
         var epic = await h.FileAsync("epic", "not counted either", h.Todo, rank: 2048);
+        await h.FileAsync("task", "filed under it, so the epic arm's own fold does not speak instead", h.Todo, rank: 2049, parentId: epic.Id);
 
         Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
         Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
@@ -3643,6 +4033,7 @@ public class WorkControllerTests
         await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
 
         var epic = await h.FileAsync("epic", "waiting outside", h.Todo, rank: 1024);
+        await h.FileAsync("task", "filed under it", h.Todo, rank: 1025, parentId: epic.Id);
 
         Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
     }
@@ -4070,6 +4461,7 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
 
         var anotherEpic = await h.FileAsync("epic", "another epic moving in", h.Todo, rank: 2048);
+        await h.FileAsync("task", "under the other epic", h.Todo, rank: 2049, parentId: anotherEpic.Id);
         Assert.Null(Value(await h.Work.GetWork(Key(anotherEpic), null, default)).Blocked);
 
         // Inside the section both ways - S1 advancing from In Progress into

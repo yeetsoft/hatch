@@ -27,10 +27,23 @@ export function queueWords(entry: QueueEntry): string {
     return names.length === 0 ? 'fixing its failing build' : `fixing its failing build (${names.join(', ')})`;
   }
   if (entry.hop) {
-    const reason = entry.hopKind === 'parent' ? 'parent pulled, no session' : 'express, no session';
-    return `-> ${entry.toStatus?.name ?? '?'}  (${reason})`;
+    return `-> ${entry.toStatus?.name ?? '?'}  (${hopReason(entry.hopKind, entry.hopUnder)})`;
   }
   return `-> ${entry.toStatus?.name ?? '?'}`;
+}
+
+/** The word a hop row prints, naming which of the four reasons carried it -
+    mirrors the CLI's `Picker.HopWord` exactly. */
+export function hopWord(hopKind: QueueEntry['hopKind'], hopUnder: string | null): string {
+  if (hopKind === 'parent') return 'parent pulled';
+  if (hopKind === 'epic') return 'epic';
+  if (hopKind === 'under') return `under ${hopUnder}`;
+  return 'express';
+}
+
+/** `hopWord`, plus the reason nothing was spawned - mirrors `Picker.HopReason`. */
+export function hopReason(hopKind: QueueEntry['hopKind'], hopUnder: string | null): string {
+  return `${hopWord(hopKind, hopUnder)}, no session`;
 }
 
 /** `!!` for emergency, `!` for expedited, null for normal - the marker a row

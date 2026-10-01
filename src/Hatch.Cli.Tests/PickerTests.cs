@@ -368,6 +368,32 @@ public sealed class PickerTests
     }
 
     [Fact]
+    public async Task A_hop_row_carrying_HopKind_Epic_reasons_as_epic()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Epic) });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Equal("epic, no session", picked.Hopped!.Reason);
+    }
+
+    [Fact]
+    public async Task A_hop_row_carrying_HopKind_Under_reasons_as_under_the_epic()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86") });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Equal("under HA-86, no session", picked.Hopped!.Reason);
+    }
+
+    [Fact]
     public async Task A_409_from_the_hop_route_walks_on_to_the_next_row()
     {
         using var h = new Harness();

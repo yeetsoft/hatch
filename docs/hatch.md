@@ -238,11 +238,13 @@ section is one set of columns and any number of slices, each with its own
 limit, its own load and its own claimed-inbound count.
 
 `ExpressSkips` marks the columns an [express](#express) issue is carried past
-with no session — see [the hop](#the-hop). It is **not** a "whose column is
-this" flag: who works a column is still derived from the playbook matrix, for
-the reason [above](#status) — this box only says which columns an express
-issue is carried past, and says nothing about who works the columns on either
-side of it. Set only by a person, through its own route
+with no session, and — once something under a running epic stands there too —
+a story or bug carried under it the same way — see [the hop](#the-hop). It is
+**not** a "whose column is this" flag: who works a column is still derived
+from the playbook matrix, for the reason [above](#status) — this box only
+says which columns an express issue, or a running epic's own story or bug, is
+carried past, and says nothing about who works the columns on either side of
+it. Set only by a person, through its own route
 (`PUT /api/hatch/statuses/{id}/express-skips`), for the reason given under
 ["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
 it decides which gates the loop may pass unattended, and a key that could tick
@@ -292,7 +294,7 @@ the flag existed.
 | Draft | 10 | | | operator | An idea being written. Nothing reads it. |
 | Breakdown | 20 | | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
 | Backlog | 30 | | | operator | Specified work, awaiting selection. `AgentFiles` is ticked here, so an issue a program files is born in this column. |
-| To Do | 40 | | | **agent** | Analyse it until implementing it is mechanical. |
+| To Do | 40 | | | **agent**; an epic is pulled in with no session | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. |
 | In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
 | Done | 70 | ✓ | | operator | Terminal. |
@@ -550,7 +552,10 @@ copied once, at filing, and the two are unlinked from that moment on.
 Filed issues land in the leftmost column, Draft, which does not ship marked
 `ExpressSkips` — so an express epic's freshly filed stories wait there until
 the operator ticks Draft or moves them on by hand. That is deliberate: Draft is
-where ideas are written, and leaving it unticked is the safe default.
+where ideas are written, and leaving it unticked is the safe default. Ticking
+it now serves two things at once, not express alone: an express issue standing
+there, and — once [the epic pull](#the-hop) (HA-113) is in play — a story or
+bug under a running epic too, since both read the same `ExpressSkips` flag.
 
 Setting it is closed to an API key, the same cut as expedite; see [The one edge
 that is deliberately cut](#the-one-edge-that-is-deliberately-cut). It follows
@@ -1854,7 +1859,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries an [express](#express) issue one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
@@ -2456,24 +2461,30 @@ missing configuration:
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, one last check before the ordinary refusal: is
-this a [hop](#the-hop)? Two things are judged the same way here. An issue that
-is [express](#express) and stands in a column marked
+this a [hop](#the-hop)? Four things are judged the same way here. An issue
+that is [express](#express) and stands in a column marked
 [`ExpressSkips`](#status) needs no playbook at all — the pass calls the row
 clear, and the caller carries it across itself with
-`POST /api/hatch/work/{key}/hop` rather than spawning a session. So does a
-child standing in a column marked [`ParentPulls`](#status), whose parent
-stands in the implementation column and none of whose siblings is further
-along — but where the column is so marked and one of those two conditions is
-not yet met, the row is folded with a sentence naming which one, rather than
-falling through to "no playbook covers this": "its parent has not reached the
-implementation column, so nothing pulls it forward yet", or "a sibling is
-already in flight, so only one child is pulled through at a time". Every
-refusal above this one still applies to either kind of hop exactly as it
-applies to any other issue: a hop answers only "does this column still need a
-session", and nothing about a live claim, a ready date, an assignee, a
-question, a repository or a dependency is any different for it. Only where
-none of those folds it either, and it is not a hop, does the pass fall through
-to the ordinary refusal: no playbook covers this transition for this type.
+`POST /api/hatch/work/{key}/hop` rather than spawning a session. So does an
+epic standing in a column outside the WIP section whose next column is
+inside it, with something filed under it — where nothing is, the row is
+folded instead with "nothing is filed under it — an epic runs its stories,
+and it has none". So does a story or bug standing in a column marked
+`ExpressSkips`, whose parent is an epic standing inside the WIP section. So
+does a child standing in a column marked [`ParentPulls`](#status), whose
+parent stands in the implementation column and none of whose siblings is
+further along — but where the column is so marked and one of those two
+conditions is not yet met, the row is folded with a sentence naming which
+one, rather than falling through to "no playbook covers this": "its parent
+has not reached the implementation column, so nothing pulls it forward yet",
+or "a sibling is already in flight, so only one child is pulled through at a
+time". Every refusal above this one still applies to every kind of hop
+exactly as it applies to any other issue: a hop answers only "does this
+column still need a session", and nothing about a live claim, a ready date,
+an assignee, a question, a repository or a dependency is any different for
+it. Only where none of those folds it either, and it is not a hop, does the
+pass fall through to the ordinary refusal: no playbook covers this transition
+for this type.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -2493,16 +2504,34 @@ named a ticket is owed the sentence saying why it cannot move.
 
 ### The hop
 
-**The loop's own write, on the loop's own say-so.** Take an issue that is
-[express](#express) and stands in a column marked
-[`ExpressSkips`](#status), with no unanswered question — or a child standing
-in a column marked [`ParentPulls`](#status), whose parent stands in the
-implementation column and none of whose siblings is standing further along,
-in board order, than the column this issue would be pulled into — and
-`POST /api/hatch/work/{key}/hop` carries it one column right — the same
-column `Columns.Advance` would send a session to — and spawns nothing. No
-model runs, nothing is spent, and no work-log row is written, because a hop is
-not an increment.
+**The loop's own write, on the loop's own say-so.** Four kinds, asked in this
+order:
+
+1. **express** — an issue that is [express](#express) and stands in a column
+   marked [`ExpressSkips`](#status), with no unanswered question.
+2. **epic** — an epic standing in a column outside the [WIP](#wip) section
+   whose next column is inside it, with something filed under it — any direct
+   child, of any type, in any column. An epic with nothing filed under it is
+   never a hop: it is folded instead, with *"nothing is filed under it — an
+   epic runs its stories, and it has none"*.
+3. **under** — a story or bug standing in a column marked `ExpressSkips`,
+   whose parent is an epic standing inside the WIP section — in [To
+   Do](#status), in [In Progress](#status), in review, wherever the section
+   reaches. "Inside the section" is measured off the flagged columns, never
+   off a column's name, so an epic sitting in the review column still counts.
+4. **parent** — a child standing in a column marked [`ParentPulls`](#status),
+   whose parent stands in the implementation column and none of whose
+   siblings is standing further along, in board order, than the column this
+   issue would be pulled into (HA-149).
+
+`POST /api/hatch/work/{key}/hop` carries the issue one column right — the
+same column `Columns.Advance` would send a session to for the first three
+kinds — and spawns nothing. No model runs, nothing is spent, and no work-log
+row is written, because a hop is not an increment. None of the first three
+kinds ever fires on a move that ends where it starts: a review self-move —
+resolving a conflict or a failing build — is never a hop, whatever column is
+ticked. The fourth kind, `parent`, does not carry that exclusion; its own gap
+on a `ParentPulls` review column is a separate matter from this one.
 
 It takes the same query parameters `GET /api/hatch/work/{key}` takes, and no
 `heldToken`: **a hop takes no claim.** A claim protects a session that runs for
@@ -2517,18 +2546,20 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 - The issue is blocked by some other fold — a claim, a ready date, an
   assignee, a question, a repository, a dependency, a full [WIP](#wip)
   section, [an epic at its own limit](#an-epics-own-limit), a terminal next
-  column, or (for a child of a `ParentPulls` column) a parent that has not
-  reached the implementation column, or a sibling already in flight. The
-  sentence is exactly the one `Blocked` already gives for that fold.
-- The issue is clear, but is not a hop — not express, not a child its parent
-  pulls, or standing in a column nothing has ticked. A session moves this
-  issue, and a hop does not.
+  column, an epic with nothing filed under it, or (for a child of a
+  `ParentPulls` column) a parent that has not reached the implementation
+  column, or a sibling already in flight. The sentence is exactly the one
+  `Blocked` already gives for that fold.
+- The issue is clear, but is not a hop — none of the four kinds above applies,
+  or the move is a review self-move. A session moves this issue, and a hop
+  does not.
 
 Otherwise the move is made: the issue's rank is set with
 `RankService.BottomAsync`, the same as any other move, and the history gets one
-`status_changed` event naming the caller as the actor and carrying
-`{ from, to, express: true }`, or `{ from, to, pulled: true }` where a parent
-pulled it rather than express carrying it — the same shape
+`status_changed` event naming the caller as the actor, carrying one of four
+shapes depending on which kind carried it: `{ from, to, express: true }`,
+`{ from, to, epic: true }`, `{ from, to, under: "<epicKey>" }`, or
+`{ from, to, pulled: true }` for a parent pull — the same shape
 `IssuesController.MoveIssue` writes, with one more field, so a card that
 passed a gate with nobody present says so on its own trail.
 
@@ -2540,11 +2571,29 @@ trail could not say *express*. Judging *and* moving in the one write is what
 keeps the rule that calls a row a hop and the write that performs it in one
 place; see [where the loop's rules live](#where-the-loops-rules-live).
 
-`WorkDto.Hop` and `QueueEntryDto.Hop` say which rows are hops — on `WorkDto`,
-`Playbook` is always null where `Hop` is true, even where one covers the move,
-so no client can spawn a session for a hop by accident.
+`WorkDto.Hop` and `QueueEntryDto.Hop` say which rows are hops, `HopKind` says
+which of the four carried it, and `HopUnder` carries the epic's key when
+`HopKind` is `under` — null for every other kind. On `WorkDto`, `Playbook` is
+always null where `Hop` is true, even where one covers the move, so no client
+can spawn a session for a hop by accident.
 
 ### Running an epic
+
+**The pull.** An operator drags an epic into the column before the WIP
+section and walks away. The next pass carries it in with no session — [the
+`epic` hop](#the-hop) — as long as something is filed under it and the epic
+slice has room; an epic with nothing filed under it is folded instead, not
+silently skipped. While it stands inside the section — including in the
+review column — a story or bug under it, standing itself in a column ticked
+`ExpressSkips`, is carried across the same way, one card a pass, rightmost
+first: [the `under` hop](#the-hop). The per-epic limit ([HA-112](#an-epics-own-limit))
+still holds the move into the implementation column, same as it always has.
+Ticking `ExpressSkips` on the column before the section — typically *Draft* —
+starts the flow there too: the tick now serves an express issue and a running
+epic's stories alike, not express alone. The stock *"you are starting an
+epic, which means choosing what starts"* playbook on the move into the
+section is retired wherever a board's flags make this pull fire on that move;
+see [Playbooks](#playbooks) for where it is kept.
 
 Once every direct child of an epic standing in the WIP section is terminal or
 deferred, the epic itself is dispatched to the next column under [the
@@ -2942,6 +2991,17 @@ that move and that shape, which is the one place it adds a row, and only on a
 board that does not already have one — so the count stays at nine on a
 standard fresh install.
 
+**The epic row on `To Do → In Progress`, seeded with the text *"you are
+starting an epic, which means choosing what starts"*, is retired wherever the
+board now does that itself.** [The epic pull](#the-hop) (HA-113) carries an
+epic across that same move with no session once the WIP section covers it, so
+a session told to choose what starts would be telling the board what it
+already decided. `RetireEpicStartPlaybook` deletes the row only where it
+still reads the seeded text, byte for byte, and only on a move that crosses
+into the WIP section — an edited row, or a stock row on a board that has
+never turned WIP on, is left exactly as it is, and still dispatches a session
+the ordinary way.
+
 ## The unattended loop
 
 `hatch go-to-work` is [the dispatcher](#the-dispatcher) run in a circle: read
@@ -3066,8 +3126,18 @@ the sentence saying which one it failed is what `work/queue` reports:
     date, an assignee, a question, a repository, a dependency, an open child, a
     full section or an epic at its own limit, only from needing a playbook.
 
-    A child standing in a column marked [`ParentPulls`](#status) is the same
-    kind of hop, for a different reason: its parent stands in the
+    An epic standing in a column outside the WIP section whose next column is
+    inside it is a second kind of hop: something is filed under it, of any
+    type. Where nothing is, the refinement is its own fold rather than a
+    fall-through to the twelfth condition: "nothing is filed under it — an
+    epic runs its stories, and it has none". A story or bug standing in a
+    column marked `ExpressSkips`, whose parent is an epic standing inside the
+    WIP section, is a third kind: the epic's own pull reaching the work filed
+    under it, one card a pass, rightmost first — see [the hop](#the-hop) and
+    [running an epic](#running-an-epic).
+
+    A child standing in a column marked [`ParentPulls`](#status) is a fourth
+    kind of hop, for a different reason again: its parent stands in the
     implementation column, and none of its siblings is standing further
     along, in board order, than the column this issue would be pulled into.
     Where the column is so marked but one of those two is not yet true, the
@@ -4423,9 +4493,11 @@ the rest, and inside each third the rightmost column first and the order the
 board itself draws that column in. An emergency row is marked `!!` and an
 expedited row `! ` — both two characters, so the columns after it still line
 up — so a queue reordered by one says why. A clear row that is a
-[hop](#the-hop) reads `-> <column>  (express, no session)` in place of the bare
-arrow, so it reads differently from a row `go-to-work` would spawn a session
-for even though both print no reason to fold past. A row that is clear only
+[hop](#the-hop) reads `-> <column>  (express, no session)`,
+`(parent pulled, no session)`, `(epic, no session)` or `(under <epic>, no
+session)` in place of the bare arrow, naming which of the four carried it, so
+it reads differently from a row `go-to-work` would spawn a session for even
+though both print no reason to fold past. A row that is clear only
 because a stall question lapsed reads `clear for <column> -> <column> - its
 stall question lapsed after 5 minutes untouched` instead of the bare arrow, for
 the same reason: a row clear for the ordinary reason and one clear because

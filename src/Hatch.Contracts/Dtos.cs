@@ -1175,7 +1175,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="HopKind">
 /// Which of <see cref="HopKinds"/> carried this hop, or null where
-/// <paramref name="Hop"/> is false - see HA-149.
+/// <paramref name="Hop"/> is false - see HA-149 and HA-113.
+/// </param>
+/// <param name="HopUnder">
+/// The key of the epic that carried this hop, when <paramref name="HopKind"/>
+/// is <see cref="HopKinds.Under"/> - null for every other kind, and for every
+/// client too old to read it.
 /// </param>
 /// <param name="LetGo">
 /// How many increments in a row let this ticket go without moving it: this
@@ -1200,6 +1205,7 @@ public record WorkDto(
     IReadOnlyList<CommentDto>? Messages = null,
     bool Hop = false,
     string? HopKind = null,
+    string? HopUnder = null,
     int LetGo = 0);
 
 /// <summary>
@@ -1228,7 +1234,7 @@ public static class WorkKinds
     public const string Build = "build";
 }
 
-/// <summary>Which of the two reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the four reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1236,6 +1242,18 @@ public static class HopKinds
 
     /// <summary>A child a parent pulls, in a column marked ParentPulls - see HA-149.</summary>
     public const string Parent = "parent";
+
+    /// <summary>
+    /// An epic standing in a column outside the WIP section whose next column
+    /// is inside it, with something filed under it - see HA-113.
+    /// </summary>
+    public const string Epic = "epic";
+
+    /// <summary>
+    /// A story or bug in a ticked column whose parent is an epic standing
+    /// inside the WIP section - see HA-113.
+    /// </summary>
+    public const string Under = "under";
 }
 
 /// <summary>
@@ -1271,6 +1289,7 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// <param name="Kind">One of <see cref="WorkKinds"/>, as on <see cref="WorkDto"/>.</param>
 /// <param name="Hop">As on <see cref="WorkDto"/>.</param>
 /// <param name="HopKind">As on <see cref="WorkDto"/>.</param>
+/// <param name="HopUnder">As on <see cref="WorkDto"/>.</param>
 /// <param name="ClearNote">
 /// Why a row that carries no <paramref name="Blocked"/> is clear at all, where
 /// that is not otherwise obvious - today, only that a stall question lapsed
@@ -1285,6 +1304,7 @@ public record QueueEntryDto(
     string Kind = WorkKinds.Advance,
     bool Hop = false,
     string? HopKind = null,
+    string? HopUnder = null,
     string? ClearNote = null);
 
 /// <summary>

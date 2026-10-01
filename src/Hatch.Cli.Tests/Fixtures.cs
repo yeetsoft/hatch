@@ -70,6 +70,7 @@ public static class Fixtures
         IReadOnlyList<CommentDto>? messages = null,
         bool hop = false,
         string? hopKind = null,
+        string? hopUnder = null,
         int letGo = 0) =>
         new(
             Issue: issue ?? Issue(key),
@@ -85,6 +86,7 @@ public static class Fixtures
             Messages: messages,
             Hop: hop,
             HopKind: hop ? hopKind ?? HopKinds.Express : null,
+            HopUnder: hop ? hopUnder : null,
             LetGo: letGo);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
@@ -118,10 +120,11 @@ public static class Fixtures
 
     public static QueueEntryDto Row(
         string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null,
-        string? hopKind = null) =>
+        string? hopKind = null, string? hopUnder = null) =>
         new(
             Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
-            Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null);
+            Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null,
+            HopUnder: hop ? hopUnder : null);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(
