@@ -79,6 +79,10 @@ Open that address. That is the board, and it is empty in a particular way: the
 columns are there — Draft through Done, the ones every Hatch ships with — and
 there is no project yet, so there is nothing for an issue key to be made of.
 
+On a phone, the board opens on what is waiting on you and a New issue button
+first, then the columns stacked one under another instead of side by side —
+a Full board toggle, remembered per browser, brings the usual columns back.
+
 **Manage → Projects → New project** is therefore the first thing to do. A
 project is a key namespace rather than a container: give it a short key and
 every issue filed under it is numbered from that key onwards (`HOME` gives you

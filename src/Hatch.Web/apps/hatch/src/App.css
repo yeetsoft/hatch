@@ -199,9 +199,8 @@
 }
 
 /* Below the phone breakpoint .hatch-app no longer offers a bounded height for
-   flex: 1 to divide up (above), so the board's classic grid - still what a
-   phone shows until the stacked-board story under HA-131 lands - takes its
-   height from the viewport directly.
+   flex: 1 to divide up (above), so the board takes its height from the
+   viewport directly.
 
    48px is the bar's own --topbar-h (packages/ui/src/components/TopBar.css)
    restated as a literal: that property is scoped to .hatch-topbar, a sibling
@@ -218,6 +217,95 @@
   .hatch-board-page {
     min-height: calc(100dvh - 48px);
     padding: var(--sp-4) var(--sp-4) 0;
+  }
+
+  /* ---- The stacked board (HA-159) ----
+
+     The phone's own layout: sections run down the page rather than across it,
+     so the document is the only scroller - no sideways scroll, and no inner
+     scrollbox per column (overridden below). The grid itself (.hatch-board)
+     is untouched; this overrides it only under this class, which BoardPage
+     adds only in the stacked view - the full board, on the phone or the
+     desk, still gets the grid above as it always has. */
+  .hatch-board--stacked {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    overflow-x: visible;
+  }
+
+  .hatch-board--stacked .hatch-column {
+    display: block;
+  }
+
+  /* A column is a <details> here, and its head a <summary> - press to
+     collapse. Sticky, so a column's name stays on screen while its own cards
+     scroll under it, and the next column's header takes over at the same
+     top: 0 once this one scrolls past. No offset for the bar: it is not
+     position: sticky anywhere in this tree and scrolls away with the rest of
+     the document at phone width (see App.tsx and NavAttention.tsx), so this
+     only has to clear the top of the viewport. list-style and the marker
+     pseudo-element are suppressed because the column already carries its own
+     caret-free disclosure affordance in its name and count. */
+  .hatch-board--stacked .hatch-column-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--card);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .hatch-board--stacked .hatch-column-head::-webkit-details-marker {
+    display: none;
+  }
+
+  /* No inner scrollbox: the desk's per-column scroll area is exactly what
+     "down the page" is not. */
+  .hatch-board--stacked .hatch-column-cards {
+    overflow-y: visible;
+    min-height: 0;
+  }
+
+  .hatch-board-waiting {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .hatch-board-waiting-heading {
+    margin: 0;
+    font-size: var(--t-section);
+    font-weight: 700;
+  }
+
+  .hatch-board-filing {
+    width: 100%;
+  }
+
+  /* .hatch-board-filters-more declares nothing of its own: the browser's own
+     <details> behaviour is the whole of its job, and .hatch-section-title
+     already styles its <summary>. */
+
+  /* AC5: no band in the stacked layout, so a column at its limit says so in
+     its own header instead - reading the same tint custom properties a
+     hatch-wip-{tightness} class already sets (lib/wip.ts's tightest, carried
+     here by BoardPage), so it needs no colour of its own. */
+  .hatch-column-wip-note {
+    margin-left: auto;
+    font-size: var(--t-label);
+    color: var(--wip-tint);
+  }
+
+  /* The same visual weight .hatch-filter-clear already carries. */
+  .hatch-board-view-toggle {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    font-size: var(--t-label);
+    cursor: pointer;
   }
 }
 

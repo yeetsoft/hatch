@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { attentionLabel, attentionTone } from '../lib/attention';
-import { useAttention } from '../lib/useAttention';
+import { useAttentionContext } from '../lib/useAttentionContext';
+import { useAttentionNow } from '../lib/useAttentionNow';
 import { AttentionPanel } from './AttentionPanel';
-
-/** How often the waiting phrases are re-read, so `4 minutes` does not sit at
-    `4 minutes` for a quarter of an hour while the panel is open. The answer
-    itself is polled separately - see `useAttention`. */
-const TICK_MS = 30 * 1000;
 
 /** The glyph's own units. A 24-unit box, matching the battery beside it. */
 const SIZE = 24;
@@ -29,9 +25,9 @@ const SIZE = 24;
  * the board behind a list of links back into it.
  */
 export function NavAttention() {
-  const { attention, reload } = useAttention();
+  const { attention, reload } = useAttentionContext();
   const [open, setOpen] = useState(false);
-  const [now, setNow] = useState(() => new Date());
+  const now = useAttentionNow(open);
   const container = useRef<HTMLDivElement>(null);
 
   const tone = attentionTone(attention);
@@ -40,12 +36,6 @@ export function NavAttention() {
   const questions = attention?.questions.length ?? 0;
   const exhausted = attention?.exhaustedRunners?.length ?? 0;
   const trunkBuilds = attention?.trunkBuilds?.length ?? 0;
-
-  useEffect(() => {
-    if (!open) return;
-    const timer = setInterval(() => setNow(new Date()), TICK_MS);
-    return () => clearInterval(timer);
-  }, [open]);
 
   /* A pointer outside it closes it. Clicking a non-focusable area of the page
      fires no blur at all, which is why this exists as well as the focusout

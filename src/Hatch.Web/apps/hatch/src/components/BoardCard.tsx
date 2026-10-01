@@ -19,7 +19,11 @@ export interface CardProps {
 interface BoardCardProps {
   /** The console found this one: draw the ring. */
   found?: boolean;
-  onPeek: (card: IssueCard) => void;
+  /** Absent at phone width (BoardPage's `PhoneColumn`): a tap falls through to
+      the `<Link>`'s own navigation, which is AC2's "goes to the issue page" -
+      the peek is a desk affordance, a modal over a board still visible behind
+      it, and phone width shows no board behind it to peek over. */
+  onPeek?: (card: IssueCard) => void;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -63,7 +67,7 @@ export function BoardCard({
       data-issue-key={card.key}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={(e) => {
-        if (!isPlainClick(e)) return;
+        if (!isPlainClick(e) || !onPeek) return;
         e.preventDefault();
         onPeek(card);
       }}

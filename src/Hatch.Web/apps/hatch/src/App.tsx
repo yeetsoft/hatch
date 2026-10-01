@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
+import { AttentionProvider } from './components/AttentionProvider';
 import { ConfirmationsProvider } from './components/Confirmations';
 import { NavAttention } from './components/NavAttention';
 import { NavLocalPerson } from './components/NavLocalPerson';
@@ -29,7 +30,9 @@ import { usePhone } from './lib/viewport';
 export function App() {
   return (
     <MeProvider>
-      <AppShell />
+      <AttentionProvider>
+        <AppShell />
+      </AttentionProvider>
     </MeProvider>
   );
 }

@@ -30,6 +30,7 @@ export function BoardFilters({
   cards,
   showing,
   total,
+  collapsed = false,
   trailing,
 }: {
   filter: CardFilter;
@@ -44,23 +45,18 @@ export function BoardFilters({
   /** How many cards survive the filter, and how many there are - the count is the only feedback a search box gives. */
   showing: number;
   total: number;
+  /** Folds everything past the search box behind a "Filters" disclosure - the
+      phone row (BoardPage, AC1): the search box and the toggle are what a
+      phone user reaches for first, and the rest is one press away rather
+      than a row that wraps four or five lines deep. */
+  collapsed?: boolean;
   /** Placed at the right end of the row, on whichever line it wraps to; the row does not learn what it is. */
   trailing?: ReactNode;
 }) {
   const filtering = isFiltering(filter);
 
-  return (
-    <div className="hatch-board-filters">
-      {/* type="search" on purpose; base.css says why. */}
-      <input
-        type="search"
-        className={`hatch-board-search${filter.query.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
-        value={filter.query}
-        placeholder="Search titles, keys, parents…"
-        aria-label="Search the board"
-        onChange={(e) => onChange({ ...filter, query: e.target.value })}
-      />
-
+  const rest = (
+    <>
       {/* Drawn only when there is a choice to make - the same rule, and the
           same option text, as the picker on the Plan page. One project makes
           this a control with a single option, and Hatch ships to operators
@@ -122,6 +118,29 @@ export function BoardFilters({
         <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
           Reset
         </button>
+      )}
+    </>
+  );
+
+  return (
+    <div className="hatch-board-filters">
+      {/* type="search" on purpose; base.css says why. */}
+      <input
+        type="search"
+        className={`hatch-board-search${filter.query.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
+        value={filter.query}
+        placeholder="Search titles, keys, parents…"
+        aria-label="Search the board"
+        onChange={(e) => onChange({ ...filter, query: e.target.value })}
+      />
+
+      {collapsed ? (
+        <details className="hatch-board-filters-more">
+          <summary className="hatch-section-title">Filters</summary>
+          {rest}
+        </details>
+      ) : (
+        rest
       )}
 
       {trailing && <div className="hatch-filter-trailing">{trailing}</div>}
