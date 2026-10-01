@@ -701,6 +701,19 @@ public record QuestionDto(
 /// </param>
 public record IssueEventDto(long Id, string Actor, string Kind, JsonElement? Payload, DateTimeOffset At);
 
+/// <summary>One row of <see cref="ActivityPageDto"/> - the same shape as <see cref="IssueEventDto"/>, naming the issue it belongs to.</summary>
+public record ActivityEventDto(
+    long Id, string IssueKey, string Actor, string Kind, JsonElement? Payload, DateTimeOffset At);
+
+/// <summary>
+/// A page of the event trail across every issue, newest first.
+/// </summary>
+/// <param name="HasMore">
+/// Whether another page sits behind this one. There is no total: the page
+/// says whether there is another, not how many there are.
+/// </param>
+public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMore);
+
 // ---- What is waiting on a person ----
 
 /// <summary>
