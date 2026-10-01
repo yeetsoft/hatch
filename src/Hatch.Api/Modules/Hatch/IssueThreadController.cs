@@ -211,27 +211,7 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             .ThenByDescending(e => e.Id)
             .ToListAsync(ct);
 
-        return events.Select(e => new IssueEventDto(e.Id, e.Actor, e.Kind, Payload(e.Payload), e.At)).ToList();
-    }
-
-    /// <summary>
-    /// The stored payload as JSON rather than as a string of JSON, so a client
-    /// reads it without a second parse. A row that will not parse - hand-edited,
-    /// or written by a shape this build does not know - reads as absent rather
-    /// than throwing the whole trail away.
-    /// </summary>
-    private static JsonElement? Payload(string? stored)
-    {
-        if (string.IsNullOrWhiteSpace(stored)) return null;
-
-        try
-        {
-            return JsonDocument.Parse(stored).RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return events.Select(e => new IssueEventDto(e.Id, e.Actor, e.Kind, IssueEventPayload.Parse(e.Payload), e.At)).ToList();
     }
 
     private async Task<long?> IssueIdAsync(string key, CancellationToken ct)
