@@ -98,6 +98,9 @@ public sealed class Tally
     public DateTimeOffset? UntilAt { get; set; }
     public string? StopFile { get; init; }
 
+    /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
+    public Controls? Controls { get; init; }
+
     /// <summary>
     /// Whether this run is over, and why - asked before every increment and
     /// through every wait. One method, because "every exit path" is not
@@ -107,7 +110,16 @@ public sealed class Tally
     {
         StopWhy = null;
 
-        // First, because it is the one that says something is wrong rather than
+        // First of all: a key the operator pressed is a more direct answer to
+        // "should this stop" than any of the counters below, and the increment
+        // in flight has already finished by the time this is asked.
+        if (Controls?.Snapshot() is { StopArmed: true })
+        {
+            StopWhy = "the keyboard asked this runner to stop after this increment";
+            return true;
+        }
+
+        // Next, because it is the one that says something is wrong rather than
         // something is finished.
         if (Fails >= 3)
         {
@@ -366,7 +378,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]",
         "                        [--interval <seconds>] [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
-        "                        [--stop-file <path>]",
+        "                        [--stop-file <path>] [--no-keys]",
         "                        [--restart-after <minutes> | --no-restart]",
         "                        [--repo <path>]... [--workspace <dir>]",
         "",
@@ -404,6 +416,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  --until        stop at this wall-clock hour - tomorrow, if it has gone by",
         "  --stop-file    stop once this path exists. `touch` it from anywhere: no pid",
         "                 to find, and no signal that could land in the middle of a push",
+        "",
+        "  --no-keys         read no keys from this terminal - Ctrl-C and --stop-file still work",
         "",
         "  A run also ends on three failed increments in a row, on a workspace that",
         "  cannot be reset, and when the board's Runners page asks this runner to stop.",
@@ -489,6 +503,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     break;
                 case "--no-restart": noRestart = true; break;
+                // Recognised so it is not refused as an unknown flag - Program.cs
+                // already acted on it, before this command was ever constructed.
+                case "--no-keys": break;
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":
                     return Usage.Refuse(runtime.Say, "go-to-work --repo takes a path", GoToWorkUsage);
@@ -654,6 +671,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // to the night.
                 UntilAt = carried?.UntilAt ?? untilAt,
                 StopFile = stopFile,
+                Controls = runtime.Controls,
             };
 
             var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);

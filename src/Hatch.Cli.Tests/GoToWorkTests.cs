@@ -846,6 +846,29 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 2 reached", StringComparison.Ordinal));
     }
 
+    // ---- The keyboard (HA-132) ----
+
+    [Fact]
+    public async Task A_keyboard_stop_pressed_during_the_first_ticket_ends_the_night_before_a_second_is_claimed()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+
+        // No real keyboard in a test: the same press a KeyReader would make,
+        // called directly once the first ticket is claimed (Prepare() runs
+        // after the claim and before the spawn) and before the loop asks
+        // the board again.
+        h.Workspace.Watching = () => h.Runtime.Controls.Press('s');
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("keyboard", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--stop-file", StringComparison.Ordinal));
+    }
+
     // ---- The hop ----
 
     [Fact]

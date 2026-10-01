@@ -14,7 +14,7 @@ public sealed class WorkCommand(Runtime runtime)
     public static readonly string[] WorkUsage =
     [
         "usage: hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]",
-        "                  [--model <model>] [--effort <effort>] [--dry-run]",
+        "                  [--model <model>] [--effort <effort>] [--dry-run] [--no-keys]",
         "                  [--repo <path>]... [--workspace <dir>]",
         "",
         "  One increment: claim a ticket, spawn one headless claude session with the",
@@ -35,6 +35,7 @@ public sealed class WorkCommand(Runtime runtime)
         "  --effort           ...and likewise",
         "  --dry-run          print the prompt and exit: claims nothing, spawns nothing,",
         "                     and clones nothing even where a workspace is configured",
+        "  --no-keys          read no keys from this terminal - Ctrl-C and --stop-file still work",
         "  --repo <path>      also serve this checkout, repeatable - the whole list for this",
         "                     run, beside the standing checkout if there is one; HATCH_REPOS",
         "                     is not consulted when this is given",
@@ -69,6 +70,9 @@ public sealed class WorkCommand(Runtime runtime)
                 case "--under" when i + 1 < args.Length: under = args[++i]; break;
                 case "--dry-run": dry = true; break;
                 case "--quiet": quiet = true; break;
+                // Recognised so it is not refused as an unknown flag - Program.cs
+                // already acted on it, before this command was ever constructed.
+                case "--no-keys": break;
                 case "-i" or "--interactive": attach = true; break;
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":

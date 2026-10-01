@@ -29,7 +29,7 @@ public sealed record RunnerSnapshot(
 /// <summary>Everything the readout draws, at one instant.</summary>
 public sealed record ReadoutSnapshot(
     IncrementSnapshot? Increment, IdleSnapshot? Idle, RunnerSnapshot Runner,
-    IReadOnlyList<UsageWindow> UsageWindows, DateTimeOffset? UsageReadAt);
+    IReadOnlyList<UsageWindow> UsageWindows, DateTimeOffset? UsageReadAt, ControlsSnapshot Controls);
 
 /// <summary>
 /// The one object a live increment and the idle loop between them both write
@@ -99,9 +99,16 @@ public sealed class ReadoutState
         }
     }
 
-    public ReadoutSnapshot Snapshot()
+    /// <summary>
+    /// What a snapshot carries for <see cref="ReadoutSnapshot.Controls"/> where
+    /// nothing has wired a live <see cref="Hatch.Cli.Controls"/> in - off, so a
+    /// caller that never set one draws no legend rather than a stale one.
+    /// </summary>
+    public static readonly ControlsSnapshot NoControls = new(KeysOn: false, StopArmed: false, Confirming.None);
+
+    public ReadoutSnapshot Snapshot(ControlsSnapshot? controls = null)
     {
-        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage, _usageReadAt);
+        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage, _usageReadAt, controls ?? NoControls);
     }
 }
 
@@ -138,6 +145,8 @@ public static class Readout
         rows.Add(Clip(RunnerRow(snapshot.Runner), width));
 
         if (snapshot.Idle is { } idle) rows.Add(Clip(IdleRow(idle, now), width));
+
+        if (snapshot.Controls.KeysOn) rows.Add(LegendRow(snapshot.Controls, width, color));
 
         return rows;
     }
@@ -202,6 +211,25 @@ public static class Readout
             ? $" — looking again in {Format.Duration(Math.Max(0, (long)(at - now).TotalSeconds))}"
             : "";
         return $"{idle.Line}{next}";
+    }
+
+    /// <summary>
+    /// A legend of the keys that do something, drawn only when <see
+    /// cref="ControlsSnapshot.KeysOn"/> is true - the question while a
+    /// confirmation is outstanding, the armed warning while a stop is pending,
+    /// or the plain legend otherwise. Coloured after clipping, the same as
+    /// <see cref="AliveRow"/>'s quiet timer.
+    /// </summary>
+    private static string LegendRow(ControlsSnapshot controls, int width, bool color)
+    {
+        var text = controls.Confirming == Confirming.Cancel ? "cancel now? y to confirm, any other key to go back"
+            : controls.StopArmed ? "stopping after this increment — s to undo"
+            : "s stop after this increment   c cancel now";
+
+        var row = Clip(text, width);
+        if (!color || controls.Confirming != Confirming.Cancel && !controls.StopArmed) return row;
+
+        return Yellow + row + Reset;
     }
 
     private static string Clip(string text, int width) => width > 0 && text.Length > width ? text[..width] : text;

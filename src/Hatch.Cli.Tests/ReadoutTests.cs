@@ -8,6 +8,7 @@ namespace Hatch.Cli.Tests;
 public sealed class ReadoutTests
 {
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly ControlsSnapshot NoControls = ReadoutState.NoControls;
 
     // ---- The increment's two rows ----
 
@@ -17,7 +18,7 @@ public sealed class ReadoutTests
         var inc = new IncrementSnapshot(
             "HA-120", "Console: a pinned readout", "In Progress -> In Review",
             "https://hatch.example.test/apps/hatch/issues/HA-120", Now, 0, Now, null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -33,7 +34,7 @@ public sealed class ReadoutTests
         var started = Now.AddMinutes(-12);
         var lastActivity = Now.AddSeconds(-14);
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, started, 84_000, lastActivity, "Bash  make test-api");
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -48,7 +49,7 @@ public sealed class ReadoutTests
     public void TheQuietTimer_TurnsColourPastTwoMinutes(int quietSeconds, bool expectColour)
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddSeconds(-quietSeconds), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: true)[1];
 
@@ -59,7 +60,7 @@ public sealed class ReadoutTests
     public void TheQuietTimer_TurnsTheDangerColourPastTenMinutes()
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddMinutes(-11), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: true)[1];
 
@@ -70,7 +71,7 @@ public sealed class ReadoutTests
     public void NoColour_MeansNoEscapeCodesAnywhere()
     {
         var inc = new IncrementSnapshot("HA-1", "T", "W", null, Now, 0, Now.AddMinutes(-11), null);
-        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -83,7 +84,7 @@ public sealed class ReadoutTests
     public void BetweenIncrements_ThereIsNoIssueOrAliveRow()
     {
         var idle = new IdleSnapshot("nothing on the board is an agent's to move", Now.AddSeconds(47));
-        var snapshot = new ReadoutSnapshot(null, idle, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(null, idle, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -97,7 +98,7 @@ public sealed class ReadoutTests
     [Fact]
     public void NoUsageReading_MeansNoUsageRowsAndNothingComplains()
     {
-        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
@@ -108,7 +109,7 @@ public sealed class ReadoutTests
     public void AUsageWindow_DrawsATwentyCellBarAndAPercentageAndAReset()
     {
         var window = new UsageWindow("session", "Session", 0.63, Now.AddHours(2));
-        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [window], null);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [window], null, NoControls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -143,7 +144,7 @@ public sealed class ReadoutTests
     public void TheRunnerRow_NamesTheCharacterThePersonTheNightAndTheBound()
     {
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3) + TimeSpan.FromMinutes(12), 4.82m, "--max-spend 20");
-        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null, NoControls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -157,7 +158,7 @@ public sealed class ReadoutTests
     public void ARunnerWithNoBound_SaysNothingAboutOne()
     {
         var runner = new RunnerSnapshot("Chrissy", null, 1, TimeSpan.Zero, 0m, null);
-        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null, NoControls);
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
 
@@ -171,7 +172,66 @@ public sealed class ReadoutTests
     public void EveryRow_IsClippedToTheGivenWidth()
     {
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3), 4.82m, "--max-spend 20");
-        var snapshot = new ReadoutSnapshot(null, null, runner, [], null);
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null, NoControls);
+
+        var rows = Readout.Draw(snapshot, Now, 10, color: false);
+
+        Assert.All(rows, r => Assert.True(r.Length <= 10));
+    }
+
+    // ---- The keyboard's legend row (HA-132) ----
+
+    [Fact]
+    public void KeysOn_DrawsALegendNamingBothKeys()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("s stop after this increment", row, StringComparison.Ordinal);
+        Assert.Contains("c cancel now", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void KeysOff_DrawsNoLegendRowAtAll()
+    {
+        var controls = new ControlsSnapshot(KeysOn: false, StopArmed: false, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var rows = Readout.Draw(snapshot, Now, 200, color: false);
+
+        Assert.DoesNotContain(rows, r => r.Contains("stop after this increment", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, r => r.Contains("cancel now", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void StopArmed_SaysHowToUndoIt()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: true, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("s to undo", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfirmingCancel_AsksTheQuestion()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.Cancel);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Contains("cancel now?", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheLegendRow_IsClippedAtANarrowWidthToo()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Confirming.None);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var rows = Readout.Draw(snapshot, Now, 10, color: false);
 

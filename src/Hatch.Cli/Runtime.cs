@@ -31,6 +31,14 @@ public sealed record Runtime(
     public ReadoutState Readout { get; init; } = new();
 
     /// <summary>
+    /// What the keyboard has decided so far - always constructed, nothing has
+    /// to ask who is listening, the same remark as <see cref="Readout"/>'s
+    /// own. Keys off by default, which keeps every existing test compiling
+    /// with the keyboard simply out of the picture.
+    /// </summary>
+    public Controls Controls { get; init; } = new(keysOn: false);
+
+    /// <summary>
     /// Where a checkout's chosen name is recorded - <see cref="RunnerNames.Record"/>'s
     /// file, beside <see cref="Settings.UserConfigPath"/>. Replaceable so a test
     /// reads and writes its own temp file rather than the machine's.
