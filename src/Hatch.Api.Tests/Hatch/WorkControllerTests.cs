@@ -1650,6 +1650,23 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_ListsATaskInheritingEmergencyFromItsEpicBeforeOneExpeditedOnItsOwnRow()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the emergency epic", h.Todo);
+        await h.EmergencyAsync(epic);
+        var inherited = await h.FileAsync("task", "inherits emergency, own row normal", h.InProgress, parentId: epic.Id);
+        var hurry = await h.FileAsync("bug", "expedited on its own row, in an earlier column", h.Inbox);
+        await h.ExpediteAsync(hurry);
+
+        // Emergency - the inherited task, then the epic itself (InProgress is
+        // right of Todo) - before expedited, whatever column each sits in.
+        Assert.Equal(
+            new[] { inherited, epic, hurry }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
     public async Task Queue_KeepsTheBoardsOwnOrderInsideEachHalf()
     {
         var h = await NewAsync();

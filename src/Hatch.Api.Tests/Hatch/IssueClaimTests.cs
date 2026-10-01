@@ -900,6 +900,21 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AnActionableIssueInheritingEmergency_IsNeverPreempted()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync(priority: PriorityLevels.Emergency); // actionable and unclaimed - rule 1 holds
+        var epic = await h.FileAsync(priority: PriorityLevels.Emergency, title: "the emergency epic");
+        var heartbeating = await h.FileAsync(parent: epic); // own row normal, inherits from the epic
+        var token = await h.TakeAsync(heartbeating);
+
+        // Rule 2 reads the effective level: a task under an emergency epic is
+        // never told, exactly as one that is emergency on its own row.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(heartbeating, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    [SkippableFact]
     public async Task OnlyTheLastHeldIssueInBoardOrder_IsTold()
     {
         await using var h = await NewAsync();
