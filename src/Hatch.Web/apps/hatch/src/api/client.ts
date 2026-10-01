@@ -1,6 +1,7 @@
 import { HttpError, refusalSentence } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
+  ActivityPage,
   ApiKey,
   ApiKeyCreateRequest,
   ApiKeyMinted,
@@ -313,6 +314,16 @@ export const getComments = (key: string) => fetchJson<Comment[]>(`/api/hatch/iss
 export const addComment = (key: string, request: CommentCreateRequest) =>
   fetchJson<Comment>(`/api/hatch/issues/${seg(key)}/comments`, { method: 'POST', ...asJson(request) });
 export const getEvents = (key: string) => fetchJson<IssueEvent[]>(`/api/hatch/issues/${seg(key)}/events`);
+
+/** The trail across every issue, newest first, a page at a time. `limit` is
+    left at the server's own default when absent. */
+export const getActivity = ({ limit, offset }: { limit?: number; offset?: number }) => {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', String(limit));
+  if (offset !== undefined) params.set('offset', String(offset));
+  const query = params.toString();
+  return fetchJson<ActivityPage>(`/api/hatch/activity${query ? `?${query}` : ''}`);
+};
 
 // ---- The importer ----
 
