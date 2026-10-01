@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueueModal } from './QueueModal';
 import type { QueueStatus } from '../lib/useQueue';
-import type { Issue, QueueEntry, Status } from '../types';
+import type { Issue, IssueCard, QueueEntry, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -61,7 +61,32 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   ...over,
 });
 
-const render = (status: QueueStatus, queue: QueueEntry[], error: string | null = null) =>
+const card = (over: Partial<IssueCard> = {}): IssueCard => ({
+  key: 'AER-1',
+  projectKey: 'AER',
+  type: 'task',
+  title: 'A task',
+  statusId: 1,
+  rank: 0,
+  parentKey: null,
+  readyAt: null,
+  dueAt: null,
+  openQuestions: 0,
+  assignee: null,
+  claim: null,
+  expedited: false,
+  priority: 'normal',
+  express: false,
+  ...over,
+});
+
+const render = (
+  status: QueueStatus,
+  queue: QueueEntry[],
+  error: string | null = null,
+  cards: readonly IssueCard[] = [],
+  onTake: (card: IssueCard) => void = () => {},
+) =>
   renderToStaticMarkup(
     <QueueModal
       open
@@ -70,6 +95,8 @@ const render = (status: QueueStatus, queue: QueueEntry[], error: string | null =
       queue={queue}
       error={error}
       onRefresh={async () => {}}
+      cards={cards}
+      onTake={onTake}
     />,
   );
 
@@ -144,5 +171,24 @@ describe('QueueModal', () => {
 
     expect(html).toContain('the server refused');
     expect(html).toContain('Try again');
+  });
+
+  it('renders each row as a button, not a bare line of text', () => {
+    const html = render('ready', [entry({ issue: issue({ key: 'AER-1' }) })], null, [card({ key: 'AER-1' })]);
+
+    expect(html).toContain('<button');
+    expect(html).not.toMatch(/<li[^>]*class="hatch-queue-row/);
+  });
+
+  it('disables a row whose issue the board is not holding', () => {
+    const html = render('ready', [entry({ issue: issue({ key: 'AER-1' }) })], null, [card({ key: 'AER-2' })]);
+
+    expect(html).toMatch(/<button[^>]*class="hatch-queue-row[^>]*disabled/);
+  });
+
+  it('leaves a matched row enabled', () => {
+    const html = render('ready', [entry({ issue: issue({ key: 'AER-1' }) })], null, [card({ key: 'AER-1' })]);
+
+    expect(html).not.toMatch(/<button[^>]*disabled/);
   });
 });
