@@ -1225,6 +1225,29 @@ public class WorkControllerTests
         Assert.Equal("sonnet", Value(await h.Work.GetWork(Key(story), null, default)).Playbook!.Model);
     }
 
+    /// <summary>
+    /// The pair SeedCloseoutPlaybook seeds onto the implementation -&gt; review
+    /// transition: a childless story still dispatches with the implementation
+    /// (leaf) prompt, and a story whose only child is already closed dispatches
+    /// with the closeout (parent) prompt instead - isParent is total children,
+    /// not open ones, so a closed child is enough to make this issue a parent.
+    /// </summary>
+    [Fact]
+    public async Task Work_AChildlessStoryGetsTheLeafModelAndAStoryWithOnlyClosedChildrenGetsTheParentModel()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "", "leaf-model", shape: "leaf"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "", "parent-model", shape: "parent"));
+        await h.Db.SaveChangesAsync();
+
+        var childless = await h.FileAsync("story", "no children", h.InProgress);
+        var closedOut = await h.FileAsync("story", "its only child is already done", h.InProgress);
+        await h.FileAsync("task", "the closed child", h.Done, parentId: closedOut.Id);
+
+        Assert.Equal("leaf-model", Value(await h.Work.GetWork(Key(childless), null, default)).Playbook!.Model);
+        Assert.Equal("parent-model", Value(await h.Work.GetWork(Key(closedOut), null, default)).Playbook!.Model);
+    }
+
     // ---- The issue's own model and effort ----
 
     [Fact]
