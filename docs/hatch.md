@@ -475,7 +475,10 @@ emergency candidate before every expedited candidate before anything else.
 `PUT /api/hatch/issues/{key}/priority` sets the level by name; the older
 `PUT .../expedite` stays as a two-level alias (`{ expedited: true }` sets
 expedited, `false` sets normal), so a script or a browser tab written against
-the two-level flag does not break.
+the two-level flag does not break. A person sets it from a picker: a pill on
+the issue page and on the board's peek that opens onto every level in a band,
+the issue's own level marked, and a press sets exactly that one — the same
+shape the status picker offers for a column, pressed rather than dragged.
 
 Two things it deliberately is not.
 

@@ -2745,11 +2745,15 @@ input.hatch-inline-title-input {
   }
 }
 
-/* The control itself, on the issue page and in the summary: one button that
-   holds its own state, so the thing that says whether an issue is expedited is
-   the thing that changes it. Pressed is a filled pill; unpressed is the quiet
-   outline every other secondary control on these pages wears. */
-.hatch-expedite {
+/* The pill, on the issue page and in the summary: pixel for pixel what
+   `ExpediteControl`'s button drew at rest, now opening a band instead of
+   cycling - see PriorityControl. Each level owns one class and one face
+   (.expedited, .emergency; normal takes the bare rule), so adding a level
+   (HA-176, HA-177) is a rule here and nothing to branch on. */
+.hatch-priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -2760,55 +2764,167 @@ input.hatch-inline-title-input {
   cursor: pointer;
 }
 
-.hatch-expedite:hover:not(:disabled) {
+.hatch-priority-pill:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
 }
 
-.hatch-expedite:disabled {
+.hatch-priority-pill:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.hatch-expedite.on {
+.hatch-priority-pill.expedited {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--on-accent);
 }
 
-/* The highest level's own face, layered on top of .on the same way
-   .hatch-claim-quiet layers on .hatch-claim (App.css:1929-1937): .on stays
-   applying whenever priority is not normal, and .emergency only overrides
-   the colour. */
-.hatch-expedite.emergency {
+.hatch-priority-pill.emergency {
   border-color: var(--danger);
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* The pill's button chrome and caret, the same shapes `.hatch-status-pill-press`
+   and `.hatch-status-pill-caret` draw (App.css:517-545) for the status picker,
+   so the two pickers share one visual language. */
+.hatch-priority-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-priority-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-priority-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-priority-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-priority-pill-press[aria-expanded='true'] .hatch-priority-pill-caret {
+  transform: rotate(180deg);
 }
 
 /* What a reader who may not press it sees instead: the state as a word. An
    agent holding this page is refused the write and is still entitled to know
    why its ticket was reached first - see IssueExpediteController. */
-.hatch-expedite-said {
+.hatch-priority-said {
   color: var(--muted);
   font-size: var(--t-label);
 }
 
-.hatch-expedite-said.on {
+.hatch-priority-said.expedited {
   color: var(--primary-ink);
   font-weight: 600;
 }
 
-.hatch-expedite-said.emergency {
+.hatch-priority-said.emergency {
   color: var(--danger-ink);
+  font-weight: 600;
 }
 
-/* In the summary the control sits on its own row under the title, with room for
-   a refusal beside it. */
-.hatch-peek-expedite {
+/* In the summary the pill sits on its own row under the title, with room for a
+   refusal beside it, and for the band once it opens. */
+.hatch-peek-priority {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
+}
+
+/* The band under the pill: the same wash, leading edge and radius as the
+   status picker's (.hatch-peek-status, App.css:1044) and the issue page's
+   status bar (.hatch-status-bar, App.css:1458), coloured by the effective
+   level's own class rather than a per-instance variable - priority has no
+   arbitrary colour the way a board column does. */
+.hatch-priority-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-priority-band.expedited {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-left-color: var(--primary);
+}
+
+.hatch-priority-band.emergency {
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+  border-left-color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-priority-band {
+    animation: none;
+  }
+}
+
+/* One button per level - `.hatch-status-step` in miniature (App.css:1488). */
+.hatch-priority-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-priority-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-priority-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-priority-step.expedited {
+  border-color: var(--primary);
+}
+
+.hatch-priority-step.emergency {
+  border-color: var(--danger);
+}
+
+/* The level this issue's own row already carries. Disabled rather than merely
+   marked - pressing it would write an event saying priority moved from
+   expedited to expedited. */
+.hatch-priority-step.here {
+  background: var(--line-strong);
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.hatch-priority-step.expedited.here {
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.emergency.here {
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 /* Carried past a column marked Express skips, with no session.
@@ -2834,7 +2950,7 @@ input.hatch-inline-title-input {
 }
 
 /* The control itself, on the issue page and in the summary - the same shape
-   as .hatch-expedite, in --success instead of --primary. */
+   as .hatch-priority-pill's rest state, in --success instead of --primary. */
 .hatch-express {
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);

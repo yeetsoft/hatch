@@ -6,18 +6,17 @@ import type { AssigneeDirectory } from '../types';
  * the issue page and on the peek, because it is the same fact and the same
  * press.
  *
- * A toggle button rather than a checkbox and rather than a pair of buttons,
- * for the reason ExpediteControl is one: the state it is in *is* the answer
- * to "is this express", so the control says so without the reader pressing
- * anything, and `aria-pressed` says the same thing to a screen reader. What it
- * sends is the state it wants and never "the other one" - see ExpressRequest
- * for why a toggle on the wire would race two browsers looking at the same
- * card.
+ * A toggle button rather than a checkbox and rather than a pair of buttons:
+ * the state it is in *is* the answer to "is this express", so the control
+ * says so without the reader pressing anything, and `aria-pressed` says the
+ * same thing to a screen reader. What it sends is the state it wants and
+ * never "the other one" - see ExpressRequest for why a toggle on the wire
+ * would race two browsers looking at the same card.
  *
- * Presentational and fetching nothing, for the same reason ExpediteControl is:
- * the page loads the directory once beside its other reads and hands it down,
- * so a refusal lands in the page's own error line in the server's own words
- * and this never has an opinion about whether a press worked.
+ * Presentational and fetching nothing: the page loads the directory once
+ * beside its other reads and hands it down, so a refusal lands in the page's
+ * own error line in the server's own words and this never has an opinion
+ * about whether a press worked.
  */
 export function ExpressControl({
   express,

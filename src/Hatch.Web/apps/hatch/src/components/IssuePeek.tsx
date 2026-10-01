@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button, Modal } from '@hatch/ui';
 import { getIssue, patchIssue, setPriority, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
-import { ExpediteControl } from './ExpediteControl';
+import { PriorityControl } from './PriorityControl';
 import { ExpressControl } from './ExpressControl';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
@@ -23,8 +23,10 @@ interface Asked {
   pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
-  /** What the server last said about the issue's own level and where the
-      effective one came from, or undefined while the card's own value stands. */
+  /** What the server last said about the level in effect, the issue's own
+      level and where the effective one came from, or undefined while the
+      card's own value stands. */
+  priority?: 'normal' | 'expedited' | 'emergency';
   priorityOwn?: 'normal' | 'expedited' | 'emergency';
   priorityFrom?: string | null;
   priorityError?: string;
@@ -175,7 +177,12 @@ export function IssuePeek({
       apply(key, { priorityBusy: true, priorityError: undefined });
       try {
         const issue = await setPriority(key, next);
-        apply(key, { priorityOwn: issue.priorityOwn, priorityFrom: issue.priorityFrom, priorityBusy: false });
+        apply(key, {
+          priority: issue.priority,
+          priorityOwn: issue.priorityOwn,
+          priorityFrom: issue.priorityFrom,
+          priorityBusy: false,
+        });
         onExpedited();
       } catch (err) {
         apply(key, { priorityBusy: false, priorityError: message(err) });
@@ -283,10 +290,12 @@ export function IssuePeek({
             said otherwise: the board is reloaded on a press, but the dialog
             stays open over it, and a control that waited for the refetch to
             catch up would read as not having noticed. */}
-        <div className="hatch-peek-expedite">
-          <ExpediteControl
-            priority={asked.priorityOwn ?? card.priorityOwn}
-            inheritedFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
+        <div className="hatch-peek-priority">
+          <PriorityControl
+            issueKey={card.key}
+            priority={asked.priority ?? card.priority}
+            priorityOwn={asked.priorityOwn ?? card.priorityOwn}
+            priorityFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
             directory={directory}
             busy={asked.priorityBusy ?? false}
             onChange={(next) => void changePriority(next)}
