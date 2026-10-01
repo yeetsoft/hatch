@@ -232,10 +232,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <summary>
     /// Why an unattended run - or anybody - should not start writing this yet:
     /// the project it is under is bound to a checkout this runner does not
-    /// have. Null when the caller declared nothing at all (see
+    /// have. Every session spawns in the primary repository's checkout - the
+    /// first by sort order - so it is the primary that has to match, and a
+    /// runner holding only a later one is refused with its own sentence. Null
+    /// when the caller declared nothing at all (see
     /// <see cref="RepositoryDeclaration"/>), when the project binds nothing
-    /// and the caller has a standing checkout, when one of the project's
-    /// repositories matches a remote the caller declared, or when the caller
+    /// and the caller has a standing checkout, when the project's primary
+    /// repository matches a remote the caller declared, or when the caller
     /// says it will clone what it lacks.
     /// </summary>
     private static string? RepositoryFold(EfHatchIssue issue, RepositoryDeclaration repos)
@@ -249,8 +252,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 ? null
                 : $"{IssueKey.Format(issue.Project.Key, issue.Number)} is bound to no repository - bind one on the Projects page, or run the loop inside a checkout";
 
-        if (bound.Any(r => repos.Match(r.Canonical) is not null)) return null;
+        if (repos.Match(bound[0].Canonical) is not null) return null;
         if (repos.Clones) return null;
+
+        if (bound.Skip(1).Any(r => repos.Match(r.Canonical) is not null))
+            return $"its primary repository is {bound[0].Remote}, and this runner has no checkout of it";
 
         var remotes = bound.Select(r => r.Remote).ToList();
         var list = remotes.Count == 1
@@ -432,10 +438,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// prevent, whoever asked for it.
     /// </param>
     /// <param name="implementation">
-    /// The column a dependency gates the move into, and the only one it gates -
-    /// shared with the repository fold below, for the same reason: a wrong
-    /// checkout matters only once code is about to be written, and everything
-    /// left of that column needs no checkout at all.
+    /// The column a dependency gates the move into, and the only one it gates.
+    /// The repository fold below is wider: it applies to every move a session
+    /// is spawned for, and to a hop only when it lands here.
     /// </param>
     /// <param name="repos">
     /// What the caller told the dispatcher about its own checkouts. A fact
@@ -544,14 +549,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (waiting > 0)
             return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
 
-        // A repository matters wherever code is about to be written or a branch
-        // is about to be entered: the move into the implementation column, and a
-        // conflict or a failing build, each of which is a session on the branch. Dependencies gate only the
-        // first - a pull request that already exists is not held back by what
-        // its ticket once waited on.
+        // A repository matters wherever a session is spawned, because every
+        // session runs in the primary repository's checkout: every move but a
+        // hop, which runs no session and needs no checkout - unless it lands in
+        // the implementation column, where the fold has always applied.
+        // Dependencies gate only the move into implementation - a pull request
+        // that already exists is not held back by what its ticket once waited on.
         var conflicts = to.Id == from.Id;
 
-        if (to.Id == implementation?.Id || conflicts)
+        if (!hop || to.Id == implementation?.Id)
         {
             if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
         }

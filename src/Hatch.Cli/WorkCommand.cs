@@ -198,7 +198,14 @@ public sealed class WorkCommand(Runtime runtime)
         var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
         if (chosen is null)
         {
-            runtime.Say.Complain(Changed(work.Issue.Key));
+            // The server said clear because this runner will clone what it
+            // lacks - a dry run clones nothing, so it has nowhere to spawn.
+            // With no workspace the server would have refused, so what is
+            // left is bindings that really changed between the two reads.
+            runtime.Say.Complain(
+                runtime.Settings.Workspace is not null
+                    ? $"hatch: {work.Issue.Key} - {work.Repositories.First(r => r.Primary).Remote} has no checkout here yet, and a dry run clones nothing"
+                    : Changed(work.Issue.Key));
             return 2;
         }
 
@@ -644,6 +651,18 @@ public sealed class WorkCommand(Runtime runtime)
         if (work.Blocked is not { Length: > 0 } why) return false;
 
         runtime.Say.Complain($"hatch: {work.Issue.Key} - {why}");
+
+        // The refusal may be the repository fold, which names the repository
+        // and not how to get a checkout of it: a runner that holds none of the
+        // primary and will not clone has three ways to one, said here before
+        // anything is claimed.
+        if (runtime.Settings.Workspace is null
+            && Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch) is null)
+        {
+            var primary = work.Repositories.First(r => r.Primary).Remote;
+            runtime.Say.Complain(
+                $"hatch:   run it inside a checkout of {primary}, name one with --repo, or give a --workspace to clone into.");
+        }
 
         var open = work.Questions.Where(q => q.Answers.Count == 0).ToList();
         if (open.Count > 0)
