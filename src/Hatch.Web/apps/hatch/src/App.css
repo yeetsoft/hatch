@@ -3841,7 +3841,7 @@ button.hatch-option.chosen {
    end against the track, rather than the track and the fill blurring
    together at either end of the ramp. */
 .hatch-usage-bar-track {
-  height: 6px;
+  height: 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-chip);
   overflow: hidden;

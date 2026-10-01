@@ -3,7 +3,10 @@
    The panel's 720px max-width is a fixed layout dimension rather than a rung
    on the spacing ladder — it is a reading measure for a dialog, narrower than
    the page's --measure on purpose — so it stays a literal here and Phase 6
-   moves it deliberately.
+   moves it deliberately. The narrow modifier's 520px is the same kind of
+   literal for the same reason, chosen for one dialog's own content rather
+   than a rung on the ladder, so it sits beside the 720px rather than becoming
+   a token.
 
    `dvh` rather than `vh` for the cap. `100vh` is the tallest the viewport ever
    gets — on a phone that is the height with the toolbars retracted — so a panel
@@ -32,6 +35,10 @@
      --on-accent text. A component restates its own appearance rather than
      leaning on where it happens to sit. */
   color: var(--ink);
+}
+
+.hatch-modal__panel--narrow {
+  max-width: 520px;
 }
 
 .hatch-modal__head {

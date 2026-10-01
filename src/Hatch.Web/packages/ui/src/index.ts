@@ -35,7 +35,7 @@ export type { GridProps, GridCols } from './components/Grid';
 export { Table } from './components/Table';
 export type { TableProps } from './components/Table';
 export { Modal } from './components/Modal';
-export type { ModalProps } from './components/Modal';
+export type { ModalProps, ModalWidth } from './components/Modal';
 export { Field } from './components/Field';
 export type { FieldProps } from './components/Field';
 export { Button } from './components/Button';
