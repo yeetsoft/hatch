@@ -40,13 +40,49 @@ export interface CardFilter {
   project: string;
 }
 
-/** The types the board opens on: the levels a person plans at. Tasks are the
-    leaf work and bury them, and are one press away. */
+/** The types a browser's first visit opens the board on, and what Reset returns
+    to: the levels a person plans at. Tasks are the leaf work and bury them, and
+    are one press away. After that the board opens on the types last chosen in
+    that browser (`readBoardTypes`). */
 export const DEFAULT_TYPES: IssueType[] = ['epic', 'story', 'bug'];
 
-/** What the board opens on, and what Reset returns to. Not "no filter": it
-    hides tasks, and `isFiltering` says so. */
+/** What a browser's first visit opens the board on, and what Reset returns to.
+    Not "no filter": it hides tasks, and `isFiltering` says so. Only the types
+    are remembered between visits; the rest of this opens as it is here. */
 export const DEFAULT_FILTER: CardFilter = { types: DEFAULT_TYPES, query: '', waiting: false, assignee: '', project: '' };
+
+/** Where the chosen types are persisted - namespaced next to
+    `hatch.board.view` (lib/phoneBoard.ts). */
+export const BOARD_TYPES_STORAGE_KEY = 'hatch.board.types';
+
+/** The stored types, or the default - try/catch for the same reason
+    `readBoardView` does one: localStorage throws in a partitioned or
+    locked-down context, and the board still has to render. Restores the
+    `CardFilter.types` invariant: in `ISSUE_TYPES` order, types this build does
+    not have dropped, and never empty. Always a fresh array, so nothing holding
+    the result can mutate `DEFAULT_TYPES`. */
+export function readBoardTypes(): IssueType[] {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(BOARD_TYPES_STORAGE_KEY) ?? 'null');
+    if (Array.isArray(stored)) {
+      const known = ISSUE_TYPES.filter((type) => stored.includes(type));
+      if (known.length > 0) return known;
+    }
+  } catch {
+    /* See above. */
+  }
+  return [...DEFAULT_TYPES];
+}
+
+/** Persists the choice. A store that cannot be written is not worth
+    surfacing: the choice holds until the next reload, as the theme's does. */
+export function writeBoardTypes(types: IssueType[]): void {
+  try {
+    window.localStorage.setItem(BOARD_TYPES_STORAGE_KEY, JSON.stringify(types));
+  } catch {
+    /* See above. */
+  }
+}
 
 /** Whether this filter is hiding anything, which is what decides if the board
     says so out loud - and it does at the default, because a filtered column and
