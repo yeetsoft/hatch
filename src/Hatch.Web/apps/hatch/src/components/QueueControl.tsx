@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueue } from '../lib/useQueue';
 import { QueueModal } from './QueueModal';
+import type { IssueCard } from '../types';
 
 /**
  * The button and its modal, and the one place they meet - `NavUtilization`'s
@@ -12,7 +13,7 @@ import { QueueModal } from './QueueModal';
  * behind this already polls every 30s, and a queue nobody has asked to see
  * is a request for nothing.
  */
-export function QueueControl() {
+export function QueueControl({ cards, onTake }: { cards: readonly IssueCard[]; onTake: (card: IssueCard) => void }) {
   const { status, queue, error, load } = useQueue();
   const [open, setOpen] = useState(false);
 
@@ -42,6 +43,8 @@ export function QueueControl() {
         queue={queue}
         error={error}
         onRefresh={load}
+        cards={cards}
+        onTake={onTake}
       />
     </>
   );

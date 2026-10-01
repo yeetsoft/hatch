@@ -3918,6 +3918,9 @@ button.hatch-option.chosen {
   gap: var(--sp-1);
 }
 
+/* The row is a native button now, not a styled `<li>` - the reset below
+   clears the chrome a button always carries so it reads exactly as the row
+   used to. */
 .hatch-queue-row {
   display: grid;
   grid-template-columns: auto auto auto auto auto 1fr;
@@ -3925,6 +3928,24 @@ button.hatch-option.chosen {
   gap: 0 var(--sp-2);
   padding: var(--sp-1-5) var(--sp-2);
   border-left: 3px solid transparent;
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hatch-queue-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-queue-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 /* Clear and folded, told apart without reading either sentence - a rule down

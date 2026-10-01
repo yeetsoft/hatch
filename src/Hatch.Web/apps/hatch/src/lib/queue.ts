@@ -1,7 +1,7 @@
 /* Drawing a pass over the queue: the sentence each row says, the marker it
    carries, and the tally a header line reads off. */
 
-import type { QueueEntry } from '../types';
+import type { IssueCard, QueueEntry } from '../types';
 import { conflictedChecks } from './mergeCheck';
 import { failedBuilds } from './buildCheck';
 
@@ -55,4 +55,12 @@ export function anyAboveNormal(queue: readonly QueueEntry[]): boolean {
     rather than recounted by every consumer. */
 export function queueTally(queue: readonly QueueEntry[]): { total: number; clear: number } {
   return { total: queue.length, clear: queue.filter((q) => q.blocked === null).length };
+}
+
+/** The board's own card for a queue row, found by key rather than cast - a
+    `QueueEntry.issue` is a full `Issue`, not the `IssueCard` the board's
+    `onTake` wants, and the two reads (the queue's, the board's) are a moment
+    apart, so a row's issue may not be among `cards` at all. */
+export function queueCard(entry: QueueEntry, cards: readonly IssueCard[]): IssueCard | undefined {
+  return cards.find((c) => c.key === entry.issue.key);
 }
