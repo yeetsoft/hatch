@@ -656,6 +656,223 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
     }
 
+    // ---- An epic waits for its own children (HA-125) ----
+    //
+    // An epic's own version of the rule above: it ignores a deferred child
+    // entirely rather than counting it open, and it reaches the epic
+    // wherever it stands in the WIP section rather than only the
+    // implementation column - see FamilyGate.EpicFold and its guard in
+    // Blocked.
+
+    [Fact]
+    public async Task AnEpicWhoseChildrenAreAllTerminal_IsClear()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "shipped one", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped two", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped three", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped four", h.Done, parentId: epic.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithTerminalAndDeferredChildren_IsClear()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "shipped one", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped two", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped three", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shelved", h.Shelved, parentId: epic.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithOnlyADeferredChild_IsClear()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("task", "shelved, not closed", h.Shelved, parentId: epic.Id);
+
+        // Unlike AParentWithADeferredChild_IsFolded's story, a deferred child
+        // does not count against an epic at all - shelving is the operator's
+        // call, not a gap the epic is held for.
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithOneOpenChild_NamesTheCount()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+        await h.FileAsync("story", "shipped one", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped two", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped three", h.Done, parentId: epic.Id);
+
+        Assert.Equal(
+            "1 of its 4 children is not done - an epic is verified once its stories are",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithTwoOpenChildren_NamesTheCount()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "not started one", h.Todo, parentId: epic.Id);
+        await h.FileAsync("story", "not started two", h.Todo, parentId: epic.Id);
+        await h.FileAsync("story", "shipped one", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped two", h.Done, parentId: epic.Id);
+
+        Assert.Equal(
+            "2 of its 4 children are not done - an epic is verified once its stories are",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithADeferredAndAnOpenChild_DoesNotCountTheDeferredOne()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "shelved", h.Shelved, parentId: epic.Id);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+        await h.FileAsync("story", "shipped one", h.Done, parentId: epic.Id);
+        await h.FileAsync("story", "shipped two", h.Done, parentId: epic.Id);
+
+        Assert.Equal(
+            "1 of its 3 children is not done - an epic is verified once its stories are",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithOneOpenChildOnly_ReadsItsOnlyChild()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+
+        Assert.Equal(
+            "its only child is not done - an epic is verified once its stories are",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithNoChildren_IsFolded()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "nothing under it yet", h.InProgress);
+
+        Assert.Equal(
+            "nothing is filed under it - an epic runs its stories, and it has none",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithAnOpenGrandchild_IsUnaffected()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "shipped", h.Done, parentId: epic.Id);
+        await h.FileAsync("task", "still open", h.Todo, parentId: story.Id);
+
+        // Direct children only - a grandchild left open is the story's own
+        // business, not this fold's.
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADeferredChild_IsStillFoldedWhenItIsAStory()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        await h.FileAsync("task", "shelved, not closed", h.Shelved, parentId: parent.Id);
+
+        // The regression this guard has to hold: the epic's own rule does not
+        // also exempt a story - AParentWithADeferredChild_IsFolded's sentence,
+        // unchanged.
+        Assert.Equal(
+            "its children are the work, and some are still open",
+            Value(await h.Work.GetWork(Key(parent), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithAnOpenChild_IsUnaffectedWhenTheColumnIsNotFlaggedWip()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+
+        // Guarded to from.IsWip - an un-flagged board leaves an epic with an
+        // open child dispatched exactly as before this fold existed.
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicInTodoWithAnOpenChild_IsNotHeldByThisFold()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "still being broken down", h.Todo);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicInReviewWithAnOpenChild_IsFoldedByTheReviewRuleNotThisOne()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Review);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+
+        // The fold applies only to the move to the next column: an epic
+        // sitting in review, on the move to itself, is folded by ReviewWork's
+        // own rule - the !conflicts guard keeps this fold off that move
+        // entirely.
+        Assert.Equal(
+            "no runner has checked its branch against the trunk yet",
+            Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEpicWithAnUnansweredQuestionAndAnOpenChild_IsFoldedByTheQuestionFirst()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+        await h.AskAsync(epic, "which way?");
+
+        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task GetNextWork_PassesOverAHeldEpicToTheNextClearRow()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var child = await h.FileAsync("task", "not started", h.Todo, parentId: epic.Id);
+
+        Assert.Equal(Key(child), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
     // ---- Which checkout a runner declares ----
     //
     // Opt-in, not a default: a request carrying none of remote, standing or

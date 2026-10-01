@@ -2792,14 +2792,27 @@ the order of the board is precisely the bug this endpoint exists to expose.
 Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
-question, a repository this runner lacks, an unmet dependency, a full [WIP
-section](#wip), [an epic at its own limit](#an-epics-own-limit), and — for an
-issue in review — the verdict on its branch, then [the hop](#the-hop), and
-last the missing playbook — last because it is only worth saying about an
+question, a repository this runner lacks, an unmet dependency, an open child, a
+full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
+— for an issue in review — the verdict on its branch, then [the hop](#the-hop),
+and last the missing playbook — last because it is only worth saying about an
 issue that is otherwise a candidate. The two that are the
 *loop's* policy rather than a fact about an issue — the ready date and the
 assignee — are asked only when the pass is asking, so `work/{key}` still
 ignores them.
+
+**An epic's own open-child rule reads differently from the generic one.** The
+generic fold — "its children are the work, and some are still open" — counts a
+deferred child as still open, and reaches only the issue standing in the
+implementation column. An epic has its own version instead: a deferred child
+does not count against it at all, since shelving a story is the operator's
+call and not a gap the epic is held for, and it reaches the epic wherever it
+stands in the WIP section, not only the column where code is written, since an
+epic is never itself the thing being implemented. It names how many of the
+epic's counted children are still open — `{n} of its {m} children {is/are} not
+done`, `its only child is not done` for exactly one, or `nothing is filed under
+it` for none at all — each closing with "an epic is verified once its stories
+are".
 
 **A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
 that is express, stands in a column marked `ExpressSkips`, and clears every
@@ -3001,7 +3014,12 @@ the sentence saying which one it failed is what `work/queue` reports:
    child not in a terminal column is not itself the work — its children are —
    so it is folded rather than carried into review. A deferred child counts as
    open, the same rule [Dependency](#dependency) already holds for a blocker.
-   A childless issue is unaffected.
+   A childless issue is unaffected. An epic reads this differently: it is held
+   wherever it stands in the WIP section, not only the column where the code
+   gets written, and a deferred child does not count against it at all — see
+   [Running an epic](#running-an-epic) for why. The sentence names how many of
+   its counted children are still open, that its only child is not done, or
+   that nothing is filed under it at all.
 9. **The [WIP section](#wip) has room for it**, when the move is into it: the
    load, not counting this issue, is below the limit, nor counting any
    ancestor of this issue already standing in it — a family crosses together,

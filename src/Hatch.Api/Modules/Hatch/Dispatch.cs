@@ -354,6 +354,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// playbook needs the operator, which is last because it is only worth
     /// saying about an issue that is otherwise a candidate.</para>
     ///
+    /// <para>An epic's own "open child" rule sits beside the generic one and
+    /// reads differently in two ways: it ignores a deferred child entirely
+    /// rather than counting it open, because shelving a story is the
+    /// operator's call and not a gap the epic should be held for; and it
+    /// reaches the epic wherever it stands in the WIP section, not only the
+    /// column where code is written, because an epic is never itself the
+    /// thing being implemented.</para>
+    ///
     /// <para>The verdict is asked only of the review column, which is
     /// dispatched to itself (<see cref="Columns.Target"/>) and only when its
     /// branch conflicts with the trunk or the build on its tip has failed -
@@ -551,8 +559,21 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // this one gates the move out. An issue standing in the implementation
         // column with a child that is not yet closed is not itself the work -
         // its children are - so it is folded rather than carried into review.
-        if (from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
+        // An epic has its own version of this rule, just below, with its own
+        // sentence and its own scope - this one is guarded off epics so the
+        // two do not both speak for the same issue.
+        if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
             return "its children are the work, and some are still open";
+
+        // An epic is verified by its own stories, not merely cleared off one
+        // column: it is held wherever it stands in the WIP section, not only
+        // the implementation column, and a deferred child does not count
+        // against it the way OpenChildren does for everything else above -
+        // the operator shelving a story is not a gap in the epic (HA-114,
+        // Taken here). Never on the move to itself: an epic in review is
+        // folded by a conflict or a failing build, not by this.
+        if (issue.Type == "epic" && !conflicts && from.IsWip && family.EpicFold(issue.Id, statuses) is { } epicBlock)
+            return epicBlock;
 
         // A full section, or an epic at its own limit, needs other work to
         // leave, so it is said after a dependency, which needs other work to
@@ -936,6 +957,12 @@ public sealed class FamilyGate
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
     public static readonly FamilyGate None = new([], [], []);
 
+    /// <summary>
+    /// The sentence for an issue with nothing filed under it at all - shared
+    /// by every fold that reaches a childless parent, written once here.
+    /// </summary>
+    public const string NothingUnder = "nothing is filed under it - an epic runs its stories, and it has none";
+
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
     private readonly Dictionary<long, int> _statusById;
@@ -985,6 +1012,39 @@ public sealed class FamilyGate
     /// </summary>
     public IReadOnlyList<long> OpenChildren(long issueId) =>
         Children(issueId).Where(_open.Contains).ToList();
+
+    /// <summary>
+    /// Why an epic should not move on: how many of its direct children are
+    /// not yet done, counting a deferred one out entirely rather than as open
+    /// - the rollup's own rule (<c>Rollup.cs</c>: a shelved child is neither
+    /// finished nor outstanding) applied to direct children only, which is
+    /// the opposite of what <see cref="OpenChildren"/> does for every other
+    /// fold. Null where every counted child is terminal, including where
+    /// every child is deferred and none are counted at all.
+    /// </summary>
+    public string? EpicFold(long issueId, List<EfHatchStatus> statuses)
+    {
+        var children = Children(issueId);
+        if (children.Count == 0) return NothingUnder;
+
+        var counted = 0;
+        var open = 0;
+        foreach (var childId in children)
+        {
+            if (!_statusById.TryGetValue(childId, out var statusId)) continue;
+            if (statuses.FirstOrDefault(s => s.Id == statusId) is not { } status) continue;
+            if (status.IsDeferred) continue;
+
+            counted++;
+            if (!status.IsTerminal) open++;
+        }
+
+        if (open == 0) return null;
+
+        return counted == 1
+            ? "its only child is not done - an epic is verified once its stories are"
+            : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
+    }
 
     /// <summary>Whether the parent's own column is Columns.Implementation.</summary>
     public bool ParentStarted(long parentId, List<EfHatchStatus> statuses) =>
