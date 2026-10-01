@@ -607,12 +607,24 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (hop) return null;
 
         // Reached only when hop is false and an epic is otherwise entering the
-        // WIP section - every other condition HopKind's own epic branch checks
-        // has already held, so the only thing that can have failed is the
-        // children check. An epic with nothing filed under it is not a hop,
-        // and never silently "no playbook covers this" (HA-113).
+        // WIP section - one of HopKind's own epic branch conditions has failed:
+        // its own parent, or its children. Asked in that order - is anything
+        // above it running, then has it anything under it - so a top-level
+        // epic, or one whose parent epic is not running, never reads as merely
+        // childless, and never silently "no playbook covers this" (HA-113,
+        // HA-202).
         if (issue.Type == "epic" && wip is not null && !wip.Inside(from.Id) && to is not null && wip.Inside(to.Id))
+        {
+            var epicParent = family.ParentOf(issue.Id);
+
+            if (epicParent is null)
+                return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
+
+            if (epicParent is not { Type: "epic" } || !wip.Inside(epicParent.StatusId))
+                return "its parent epic is not running, so nothing pulls it in";
+
             return FamilyGate.NothingUnder;
+        }
 
         // A column that pulls its children is never "no playbook covers
         // this" - it is one of these two, naming which of FamilyGate.Pulls's
@@ -639,13 +651,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <remarks>
     /// Asked in order: an express issue in a ticked column; an epic standing
     /// outside the WIP section whose next column is inside it, with something
-    /// filed under it; a story or bug in a ticked column whose parent is a
-    /// running epic; and last, unrelated to the WIP section, a child a
-    /// ParentPulls column pulls (HA-149). The order matters only where a board
-    /// ticks both ExpressSkips and ParentPulls on the same column and an epic
-    /// stands exactly in the implementation column - see HA-113's own
-    /// decision on the overlap. Never on a move that ends where it starts: a
-    /// review self-move is never a hop for the first three, by construction.
+    /// filed under it and its own direct parent a running epic; a story or bug
+    /// in a ticked column whose parent is a running epic; and last, unrelated
+    /// to the WIP section, a child a ParentPulls column pulls (HA-149). A
+    /// top-level epic - one with no parent, or a parent that is not a running
+    /// epic - is never carried by the second arm: only a person moves it in
+    /// (HA-202). The order matters only where a board ticks both ExpressSkips
+    /// and ParentPulls on the same column and an epic stands exactly in the
+    /// implementation column - see HA-113's own decision on the overlap. Never
+    /// on a move that ends where it starts: a review self-move is never a hop
+    /// for the first three, by construction.
     /// </remarks>
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
@@ -658,7 +673,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (crosses && wip is not null)
         {
             if (issue.Type == "epic" && !wip.Inside(from.Id) && wip.Inside(to!.Id)
-                && family.Children(issue.Id).Count > 0)
+                && family.Children(issue.Id).Count > 0
+                && parent is { Type: "epic" } parentEpic && wip.Inside(parentEpic.StatusId))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
