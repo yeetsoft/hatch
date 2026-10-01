@@ -2552,9 +2552,13 @@ order:
    marked [`ExpressSkips`](#status), with no unanswered question.
 2. **epic** — an epic standing in a column outside the [WIP](#wip) section
    whose next column is inside it, with something filed under it — any direct
-   child, of any type, in any column. An epic with nothing filed under it is
-   never a hop: it is folded instead, with *"nothing is filed under it — an
-   epic runs its stories, and it has none"*.
+   child, of any type, in any column — and whose own direct parent is itself
+   an epic standing inside the WIP section. A top-level epic — one with no
+   parent, or a parent that is not a running epic — is never carried this way:
+   its own column is the whole signal, and only a person moves it in
+   (HA-202). An epic that clears the parent test but has nothing filed under
+   it is never a hop either: it is folded instead, with *"nothing is filed
+   under it — an epic runs its stories, and it has none"*.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
    whose parent is an epic standing inside the WIP section — in [To
    Do](#status), in [In Progress](#status), in review, wherever the section
@@ -2587,10 +2591,11 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 - The issue is blocked by some other fold — a claim, a ready date, an
   assignee, a question, a repository, a dependency, a full [WIP](#wip)
   section, [an epic at its own limit](#an-epics-own-limit), a terminal next
-  column, an epic with nothing filed under it, or (for a child of a
-  `ParentPulls` column) a parent that has not reached the implementation
-  column, or a sibling already in flight. The sentence is exactly the one
-  `Blocked` already gives for that fold.
+  column, a top-level epic (its own column is the signal, not a pass), an
+  epic whose parent epic is not running, an epic with nothing filed under it,
+  or (for a child of a `ParentPulls` column) a parent that has not reached the
+  implementation column, or a sibling already in flight. The sentence is
+  exactly the one `Blocked` already gives for that fold.
 - The issue is clear, but is not a hop — none of the four kinds above applies,
   or the move is a review self-move. A session moves this issue, and a hop
   does not.
@@ -2620,14 +2625,23 @@ can spawn a session for a hop by accident.
 
 ### Running an epic
 
-**The pull.** An operator drags an epic into the column before the WIP
-section and walks away. The next pass carries it in with no session — [the
-`epic` hop](#the-hop) — as long as something is filed under it and the epic
-slice has room; an epic with nothing filed under it is folded instead, not
-silently skipped. While it stands inside the section — including in the
-review column — a story or bug under it, standing itself in a column ticked
-`ExpressSkips`, is carried across the same way, one card a pass, rightmost
-first: [the `under` hop](#the-hop). The per-epic limit ([HA-112](#an-epics-own-limit))
+**The pull is for a sub-epic, never a top-level one.** An operator drags a
+*top-level* epic into the column before the WIP section and walks away — that
+column, on its own, is the whole signal that its sub-tree should run, and only
+a person sets it. No pass ever carries a top-level epic across on its own say-so
+(HA-202): one with no parent, or whose parent is not itself a running epic,
+is folded — *"a top-level epic is moved in by a person - its own column is the
+signal for everything under it"*, or, where it has a parent epic that simply
+is not running, *"its parent epic is not running, so nothing pulls it in"*.
+
+Once a person has moved a top-level epic into the section, an epic **filed
+under it** is carried in by the next pass with no session — [the `epic`
+hop](#the-hop) — as long as something is filed under that sub-epic and the
+epic slice has room; a sub-epic with nothing filed under it is folded instead,
+not silently skipped. While an epic stands inside the section — including in
+the review column — a story or bug under it, standing itself in a column
+ticked `ExpressSkips`, is carried across the same way, one card a pass,
+rightmost first: [the `under` hop](#the-hop). The per-epic limit ([HA-112](#an-epics-own-limit))
 still holds the move into the implementation column, same as it always has.
 Ticking `ExpressSkips` on the column before the section — typically *Draft* —
 starts the flow there too: the tick now serves an express issue and a running
