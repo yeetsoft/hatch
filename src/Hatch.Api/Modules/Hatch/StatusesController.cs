@@ -15,10 +15,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// draws: <see cref="RequireRoleAttribute"/> is <c>AllowMultiple = false</c>,
 /// so a method-level attribute silently *replaces* a class-level one rather
 /// than tightening it. Decorating every action explicitly is what keeps
-/// <see cref="PutExpressSkips"/> and <see cref="PutParentPulls"/> closed to a
-/// key whatever else is added beside it - each decides which gates the loop
-/// may pass unattended, the same kind of power <see cref="PutRepositories"/>
-/// guards over there.
+/// <see cref="PutExpressSkips"/>, <see cref="PutParentPulls"/> and
+/// <see cref="PutAgentFiles"/> closed to a key whatever else is added beside
+/// it - each decides which gates the loop may pass unattended, the same kind
+/// of power <see cref="PutRepositories"/> guards over there.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
@@ -32,7 +32,8 @@ public class StatusesController(HatchContext db) : ControllerBase
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
             .Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls))
+                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
+                s.AgentFiles))
             .ToListAsync(ct);
 
         return statuses;
@@ -65,7 +66,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             nameof(GetStatuses),
             new StatusDto(
                 status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-                status.Color, status.ExpressSkips, status.ParentPulls));
+                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles));
     }
 
     [HttpPatch("{id:int}")]
@@ -97,7 +98,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
     }
 
     /// <summary>
@@ -119,7 +120,7 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
     }
 
     /// <summary>
@@ -141,7 +142,41 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Agent files</em>: the column a program's own
+    /// issues are born in. Refuses a deferred or a terminal column - parked or
+    /// shipped work is not somewhere work is born, the same refusal
+    /// <see cref="WipController"/> gives those columns - and ticking one
+    /// column clears every other, so at most one ever holds it; unticking is
+    /// always allowed, including on a column that became deferred or terminal
+    /// after being ticked, the same stranded-flag tolerance <c>IsWip</c>
+    /// gives that case.
+    /// </summary>
+    [HttpPut("{id:int}/agent-files")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutAgentFiles(int id, AgentFilesRequest request, CancellationToken ct)
+    {
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        if (request.AgentFiles)
+        {
+            if (status.IsDeferred) return BadRequest($"\"{status.Name}\" is deferred - a program's issues are not born there");
+            if (status.IsTerminal) return BadRequest($"\"{status.Name}\" is a done column - a program's issues are not born there");
+
+            var others = await db.Statuses.Where(s => s.Id != id && s.AgentFiles).ToListAsync(ct);
+            foreach (var other in others) other.AgentFiles = false;
+        }
+
+        status.AgentFiles = request.AgentFiles;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
     }
 
     /// <summary>

@@ -354,6 +354,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// playbook needs the operator, which is last because it is only worth
     /// saying about an issue that is otherwise a candidate.</para>
     ///
+    /// <para>An epic's own "open child" rule sits beside the generic one and
+    /// reads differently in two ways: it ignores a deferred child entirely
+    /// rather than counting it open, because shelving a story is the
+    /// operator's call and not a gap the epic should be held for; and it
+    /// reaches the epic wherever it stands in the WIP section, not only the
+    /// column where code is written, because an epic is never itself the
+    /// thing being implemented.</para>
+    ///
     /// <para>The verdict is asked only of the review column, which is
     /// dispatched to itself (<see cref="Columns.Target"/>) and only when its
     /// branch conflicts with the trunk or the build on its tip has failed -
@@ -551,8 +559,21 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // this one gates the move out. An issue standing in the implementation
         // column with a child that is not yet closed is not itself the work -
         // its children are - so it is folded rather than carried into review.
-        if (from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
+        // An epic has its own version of this rule, just below, with its own
+        // sentence and its own scope - this one is guarded off epics so the
+        // two do not both speak for the same issue.
+        if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
             return "its children are the work, and some are still open";
+
+        // An epic is verified by its own stories, not merely cleared off one
+        // column: it is held wherever it stands in the WIP section, not only
+        // the implementation column, and a deferred child does not count
+        // against it the way OpenChildren does for everything else above -
+        // the operator shelving a story is not a gap in the epic (HA-114,
+        // Taken here). Never on the move to itself: an epic in review is
+        // folded by a conflict or a failing build, not by this.
+        if (issue.Type == "epic" && !conflicts && from.IsWip && family.EpicFold(issue.Id, statuses) is { } epicBlock)
+            return epicBlock;
 
         // A full section, or an epic at its own limit, needs other work to
         // leave, so it is said after a dependency, which needs other work to
@@ -774,6 +795,57 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
         ByCanonical is not null && ByCanonical.TryGetValue(canonical, out var raw) ? raw : null;
 }
 
+// ---- Priority ----
+
+/// <summary>
+/// The parent/key/priority of every issue, read once, and the question
+/// "what priority is live here" answered against it by walking to the
+/// nearest ancestor - including the issue itself - that is not Normal.
+/// </summary>
+public sealed class PriorityTree
+{
+    /// <summary>An empty tree, for a caller that needs the shape but has nothing loaded - so <c>DependencyGate.None</c> needs no dictionary literal of its own.</summary>
+    public static readonly PriorityTree Empty = new(new());
+
+    private readonly Dictionary<long, (long? ParentId, string Key, int Priority)> _rows;
+
+    internal PriorityTree(Dictionary<long, (long?, string, int)> rows) => _rows = rows;
+
+    public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
+    {
+        var rows = await db.Issues.AsNoTracking()
+            .Select(i => new { i.Id, i.ParentId, i.Priority, ProjectKey = i.Project!.Key, i.Number })
+            .ToListAsync(ct);
+
+        return new PriorityTree(rows.ToDictionary(
+            r => r.Id,
+            r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority)));
+    }
+
+    internal bool TryGet(long id, out (long? ParentId, string Key, int Priority) row) => _rows.TryGetValue(id, out row);
+
+    /// <summary>
+    /// The priority live on this issue: its own, if set, or the nearest
+    /// ancestor's that is not Normal. <c>FromKey</c> is null when the level
+    /// found is the issue's own, or when the walk never leaves Normal.
+    /// </summary>
+    public (int Level, string? FromKey) Effective(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (TryGet(id, out var row) && row.Priority != PriorityLevels.Normal)
+                return (row.Priority, id == issueId ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (PriorityLevels.Normal, null);
+    }
+}
+
 // ---- Dependencies ----
 
 /// <summary>
@@ -796,13 +868,13 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
 public sealed class DependencyGate
 {
     /// <summary>A gate that blocks nothing, for a refused scan - so <c>Scan.Gate</c> is never null and no call site needs a <c>!</c>.</summary>
-    public static readonly DependencyGate None = new([], []);
+    public static readonly DependencyGate None = new([], PriorityTree.Empty);
 
     private readonly Dictionary<long, List<string>> _unmetByIssue;
-    private readonly Dictionary<long, (long? ParentId, string Key)> _tree;
+    private readonly PriorityTree _tree;
 
     private DependencyGate(
-        Dictionary<long, List<string>> unmetByIssue, Dictionary<long, (long?, string)> tree)
+        Dictionary<long, List<string>> unmetByIssue, PriorityTree tree)
     {
         _unmetByIssue = unmetByIssue;
         _tree = tree;
@@ -822,17 +894,13 @@ public sealed class DependencyGate
             .Select(d => new { d.IssueId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
-        var tree = await db.Issues.AsNoTracking()
-            .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number })
-            .ToListAsync(ct);
+        var tree = await PriorityTree.ForAsync(db, ct);
 
         return new DependencyGate(
             unmet.GroupBy(r => r.IssueId).ToDictionary(
                 g => g.Key,
                 g => g.Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList()),
-            tree.ToDictionary(
-                r => r.Id,
-                r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number))));
+            tree);
     }
 
     /// <summary>
@@ -857,15 +925,18 @@ public sealed class DependencyGate
         {
             if (_unmetByIssue.TryGetValue(id, out var blockers))
             {
-                var holder = id == issueId ? null : _tree.TryGetValue(id, out var row) ? row.Key : null;
+                var holder = id == issueId ? null : _tree.TryGet(id, out var row) ? row.Key : null;
                 return blockers.Select(b => new UnmetEdge(b, holder)).ToList();
             }
 
-            at = _tree.TryGetValue(id, out var found) ? found.ParentId : null;
+            at = _tree.TryGet(id, out var found) ? found.ParentId : null;
         }
 
         return [];
     }
+
+    /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
+    public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
 }
 
 /// <summary>
@@ -885,6 +956,12 @@ public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
     public static readonly FamilyGate None = new([], [], []);
+
+    /// <summary>
+    /// The sentence for an issue with nothing filed under it at all - shared
+    /// by every fold that reaches a childless parent, written once here.
+    /// </summary>
+    public const string NothingUnder = "nothing is filed under it - an epic runs its stories, and it has none";
 
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
@@ -935,6 +1012,39 @@ public sealed class FamilyGate
     /// </summary>
     public IReadOnlyList<long> OpenChildren(long issueId) =>
         Children(issueId).Where(_open.Contains).ToList();
+
+    /// <summary>
+    /// Why an epic should not move on: how many of its direct children are
+    /// not yet done, counting a deferred one out entirely rather than as open
+    /// - the rollup's own rule (<c>Rollup.cs</c>: a shelved child is neither
+    /// finished nor outstanding) applied to direct children only, which is
+    /// the opposite of what <see cref="OpenChildren"/> does for every other
+    /// fold. Null where every counted child is terminal, including where
+    /// every child is deferred and none are counted at all.
+    /// </summary>
+    public string? EpicFold(long issueId, List<EfHatchStatus> statuses)
+    {
+        var children = Children(issueId);
+        if (children.Count == 0) return NothingUnder;
+
+        var counted = 0;
+        var open = 0;
+        foreach (var childId in children)
+        {
+            if (!_statusById.TryGetValue(childId, out var statusId)) continue;
+            if (statuses.FirstOrDefault(s => s.Id == statusId) is not { } status) continue;
+            if (status.IsDeferred) continue;
+
+            counted++;
+            if (!status.IsTerminal) open++;
+        }
+
+        if (open == 0) return null;
+
+        return counted == 1
+            ? "its only child is not done - an epic is verified once its stories are"
+            : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
+    }
 
     /// <summary>Whether the parent's own column is Columns.Implementation.</summary>
     public bool ParentStarted(long parentId, List<EfHatchStatus> statuses) =>

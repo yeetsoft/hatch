@@ -37,7 +37,7 @@ public class BoardController(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls))
             .ToList();
 
-        // Ordered by (StatusId, Priority desc, Rank, Id) so the client can
+        // Ordered by (StatusId, effective priority desc, Rank, Id) so the client can
         // slice the one list into columns without sorting, and so two cards
         // sharing a rank do not trade places between refetches.
         //
@@ -57,7 +57,6 @@ public class BoardController(
 
         var issues = await db.Issues.AsNoTracking()
             .OrderBy(i => i.StatusId)
-            .ThenByDescending(i => i.Priority)
             .ThenBy(i => i.Rank)
             .ThenBy(i => i.Id)
             .Select(i => new
@@ -85,6 +84,15 @@ public class BoardController(
             })
             .ToListAsync(ct);
 
+        var priorities = await PriorityTree.ForAsync(db, ct);
+
+        issues = issues
+            .OrderBy(i => i.StatusId)
+            .ThenByDescending(i => priorities.Effective(i.Id).Level)
+            .ThenBy(i => i.Rank)
+            .ThenBy(i => i.Id)
+            .ToList();
+
         // Two more queries for the whole board, however many cards it holds:
         // the directory is memoized per request, so this is not a lookup a card.
         // An id whose person has been deleted or whose key has been revoked
@@ -101,22 +109,28 @@ public class BoardController(
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
 
-        var cards = issues.Select(i => new IssueCardDto(
-            IssueKey.Format(i.ProjectKey, i.Number),
-            i.ProjectKey,
-            i.Type,
-            i.Title,
-            i.StatusId,
-            i.Rank,
-            i.ParentNumber is { } number ? IssueKey.Format(i.ParentProjectKey!, number) : null,
-            IssueMoment.Format(i.ReadyAt, i.ReadyAtHasTime),
-            IssueMoment.Format(i.DueAt, i.DueAtHasTime),
-            waiting.GetValueOrDefault(i.Id),
-            assignees[i.Id],
-            claims.Project(i.Claim, now),
-            i.Priority >= PriorityLevels.Expedited,
-            i.Express,
-            PriorityLevels.Name(i.Priority))).ToList();
+        var cards = issues.Select(i =>
+        {
+            var (effective, effectiveFrom) = priorities.Effective(i.Id);
+            return new IssueCardDto(
+                IssueKey.Format(i.ProjectKey, i.Number),
+                i.ProjectKey,
+                i.Type,
+                i.Title,
+                i.StatusId,
+                i.Rank,
+                i.ParentNumber is { } number ? IssueKey.Format(i.ParentProjectKey!, number) : null,
+                IssueMoment.Format(i.ReadyAt, i.ReadyAtHasTime),
+                IssueMoment.Format(i.DueAt, i.DueAtHasTime),
+                waiting.GetValueOrDefault(i.Id),
+                assignees[i.Id],
+                claims.Project(i.Claim, now),
+                effective >= PriorityLevels.Expedited,
+                i.Express,
+                PriorityLevels.Name(effective),
+                PriorityLevels.Name(i.Priority),
+                effectiveFrom);
+        }).ToList();
 
         return new BoardDto(statusDtos, cards, wip?.ToDto());
     }

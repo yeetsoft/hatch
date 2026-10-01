@@ -144,6 +144,7 @@ public class IssuesController(
             .ThenBy(i => i.Number)
             .Select(i => new
             {
+                i.Id,
                 ProjectKey = i.Project!.Key,
                 i.Number,
                 i.Type,
@@ -167,9 +168,13 @@ public class IssuesController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
+        var priorities = await PriorityTree.ForAsync(db, ct);
 
         var cards = new List<IssueCardDto>(rows.Count);
         foreach (var i in rows)
+        {
+            var (effective, effectiveFrom) = priorities.Effective(i.Id);
+
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
                 i.ProjectKey,
@@ -185,9 +190,12 @@ public class IssuesController(
                 // docstring exists to prevent.
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct),
                 Claim: claims.Project(i.Claim, now),
-                Expedited: i.Priority >= PriorityLevels.Expedited,
+                Expedited: effective >= PriorityLevels.Expedited,
                 Express: i.Express,
-                Priority: PriorityLevels.Name(i.Priority)));
+                Priority: PriorityLevels.Name(effective),
+                PriorityOwn: PriorityLevels.Name(i.Priority),
+                PriorityFrom: effectiveFrom));
+        }
 
         return cards;
     }
@@ -221,8 +229,27 @@ public class IssuesController(
         if (!ReadMoment(request.ReadyAt, "readyAt", out var readyAt, out var momentError)) return BadRequest(momentError);
         if (!ReadMoment(request.DueAt, "dueAt", out var dueAt, out momentError)) return BadRequest(momentError);
 
-        var status = await db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).FirstOrDefaultAsync(ct);
+        // Who is a program is ICallerIdentity's own narrowing - an API key, or
+        // a keyless runner that named itself - asked once, the way
+        // IssueWorkLogController and IssueClaimController do, so this cannot
+        // come to disagree with them about what an agent is.
+        //
+        // A stranded tick is not read: a ticked column that has since been
+        // made deferred or terminal does not count, exactly as IsWip does not
+        // where the column became either (Wip.cs) - filing falls back to the
+        // leftmost column instead of landing in a column nobody can see.
+        //
+        // The leftmost read is unchanged and stays the fallback, so a board
+        // with nothing ticked, or a person filing, behaves exactly as it does
+        // today.
+        var status = await caller.IsProgramAsync(ct)
+            ? await db.Statuses.FirstOrDefaultAsync(s => s.AgentFiles && !s.IsDeferred && !s.IsTerminal, ct)
+              ?? await Leftmost(ct)
+            : await Leftmost(ct);
         if (status is null) return Conflict("this board has no columns to put an issue in");
+
+        Task<EfHatchStatus?> Leftmost(CancellationToken token) =>
+            db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).FirstOrDefaultAsync(token);
 
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
@@ -240,11 +267,6 @@ public class IssuesController(
             // it and however - see EfHatchIssue.Express.
             var expressFrom = parent.Issue?.Express == true ? parent.Issue : null;
 
-            // The same, for priority - but only Emergency inherits this way.
-            // Expedited never has, and reparenting under an emergency parent
-            // after filing does not mark a child - see EfHatchIssue.Priority.
-            var priorityFrom = parent.Issue?.Priority == PriorityLevels.Emergency ? parent.Issue : null;
-
             var issue = new EfHatchIssue
             {
                 ProjectId = project.Id,
@@ -260,7 +282,7 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 Express = expressFrom is not null,
-                Priority = priorityFrom is not null ? PriorityLevels.Emergency : priority,
+                Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -271,18 +293,10 @@ public class IssuesController(
             // fails here rather than writing a second AER-12 - and the unique
             // index on (ProjectId, Number) is the backstop under that.
             project.NextIssueNumber++;
-            object createdPayload = (expressFrom, priorityFrom) switch
+            object createdPayload = expressFrom switch
             {
-                (null, null) => new { type = issue.Type, title = issue.Title },
-                ({ } e, null) => new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(e, ct) },
-                (null, { } p) => new { type = issue.Type, title = issue.Title, emergencyFrom = await KeyOfAsync(p, ct) },
-                ({ } e, { } p) => new
-                {
-                    type = issue.Type,
-                    title = issue.Title,
-                    expressFrom = await KeyOfAsync(e, ct),
-                    emergencyFrom = await KeyOfAsync(p, ct),
-                },
+                null => new { type = issue.Type, title = issue.Title },
+                { } e => new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(e, ct) },
             };
             issue.Events.Add(Event(actor, EfHatchIssueEvent.Created, createdPayload, now));
             db.Issues.Add(issue);

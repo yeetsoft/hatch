@@ -101,6 +101,12 @@ public sealed class IncrementReport
     public int Asked { get; set; }
 
     /// <summary>
+    /// The keys under the ticket after the session that were not there at
+    /// dispatch - progress, though the ticket did not move.
+    /// </summary>
+    public IReadOnlyList<string> Filed { get; set; } = [];
+
+    /// <summary>
     /// The lease went while the session was running, so the session was stopped.
     /// Not a failure: it is the loop working correctly on a busy board, and
     /// three of them in a row must not end a night.
@@ -153,6 +159,7 @@ public sealed class IncrementReport
         : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
         : FixPushed ? "fix pushed, build pending"
+        : Filed.Count > 0 ? $"filed {Filed.Count} under it"
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
@@ -337,18 +344,21 @@ public sealed class Increment(
                 // Where the ticket actually ended up, asked of the board rather
                 // than of the session. An increment that says it did the work
                 // and leaves the ticket in the column it found it in did not do
-                // the work, and this is the read that can tell the difference.
+                // the work, and this is the read that can tell the difference -
+                // unless it filed work under the ticket instead, which the
+                // board can see just as well as a move.
                 try
                 {
                     var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
                     report.Ended = later?.FromStatus.Name ?? report.From;
+                    report.Filed = later?.Children.Select(c => c.Key).Except(work.Children.Select(c => c.Key)).ToList() ?? [];
 
                     // A conflict or a build increment is judged by the branch,
                     // below, and not by the column: it starts and ends in
                     // review, so "did not move" is what success looks like. The
                     // column is still read and still reported.
                     if (report.Ended != report.From) report.Moved = true;
-                    else if (conflict is null && build is null) report.Stalled = true;
+                    else if (conflict is null && build is null && report.Filed.Count == 0) report.Stalled = true;
                 }
                 catch (HatchException e)
                 {
@@ -467,7 +477,7 @@ public sealed class Increment(
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
                 if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
-                else if (report.Moved || report.Resolved || report.FixPushed) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                else if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {

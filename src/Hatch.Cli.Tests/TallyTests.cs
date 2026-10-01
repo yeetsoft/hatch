@@ -7,7 +7,7 @@ public sealed class TallyTests
 {
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
-        DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false) =>
+        DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0) =>
         new()
         {
             Key = key,
@@ -15,7 +15,7 @@ public sealed class TallyTests
             To = "In Review",
             Ended = moved ? "In Review" : "In Progress",
             Moved = moved,
-            Stalled = !moved,
+            Stalled = !moved && filed == 0,
             LetGo = letGo,
             ExitCode = exit,
             Cost = cost,
@@ -24,6 +24,7 @@ public sealed class TallyTests
             Preempted = preempted,
             PreemptedKey = preempted ? "AER-9" : null,
             PreemptedTitle = preempted ? "Trunk is down" : null,
+            Filed = filed > 0 ? Enumerable.Range(1, filed).Select(n => $"AER-{10 + n}").ToList() : [],
         };
 
     [Fact]
@@ -228,6 +229,25 @@ public sealed class TallyTests
         Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("stalled  AER-2", StringComparison.Ordinal));
         Assert.Contains(say.Said, l => l.Contains("usage    AER-3", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-127: a ticket that filed work under it lands on the moved list, not the stalled one.</summary>
+    [Fact]
+    public void A_filed_ticket_lands_on_the_moved_list_and_reads_like_any_other_exit_zero_run()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1));
+        tally.Record(Report("AER-2", exit: 1));
+        tally.Record(Report("AER-3", exit: 0, moved: false, filed: 2));
+        tally.Record(Report("AER-4", exit: 1));
+        tally.Print(say);
+
+        // Like any other exit-0 run, it clears the fail streak.
+        Assert.False(tally.ShouldStop());
+        Assert.Contains(say.Said, l => l.Contains("moved    AER-3  filed 2 under it", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-3", StringComparison.Ordinal));
     }
 
     /// <summary>HA-169: a sixth list, and not the stalled one.</summary>

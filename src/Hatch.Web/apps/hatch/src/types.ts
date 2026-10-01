@@ -66,6 +66,9 @@ export interface Status {
       session while its parent stands in the implementation column. Nothing
       reads this yet. */
   parentPulls: boolean;
+  /** Whether a program's own issues are born here rather than in the
+      leftmost column - see HA-195. At most one column ever holds it. */
+  agentFiles: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
@@ -792,6 +795,34 @@ export interface Work {
   /** Why an agent should not be spawned at this issue, or null when one
       should. A sentence, meant to be printed as it is. */
   blocked: string | null;
+}
+
+/** One row of a pass: an issue the dispatcher looked at, and what it decided
+    about it. The fields `Work` carries, minus the playbook prompt, the
+    children and the questions - those three are the payload of a dispatch,
+    one agent on one issue, and loading them for every row would make a
+    whole-board read expensive for nothing. Mirrors QueueEntryDto. */
+export interface QueueEntry {
+  issue: Issue;
+  fromStatus: Status;
+  /** The column to the right, or null at the end of the board. */
+  toStatus: Status | null;
+  /** Why the pass folded past this issue, or null where it did not. */
+  blocked: string | null;
+  /** One of `advance` (every ordinary move), `conflicts` or `build` - the
+      latter two are a review-column dispatch that starts and ends in the
+      same column. As on `Work`. */
+  kind: 'advance' | 'conflicts' | 'build';
+  /** Carried past a column with no session - an express issue or a child its
+      parent pulled. As on `Work`. */
+  hop: boolean;
+  /** Which of the two reasons carried `hop`. Null when `hop` is false. */
+  hopKind: 'express' | 'parent' | null;
+  /** Why a row that carries no `blocked` is clear at all, where that is not
+      otherwise obvious - today, only that a stall question lapsed. Null on
+      every row that is clear for the ordinary reason, which is most of
+      them. */
+  clearNote: string | null;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status

@@ -70,6 +70,112 @@ public class IssuesControllerTests
         Assert.True(second.Rank > first.Rank);
     }
 
+    // ---- Where a program files ----
+
+    [Fact]
+    public async Task AKeysIssue_IsBornInTheTickedColumn()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed by a key");
+
+        Assert.Equal(h.Todo, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task AKeysIssue_IsBornInTheTickedColumn_WithAParent()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("story", "filed under a parent", parentKey: "AER-1");
+
+        Assert.Equal(h.Todo, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task APersonsIssue_IsBornLeftmost_WhileTheColumnIsTicked()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var issue = await h.CreateAsync("task", "filed by a person");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task NothingTicked_BothCallersLandLeftmost()
+    {
+        var h = await NewAsync();
+
+        var person = await h.CreateAsync("task", "filed by a person");
+        h.Caller.Key = AProgram();
+        var key = await h.CreateAsync("task", "filed by a key");
+
+        Assert.Equal(h.Inbox, person.StatusId);
+        Assert.Equal(h.Inbox, key.StatusId);
+    }
+
+    [Fact]
+    public async Task ATickedColumnMadeDeferred_FilesLeftmostAgain()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed after the tick went stale");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task ATickedColumnMadeTerminal_FilesLeftmostAgain()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsTerminal = true;
+        await h.Db.SaveChangesAsync();
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed after the tick went stale");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task AKeysIssue_LandsBelowOneAlreadyInTheTickedColumn()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var first = await h.CreateAsync("task", "first");
+        var second = await h.CreateAsync("task", "second");
+
+        Assert.Equal(h.Todo, first.StatusId);
+        Assert.Equal(h.Todo, second.StatusId);
+        Assert.True(second.Rank > first.Rank);
+    }
+
+    /// <summary>The key a test files as, when it wants the caller to be a program rather than a person.</summary>
+    private static EfApiKey AProgram() => new()
+    {
+        Name = "hatch",
+        Hash = [1],
+        Prefix = "hatch_ak_x",
+        Scopes = [ApiKeyScopes.Hatch],
+        CreatedAt = Now,
+    };
+
     // ---- Resolving a key ----
 
     [Fact]
@@ -292,10 +398,10 @@ public class IssuesControllerTests
         await h.CreateAsync("epic", "the epic");
         await h.ExpressAsync("AER-1", true);
 
-        // CreateIssue does not distinguish caller kind - the flag is taken from
-        // the parent regardless of who is filing, so a key filing children
-        // under something a person marked express is exactly how an express
-        // epic's stories run overnight.
+        // Inheritance does not distinguish caller kind - the flag is taken
+        // from the parent regardless of who is filing, so a key filing
+        // children under something a person marked express is exactly how an
+        // express epic's stories run overnight.
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
         Assert.True(child.Express);
@@ -314,7 +420,7 @@ public class IssuesControllerTests
         Assert.True(Value(await h.Issues.GetIssue("AER-2", default)).Express);
     }
 
-    // ---- Priority, inherited at filing only from Emergency ----
+    // ---- Priority, inherited live at read ----
 
     [Fact]
     public async Task FiledUnderAnEmergencyParent_IsBornEmergency()
@@ -325,11 +431,16 @@ public class IssuesControllerTests
 
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
+        // "Born emergency" now means the read, not the row: the child's own
+        // stored level is Normal, and GetIssue/SearchIssues read emergency by
+        // walking to the parent, naming it.
+        Assert.Equal(PriorityLevels.NormalName, child.PriorityOwn);
         Assert.Equal(PriorityLevels.EmergencyName, child.Priority);
+        Assert.Equal("AER-1", child.PriorityFrom);
     }
 
     [Fact]
-    public async Task TheCreatedEvent_NamesTheParentItTookEmergencyFrom()
+    public async Task TheCreatedEvent_NeverCarriesEmergencyFrom()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -338,21 +449,22 @@ public class IssuesControllerTests
         await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
         var e = Assert.Single(await h.EventsAsync("AER-2"));
-        Assert.Equal("AER-1", e.Payload!.Value.GetProperty("emergencyFrom").GetString());
+        Assert.False(e.Payload!.Value.TryGetProperty("emergencyFrom", out _));
     }
 
     [Fact]
-    public async Task FiledUnderAnExpeditedButNotEmergencyParent_DoesNotInherit()
+    public async Task FiledUnderAnExpeditedParent_InheritsExpedited()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
         await h.PriorityAsync("AER-1", PriorityLevels.Expedited);
 
-        // Expedited never inherits at filing, and never has - only Emergency
-        // does, the same as Express.
+        // Expedited inherits exactly as Emergency does now - there is one
+        // walk, and it does not stop asking "what level" at Emergency.
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
-        Assert.Equal(PriorityLevels.NormalName, child.Priority);
+        Assert.Equal(PriorityLevels.ExpeditedName, child.Priority);
+        Assert.Equal("AER-1", child.PriorityFrom);
     }
 
     [Fact]
@@ -364,6 +476,7 @@ public class IssuesControllerTests
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
         Assert.Equal(PriorityLevels.NormalName, child.Priority);
+        Assert.Null(child.PriorityFrom);
     }
 
     [Fact]
@@ -374,10 +487,30 @@ public class IssuesControllerTests
         var issue = await h.CreateAsync("task", "a chore");
 
         Assert.Equal(PriorityLevels.NormalName, issue.Priority);
+        Assert.Null(issue.PriorityFrom);
     }
 
+    /// <summary>AC1: a read three generations deep still finds the level set at the top.</summary>
     [Fact]
-    public async Task ReparentedUnderAnEmergencyParent_IsNotMarked()
+    public async Task AThreeGenerationRead_FindsTheLevelSetAtTheTop()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PriorityAsync("AER-1", PriorityLevels.Emergency);
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        var grandchild = await h.CreateAsync("task", "the task", parentKey: "AER-2");
+
+        var found = Value(await h.Issues.GetIssue("AER-3", default));
+
+        Assert.Equal(PriorityLevels.EmergencyName, found.Priority);
+        Assert.Equal(PriorityLevels.NormalName, found.PriorityOwn);
+        Assert.Equal("AER-1", found.PriorityFrom);
+        Assert.Equal(grandchild.Key, found.Key);
+    }
+
+    /// <summary>AC4: reparenting changes what is inherited at once, both ways.</summary>
+    [Fact]
+    public async Task ReparentedUnderAnEmergencyParent_ReadsEmergencyAtOnce()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -385,12 +518,17 @@ public class IssuesControllerTests
         await h.CreateAsync("task", "a chore");
 
         var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+        Assert.Equal(PriorityLevels.EmergencyName, moved.Priority);
+        Assert.Equal("AER-1", moved.PriorityFrom);
 
-        Assert.Equal(PriorityLevels.NormalName, moved.Priority);
+        var movedBack = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: ""), default));
+        Assert.Equal(PriorityLevels.NormalName, movedBack.Priority);
+        Assert.Null(movedBack.PriorityFrom);
     }
 
+    /// <summary>AC3: unmarking the epic changes what an already-filed child reads, immediately.</summary>
     [Fact]
-    public async Task UnmarkingTheEmergencyParent_LeavesAnAlreadyFiledChildAsItWas()
+    public async Task UnmarkingTheEmergencyParent_ChangesWhatAnAlreadyFiledChildReads()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -399,7 +537,28 @@ public class IssuesControllerTests
 
         await h.PriorityAsync("AER-1", PriorityLevels.Normal);
 
-        Assert.Equal(PriorityLevels.EmergencyName, Value(await h.Issues.GetIssue("AER-2", default)).Priority);
+        var found = Value(await h.Issues.GetIssue("AER-2", default));
+        Assert.Equal(PriorityLevels.NormalName, found.Priority);
+        Assert.Null(found.PriorityFrom);
+    }
+
+    /// <summary>AC11: a board with no inheritance in play reads exactly as before.</summary>
+    [Fact]
+    public async Task ABoardWithNoInheritance_ReadsPriorityOwnAndPriorityAsTheSame()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        await h.CreateAsync("task", "a chore");
+
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+
+        Assert.All(cards, c =>
+        {
+            Assert.Equal(PriorityLevels.NormalName, c.Priority);
+            Assert.Equal(c.Priority, c.PriorityOwn);
+            Assert.Null(c.PriorityFrom);
+        });
     }
 
     // ---- Events ----
@@ -1969,6 +2128,87 @@ public class IssuesControllerTests
         Assert.True(patched.ParentPulls);
     }
 
+    // ---- Agent files ----
+    //
+    // The column an issue filed by a program is born in. Set only through its
+    // own route - PutAgentFiles - and untouched by the two ordinary routes,
+    // the same split ParentPulls draws. Unlike ExpressSkips and ParentPulls,
+    // at most one column ever holds it, and it refuses a deferred or a
+    // terminal column outright.
+
+    [Fact]
+    public async Task ANewColumn_StartsWithAgentFilesUnticked()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
+
+        Assert.False(created.AgentFiles);
+    }
+
+    [Fact]
+    public async Task PutAgentFiles_TicksAndUnticksIt()
+    {
+        var h = await NewAsync();
+
+        var ticked = Value(await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default));
+        Assert.True(ticked.AgentFiles);
+
+        var unticked = Value(await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(false), default));
+        Assert.False(unticked.AgentFiles);
+    }
+
+    [Fact]
+    public async Task APatchOfOtherFields_LeavesAgentFilesAlone()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, new StatusPatchRequest("later", null, null), default));
+
+        Assert.Equal("later", patched.Name);
+        Assert.True(patched.AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingASecondColumn_MovesTheTickRatherThanAddingOne()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var ticked = Value(await h.Statuses.PutAgentFiles(h.Inbox, new AgentFilesRequest(true), default));
+
+        Assert.True(ticked.AgentFiles);
+        var statuses = Value(await h.Statuses.GetStatuses(default));
+        Assert.Single(statuses, s => s.AgentFiles);
+        Assert.False(statuses.Single(s => s.Id == h.Todo).AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingATerminalColumn_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Statuses.PutAgentFiles(h.Done, new AgentFilesRequest(true), default);
+
+        Assert.Contains("\"done\" is a done column", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingADeferredColumn_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Inbox);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Statuses.PutAgentFiles(h.Inbox, new AgentFilesRequest(true), default);
+
+        Assert.Contains("\"inbox\" is deferred", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.AgentFiles);
+    }
+
     [Fact]
     public async Task ReorderingAColumn_MovesIt()
     {
@@ -2529,6 +2769,7 @@ public class IssuesControllerTests
     {
         public required HatchContext Db { get; init; }
         public required FakeTimeProvider Time { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
 
         /// <summary>Who the house knows. Empty until a test says otherwise, which reads as "nobody is assigned to anything".</summary>
         public required StubActorDirectory Actors { get; init; }
@@ -2674,6 +2915,7 @@ public class IssuesControllerTests
         {
             Db = db,
             Time = time,
+            Caller = caller,
             Actors = actors,
             Issues = new IssuesController(db, ranks, actors, TestClaims.With(), caller, time),
             Thread = new IssueThreadController(db, caller, time),

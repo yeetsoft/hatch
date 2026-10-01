@@ -3875,6 +3875,136 @@ button.hatch-option.chosen {
   border-top: 1px solid var(--line);
 }
 
+/* ---- The work queue ----
+
+   The control in the board's header, and the modal it opens. */
+
+.hatch-queue-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.hatch-queue-control:hover {
+  filter: brightness(0.97);
+}
+
+/* --primary, not --chrome-glow: this control sits on the page itself, on
+   --card, the way every other button here does (Button.css, Modal.css) -
+   --chrome-glow is for a control drawn on the chrome bar, which this is not. */
+.hatch-queue-control:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-queue-glyph {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.hatch-queue-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* The row is a native button now, not a styled `<li>` - the reset below
+   clears the chrome a button always carries so it reads exactly as the row
+   used to. */
+.hatch-queue-row {
+  display: grid;
+  grid-template-columns: auto auto auto auto auto 1fr;
+  align-items: center;
+  gap: 0 var(--sp-2);
+  padding: var(--sp-1-5) var(--sp-2);
+  border-left: 3px solid transparent;
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hatch-queue-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-queue-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Clear and folded, told apart without reading either sentence - a rule down
+   the side rather than ink or weight, so it survives dark mode and the
+   colour-blind-safe palette this app already commits to. */
+.hatch-queue-row--clear {
+  border-left-color: var(--success);
+}
+
+.hatch-queue-row--folded {
+  border-left-color: var(--line-strong);
+}
+
+.hatch-queue-ordinal {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-queue-marker {
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.hatch-queue-marker.emergency {
+  color: var(--danger);
+}
+
+.hatch-queue-words {
+  color: var(--ink);
+}
+
+.hatch-queue-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1-5);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.hatch-queue-checkout-note {
+  font-size: var(--t-label);
+}
+
+@media (max-width: 40rem) {
+  /* The sentence is the longest thing a row says - it drops to its own full-
+     width line under the ordinal, marker, key, badge and pill rather than
+     being clipped, so a phone reads it without scrolling sideways. */
+  .hatch-queue-row {
+    grid-template-columns: auto auto auto auto auto;
+    row-gap: var(--sp-1);
+  }
+
+  .hatch-queue-words {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---- Who owns a ticket ----
 
    The select and its two presses on one line, wrapping rather than shrinking:

@@ -184,7 +184,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`IsWip`, `ExpressSkips`, `ParentPulls`, `Color` (`#rrggbb`).
+`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -258,6 +258,20 @@ own route (`PUT /api/hatch/statuses/{id}/parent-pulls`), for the same reason
 Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can
 set it either.
 
+`AgentFiles` marks the column a program's issue is born in — filing an issue
+reads the leftmost column, as it always has, except where an issue is being
+filed by a program (`ICallerIdentity.IsProgramAsync`) and a column carries
+this flag, in which case that column is used instead. At most one column ever
+holds it — `PUT /api/hatch/statuses/{id}/agent-files` clears every other row
+when it ticks one, the same way `express-skips` does. It is read only where
+the column is neither deferred nor terminal: a flag stranded on a column that
+has since become either does not silently apply, the same guard `IsWip` reads
+under. Set only by a person, through its own route
+(`PUT /api/hatch/statuses/{id}/agent-files`), unreachable from either ordinary
+status write — neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it. A board with nothing ticked files
+every issue leftmost, whoever files it, exactly as it always has.
+
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
@@ -277,7 +291,7 @@ the flag existed.
 |---|---|---|---|---|---|
 | Draft | 10 | | | operator | An idea being written. Nothing reads it. |
 | Breakdown | 20 | | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
-| Backlog | 30 | | | operator | Specified work, awaiting selection. |
+| Backlog | 30 | | | operator | Specified work, awaiting selection. `AgentFiles` is ticked here, so an issue a program files is born in this column. |
 | To Do | 40 | | | **agent** | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. |
 | In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
@@ -1811,6 +1825,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/parent-pulls` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ parentPulls }` — the column a child is carried on out of while its parent stands in the implementation column. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/agent-files` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ agentFiles }` — the column a program's issue is born in. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
@@ -2528,6 +2544,25 @@ place; see [where the loop's rules live](#where-the-loops-rules-live).
 `Playbook` is always null where `Hop` is true, even where one covers the move,
 so no client can spawn a session for a hop by accident.
 
+### Running an epic
+
+Once every direct child of an epic standing in the WIP section is terminal or
+deferred, the epic itself is dispatched to the next column under [the
+verification playbook](#playbooks).
+
+The session checks each acceptance criterion against the trunk, one at a
+time, and comments the verdict on the epic. If every criterion holds — or the
+only ones that do not were shelved with a deferred child — it moves the epic
+on, and the operator closes it: see [what only the operator
+does](#what-only-the-operator-does) for why closing it is never the session's
+to do.
+
+Where there are gaps, the session files them under the epic — one story or
+bug per gap — and leaves the epic where it is. A filed gap flows like any
+other work, and the epic is folded here until it ships; then the epic is
+verified again. A deferred child's own criteria are named in the verdict, not
+refiled as new work.
+
 ### Preemption
 
 **Who a claim heartbeat tells it has been preempted, decided lazily at each
@@ -2757,14 +2792,27 @@ the order of the board is precisely the bug this endpoint exists to expose.
 Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
-question, a repository this runner lacks, an unmet dependency, a full [WIP
-section](#wip), [an epic at its own limit](#an-epics-own-limit), and — for an
-issue in review — the verdict on its branch, then [the hop](#the-hop), and
-last the missing playbook — last because it is only worth saying about an
+question, a repository this runner lacks, an unmet dependency, an open child, a
+full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
+— for an issue in review — the verdict on its branch, then [the hop](#the-hop),
+and last the missing playbook — last because it is only worth saying about an
 issue that is otherwise a candidate. The two that are the
 *loop's* policy rather than a fact about an issue — the ready date and the
 assignee — are asked only when the pass is asking, so `work/{key}` still
 ignores them.
+
+**An epic's own open-child rule reads differently from the generic one.** The
+generic fold — "its children are the work, and some are still open" — counts a
+deferred child as still open, and reaches only the issue standing in the
+implementation column. An epic has its own version instead: a deferred child
+does not count against it at all, since shelving a story is the operator's
+call and not a gap the epic is held for, and it reaches the epic wherever it
+stands in the WIP section, not only the column where code is written, since an
+epic is never itself the thing being implemented. It names how many of the
+epic's counted children are still open — `{n} of its {m} children {is/are} not
+done`, `its only child is not done` for exactly one, or `nothing is filed under
+it` for none at all — each closing with "an epic is verified once its stories
+are".
 
 **A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
 that is express, stands in a column marked `ExpressSkips`, and clears every
@@ -2863,7 +2911,7 @@ what to change. The reworded text does not say the merge is in progress, because
 for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
-Eight rows are seeded, for the same reason the columns are: a Hatch whose agent
+Nine rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken. A
 feature that does nothing until somebody fills in a table is the same failure,
 so the eighth is the stock review playbook, for every type, at `sonnet` and
@@ -2883,6 +2931,16 @@ says which transition their playbook is the playbook for. Rows that are not
 there are not restored either: deleting a playbook is how an operator takes a
 column back from the loop, and a migration that re-seeded one would be handing
 it back.
+
+The epic row on `In Progress → In Review` is the verification playbook: it
+tells the session to check the epic's own acceptance criteria against the
+trunk, not just that every child has closed — see [running an
+epic](#running-an-epic). `VerifyEpicPlaybook` rewrites the row only where it
+still reads the seeded text, byte for byte, and leaves a retuned model or
+effort alone; it seeds the row only where nothing already covers an epic on
+that move and that shape, which is the one place it adds a row, and only on a
+board that does not already have one — so the count stays at nine on a
+standard fresh install.
 
 ## The unattended loop
 
@@ -2956,7 +3014,12 @@ the sentence saying which one it failed is what `work/queue` reports:
    child not in a terminal column is not itself the work — its children are —
    so it is folded rather than carried into review. A deferred child counts as
    open, the same rule [Dependency](#dependency) already holds for a blocker.
-   A childless issue is unaffected.
+   A childless issue is unaffected. An epic reads this differently: it is held
+   wherever it stands in the WIP section, not only the column where the code
+   gets written, and a deferred child does not count against it at all — see
+   [Running an epic](#running-an-epic) for why. The sentence names how many of
+   its counted children are still open, that its only child is not done, or
+   that nothing is filed under it at all.
 9. **The [WIP section](#wip) has room for it**, when the move is into it: the
    load, not counting this issue, is below the limit, nor counting any
    ancestor of this issue already standing in it — a family crosses together,
@@ -3511,6 +3574,19 @@ merely counting — and, if nothing is already open there, **a question**.
 nothing was spent on a ticket that did not move - the ticket did move, one
 column, and the runner never held a claim to have written anything on it. See
 [the hop](#the-hop).
+
+**Filing is progress.** An increment that ends with its ticket in the column
+it started in, but with new keys under it that were not there at dispatch, is
+not a stall either - it is measured against the dispatch's own children, so a
+child filed and a child moved elsewhere during the same run both count, and
+nothing about a child that disappeared counts against it. This matters because
+an increment's job is not always to move the one ticket it was dispatched
+against: a verification that finds gaps in an epic files them and has to leave
+the epic exactly where it found it, and a breakdown that filed every story it
+was asked for did the work even if it forgot to also move the task describing
+it. It applies the same way to every issue type, and a ticket that filed work
+is offered again on the next pass exactly as if it had moved, unless something
+else - a dependency, a playbook, a question - holds it back.
 
 **Neither is a usage limit.** A session that ends because the Claude account it
 ran under hit its usage limit is read from what it said on its way out — the

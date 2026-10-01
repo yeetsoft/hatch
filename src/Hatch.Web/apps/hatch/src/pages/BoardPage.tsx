@@ -21,6 +21,7 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
+import { QueueControl } from '../components/QueueControl';
 import { StatusDot } from '../components/StatusPill';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { statusVars } from '../lib/color';
@@ -549,23 +550,26 @@ export function BoardPage() {
         total={board.issues.length}
         collapsed={isPhone}
         trailing={
-          isPhone ? (
-            <button
-              type="button"
-              className="hatch-board-view-toggle"
-              onClick={() => {
-                const next: BoardView = stacked ? 'full' : 'stacked';
-                setView(next);
-                writeBoardView(next);
-              }}
-            >
-              {stacked ? 'Full board' : 'Stacked view'}
-            </button>
-          ) : (
-            <Button variant="primary" onClick={() => setFiling(true)}>
-              New issue
-            </Button>
-          )
+          <>
+            <QueueControl cards={board.issues} onTake={onTake} />
+            {isPhone ? (
+              <button
+                type="button"
+                className="hatch-board-view-toggle"
+                onClick={() => {
+                  const next: BoardView = stacked ? 'full' : 'stacked';
+                  setView(next);
+                  writeBoardView(next);
+                }}
+              >
+                {stacked ? 'Full board' : 'Stacked view'}
+              </button>
+            ) : (
+              <Button variant="primary" onClick={() => setFiling(true)}>
+                New issue
+              </Button>
+            )}
+          </>
         }
       />
 

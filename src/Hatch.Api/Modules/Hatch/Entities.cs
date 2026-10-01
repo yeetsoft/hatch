@@ -237,6 +237,19 @@ public class EfHatchStatus
     public bool ParentPulls { get; set; }
 
     /// <summary>
+    /// The column an issue filed by a program is born in, rather than the
+    /// leftmost one - see HA-195, the first thing that reads it. At most one
+    /// column holds this; <see cref="StatusesController.PutAgentFiles"/> clears
+    /// every other row when it sets one.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutAgentFiles"/>) for the same reason as
+    /// <see cref="ParentPulls"/>: it decides where a program's own issues enter
+    /// the board, and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool AgentFiles { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave
@@ -490,21 +503,25 @@ public class EfHatchIssue
     /// emergency issue the same (<see cref="WorkController"/>). This changes
     /// the order candidates are <em>considered</em> in, and nothing else.</para>
     ///
-    /// <para>It marks the issue it is set on and nothing beneath it that
-    /// already exists. Every type in a walkable column is dispatchable, so a
-    /// level on one issue means something wherever it is set - and "point
-    /// tonight at this epic" is already <c>work --under</c>, which is the
-    /// subtree mechanism. A second one beside it would be two answers to one
-    /// question.</para>
+    /// <para>Inheritance. A level set here is live on everything beneath this
+    /// issue that sets none of its own - every child, every grandchild, down
+    /// to the first descendant that carries a level of its own, where the walk
+    /// stops. It is live, not copied: nothing is ever written onto a
+    /// descendant's own row because an ancestor's changed, and nothing is
+    /// written onto a child's row at filing because its parent happened to be
+    /// Emergency that day - see <see cref="Express"/> for the one field that
+    /// still does work that way, and why the two differ. Normal on the way up
+    /// is not a stop; the walk passes through it to the next ancestor, and only
+    /// a non-Normal row - or running out of ancestors - ends it.</para>
     ///
-    /// <para>Taken from the parent at filing <em>only when the parent is
-    /// Emergency</em>, and at no other time: a child filed under an emergency
-    /// parent is born emergency, the same as <see cref="Express"/> is taken
-    /// from an express parent. Expedited never inherits this way, and
-    /// reparenting an issue under an emergency parent does not mark it, nor
-    /// does reparenting one away unmark it - the level an issue is born with is
-    /// a fact about how it came to exist, not a fact that follows its parent
-    /// around.</para>
+    /// <para>It is derived at read, not stored. <c>PriorityTree.Effective</c>
+    /// walks this column live, on every <c>GetIssue</c> and every
+    /// <c>SearchIssues</c>, to the nearest ancestor - including the issue
+    /// itself - whose own level is not Normal. Reparenting changes what an
+    /// issue inherits at once, both ways: moved under an emergency epic, it
+    /// reads emergency on the next request with no write of its own; moved back
+    /// out, it reads whatever it reads next. There is nothing to reconcile,
+    /// because there is nothing stored to be stale.</para>
     ///
     /// <para>Writing it is closed to an API key
     /// (<see cref="IssueExpediteController"/>) for the reason writing an

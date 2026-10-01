@@ -177,6 +177,116 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-127: a ticket that did not move but gained children it did not have
+    /// at dispatch is not a stall - it is progress, measured against the
+    /// dispatch's own children. Neither let-go nor flagged, and no comment at
+    /// all: the new keys speak for themselves.
+    /// </summary>
+    [Fact]
+    public async Task A_ticket_that_did_not_move_but_filed_children_is_not_a_stall()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Equal(["AER-2", "AER-3"], report.Filed);
+        Assert.Equal("filed 2 under it", report.Outcome);
+        Assert.False(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+
+        // Neither a stall comment nor a question - filing is progress, and
+        // nothing here needs a person's eye.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A child present at dispatch and gone by the after-read is not filed - only new keys count.</summary>
+    [Fact]
+    public async Task A_child_that_disappeared_does_not_count_as_filed()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0, children: []));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0, children: [Fixtures.Card("AER-2")]), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Empty(report.Filed);
+        Assert.True(report.Stalled);
+        Assert.True(report.LetGo);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A ticket that moved and also filed children reads its arrow, not the filed phrase - Moved wins.</summary>
+    [Fact]
+    public async Task A_ticket_that_moved_and_filed_children_reads_the_arrow()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", from: "In Review", children: [Fixtures.Card("AER-2")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Moved);
+        Assert.Single(report.Filed);
+        Assert.Equal("In Progress -> In Review", report.Outcome);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A conflict increment is still judged by its branch - filing a new child changes nothing there.</summary>
+    [Fact]
+    public async Task A_conflict_increment_that_still_conflicts_is_stalled_even_if_it_filed_a_child()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var trunk = new string('a', 40);
+        var tip = new string('b', 40);
+        var verdict = new Verdict(MergeVerdicts.Conflicted, "main", trunk, "aer-1-thing", tip, ["a.txt"]);
+        var found = new Rechecked([new Checked("/checkouts/repo0", verdict)], Unknown: false, Reported: true);
+        var conflict = new ConflictRun(found, _ => Task.FromResult(found));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", from: "In Review", children: [Fixtures.Card("AER-2")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.ConflictWork("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default, conflict: conflict);
+
+        Assert.True(report.Stalled);
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_ticket_already_waiting_on_a_question_gets_the_comment_and_not_a_second_question()
     {
