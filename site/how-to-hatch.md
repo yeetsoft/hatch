@@ -138,11 +138,13 @@ Within a column, order is the order you see. Drag a card up and the runner
 reaches it sooner.
 
 **Priority** puts an issue at one of three levels: normal, expedited, or
-emergency, the third and highest. Set it on the issue page and the card
-floats to the top of its column, and the dispatcher considers every emergency
-card before every expedited card before anything else, right to left within
-each. So an emergency bug in Breakdown is reached before an expedited story in
-To Do, which is reached before a normal one in To Do. Two things it is not:
+emergency, the third and highest. Set it on the issue page or the board's
+peek, from a pill that opens onto every level — press the one you want, and
+the card floats to the top of its column, and the dispatcher considers every
+emergency card before every expedited card before anything else, right to left
+within each. So an emergency bug in Breakdown is reached before an expedited
+story in To Do, which is reached before a normal one in To Do. Two things it
+is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
   blocked is still blocked.

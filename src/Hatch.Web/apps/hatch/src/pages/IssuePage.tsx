@@ -24,7 +24,7 @@ import {
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
-import { ExpediteControl } from '../components/ExpediteControl';
+import { PriorityControl } from '../components/PriorityControl';
 import { ExpressControl } from '../components/ExpressControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
@@ -103,6 +103,10 @@ export function IssuePage() {
      while the request runs and says so on its own button. */
   const [clearingClaim, setClearingClaim] = useState(false);
   const [claimClearing, setClaimClearing] = useState(false);
+  /* A priority press is already out: the picker stays open and stops
+     answering, `aria-busy`, until the server replies - `PriorityControl`'s own
+     flag, the way `StatusPicker`'s pill carries one. */
+  const [priorityBusy, setPriorityBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
 
@@ -315,11 +319,14 @@ export function IssuePage() {
      words, and the control goes back to saying what the issue still holds. */
   const savePriority = useCallback(
     async (priority: 'normal' | 'expedited' | 'emergency') => {
+      setPriorityBusy(true);
       try {
         await setPriority(key, priority);
         await load();
       } catch (err) {
         setError(message(err));
+      } finally {
+        setPriorityBusy(false);
       }
     },
     [key, load],
@@ -557,10 +564,13 @@ export function IssuePage() {
             as="div"
             hint="Normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it. A level set on an ancestor reaches here too, until this issue sets its own."
           >
-            <ExpediteControl
-              priority={issue.priorityOwn}
-              inheritedFrom={issue.priorityFrom}
+            <PriorityControl
+              issueKey={key}
+              priority={issue.priority}
+              priorityOwn={issue.priorityOwn}
+              priorityFrom={issue.priorityFrom}
               directory={directory}
+              busy={priorityBusy}
               onChange={(priority) => void savePriority(priority)}
             />
           </Field>
