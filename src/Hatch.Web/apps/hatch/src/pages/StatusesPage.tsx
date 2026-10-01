@@ -106,6 +106,41 @@ export function StatusesPage() {
       )}
 
       {statuses && section && (
+        <Card className="hatch-statuses-legend-card">
+          {/* The same four sentences the header cells' `title=` carries,
+              always on the page rather than only on hover - a coarse pointer
+              never triggers a title, so CSS is what decides whether this is
+              shown, not whether it is rendered. See .hatch-statuses-legend. */}
+          <dl className="hatch-statuses-legend">
+            <div className="hatch-statuses-legend-row">
+              <dt>Deferred</dt>
+              <dd className="text-muted">
+                Parked work. Not drawn on the board and not dragged into - the issue page is the only way in.
+              </dd>
+            </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>WIP</dt>
+              <dd className="text-muted">Whether a story, bug or epic here counts towards its limit above.</dd>
+            </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Express skips</dt>
+              <dd className="text-muted">
+                An express issue standing here is carried on to the next column with no session, as long as it has
+                no unanswered question. The terminal column is never entered.
+              </dd>
+            </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Parent pulls</dt>
+              <dd className="text-muted">
+                A child standing here is carried on to the next column with no session while its parent stands in
+                the implementation column.
+              </dd>
+            </div>
+          </dl>
+        </Card>
+      )}
+
+      {statuses && section && (
         <Card flush>
           <Table>
             <thead>

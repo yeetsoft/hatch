@@ -1799,6 +1799,27 @@ input.hatch-inline-title-input {
   text-decoration: underline;
 }
 
+/* At phone width the command wraps instead of scrolling: a command that wraps
+   is still one copyable block, and a nested sideways scroller inside a
+   document that already scrolls is the description bug again in miniature.
+   `.hatch-command` has to take the full width offered - its own inline-flex
+   sizing is shrink-to-content, which is exactly what leaves the code with
+   nothing to wrap inside. */
+@media (max-width: 40rem) {
+  .hatch-command {
+    display: flex;
+    width: 100%;
+  }
+
+  .hatch-command code {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: visible;
+  }
+}
+
 /* ---- The Runner page ---- */
 
 /* The one thing on the page somebody came to press, so it reads as a button
@@ -2452,6 +2473,56 @@ input.hatch-inline-title-input {
 
 .hatch-markdown pre {
   overflow-x: auto;
+}
+
+/* ---- The Statuses page ----
+
+   Four of the table's headers carry their meaning only in `title=` - a mouse
+   finds it on hover, a finger never does. This is the same words, always in
+   the markup and shown only on a coarse pointer: a fine pointer keeps today's
+   page exactly as it is (the tooltip is still there), and a coarse one - a
+   phone or an iPad alike, whatever the window happens to measure - reads the
+   same sentence the title attribute would have said, drawn rather than
+   hidden. Modelled on `.hatch-runner-rows`/`.hatch-runner-row`'s term/note
+   grid, one column below the breakpoint for the same reason theirs is.
+
+   The card itself is what hides on a fine pointer, not only the list inside
+   it - a `<dl>` set to `display: none` would still leave its card an empty
+   bordered, padded box sitting on the page for nothing. */
+.hatch-statuses-legend-card {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .hatch-statuses-legend-card {
+    display: block;
+  }
+}
+
+.hatch-statuses-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.hatch-statuses-legend-row {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(12rem, 1fr);
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.hatch-statuses-legend-row > dd {
+  margin: 0;
+  font-size: var(--t-label);
+}
+
+@media (max-width: 40rem) {
+  .hatch-statuses-legend-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-1);
+  }
 }
 
 /* ---- The importer ---- */
