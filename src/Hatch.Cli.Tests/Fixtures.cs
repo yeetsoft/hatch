@@ -247,6 +247,55 @@ public static class Fixtures
             },
         });
 
+    /// <summary>
+    /// The CLI's own answer to <c>/usage</c>, out of a probe rather than a
+    /// session's stream - see <see cref="UsageReport"/> and the decisions on
+    /// HA-173. <paramref name="scopedName"/> names the one row that carries an
+    /// account-given name, <c>weekly_scoped</c>; absent there is a scoped row
+    /// with none.
+    /// </summary>
+    public static string UsageReport(
+        (string Kind, double Percent, string? ResetsAt)[]? limits = null,
+        (bool IsEnabled, double? Utilization)? extra = null,
+        string? scopedName = null) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "assistant",
+            message = new
+            {
+                id = "usage-probe",
+                content = Array.Empty<object>(),
+                usage_report = new
+                {
+                    rate_limits = new
+                    {
+                        limits = (limits ?? []).Select(l => new Dictionary<string, object?>
+                        {
+                            ["kind"] = l.Kind,
+                            ["group"] = "default",
+                            ["percent"] = l.Percent,
+                            ["resets_at"] = l.ResetsAt,
+                            ["scope"] = l.Kind == "weekly_scoped" && scopedName is { } name
+                                ? new { model = new { display_name = name } }
+                                : null,
+                            ["severity"] = "warning",
+                            ["is_active"] = true,
+                        }),
+                        extra_usage = extra is { } e
+                            ? new
+                            {
+                                is_enabled = e.IsEnabled,
+                                monthly_limit = 2_000,
+                                used_credits = 150,
+                                utilization = e.Utilization,
+                                currency = "usd",
+                            }
+                            : null,
+                    },
+                },
+            },
+        });
+
     /// <summary>The CLI's own reading of the account, out of the session's stream.</summary>
     public static string RateLimitEvent(params (string Window, double Utilization, long? ResetsAt)[] windows) =>
         JsonSerializer.Serialize(new

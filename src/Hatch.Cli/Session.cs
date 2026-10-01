@@ -55,11 +55,99 @@ public interface ISessionRunner
     bool CanSpawn(out string refusal);
 }
 
-/// <summary>The claude CLI, actually spawned.</summary>
-public sealed class ClaudeSessionRunner(string? configured = null) : ISessionRunner
+/// <summary>
+/// Asked between sessions, of the CLI's own login, rather than out of any
+/// session's stream - see <see cref="UsageReport"/> and the decisions on
+/// HA-173. Its own interface rather than a third method on <see
+/// cref="ISessionRunner"/>, so a fake that never probes is not made to answer
+/// a question most tests never ask.
+/// </summary>
+public interface IUsageProbe
 {
+    /// <summary>
+    /// The probe's raw stream-json lines, for <see cref="UsageReport.Parse"/>
+    /// to read - or null where there is nothing to read: the guard has already
+    /// switched probing off for this process, or the CLI never answered.
+    /// </summary>
+    Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct);
+}
+
+/// <summary>The claude CLI, actually spawned.</summary>
+public sealed class ClaudeSessionRunner(string? configured = null, Action<string>? warn = null)
+    : ISessionRunner, IUsageProbe
+{
+    /// <summary>How long a probe is given before it is killed the way a lost lease is.</summary>
+    private static readonly TimeSpan ProbeCeiling = TimeSpan.FromSeconds(30);
+
     /// <summary>The binary <see cref="CanSpawn"/> found, and null until it has.</summary>
     private string? _bin;
+
+    /// <summary>
+    /// Set the first time a probe comes back having cost a turn - this CLI did
+    /// not take <c>/usage</c> as a local command, so nothing here asks it
+    /// again for the life of this process. <c>--max-turns 1</c> is what caps
+    /// what that one mistake can cost.
+    /// </summary>
+    private bool _probeCostly;
+
+    public async Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
+    {
+        if (_probeCostly) return null;
+
+        var start = new ProcessStartInfo
+        {
+            FileName = Bin,
+            WorkingDirectory = tempDirectory,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+        };
+        start.ArgumentList.Add("-p");
+        start.ArgumentList.Add("/usage");
+        start.ArgumentList.Add("--output-format");
+        start.ArgumentList.Add("stream-json");
+        start.ArgumentList.Add("--verbose");
+        start.ArgumentList.Add("--max-turns");
+        start.ArgumentList.Add("1");
+
+        using var process = new Process { StartInfo = start };
+        process.Start();
+
+        // Nothing is written to it - the prompt is the `-p` argument - so it
+        // is closed at once, which is what saves the seconds the CLI would
+        // otherwise spend waiting on a stdin nobody closed.
+        process.StandardInput.Close();
+
+        var lines = new List<string>();
+        var reading = Task.Run(async () =>
+        {
+            while (await process.StandardOutput.ReadLineAsync(CancellationToken.None) is { } line)
+                lines.Add(line);
+        }, CancellationToken.None);
+
+        using var timeout = new CancellationTokenSource(ProbeCeiling);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(linked.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Stop(process);
+        }
+
+        await reading.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await process.WaitForExitAsync(CancellationToken.None);
+
+        if (UsageReport.Turns(lines) > 0)
+        {
+            _probeCostly = true;
+            warn?.Invoke("hatch: the CLI took /usage as a model turn rather than a local command - no further probes this run");
+            return null;
+        }
+
+        return lines;
+    }
 
     public bool CanSpawn(out string refusal)
     {

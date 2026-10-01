@@ -1996,13 +1996,14 @@ public record RunnerHeartbeatRequest(
     DateTimeOffset? UsageReadAt = null);
 
 /// <summary>
-/// One usage window off a runner's own session stream, Hatch's own vocabulary
-/// - the same four fields <c>UtilizationLimit</c> carries minus the tone,
-/// which the server decides from the percentage alone.
+/// One usage window off a runner's own session stream, or off its own CLI's
+/// login between sessions - Hatch's own vocabulary, the same four fields
+/// <c>UtilizationLimit</c> carries minus the tone, which the server decides
+/// from the percentage alone.
 /// </summary>
 /// <param name="Window">
-/// <c>session</c>, <c>weekly</c> or <c>weeklyModel</c> - a window Hatch has
-/// never seen is still kept as sent.
+/// <c>session</c>, <c>weekly</c>, <c>weeklyModel</c> or <c>extra</c> - a
+/// window Hatch has never seen is still kept as sent.
 /// </param>
 /// <param name="Label">What the runner's own console calls this window.</param>
 /// <param name="Percent">0-100, clamped on the way in.</param>

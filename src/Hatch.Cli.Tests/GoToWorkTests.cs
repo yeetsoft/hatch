@@ -207,6 +207,163 @@ public sealed class GoToWorkTests
         Assert.Null(beat.UsageReadAt);
     }
 
+    // ---- The usage probe - HA-173 ----
+
+    /// <summary>
+    /// A session runner that can also answer the CLI's own <c>/usage</c> - what
+    /// the sealed <see cref="FakeSessions"/> is not, since most facts in this
+    /// file never ask it. Delegates every ordinary spawn to one, and mimics
+    /// <see cref="ClaudeSessionRunner"/>'s own guard: once a probe is told it
+    /// cost a turn, every later call is a free no-op.
+    /// </summary>
+    private sealed class FakeProbingSessions : ISessionRunner, IUsageProbe
+    {
+        public FakeSessions Inner { get; } = new();
+
+        /// <summary>Every temp directory a probe was asked to run in, in order - so a test can assert how many times, and only that.</summary>
+        public List<string> Probed { get; } = [];
+
+        /// <summary>What the next probe answers with. Null is a probe that answered nothing.</summary>
+        public Func<IReadOnlyList<string>?> Behaviour { get; set; } = () => null;
+
+        private bool _costly;
+
+        public Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
+        {
+            Probed.Add(tempDirectory);
+            if (_costly) return Task.FromResult<IReadOnlyList<string>?>(null);
+
+            var lines = Behaviour();
+            if (lines is not null && UsageReport.Turns(lines) > 0)
+            {
+                _costly = true;
+                return Task.FromResult<IReadOnlyList<string>?>(null);
+            }
+
+            return Task.FromResult(lines);
+        }
+
+        public Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct) =>
+            Inner.RunAsync(request, onLine, ct);
+
+        public Task<int> AttachAsync(SessionRequest request, CancellationToken ct) => Inner.AttachAsync(request, ct);
+
+        public bool CanSpawn(out string refusal) => Inner.CanSpawn(out refusal);
+    }
+
+    [Fact]
+    public async Task A_probes_reading_is_what_the_beat_carries()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 42, null)]), Fixtures.Result(turns: 0)],
+        };
+        var runtime = h.Runtime with { Sessions = fake };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        var window = Assert.Single(beat.Usage!);
+        Assert.Equal("session", window.Window);
+        Assert.Equal(42, window.Percent);
+        Assert.Single(fake.Probed);
+    }
+
+    [Fact]
+    public async Task A_failed_probe_leaves_the_streams_reading_on_the_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Runtime with { Sessions = fake };
+        var readAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        runtime.Readout.SetUsage([new UsageWindow("weekly", "Weekly", 0.10, null)], readAt);
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(readAt, beat.UsageReadAt);
+        var window = Assert.Single(beat.Usage!);
+        Assert.Equal("weekly", window.Window);
+        Assert.Equal(10, window.Percent);
+    }
+
+    /// <summary>
+    /// An idle loop - nothing ever claimed - probes once and then leaves the
+    /// reading alone for two minutes, rather than asking again every
+    /// <c>--interval</c>.
+    /// </summary>
+    [Fact]
+    public async Task No_second_probe_inside_two_minutes_on_an_idle_loop()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 5, null)]), Fixtures.Result(turns: 0)],
+        };
+        var runtime = h.Runtime with { Sessions = fake };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2_500));
+        await new GoToWorkCommand(runtime).RunAsync(["--interval", "1"], cts.Token);
+
+        Assert.Single(fake.Probed);
+    }
+
+    /// <summary>
+    /// Pinned to <see cref="GoToWorkCommand.Pass.Worked"/>: a session's own
+    /// stream has just replaced the readout with whatever it carried, so the
+    /// very next pass probes again however fresh the last one still is.
+    /// </summary>
+    [Fact]
+    public async Task A_probe_runs_after_every_increment_however_recent_the_last_one()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 5, null)]), Fixtures.Result(turns: 0)],
+        };
+        var runtime = h.Runtime with { Sessions = fake };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default);
+
+        // Two increments run, plus the top of the iteration that then finds
+        // --max-runs satisfied and stops before claiming a third - the probe
+        // runs before that discovery, not after it.
+        Assert.Equal(3, fake.Probed.Count);
+    }
+
+    /// <summary>
+    /// The guard belongs to the runner, not the loop: the loop keeps checking
+    /// in every pass it is due, but a probe that has already cost a turn once
+    /// answers nothing for the rest of the process, never handing the loop a
+    /// reading again.
+    /// </summary>
+    [Fact]
+    public async Task A_probe_that_cost_a_turn_is_never_asked_again()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 99, null)]), Fixtures.Result(turns: 1)],
+        };
+        var runtime = h.Runtime with { Sessions = fake };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default);
+
+        Assert.Equal(3, fake.Probed.Count);
+        Assert.Empty(runtime.Readout.Snapshot().UsageWindows);
+    }
+
     /// <summary>
     /// The same path "the workspace could not be reset" takes: nothing was
     /// spawned, so this ends the night without counting toward the
