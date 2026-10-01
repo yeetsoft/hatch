@@ -3923,7 +3923,7 @@ button.hatch-option.chosen {
    used to. */
 .hatch-queue-row {
   display: grid;
-  grid-template-columns: auto auto auto auto auto 1fr;
+  grid-template-columns: auto auto auto auto auto auto 1fr;
   align-items: center;
   gap: 0 var(--sp-2);
   padding: var(--sp-1-5) var(--sp-2);
@@ -3996,7 +3996,7 @@ button.hatch-option.chosen {
      width line under the ordinal, marker, key, badge and pill rather than
      being clipped, so a phone reads it without scrolling sideways. */
   .hatch-queue-row {
-    grid-template-columns: auto auto auto auto auto;
+    grid-template-columns: auto auto auto auto auto auto;
     row-gap: var(--sp-1);
   }
 

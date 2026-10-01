@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { anyAboveNormal, queueCard, queueMarker, queueTally, queueWords } from './queue';
-import type { BuildCheck, Issue, IssueCard, MergeCheck, QueueEntry, Status } from '../types';
+import { anyAboveNormal, anyClaimed, queueCard, queueMarker, queueTally, queueWords } from './queue';
+import type { BuildCheck, Issue, IssueCard, IssueClaim, MergeCheck, QueueEntry, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -45,6 +45,17 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   mergeChecks: [],
   buildChecks: [],
   wipLimit: null,
+  ...over,
+});
+
+const claim = (over: Partial<IssueClaim> = {}): IssueClaim => ({
+  claimedBy: 'hatch',
+  runner: 'Buster Bluth',
+  claimedAt: new Date().toISOString(),
+  heartbeatAt: new Date().toISOString(),
+  chatter: null,
+  chatterAt: null,
+  ttlSeconds: 300,
   ...over,
 });
 
@@ -216,6 +227,20 @@ describe('anyAboveNormal', () => {
 
   it('is true when any row carries a marker', () => {
     expect(anyAboveNormal([entry(), entry({ issue: issue({ priority: 'expedited' }) })])).toBe(true);
+  });
+});
+
+describe('anyClaimed', () => {
+  it('is false when no row\'s issue is claimed', () => {
+    expect(anyClaimed([entry(), entry()])).toBe(false);
+  });
+
+  it('is true when any row\'s own issue is claimed', () => {
+    expect(anyClaimed([entry(), entry({ issue: issue({ claim: claim() }) })])).toBe(true);
+  });
+
+  it('is false for a row folded by a relative\'s claim, since the issue\'s own claim is still null', () => {
+    expect(anyClaimed([entry({ blocked: 'HA-12, above this, is working this' })])).toBe(false);
   });
 });
 
