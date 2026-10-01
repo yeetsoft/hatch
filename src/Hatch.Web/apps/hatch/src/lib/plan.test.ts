@@ -27,6 +27,8 @@ const epic = (key: string, leaves: number, done: number, children: PlanEntry[] =
     claim: null,
     expedited: false,
     priority: 'normal',
+    priorityOwn: 'normal',
+    priorityFrom: null,
     express: false,
   },
   isLeaf: children.length === 0 && leaves === 0,

@@ -25,6 +25,8 @@ const card = (
   claim: null,
   expedited: priority !== 'normal',
   priority,
+  priorityOwn: priority,
+  priorityFrom: null,
   express: false,
 });
 

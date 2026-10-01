@@ -43,6 +43,8 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   claim: null,
   expedited: false,
   priority: 'normal',
+  priorityOwn: 'normal',
+  priorityFrom: null,
   express: false,
   mergeChecks: [],
   buildChecks: [],
@@ -78,6 +80,8 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   claim: null,
   expedited: false,
   priority: 'normal',
+  priorityOwn: 'normal',
+  priorityFrom: null,
   express: false,
   ...over,
 });
