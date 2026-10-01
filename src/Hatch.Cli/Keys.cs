@@ -5,6 +5,7 @@ public enum Confirming
 {
     None,
     Cancel,
+    Skip,
 }
 
 /// <summary>
@@ -12,7 +13,7 @@ public enum Confirming
 /// <see cref="KeysOn"/> is what tells the readout whether to draw the legend
 /// row at all.
 /// </summary>
-public sealed record ControlsSnapshot(bool KeysOn, bool StopArmed, Confirming Confirming);
+public sealed record ControlsSnapshot(bool KeysOn, bool StopArmed, bool Paused, bool LongLegend, Confirming Confirming);
 
 /// <summary>
 /// The pure decision table a key press is run through - no lock, no <see
@@ -21,28 +22,50 @@ public sealed record ControlsSnapshot(bool KeysOn, bool StopArmed, Confirming Co
 /// </summary>
 public static class Keys
 {
-    public static (bool StopArmed, Confirming Confirming, bool CancelNow, string? Log) Decide(
-        char key, bool stopArmed, Confirming confirming)
+    public static (bool StopArmed, bool Paused, bool LongLegend, Confirming Confirming, bool CancelNow, bool SkipNow, string? Log) Decide(
+        char key, bool stopArmed, bool paused, bool longLegend, Confirming confirming, bool incrementRunning)
     {
         if (confirming == Confirming.Cancel)
         {
             return key is 'y' or 'Y'
-                ? (stopArmed, Confirming.None, CancelNow: true, Log: "cancel now — confirmed (c, y)")
-                : (stopArmed, Confirming.None, CancelNow: false, Log: null);
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: true, SkipNow: false, Log: "cancel now — confirmed (c, y)")
+                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, Log: null);
+        }
+
+        if (confirming == Confirming.Skip)
+        {
+            return key is 'y' or 'Y'
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: true, Log: "skip confirmed — this increment ends now (k, y)")
+                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, Log: null);
         }
 
         if (key is 's' or 'S')
         {
             var armed = !stopArmed;
-            return (armed, Confirming.None, CancelNow: false,
+            return (armed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false,
                 Log: armed
                     ? "stop armed — the night ends after this increment (s to undo)"
                     : "stop undone — the night carries on (s)");
         }
 
-        if (key is 'c' or 'C') return (stopArmed, Confirming.Cancel, CancelNow: false, Log: null);
+        if (key is 'c' or 'C') return (stopArmed, paused, longLegend, Confirming.Cancel, CancelNow: false, SkipNow: false, Log: null);
 
-        return (stopArmed, confirming, CancelNow: false, Log: null);
+        if (key is 'p' or 'P')
+        {
+            var armed = !paused;
+            return (stopArmed, armed, longLegend, confirming, CancelNow: false, SkipNow: false,
+                Log: armed
+                    ? "paused from the keyboard (p to resume)"
+                    : "resumed from the keyboard (p to pause)");
+        }
+
+        if ((key is 'k' or 'K') && incrementRunning)
+            return (stopArmed, paused, longLegend, Confirming.Skip, CancelNow: false, SkipNow: false, Log: null);
+
+        if (key == '?')
+            return (stopArmed, paused, !longLegend, confirming, CancelNow: false, SkipNow: false, Log: null);
+
+        return (stopArmed, paused, longLegend, confirming, CancelNow: false, SkipNow: false, Log: null);
     }
 }
 
@@ -56,14 +79,41 @@ public sealed class Controls(bool keysOn)
 {
     private readonly Lock _gate = new();
     private bool _stopArmed;
+    private bool _paused;
+    private bool _longLegend;
     private Confirming _confirming = Confirming.None;
+
+    /// <summary>
+    /// Whether an increment is currently running - read only by <see
+    /// cref="Press"/>, to gate <c>k</c>, and written by <see
+    /// cref="Increment.RunAsync"/> the same moment <see
+    /// cref="ReadoutState.BeginIncrement"/>/<see cref="ReadoutState.EndIncrement"/>
+    /// bracket it. Not part of <see cref="ControlsSnapshot"/> - nothing outside
+    /// this class reads it.
+    /// </summary>
+    private bool _incrementRunning;
 
     /// <summary>Set once at construction and never mutated after - readable with no lock.</summary>
     public bool KeysOn => keysOn;
 
+    /// <summary>
+    /// Raised by <see cref="Press"/>, after its lock is released, the moment a
+    /// skip is confirmed - so a subscriber calling back into this instance
+    /// cannot deadlock. <see cref="GoToWork.PassAsync"/> and <see
+    /// cref="WorkCommand"/>'s own spend each subscribe for the duration of
+    /// their own <see cref="Increment.RunAsync"/> call.
+    /// </summary>
+    public event Action? Skipped;
+
     public ControlsSnapshot Snapshot()
     {
-        lock (_gate) return new ControlsSnapshot(keysOn, _stopArmed, _confirming);
+        lock (_gate) return new ControlsSnapshot(keysOn, _stopArmed, _paused, _longLegend, _confirming);
+    }
+
+    /// <summary>Written the same moment an increment begins and ends - see <see cref="_incrementRunning"/>.</summary>
+    public void SetIncrementRunning(bool running)
+    {
+        lock (_gate) _incrementRunning = running;
     }
 
     /// <summary>
@@ -71,15 +121,27 @@ public sealed class Controls(bool keysOn)
     /// mutable state - the table, run under the lock, with the result written
     /// back before it returns.
     /// </summary>
-    public (string? Log, bool CancelNow) Press(char key)
+    public (string? Log, bool CancelNow, bool SkipNow) Press(char key)
     {
+        string? log;
+        bool cancelNow;
+        bool skipNow;
+
         lock (_gate)
         {
-            var (stopArmed, confirming, cancelNow, log) = Keys.Decide(key, _stopArmed, _confirming);
+            var (stopArmed, paused, longLegend, confirming, cancel, skip, decided) =
+                Keys.Decide(key, _stopArmed, _paused, _longLegend, _confirming, _incrementRunning);
             _stopArmed = stopArmed;
+            _paused = paused;
+            _longLegend = longLegend;
             _confirming = confirming;
-            return (log, cancelNow);
+            cancelNow = cancel;
+            skipNow = skip;
+            log = decided;
         }
+
+        if (skipNow) Skipped?.Invoke();
+        return (log, cancelNow, skipNow);
     }
 }
 
@@ -120,7 +182,7 @@ public sealed class KeyReader : IDisposable
             while (!_stopped)
             {
                 var key = Console.ReadKey(intercept: true);
-                var (log, cancelNow) = _controls.Press(key.KeyChar);
+                var (log, cancelNow, _) = _controls.Press(key.KeyChar);
                 if (log is { Length: > 0 }) _say.Line($"hatch: {log}");
                 if (cancelNow) _cancelling.Cancel();
             }

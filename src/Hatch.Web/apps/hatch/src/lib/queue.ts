@@ -63,6 +63,19 @@ export function anyAboveNormal(queue: readonly QueueEntry[]): boolean {
   return queue.some((q) => q.issue.priority !== 'normal');
 }
 
+/** Whether any row's own issue is claimed right now - the same idiom as
+    `anyAboveNormal`, read once for the pass so the robot column is either
+    drawn on every row or not drawn at all. A column drawn only on the
+    claimed rows would shift the key, badge and pill of those rows out of
+    line with the rest.
+
+    A relative's claim does not count: this reads `issue.claim`, never the
+    row's `blocked` sentence, so a row folded because an ancestor or a
+    descendant is claimed does not by itself draw the column. */
+export function anyClaimed(queue: readonly QueueEntry[]): boolean {
+  return queue.some((q) => q.issue.claim !== null);
+}
+
 /** How many rows the pass looked at, and how many of them are clear (carry
     no `blocked`) - the tally a modal's header line reads off, computed once
     rather than recounted by every consumer. */

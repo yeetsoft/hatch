@@ -963,6 +963,110 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    // ---- The keyboard's k (HA-133): a skip is not an interrupt ----
+
+    [Fact]
+    public async Task A_cancellation_of_ct_alone_with_the_callers_token_untouched_reads_as_a_skip()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        using var skip = new CancellationTokenSource();
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            // The keyboard's k, confirmed - cancels the increment's own token
+            // only, never the caller's, which is the whole distinction this
+            // ticket draws.
+            skip.Cancel();
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, skip.Token, callerCt: CancellationToken.None);
+
+        Assert.True(report.Skipped);
+        Assert.False(report.Interrupted);
+        Assert.Equal("skipped from the keyboard", report.Outcome);
+        Assert.NotEqual(default, report.EndedAt);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The existing Ctrl-C behaviour, unchanged: both tokens cancelled (or no callerCt at all) still reads as interrupted.</summary>
+    [Fact]
+    public async Task A_cancellation_of_both_tokens_still_reads_as_interrupted_and_not_a_skip()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        using var stopped = new CancellationTokenSource();
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            stopped.Cancel();
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        // No callerCt given - defaults to ct itself, so the two can never
+        // disagree, exactly as every call site before this ticket.
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, stopped.Token);
+
+        Assert.True(report.Interrupted);
+        Assert.False(report.Skipped);
+
+        await claim.ReleaseAsync();
+    }
+
+    // ---- SetIncrementRunning (HA-133) ----
+
+    [Fact]
+    public async Task SetIncrementRunning_RoundTripsFalseTrueFalseAroundTheSpawn()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        var controls = new Controls(keysOn: true);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        Assert.False(controls.Snapshot().Confirming == Confirming.Skip);
+
+        var runningDuringSpawn = false;
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            runningDuringSpawn = controls.Press('k').Log is null && controls.Snapshot().Confirming == Confirming.Skip;
+            controls.Press('x'); // takes the confirmation back - leaves Confirming.None behind
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var increment = new Increment(
+            h.Board, h.Sessions, new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, h.Say,
+            [new CheckoutEntry(h.Root, "https://example.test/repo.git", Standing: true)], h.Runtime.Readout, h.Temp, controls);
+
+        await increment.RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(runningDuringSpawn, "k did not arm the skip confirmation while the session was spawning");
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public void The_hooks_run_this_binary_where_it_is_hatch_and_the_bare_word_otherwise()
     {

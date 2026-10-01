@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
-import { agePhrase, rowPercent, rowResetPhrase, rowSentence, timeGoneFraction, usageVars } from '../lib/utilization';
+import { agePhrase, pace, rowPercent, rowResetPhrase, rowSentence, timeGoneFraction, usageVars } from '../lib/utilization';
 import { useMe } from '../lib/useMe';
 import type { Utilization } from '../types';
 
@@ -46,7 +46,12 @@ export function UtilizationModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={me ? `${me.name}'s Claude usage` : 'My Claude usage'}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={me ? `${me.name}'s Claude usage` : 'My Claude usage'}
+      width="narrow"
+    >
       <div className="hatch-usage">
         <ul className="hatch-usage-rows">
           {reading.limits.map((limit, at) => {
@@ -70,7 +75,10 @@ export function UtilizationModal({
                     would have to guess the relationship between. */}
                 <div className="hatch-usage-bars" role="img" aria-label={rowSentence(limit, now)}>
                   <div className="hatch-usage-bar-track">
-                    <div className="hatch-usage-bar-fill" style={{ ...usageVars(percent), width: `${percent}%` }} />
+                    <div
+                      className="hatch-usage-bar-fill"
+                      style={{ ...usageVars(pace(limit, now)), width: `${percent}%` }}
+                    />
                   </div>
                   {hasTimeBar && (
                     <div

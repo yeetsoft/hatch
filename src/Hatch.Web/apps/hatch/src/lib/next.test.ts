@@ -18,6 +18,8 @@ const child = (key: string, waiting: number): ChildRollup => ({
     claim: null,
     expedited: false,
     priority: 'normal',
+    priorityOwn: 'normal',
+    priorityFrom: null,
     express: false,
   },
   isLeaf: true,

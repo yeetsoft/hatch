@@ -1986,25 +1986,41 @@ rename underneath this endpoint.
 
 ### The colour, and the two bars
 
-Every row's colour, and the battery's own, is decided on the client from the
-percentage alone — a ramp with seven control points, interpolated linearly in
-sRGB one shade per whole percent, from a bright green at 0% through green,
-yellow, orange and red to black at 100%
+Every row's colour, and the battery's own, is decided on the client from its
+**pace** — the share of the window's allowance it is on course to have spent
+by its own reset — rather than the percentage alone. Pace is
+`used / max(gone, GRACE)`: the percentage spent divided by the share of the
+window's time gone, with `GRACE` a floor on that share (the first fifteen
+minutes of a five-hour window) so the opening minutes of a window cannot
+project to several times the allowance before a rate means anything. `100` is
+level — the window refreshes at the very moment the allowance runs out; below
+it there is headroom left at the reset, above it the allowance goes first. The
+ramp has five control points over this projected percentage, interpolated
+linearly in sRGB one shade per whole projected percent: bright green at 0
+("allowance to spare"), green at 60 ("well ahead of the reset"), yellow at 90
+("just ahead of the reset"), orange at 100 ("level with the reset"), and red
+at 150 ("spending ahead of the reset")
 (`src/Hatch.Web/apps/hatch/src/lib/utilization.ts`). The endpoint sends no
 colour and no tone: a ramp on the client beside a three-tone decision on the
-server would be two answers to one question, so the percent is the whole of
-what crosses the wire.
+server would be two answers to one question, so the percentage and the reset
+instant are the whole of what crosses the wire, and pace is computed from
+them alone.
 
-The battery takes the colour of the **worst window** — the highest percentage
-among the rows — never the `extra` row's: a spent credit line is a monthly
-budget the operator chose to buy, not a window the account will refuse on, and
-painting the nav black over it would say "stop" about an account that can
-still run. The battery's tooltip and accessible name name that window whenever
+The battery takes the colour of the **worst window** — the highest pace among
+the rows — never the `extra` row's: a spent credit line is a monthly budget
+the operator chose to buy, not a window the account will refuse on, and
+painting the nav red over it would say "stop" about an account that can still
+run. A window standing at 100% used at the very moment it resets is not bad
+news on its own — it is a window spent exactly as intended, its allowance and
+its clock running out together — so only spending faster than the window
+refreshes reddens it. The battery's tooltip and accessible name say in words
+what the colour says in colour, and name the window that decided it whenever
 it is not the session's own.
 
-A window whose reset instant has already passed reads as **not started**: 0%,
-the 0% colour, and a phrase saying it has reset, rather than the stale
-percentage sitting there in whatever colour it last was.
+A window whose reset instant has already passed reads as **not started**: 0%
+used, pace 0, the ramp's brightest colour, and a phrase saying it has reset,
+rather than the stale percentage sitting there in whatever colour it last
+was.
 
 Opened, every row in the panel is two bars on one scale rather than a
 percentage and a `resets in` clause left for the reader to do the arithmetic
@@ -4325,18 +4341,31 @@ something** — see HA-129 for the operator's brief. `s` stops the runner after
 the increment in flight finishes, pushes and is written up — press again to
 undo it, which the legend says while it is armed; `c` asks for confirmation
 (`y` to confirm, any other key to take it back) and then ends the run exactly
-as Ctrl-C does, process tree and all. Keys are read exactly where the readout
-draws, and only when this process's own standard input is itself a terminal —
-a pipe, a service, or a container with no TTY reads no keys and draws no
-legend, and `go-to-work`, `do-my-work` and `hatch work` all say so once at
-startup, naming Ctrl-C and `--stop-file` as the ways to stop instead.
+as Ctrl-C does, process tree and all. `p` pauses the runner — still
+heartbeating, so its row never drifts from idle to gone, but nothing further
+is picked up — and press again to resume, which (HA-133) happens straight
+away rather than waiting out the rest of the interval; a board that has this
+runner paused outranks a local resume, so a `p` pressed here cannot read as
+having un-paused a runner the board itself is holding still. `k` asks for
+confirmation the same way `c` does (`y` to confirm, any other key to take it
+back) and then ends the increment in flight without touching the ticket
+further — the loop moves straight on to the next one, the same as any other
+increment that spawned nothing new to wait on. `?` swaps the one-line legend
+for a longer one naming every key in full, and back again on a second
+press — the one key here that changes what is drawn and not what the runner
+will do, so it writes nothing to the log. Keys are read exactly where the
+readout draws, and only when this process's own standard input is itself a
+terminal — a pipe, a service, or a container with no TTY reads no keys and
+draws no legend, and `go-to-work`, `do-my-work` and `hatch work` all say so
+once at startup, naming Ctrl-C and `--stop-file` as the ways to stop instead.
 `--no-keys` turns the keyboard off outright on all three commands, and draws
 the readout exactly as before minus the legend row and with no startup line —
 nobody needs telling about a control they switched off. A key that means
 nothing does nothing and says nothing; every key that changes what the runner
-will do writes one line to the log, so a redirected run read the next morning
-still says what was asked, and when. Ctrl-C is unchanged, and works at any
-moment whether keys are on or off, including while a confirmation is
+will do writes one line to the log — `?` is the one exception, since it
+changes the display and not the runner — so a redirected run read the next
+morning still says what was asked, and when. Ctrl-C is unchanged, and works
+at any moment whether keys are on or off, including while a confirmation is
 outstanding — a second way to reach the same cancellation, never a
 replacement for it.
 

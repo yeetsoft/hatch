@@ -1,5 +1,6 @@
 import { Button, EmptyState, Modal, Text } from '@hatch/ui';
-import { anyAboveNormal, queueCard, queueMarker, queueTally, queueWords } from '../lib/queue';
+import { anyAboveNormal, anyClaimed, queueCard, queueMarker, queueTally, queueWords } from '../lib/queue';
+import { ClaimBadge } from './ClaimBadge';
 import { TypeBadge } from './TypeBadge';
 import { StatusPill } from './StatusPill';
 import type { IssueCard, QueueEntry } from '../types';
@@ -32,6 +33,7 @@ export function QueueModal({
   onTake: (card: IssueCard) => void;
 }) {
   const showMarker = anyAboveNormal(queue);
+  const showClaim = anyClaimed(queue);
   const tally = queueTally(queue);
 
   return (
@@ -91,6 +93,7 @@ export function QueueModal({
                   {showMarker && (
                     <span className={`hatch-queue-marker${marker === '!!' ? ' emergency' : ''}`}>{marker}</span>
                   )}
+                  {showClaim && <ClaimBadge claim={entry.issue.claim} />}
                   <span className="hatch-card-key">{entry.issue.key}</span>
                   <TypeBadge type={entry.issue.type} />
                   <StatusPill status={entry.fromStatus} />

@@ -3,7 +3,10 @@
    The panel's 720px max-width is a fixed layout dimension rather than a rung
    on the spacing ladder — it is a reading measure for a dialog, narrower than
    the page's --measure on purpose — so it stays a literal here and Phase 6
-   moves it deliberately.
+   moves it deliberately. The narrow modifier's 520px is the same kind of
+   literal for the same reason, chosen for one dialog's own content rather
+   than a rung on the ladder, so it sits beside the 720px rather than becoming
+   a token.
 
    `dvh` rather than `vh` for the cap. `100vh` is the tallest the viewport ever
    gets — on a phone that is the height with the toolbars retracted — so a panel
@@ -32,6 +35,10 @@
      --on-accent text. A component restates its own appearance rather than
      leaning on where it happens to sit. */
   color: var(--ink);
+}
+
+.hatch-modal__panel--narrow {
+  max-width: 520px;
 }
 
 .hatch-modal__head {
@@ -67,7 +74,14 @@
    are laid out against block flow inside it: a footer nobody passes moves
    nothing. */
 
-.hatch-modal__panel--framed {
+/* Anchored to the panel's own class, not the modifier alone: a single-class
+   `.hatch-modal__panel--framed` ties at 0,1,0 with any app's own `.hatch-card`
+   rule, and source order then decides which wins - which is how
+   `apps/hatch/src/App.css`'s later `.hatch-card { display: block }` was
+   beating this `display: flex` and leaving the framed panel with nothing to
+   scroll. `.hatch-modal__panel.hatch-modal__panel--framed` is 0,2,0 and wins
+   regardless of which stylesheet the bundle puts last. */
+.hatch-modal__panel.hatch-modal__panel--framed {
   display: flex;
   flex-direction: column;
   /* The body scrolls now, and this is what keeps what it scrolls inside the
