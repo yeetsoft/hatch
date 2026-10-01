@@ -55,6 +55,10 @@ page. Two flags matter: **terminal** marks the columns that mean shipped, and
 on the board; the issue page is the only way in, and only a person can send
 something there.
 
+On a phone, the board opens on what is waiting on you and a New issue button,
+then the columns stacked one under another rather than side by side. A Full
+board toggle, remembered per browser, brings back the columns side by side.
+
 ## Playbooks
 
 A playbook is one row: *from this column, to the next, for these issue types,

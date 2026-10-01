@@ -14,6 +14,7 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, EmptyState } from '@hatch/ui';
 import { getAssignees, getBoard, getProjects, moveIssue } from '../api/client';
+import { AttentionHuman } from '../components/AttentionHuman';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -33,17 +34,22 @@ import { DEFAULT_FILTER, assigneeFacets, filterCards, isFiltering, revealType } 
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
 import { whereOnBoard } from '../lib/goTo';
+import { readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
+import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { useAttentionContext } from '../lib/useAttentionContext';
+import { useAttentionNow } from '../lib/useAttentionNow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
+import { usePhone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
 import { overridden, wipRefusal } from '../lib/wipOverride';
-import { preview, runs, tightest } from '../lib/wip';
+import { meterText, preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
 import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
@@ -78,6 +84,17 @@ const TOUCH_LIFT_DELAY_MS = 300;
 const TOUCH_LIFT_TOLERANCE_PX = 8;
 
 export function BoardPage() {
+  const isPhone = usePhone();
+  const { attention, reload: reloadAttention } = useAttentionContext();
+
+  // The chosen layout at phone width, seeded from storage and written on
+  // every press of the toggle - off the phone this is always 'full' (AC7),
+  // whatever is stored. See lib/phoneBoard.ts.
+  const [view, setView] = useState<BoardView>(readBoardView);
+  const layout = resolveBoardLayout(isPhone, view);
+  const stacked = layout === 'stacked';
+  const now = useAttentionNow(stacked);
+
   // The card under the cursor and the column it is over, kept only for the
   // duration of a drag: one paints the overlay, the other lights up the column
   // the drop would land in. Above the loader, which pauses its refresh for both.
@@ -250,6 +267,10 @@ export function BoardPage() {
   // own load, or one more for as long as a card of its type sits outside it.
   const loads = section ? preview(section, dragging ?? landing) : [];
   const tint: Tightness | null = section ? tightest(section, loads) : null;
+  // The stacked layout's own header note (AC5): the one sentence WipBands
+  // already draws across the run, read here for PhoneColumn instead of a
+  // band it never draws.
+  const wipText = section ? meterText(section, loads) : null;
   const previewing =
     section !== null &&
     dragging !== null &&
@@ -501,6 +522,23 @@ export function BoardPage() {
           visible title the operator asked to lose. */}
       <h1 className="hatch-visually-hidden">Board</h1>
 
+      {/* The phone's own chrome (AC1), drawn whenever the viewport is phone
+          width in either view - only the columns area below switches on
+          `stacked`. Full board is a toggle on the grid, not a trip back to
+          the desk's whole page. */}
+      {isPhone && (
+        <section className="hatch-board-waiting">
+          <h2 className="hatch-board-waiting-heading">Waiting on you</h2>
+          <AttentionHuman attention={attention} now={now} reload={reloadAttention} />
+        </section>
+      )}
+
+      {isPhone && (
+        <Button variant="primary" className="hatch-board-filing" onClick={() => setFiling(true)}>
+          New issue
+        </Button>
+      )}
+
       <BoardFilters
         filter={filter}
         onChange={changeFilter}
@@ -509,10 +547,25 @@ export function BoardPage() {
         cards={board.issues}
         showing={visible.length}
         total={board.issues.length}
+        collapsed={isPhone}
         trailing={
-          <Button variant="primary" onClick={() => setFiling(true)}>
-            New issue
-          </Button>
+          isPhone ? (
+            <button
+              type="button"
+              className="hatch-board-view-toggle"
+              onClick={() => {
+                const next: BoardView = stacked ? 'full' : 'stacked';
+                setView(next);
+                writeBoardView(next);
+              }}
+            >
+              {stacked ? 'Full board' : 'Stacked view'}
+            </button>
+          ) : (
+            <Button variant="primary" onClick={() => setFiling(true)}>
+              New issue
+            </Button>
+          )
         }
       />
 
@@ -520,6 +573,33 @@ export function BoardPage() {
 
       {columns.length === 0 ? (
         <EmptyState message="This board has no columns yet." />
+      ) : stacked ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={collisionDetection}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragCancel={cancel}
+          onDragEnd={(e) => void onDragEnd(e)}
+        >
+          <div className="hatch-board hatch-board--stacked">
+            {columns.map((status) => (
+              <PhoneColumn
+                key={status.id}
+                status={status}
+                cards={visible.filter((i) => i.statusId === status.id)}
+                hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
+                filtering={isFiltering(filter)}
+                found={found}
+                wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
+              />
+            ))}
+          </div>
+
+          <DragOverlay dropAnimation={null}>
+            {dragging && <CardPreview card={dragging} terminal={terminalOf(board.statuses, dragging.statusId)} />}
+          </DragOverlay>
+        </DndContext>
       ) : (
         <DndContext
           sensors={sensors}
@@ -736,5 +816,88 @@ function Column({
           rather than a generic outline. */}
       {dropping && <div className="hatch-column-drop">{status.name}</div>}
     </section>
+  );
+}
+
+/**
+ * One column, stacked (AC1). The same `waiting`/`workable`/`shown`/`asking`
+ * logic `Column` already has, copied rather than shared so the desk's own
+ * render gets no new branch in it, with three differences the stacked layout
+ * asks for: a `<details>` instead of a `<section>`, collapsible with a press
+ * on its sticky `<summary>`; `open` seeded once from `startsCollapsed` and
+ * held in its own state rather than re-derived every render, so a poll
+ * landing while a column is open never re-closes it; and no
+ * `useDroppable`/`dropping`/`lit` at all - there is no cross-column drop
+ * target in this layout (AC3), only a reorder within one column's own
+ * `SortableContext`.
+ */
+function PhoneColumn({
+  status,
+  cards,
+  hidden,
+  filtering,
+  found,
+  wip,
+}: {
+  status: Status;
+  cards: IssueCard[];
+  /** How many of this column's cards the filter is holding back. */
+  hidden: number;
+  filtering: boolean;
+  /** The key of the card the console found, on any column. */
+  found: string | null;
+  /** This column's share of the WIP section's own sentence, or null where it
+      is not in one - AC5: no band here, the header says it instead. */
+  wip: { text: string; tint: Tightness } | null;
+}) {
+  const [showWaiting, setShowWaiting] = useState(false);
+  const [open, setOpen] = useState(() => !startsCollapsed(status));
+
+  const now = new Date();
+
+  const waiting = status.isTerminal ? [] : cards.filter((c) => isWaiting(c.readyAt, now));
+  const workable = cards.filter((c) => !waiting.includes(c));
+
+  if (found && !showWaiting && waiting.some((c) => c.key === found)) setShowWaiting(true);
+  const shown = showWaiting ? [...workable, ...waiting] : workable;
+
+  const asking = askingCount(cards);
+  const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
+
+  return (
+    <details
+      className="hatch-column"
+      style={statusVars(status.color)}
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary className="hatch-column-head">
+        <StatusDot status={status} />
+        <span className="hatch-column-name">{status.name}</span>
+        <span className="hatch-column-count">{workable.length}</span>
+        {asking > 0 && (
+          <span className="hatch-column-asking" role="img" aria-label={askingWords} title={askingWords}>
+            ?{asking}
+          </span>
+        )}
+        {wip && <span className={`hatch-column-wip-note hatch-wip-${wip.tint}`}>{wip.text}</span>}
+      </summary>
+
+      <div className="hatch-column-cards">
+        <SortableContext items={shown.map((c) => c.key)} strategy={verticalListSortingStrategy}>
+          {shown.map((card) => (
+            <BoardCard key={card.key} card={card} waiting={waiting.includes(card)} terminal={status.isTerminal} found={found === card.key} />
+          ))}
+        </SortableContext>
+
+        {waiting.length > 0 && (
+          <button type="button" className="hatch-column-fold" onClick={() => setShowWaiting(!showWaiting)}>
+            {showWaiting ? 'Hide' : `+ ${waiting.length}`} waiting
+          </button>
+        )}
+
+        {filtering && hidden > 0 && <p className="hatch-column-hidden">{hidden} hidden by the filter</p>}
+      </div>
+    </details>
   );
 }

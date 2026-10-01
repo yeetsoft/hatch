@@ -145,6 +145,46 @@ public class UtilizationControllerTests
         }
     }
 
+    /// <summary>
+    /// HA-173: a fourth window and a scoped one named by the account both
+    /// reach the browser as sent, and the vendor guard still holds with them
+    /// in the reading.
+    /// </summary>
+    [SkippableFact]
+    public async Task AnExtraRowAndANamedScopedRow_AreAnsweredAsSent()
+    {
+        await using var h = await NewAsync();
+        h.Actors.Principal = h.Actors.AddPerson("Nathan");
+        await h.SeedAsync(
+            "here:/checkouts/one", h.Actors.Principal.Id, Now,
+            new RunnerUsageWindowDto("extra", "Extra usage", 12, null),
+            new RunnerUsageWindowDto("weeklyModel", "Weekly (Opus 5)", 88, null));
+
+        var reading = Value(await h.Utilization.Get(default));
+
+        Assert.Equal(2, reading.Limits.Count);
+        var extra = reading.Limits.Single(l => l.Window == "extra");
+        Assert.Equal("Extra usage", extra.Label);
+        Assert.Equal(12, extra.Percent);
+        var scoped = reading.Limits.Single(l => l.Window == "weeklyModel");
+        Assert.Equal("Weekly (Opus 5)", scoped.Label);
+        Assert.Equal(88, scoped.Percent);
+
+        var json = JsonSerializer.Serialize(reading, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        });
+        foreach (var theirs in new[]
+                 {
+                     "resets_at", "is_active", "extra_usage", "used_credits", "monthly_limit",
+                     "spend_limit_reached", "severity", "kind", "group", "scope", "display_name",
+                     "five_hour", "seven_day", "utilization", "limit_dollars", "amount_minor", "credits",
+                 })
+        {
+            Assert.DoesNotContain(theirs, json, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException("expected a value, got no content");
 
@@ -168,7 +208,17 @@ public class UtilizationControllerTests
             return db;
         }
 
-        public async Task SeedAsync(string name, Guid? forPersonId, DateTimeOffset readAt, (string Window, int Percent) window)
+        public Task SeedAsync(string name, Guid? forPersonId, DateTimeOffset readAt, (string Window, int Percent) window) =>
+            SeedAsync(name, forPersonId, readAt, new RunnerUsageWindowDto(window.Window, window.Window, window.Percent, null));
+
+        /// <summary>
+        /// Whatever windows a test hands it, kept verbatim - unlike the tuple
+        /// overload above, which always reuses the window's own name as its
+        /// label. What a named scoped row or an <c>extra</c> row needs, since
+        /// neither can be said with that shorthand.
+        /// </summary>
+        public async Task SeedAsync(
+            string name, Guid? forPersonId, DateTimeOffset readAt, params RunnerUsageWindowDto[] windows)
         {
             var db = Connect();
             db.Runners.Add(new EfHatchRunner
@@ -180,10 +230,7 @@ public class UtilizationControllerTests
                 State = EfHatchRunner.Running,
                 ForPersonId = forPersonId,
                 UsageReadAt = readAt,
-                Usage = JsonSerializer.Serialize(new[]
-                {
-                    new RunnerUsageWindowDto(window.Window, window.Window, window.Percent, null),
-                }),
+                Usage = JsonSerializer.Serialize(windows),
             });
             await db.SaveChangesAsync();
         }

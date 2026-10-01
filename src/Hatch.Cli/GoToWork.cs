@@ -335,6 +335,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
     /// <summary>
+    /// How stale a usage probe's reading is allowed to get before the top of a
+    /// pass asks again, on an otherwise idle loop. The server's own freshness
+    /// window is five minutes; this plus one <c>--interval</c> stays inside it -
+    /// see the decisions on HA-173, criterion 1.4.
+    /// </summary>
+    private static readonly TimeSpan ProbeMaxAge = TimeSpan.FromMinutes(2);
+
+    /// <summary>
     /// What the runner exits with to ask the supervisor in <c>scripts/hatch.sh</c>
     /// or <c>scripts/hatch.ps1</c> to build the new source and run it again.
     /// </summary>
@@ -773,8 +781,36 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // the ones a pass prints on its way past something.
         var line = new Chatter { Line = "reading the board" };
 
+        // The usage probe's own clock, independent of the session stream's -
+        // null until the first probe, and read fresh so a loop that has been up
+        // a while without a session still asks between beats. See UsageReport
+        // and the decisions on HA-173.
+        DateTimeOffset? probedAt = null;
+
+        // Set once an increment actually ran, off Pass.Worked, and read at the
+        // top of the very next iteration: a session's own rate_limit_event has
+        // just replaced the readout's reading with whatever the stream
+        // carried, and without a fresh probe here the next heartbeat would
+        // send that instead of the fuller account the CLI's own login reports.
+        var workedSinceProbe = false;
+
         while (!ct.IsCancellationRequested)
         {
+            if (runtime.Sessions is IUsageProbe probe)
+            {
+                var probeNow = runtime.Clock.GetUtcNow();
+                var due = probedAt is not { } last || probeNow - last >= ProbeMaxAge || workedSinceProbe;
+                workedSinceProbe = false;
+
+                if (due)
+                {
+                    probedAt = probeNow;
+                    var probed = await probe.ProbeAsync(runtime.TempDirectory, ct);
+                    if (probed is not null && UsageReport.Parse(probed) is { } windows)
+                        runtime.Readout.SetUsage(windows, probeNow);
+                }
+            }
+
             // Once per iteration, at the top - which is the one moment in a
             // pass when no claim is held. That is what makes "picked up between
             // increments, after the one in flight has finished" true by
@@ -902,6 +938,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             await poll.RunAsync(runtime, interval, ct);
 
             var pass = await PassAsync(under, quiet, mine, tally, idle, busy, interval, once, restart, line, ct);
+            if (pass == Pass.Worked) workedSinceProbe = true;
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
 

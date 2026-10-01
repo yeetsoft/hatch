@@ -1846,6 +1846,22 @@ session runs, and it needs no credential pasted anywhere. What it buys is a
 battery that works on a fresh install, for anybody with a runner of their own,
 including a friend on `do-my-work` spending their own account.
 
+**Between sessions, HA-173 asks a second source.** A session's own stream is
+silent while the loop is idle, so the reading would otherwise sit frozen from
+the last time a session ran. At the top of every idle pass the runner asks its
+own CLI's `/usage` directly, over the same login, in a throwaway temp
+directory rather than any checkout — no project settings, no hooks, and
+`--max-turns 1` so a CLI that mistakes it for a real prompt cannot spend more
+than one turn finding out. It answers the same two windows the stream does,
+plus a scoped weekly window named by the account and a fourth Hatch has never
+carried before, `extra` — the account's own extra-usage balance. The CLI's own
+schema calls this shape experimental, so a login it cannot read from — no plan,
+or a token without the profile scope — gets nothing back, and the panel simply
+keeps whatever it already knew. A reading from either source still replaces
+the whole of what the heartbeat sends, never a per-window merge, so the number
+that used to move only while a session ran now moves while the loop is merely
+up.
+
 Where somebody has two runners, **the freshest whole reading wins**, not a
 per-window merge. One person has one Claude login, so two runners are two
 readings of one account, and stitching a session percentage from one against a
@@ -1885,10 +1901,12 @@ rename underneath this endpoint.
   any more.
 - `window` is `session`, `weekly`, `weeklyModel` or `extra`, in the order the
   runner reported them.
-- `label` is what the row is called on screen — `Session`, `Weekly`,
-  `Weekly (model)` for a per-model weekly window, which arrives with no display
-  name of its own on the wire, or `Extra usage` for the credits row. **No model
-  name is written down in this repository.**
+- `label` is what the row is called on screen — `Session`, `Weekly`, `Extra
+  usage`, or a per-model weekly window's own name. A session stream's scoped
+  window arrives with no display name of its own and reads as `Weekly
+  (model)`; the CLI's own `/usage` report names it, so the label there is
+  `Weekly (<the account's own name for the model>)`. **No model name is
+  written down in this repository.**
 
 ### The colour, and the two bars
 
@@ -4063,16 +4081,25 @@ scrambles it. On exit for any reason the runner can catch — the night ending,
 Ctrl-C, a restart onto a newer build — the footer is erased and the closing
 tally prints below the last banner, as it always has.
 
-**The usage bars read the session's own stream, not Hatch's battery** — asked
-and answered on HA-120: every session's `stream-json` carries a
-`rate_limit_event` naming `unifiedWindows.five_hour` (labelled `Session`) and
-`seven_day` (`Weekly`), plus a per-model weekly window for accounts that have
-one, labelled `Weekly (model)` since it arrives with no name of its own. That is
-the account this runner's sessions actually spend — right for a friend's
-`do-my-work` on their own subscription, and it needs no token pasted into this
-Hatch's Settings page. The reading updates while a session streams and holds
-its last value between increments; a quiet run, or one that ends before the
-first such event, has none, and the readout and the closing banner alike simply
+**The usage bars read the account, not Hatch's battery** — asked and answered
+on HA-120: every session's `stream-json` carries a `rate_limit_event` naming
+`unifiedWindows.five_hour` (labelled `Session`) and `seven_day` (`Weekly`),
+plus a per-model weekly window for accounts that have one, labelled `Weekly
+(model)` since it arrives with no name of its own. That is the account this
+runner's sessions actually spend — right for a friend's `do-my-work` on their
+own subscription, and it needs no token pasted into this Hatch's Settings
+page. The reading updates while a session streams; a quiet run, or one that
+ends before the first such event, has none.
+
+Between increments the rows are no longer just whatever a session last said:
+HA-173 has the loop ask its own CLI's `/usage` at the top of every idle pass
+(`UsageReport`, `IUsageProbe` on `ClaudeSessionRunner`), which answers with the
+same two windows plus a named scoped one and a fourth the session stream never
+carries, `extra`. A probe that answers replaces the panel's whole reading, the
+same rule a session's own stream already follows; a probe that answers nothing
+— an account this CLI cannot read, or one already known to cost a turn for the
+life of this process — leaves the panel exactly as it was. Only where neither
+source has ever answered does the readout and the closing banner alike simply
 draw no usage line rather than complain.
 
 ## The level above the board

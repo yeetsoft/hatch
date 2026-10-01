@@ -160,7 +160,7 @@ try
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
-            Sessions: new ClaudeSessionRunner(settings.ClaudeBin),
+            Sessions: new ClaudeSessionRunner(settings.ClaudeBin, warn: say.Complain),
             Say: say,
             Root: primaryRoot,
             RunnerName: runnerName,
