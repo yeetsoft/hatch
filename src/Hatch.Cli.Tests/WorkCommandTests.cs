@@ -169,6 +169,27 @@ public sealed class WorkCommandTests
     {
         using var h = new Harness();
         var repos = new[] { Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null) };
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work(
+            "AER-1", repositories: repos,
+            blocked: "bound to https://example.test/elsewhere.git, and this runner has no checkout of it"));
+
+        Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Complained, l => l.Contains(
+            "bound to https://example.test/elsewhere.git, and this runner has no checkout of it", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(
+            "run it inside a checkout of https://example.test/elsewhere.git, name one with --repo, or give a --workspace to clone into",
+            StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_server_that_says_clear_with_an_unmatched_primary_is_a_real_race()
+    {
+        using var h = new Harness();
+        var repos = new[] { Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null) };
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
 
         Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
@@ -732,6 +753,9 @@ public sealed class WorkCommandTests
         Assert.Empty(h.Clone.Requested);
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Wire.Calls.Where(c => c.Path.Contains("/claim", StringComparison.Ordinal)));
-        Assert.Contains(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(
+            "https://example.test/owner/repo.git has no checkout here yet, and a dry run clones nothing",
+            StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
     }
 }

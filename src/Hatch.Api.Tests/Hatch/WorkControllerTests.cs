@@ -973,19 +973,73 @@ public class WorkControllerTests
         await h.BindRepositoryAsync("https://example.com/o/three");
         var issue = await h.FileAsync("story", "three remotes", h.Todo);
 
-        var work = Value(await h.Work.GetWork(Key(issue), remote: ["https://example.com/o/two.git"], ct: default));
+        var work = Value(await h.Work.GetWork(
+            Key(issue), remote: ["https://example.com/o/one.git", "https://example.com/o/two.git"], ct: default));
 
-        // One match is enough - the dispatch is not folded - and every entry
-        // names which of the caller's own spellings matched it, in the
-        // project's own order.
+        // The primary matching is enough - the dispatch is not folded - and
+        // every entry names which of the caller's own spellings matched it, in
+        // the project's own order.
         Assert.Null(work.Blocked);
         Assert.Equal(3, work.Repositories.Count);
         Assert.True(work.Repositories[0].Primary);
         Assert.False(work.Repositories[1].Primary);
         Assert.False(work.Repositories[2].Primary);
-        Assert.Null(work.Repositories[0].MatchedRemote);
+        Assert.Equal("https://example.com/o/one.git", work.Repositories[0].MatchedRemote);
         Assert.Equal("https://example.com/o/two.git", work.Repositories[1].MatchedRemote);
         Assert.Null(work.Repositories[2].MatchedRemote);
+    }
+
+    [Fact]
+    public async Task Work_FoldsARunnerHoldingOnlyANonPrimaryRepository()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/one");
+        await h.BindRepositoryAsync("https://example.com/o/two");
+        var issue = await h.FileAsync("story", "the primary is elsewhere", h.Todo);
+
+        // Every session spawns in the primary's checkout, so holding a later
+        // repository is no better than holding none.
+        Assert.Equal(
+            "its primary repository is https://example.com/o/one, and this runner has no checkout of it",
+            Value(await h.Work.GetWork(Key(issue), remote: ["https://example.com/o/two.git"], ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_TheRepositoryFoldAppliesBeforeImplementation()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "still being broken down", h.Inbox);
+        h.Db.Add(Playbook(h.Inbox, h.Todo, "", "sonnet"));
+        await h.Db.SaveChangesAsync();
+
+        // Every session runs in the primary's checkout, whatever the move, so
+        // the fold is not confined to the column the code is written in.
+        const string sentence = "bound to https://example.com/o/r, and this runner has no checkout of it";
+        Assert.Equal(
+            sentence,
+            Value(await h.Work.GetWork(
+                Key(issue), remote: ["https://example.com/other.git"], standing: true, ct: default)).Blocked);
+        Assert.Equal(
+            sentence,
+            Only(await h.Work.GetQueue(0, null, standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_AHopOutsideImplementationIsNotFoldedByARepository()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        // A hop runs no session, so it needs no checkout - unless it lands in
+        // implementation, which Hop_IsFoldedByARepositoryTheRunnerLacks pins.
+        var entry = Only(await h.Work.GetQueue(0, null, standing: true, ct: default));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
     }
 
     [Fact]

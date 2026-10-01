@@ -2445,10 +2445,13 @@ missing configuration:
    first; a relative's only when it has none live.
 6. The issue holds an unanswered question — *it is waiting on a person, not on
    an agent*.
-7. The project's [repositories](#repository) match none of the remotes the
-   caller declared, and the move is into the column where the code gets
-   written, or is a conflict or a failing build in review — a session on a
-   branch needs a checkout of the repository the branch is in. A caller that declares nothing — an older
+7. The project's *primary* [repository](#repository) — the first — matches none
+   of the remotes the caller declared, on every move a session is spawned for:
+   everything but a [hop](#the-hop), which runs no session and needs no
+   checkout (a hop into the column where the code gets written is still
+   checked). Every session spawns in the primary's checkout, so a runner that
+   holds only a later repository is refused too, with a sentence naming the
+   primary. A caller that declares nothing — an older
    CLI, or the issue page — is not folded by this at all: declaring is opt-in,
    which is what keeps them working unchanged. A project bound to nothing is
    worked from the caller's standing checkout exactly as before; one bound to
@@ -3073,14 +3076,13 @@ the sentence saying which one it failed is what `work/queue` reports:
    agent sent at it would ask the same thing again or guess at the answer. A
    lapsed stall question does not count here - see [Comment, question and
    answer](#comment-question-and-answer).
-6. **The project's [repositories](#repository) match a remote the caller
+6. **The project's primary [repository](#repository) matches a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
-   the first two are checked here and only when the move is into the column
-   where the code gets written, or is a conflict or a failing build in review,
-   and the dependency
-   below is checked on the first of those alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
+   the first two are checked here, on every move a session is spawned for (not
+   a hop, unless it lands in the column where the code gets written), and the
+   dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
 7. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
