@@ -104,7 +104,7 @@ public sealed class ReadoutState
     /// nothing has wired a live <see cref="Hatch.Cli.Controls"/> in - off, so a
     /// caller that never set one draws no legend rather than a stale one.
     /// </summary>
-    public static readonly ControlsSnapshot NoControls = new(KeysOn: false, StopArmed: false, Confirming.None);
+    public static readonly ControlsSnapshot NoControls = new(KeysOn: false, StopArmed: false, Paused: false, LongLegend: false, Confirming.None);
 
     public ReadoutSnapshot Snapshot(ControlsSnapshot? controls = null)
     {
@@ -146,7 +146,7 @@ public static class Readout
 
         if (snapshot.Idle is { } idle) rows.Add(Clip(IdleRow(idle, now), width));
 
-        if (snapshot.Controls.KeysOn) rows.Add(LegendRow(snapshot.Controls, width, color));
+        if (snapshot.Controls.KeysOn) rows.AddRange(LegendRows(snapshot.Controls, width, color));
 
         return rows;
     }
@@ -214,22 +214,34 @@ public static class Readout
     }
 
     /// <summary>
-    /// A legend of the keys that do something, drawn only when <see
-    /// cref="ControlsSnapshot.KeysOn"/> is true - the question while a
-    /// confirmation is outstanding, the armed warning while a stop is pending,
-    /// or the plain legend otherwise. Coloured after clipping, the same as
-    /// <see cref="AliveRow"/>'s quiet timer.
+    /// The legend row(s), drawn only when <see cref="ControlsSnapshot.KeysOn"/>
+    /// is true - first match wins: a question outstanding, the armed warning,
+    /// the paused line, the long legend (several rows, one per key), or the
+    /// plain one-line legend. Coloured after clipping, the same as <see
+    /// cref="AliveRow"/>'s quiet timer - but only the single-row cases, since
+    /// nothing in the long legend is a warning.
     /// </summary>
-    private static string LegendRow(ControlsSnapshot controls, int width, bool color)
+    private static IReadOnlyList<string> LegendRows(ControlsSnapshot controls, int width, bool color)
     {
-        var text = controls.Confirming == Confirming.Cancel ? "cancel now? y to confirm, any other key to go back"
-            : controls.StopArmed ? "stopping after this increment — s to undo"
-            : "s stop after this increment   c cancel now";
+        string Row(string text) => Clip(text, width);
+        string Warn(string text) => color ? Yellow + Row(text) + Reset : Row(text);
 
-        var row = Clip(text, width);
-        if (!color || controls.Confirming != Confirming.Cancel && !controls.StopArmed) return row;
+        if (controls.Confirming == Confirming.Cancel) return [Warn("cancel now? y to confirm, any other key to go back")];
+        if (controls.Confirming == Confirming.Skip) return [Warn("skip this increment? y to confirm, any other key to go back")];
+        if (controls.StopArmed) return [Warn("stopping after this increment — s to undo")];
+        if (controls.Paused) return [Warn("paused from the keyboard — p to resume")];
 
-        return Yellow + row + Reset;
+        if (controls.LongLegend)
+            return
+            [
+                Row("s   stop after this increment, undo with s"),
+                Row("c   cancel now, asks first"),
+                Row("p   pause and resume"),
+                Row("k   skip this increment, asks first"),
+                Row("?   back to the short legend"),
+            ];
+
+        return [Row("s stop after this increment   c cancel now   p pause   k skip this increment   ? more")];
     }
 
     private static string Clip(string text, int width) => width > 0 && text.Length > width ? text[..width] : text;

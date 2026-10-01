@@ -7,7 +7,8 @@ public sealed class TallyTests
 {
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
-        DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0) =>
+        DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
+        bool skipped = false) =>
         new()
         {
             Key = key,
@@ -25,6 +26,7 @@ public sealed class TallyTests
             PreemptedKey = preempted ? "AER-9" : null,
             PreemptedTitle = preempted ? "Trunk is down" : null,
             Filed = filed > 0 ? Enumerable.Range(1, filed).Select(n => $"AER-{10 + n}").ToList() : [],
+            Skipped = skipped,
         };
 
     [Fact]
@@ -74,6 +76,56 @@ public sealed class TallyTests
         // It still happened, and it still cost something.
         Assert.Equal(4, tally.Runs);
         Assert.Equal(4m, tally.Spent);
+    }
+
+    /// <summary>
+    /// HA-133: a skip is the same story as a lost lease - the loop working
+    /// correctly on an operator's own say-so, not a verdict on the increment,
+    /// so it must neither arm nor clear the three-strikes streak.
+    /// </summary>
+    [Fact]
+    public void Three_skips_in_a_row_do_not_stop_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, skipped: true, moved: false));
+        tally.Record(Report("AER-2", exit: 143, skipped: true, moved: false));
+        tally.Record(Report("AER-3", exit: 143, skipped: true, moved: false));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+        Assert.Equal(3, tally.Runs);
+    }
+
+    /// <summary>A skip neither sets nor clears the fail streak, the same assertion the lost-lease test above makes.</summary>
+    [Fact]
+    public void A_skip_neither_sets_nor_clears_the_failure_streak()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1));
+        Assert.Equal(1, tally.Fails);
+
+        tally.Record(Report("AER-2", exit: 143, skipped: true, moved: false));
+        Assert.Equal(1, tally.Fails);
+    }
+
+    /// <summary>
+    /// Unlike a lost lease, a preemption or a usage limit, a skip is not its
+    /// own morning - it goes through the ordinary bucketing and lands on the
+    /// stalled list, reading "skipped from the keyboard".
+    /// </summary>
+    [Fact]
+    public void A_skipped_ticket_lands_on_the_stalled_list()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, skipped: true, moved: false));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("stalled  AER-1  skipped from the keyboard", StringComparison.Ordinal));
     }
 
     /// <summary>

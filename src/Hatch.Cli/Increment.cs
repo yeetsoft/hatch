@@ -137,6 +137,15 @@ public sealed class IncrementReport
     /// </summary>
     public bool Interrupted { get; set; }
 
+    /// <summary>
+    /// A cancellation reached <see cref="RunAsync"/>'s own token, but not the
+    /// caller's - the keyboard's <c>k</c>, confirmed, rather than a Ctrl-C.
+    /// Mutually exclusive with <see cref="Interrupted"/>: they are the two
+    /// readings of one <see cref="OperationCanceledException"/>, told apart by
+    /// the one method holding both tokens.
+    /// </summary>
+    public bool Skipped { get; set; }
+
     /// <summary>When the increment started and ended, wall clock - the banner's "Took" line.</summary>
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset EndedAt { get; set; }
@@ -157,6 +166,7 @@ public sealed class IncrementReport
         Moved ? $"{From} -> {Ended}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
+        : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
         : FixPushed ? "fix pushed, build pending"
         : Filed.Count > 0 ? $"filed {Filed.Count} under it"
@@ -200,10 +210,11 @@ public sealed record ConflictRun(Rechecked Found, Func<CancellationToken, Task<R
 /// </param>
 public sealed class Increment(
     Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts,
-    ReadoutState? readout = null, string? tempDirectory = null)
+    ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null)
 {
     private readonly ReadoutState _readout = readout ?? new();
     private readonly string _temp = tempDirectory ?? Path.GetTempPath();
+    private readonly Controls? _controls = controls;
     private RunFacts? _facts;
 
     /// <summary>
@@ -218,6 +229,7 @@ public sealed class Increment(
     public async Task<IncrementReport> RunAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         Claim claim, CancellationToken ct,
+        CancellationToken? callerCt = null,
         IReadOnlyList<string>? addDirs = null,
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
         IReadOnlyList<BranchEntry>? branches = null,
@@ -226,6 +238,13 @@ public sealed class Increment(
         string runnerName = "",
         int incrementNumber = 1)
     {
+        // A caller that passes only ct - every call site before this ticket,
+        // and every existing test - is comparing ct against itself, so Skipped
+        // can never be set by accident. Only a caller wrapping ct in its own
+        // linked source (GoToWork.PassAsync, WorkCommand.SpendAsync) passes a
+        // real caller apart from it.
+        var caller = callerCt ?? ct;
+
         var report = new IncrementReport
         {
             Key = work.Issue.Key,
@@ -241,6 +260,7 @@ public sealed class Increment(
 
         _readout.BeginIncrement(
             report.Key, work.Issue.Title, Banner.What(report, conflict, build), work.IssueUrl, report.StartedAt);
+        _controls?.SetIncrementRunning(true);
 
         try
         {
@@ -481,8 +501,20 @@ public sealed class Increment(
             }
             catch (OperationCanceledException)
             {
-                report.Interrupted = true;
-                report.Flag ??= "interrupted - nothing further could be read or written";
+                // The only place both tokens are visible: ct is what this
+                // method operated with, and caller is what an actual Ctrl-C
+                // would have cancelled. A skip cancels only the former, so a
+                // cancellation that leaves the latter untouched is the
+                // keyboard's k and not an interrupt.
+                if (ct.IsCancellationRequested && !caller.IsCancellationRequested)
+                {
+                    report.Skipped = true;
+                }
+                else
+                {
+                    report.Interrupted = true;
+                    report.Flag ??= "interrupted - nothing further could be read or written";
+                }
             }
 
             report.EndedAt = DateTimeOffset.UtcNow;
@@ -491,6 +523,7 @@ public sealed class Increment(
         finally
         {
             _readout.EndIncrement();
+            _controls?.SetIncrementRunning(false);
         }
     }
 
