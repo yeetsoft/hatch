@@ -261,7 +261,11 @@ holding the least important ticket to stand down for an emergency one. That
 runner still owns the ticket it was working, so it commits and pushes what it
 has — the same as running out of usage — says so on the ticket, naming the
 emergency issue, and goes straight on to pick that issue up next. No question
-is asked and nothing blocks the next dispatch.
+is asked and nothing blocks the next dispatch. A runner is protected from
+being asked to stand down the same way whether its own ticket is emergency on
+its own row or only by inheritance from an ancestor — the check reads the
+effective level, not the stored one, so a story under an emergency epic is as
+safe as a story marked emergency itself.
 
 ### Bounds, timeouts and stopping
 
