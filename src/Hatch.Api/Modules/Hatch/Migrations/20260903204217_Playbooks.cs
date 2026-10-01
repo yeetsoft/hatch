@@ -120,7 +120,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
               rejected with the reason, and the constraints that bound it.
             - Break it into stories, each with parentKey set to this epic. A story is one
               landable outcome, not a phase of work. If you cannot say what a story delivers
-              in one sentence, it is two stories.
+              in one sentence, it is two stories. An epic with stories is not implemented
+              by its own session - its stories are what get worked, one at a time, and the
+              epic's own increment is the verification that they add up to it.
             - Sequence them. Anything that has to wait for a date or an event gets a
               readyAt; anything owed gets a dueAt. A note in a description saying "not until
               March" is a note nobody will see in March.
@@ -149,9 +151,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
               detail is not an acceptance criterion - it is a child task.
             - Name the files and the pattern to copy, by path, where you found them. Half of
               what makes a story cheap is that the next session does not search twice.
-            - Write the implementation plan into the description, and where it is
-              nontrivially complex, cut it into tasks with parentKey set to this story. A
-              story that is one afternoon does not need three tasks.
+            - Write the implementation plan into the description, and cut it into tasks
+              with parentKey set to this story: one task per self-contained change that
+              could land on its own, more tasks rather than a longer story. A story small
+              enough to be one session's work needs none.
+            - A story with tasks is not implemented by its own session: the API carries
+              its tasks across the board one at a time, and the story's own increment is
+              the verification that they add up to it. Each task has to be complete on its
+              own, and has to say what done looks like by itself.
 
             Research the repository as much as the criteria need to be accurate. Write no
             implementation code; that is a later increment's job.$prompt$, 'opus', 'xhigh', now(), now()
@@ -213,6 +220,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
             - is yours to settle now and to write onto the ticket, because a decision taken
             with the code half-written is taken under pressure to make the code already
             written correct.
+
+            If this issue has children, the next thing that happens is not code - its
+            first child is pulled on its own. This increment's job is then to be sure the
+            children are the whole plan and are in the right order, filing or reordering
+            them now if they are not.
 
             - Read the issue's comments and events first. A previous run may have been
               aborted partway; continue it rather than starting again, and if it ran to
