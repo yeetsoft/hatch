@@ -199,12 +199,15 @@ public static class Fixtures
                 ? [new CommentDto(id + 100, "Nathan", "That way.", "answer", id, null, DateTimeOffset.UnixEpoch)]
                 : []);
 
-    public static WorkLogEntryDto WorkLogRow(decimal cost = 1.5m, long tokens = 12_345, long durationMs = 65_000) =>
+    public static WorkLogEntryDto WorkLogRow(
+        decimal cost = 1.5m, long tokens = 12_345, long durationMs = 65_000,
+        int? requests = null, long? peakContextTokens = null) =>
         new(
             Id: 1, SessionId: "s-1", StartedAt: DateTimeOffset.UnixEpoch, EndedAt: DateTimeOffset.UnixEpoch,
             DurationMs: durationMs, Title: "Did a thing", Summary: "In detail.", Described: true, IsError: false,
             Turns: 12, CostUsd: cost, InputTokens: tokens, OutputTokens: 0, CacheCreationTokens: 0,
-            CacheReadTokens: 0, TotalTokens: tokens, Models: []);
+            CacheReadTokens: 0, TotalTokens: tokens, Models: [],
+            Requests: requests, PeakContextTokens: peakContextTokens, PromptChars: null);
 
     public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
         JsonSerializer.Serialize(

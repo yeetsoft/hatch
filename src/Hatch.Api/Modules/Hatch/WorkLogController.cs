@@ -163,9 +163,11 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// and the graph can never describe different populations.
     /// </param>
     /// <param name="sort">
-    /// <c>tokens</c>, <c>cost</c> or <c>ended</c>, and every one of them
-    /// descending. Ties break on <c>EndedAt</c> then id, so two reads of one
-    /// filter come back in one order.
+    /// <c>tokens</c>, <c>cost</c>, <c>ended</c>, <c>requests</c> or
+    /// <c>peakContext</c>, and every one of them descending - a row with neither
+    /// of the last two sorts last rather than first. Ties break on
+    /// <c>EndedAt</c> then id, so two reads of one filter come back in one
+    /// order.
     /// </param>
     /// <param name="limit">How many rows to list, 1 to <see cref="MaxSessions"/>.</param>
     [HttpGet("sessions")]
@@ -194,9 +196,17 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         {
             ranking = WorkLogSort.Ended;
         }
+        else if (string.Equals(trimmed, "requests", StringComparison.OrdinalIgnoreCase))
+        {
+            ranking = WorkLogSort.Requests;
+        }
+        else if (string.Equals(trimmed, "peakcontext", StringComparison.OrdinalIgnoreCase))
+        {
+            ranking = WorkLogSort.PeakContext;
+        }
         else
         {
-            return BadRequest($"a sort is tokens, cost or ended - not \"{sort}\"");
+            return BadRequest($"a sort is tokens, cost, ended, requests or peakContext - not \"{sort}\"");
         }
 
         // Interpolated from the constant, so the sentence and the cap cannot

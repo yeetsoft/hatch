@@ -43,6 +43,9 @@ const session = (over: Partial<WorkLogSession> = {}): WorkLogSession => ({
   cacheCreationTokens: 3_200,
   cacheReadTokens: 59_000,
   totalTokens: 63_380,
+  requests: 42,
+  peakContextTokens: 140_000,
+  promptChars: 16_533,
   ...over,
 });
 
@@ -124,6 +127,11 @@ describe('resolveQuery', () => {
     // dollars is the same argument as a pasted sort.
     expect(query.measure).toBe('cost');
     expect(query.issue).toBe('AER-12');
+  });
+
+  it('takes requests and peakContext as sorts', () => {
+    expect(resolveQuery(new URLSearchParams({ sort: 'requests' }), now, 0).sort).toBe('requests');
+    expect(resolveQuery(new URLSearchParams({ sort: 'peakContext' }), now, 0).sort).toBe('peakContext');
   });
 
   it('lets an explicit window beat the preset and passes it through as typed', () => {

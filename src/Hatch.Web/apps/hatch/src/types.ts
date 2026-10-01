@@ -1138,6 +1138,16 @@ export interface WorkLogEntry {
   /** The per-model breakdown the four counts are the sum of. Empty on a run
       that ended before the accounting arrived. */
   models: WorkLogModelUse[];
+  /** One request per distinct assistant message id. Null on a row posted by an
+      older runner, or by a `--quiet` run - neither ever sees the per-message
+      stream this is counted from. */
+  requests: number | null;
+  /** The largest `input + cache creation + cache read` carried by any one
+      request. Null for the same reason `requests` can be. */
+  peakContextTokens: number | null;
+  /** How long the prompt the session was handed was, in characters. Known
+      regardless of `--quiet`. */
+  promptChars: number | null;
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */
@@ -1171,7 +1181,7 @@ export interface WorkLog {
 /** How a read of the sessions is ranked. Every one of them is descending -
     a leaderboard of the cheapest sessions is a page nobody asked for. Mirrors
     WorkLogSort. */
-export type SessionSort = 'tokens' | 'cost' | 'ended';
+export type SessionSort = 'tokens' | 'cost' | 'ended' | 'requests' | 'peakContext';
 
 /** One agent session as the leaderboard reads it. Mirrors WorkLogSessionDto.
 
@@ -1203,6 +1213,15 @@ export interface WorkLogSession {
   cacheReadTokens: number;
   /** The four, added up on the server so the headline has one definition. */
   totalTokens: number;
+  /** One request per distinct assistant message id. Null on a row posted by an
+      older runner, or by a `--quiet` run. */
+  requests: number | null;
+  /** The largest `input + cache creation + cache read` carried by any one
+      request. Null for the same reason `requests` can be. */
+  peakContextTokens: number | null;
+  /** How long the prompt the session was handed was, in characters. Known
+      regardless of `--quiet`. */
+  promptChars: number | null;
 }
 
 /** The sessions in a range, ranked. Mirrors WorkLogSessionsDto. */

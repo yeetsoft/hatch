@@ -193,6 +193,31 @@ public sealed class StreamRenderTests
         Assert.Equal(30, render.TokensSoFar);
     }
 
+    [Fact]
+    public void Requests_CountsOneMessageOnceHoweverManyTimesItsUsageIsRepeated()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+        var repeated = Fixtures.AssistantUsage("msg-1", input: 10, output: 20);
+
+        render.Read(repeated).ToList();
+        render.Read(repeated).ToList();
+        render.Read(Fixtures.AssistantUsage("msg-2", input: 5, output: 5)).ToList();
+
+        Assert.Equal(2, render.Requests);
+    }
+
+    [Fact]
+    public void PeakContextTokens_IsTheLargestInputPlusCacheAcrossMessages_AndIgnoresOutput()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.AssistantUsage("msg-1", input: 10, output: 1_000, cacheCreate: 5, cacheRead: 5)).ToList();
+        render.Read(Fixtures.AssistantUsage("msg-2", input: 100, output: 1, cacheCreate: 50, cacheRead: 50)).ToList();
+        render.Read(Fixtures.AssistantUsage("msg-3", input: 1, output: 0, cacheCreate: 1, cacheRead: 1)).ToList();
+
+        Assert.Equal(200, render.PeakContextTokens);
+    }
+
     // ---- The account's usage windows, for the readout and the closing banner ----
 
     [Fact]

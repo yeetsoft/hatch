@@ -54,6 +54,63 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    [Fact]
+    public async Task The_posted_row_carries_requests_peak_context_and_prompt_chars()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1");
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20, cacheCreate: 5, cacheRead: 5));
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 100, output: 1, cacheCreate: 50, cacheRead: 50));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(2, billed.Requests);
+        Assert.Equal(200, billed.PeakContextTokens);
+        Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_quiet_run_posts_null_requests_and_peak_context_but_a_known_prompt_length()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1");
+
+        h.Sessions.Behaviour = (_, _, _) =>
+            Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: true, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Null(billed.Requests);
+        Assert.Null(billed.PeakContextTokens);
+        Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
+
+        await claim.ReleaseAsync();
+    }
+
     /// <summary>
     /// HA-116: a minute of Hatch not answering costs nothing. Two blips on the
     /// post-session read - a 503 and a 502 - are ridden out inside

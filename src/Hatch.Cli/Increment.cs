@@ -149,6 +149,12 @@ public sealed class IncrementReport
     /// </summary>
     public long? TotalTokens { get; set; }
 
+    /// <summary>Requests, out of the stream - one per distinct assistant message id. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
+    public int? Requests { get; set; }
+
+    /// <summary>The largest context any one request carried. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
+    public long? PeakContextTokens { get; set; }
+
     /// <summary>Turns, out of the result event. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
     public int? Turns { get; set; }
 
@@ -282,6 +288,8 @@ public sealed class Increment(
                 report.Turns = summary.Turns;
                 report.TotalTokens = summary.Models?.Sum(m =>
                     m.InputTokens + m.OutputTokens + m.CacheCreationTokens + m.CacheReadTokens);
+                report.Requests = summary.Requests;
+                report.PeakContextTokens = summary.PeakContextTokens;
             }
 
             // Before anything is written anywhere. A lease that went means this
@@ -610,8 +618,8 @@ public sealed class Increment(
         if (hooks is null)
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
-        var request = new SessionRequest(
-            root, model, effort, Prompt.Compose(work, repositories, branches, conflict, build), quiet, addDirs, hooks?.Settings);
+        var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
+        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
 
         await MarkSaidAsync(work, ct);
@@ -649,12 +657,14 @@ public sealed class Increment(
                 say.Line(output);
             }
 
+            if (facts.Result is { } quietEntry) facts.Result = quietEntry with { PromptChars = prompt.Length };
+
             return quietly;
         }
 
         using var pulse = new Pulse(settings.HeartbeatSeconds, say);
 
-        return await sessions.RunAsync(request, raw =>
+        var streamed = await sessions.RunAsync(request, raw =>
         {
             foreach (var line in render.Read(raw))
             {
@@ -675,6 +685,16 @@ public sealed class Increment(
             // returned.
             if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt);
         }, ct);
+
+        if (facts.Result is { } streamedEntry)
+            facts.Result = streamedEntry with
+            {
+                Requests = render.Requests,
+                PeakContextTokens = render.PeakContextTokens,
+                PromptChars = prompt.Length,
+            };
+
+        return streamed;
     }
 
     /// <summary>
@@ -739,11 +759,18 @@ public sealed class Increment(
             say.Line(written is null
                 ? $"hatch: work log: written to {key}"
                 : $"hatch: work log: {Format.Compact(written.TotalTokens)} tokens, "
-                  + $"{Format.Spent(written.CostUsd)}, {StreamRender.Clock(written.DurationMs / 1000)}");
+                  + $"{Format.Spent(written.CostUsd)}, {StreamRender.Clock(written.DurationMs / 1000)}"
+                  + $", {(written.Requests is { } r ? $"{r} requests" : "requests not reported")}"
+                  + $", {(written.PeakContextTokens is { } p ? $"{Format.Compact(p)} peak context" : "peak context not reported")}");
 
             // The server's own figure, when it wrote one - so the closing
             // banner and the issue page never disagree about the headline.
-            if (written is not null) report.TotalTokens = written.TotalTokens;
+            if (written is not null)
+            {
+                report.TotalTokens = written.TotalTokens;
+                report.Requests = written.Requests;
+                report.PeakContextTokens = written.PeakContextTokens;
+            }
         }
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {

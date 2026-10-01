@@ -160,13 +160,18 @@ public static class WorkLogRollup
                 w.InputTokens,
                 w.OutputTokens,
                 w.CacheCreationTokens,
-                w.CacheReadTokens))
+                w.CacheReadTokens,
+                w.Requests,
+                w.PeakContextTokens,
+                w.PromptChars))
             .ToListAsync(ct);
 
         var ranked = sort switch
         {
             WorkLogSort.Cost => rows.OrderByDescending(r => r.CostUsd),
             WorkLogSort.Ended => rows.OrderByDescending(r => r.EndedAt),
+            WorkLogSort.Requests => rows.OrderByDescending(r => r.Requests ?? -1),
+            WorkLogSort.PeakContext => rows.OrderByDescending(r => r.PeakContextTokens ?? -1),
             _ => rows.OrderByDescending(Tokens),
         };
 
@@ -236,6 +241,8 @@ public static class WorkLogRollup
     {
         WorkLogSort.Cost => "cost",
         WorkLogSort.Ended => "ended",
+        WorkLogSort.Requests => "requests",
+        WorkLogSort.PeakContext => "peakContext",
         _ => "tokens",
     };
 
@@ -296,7 +303,10 @@ public static class WorkLogRollup
         long InputTokens,
         long OutputTokens,
         long CacheCreationTokens,
-        long CacheReadTokens);
+        long CacheReadTokens,
+        int? Requests,
+        long? PeakContextTokens,
+        int? PromptChars);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
     private static long Tokens(SessionRow r) =>
@@ -323,7 +333,10 @@ public static class WorkLogRollup
         r.OutputTokens,
         r.CacheCreationTokens,
         r.CacheReadTokens,
-        Tokens(r));
+        Tokens(r),
+        r.Requests,
+        r.PeakContextTokens,
+        r.PromptChars);
 
     /// <summary>The log, narrowed to a set of issues - or the whole of it when there is none.</summary>
     private static IQueryable<EfHatchWorkLogEntry> Scoped(HatchContext db, List<long>? scope) =>
@@ -421,6 +434,12 @@ public enum WorkLogSort
 
     /// <summary>When the session ended: most recent first.</summary>
     Ended,
+
+    /// <summary>How many requests the session made. Null rows sort last.</summary>
+    Requests,
+
+    /// <summary>The largest context any one request carried. Null rows sort last.</summary>
+    PeakContext,
 }
 
 /// <summary>How long one bucket of the work log's time axis is.</summary>

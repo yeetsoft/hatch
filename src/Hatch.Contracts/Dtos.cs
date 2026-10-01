@@ -1466,7 +1466,10 @@ public record WorkLogEntryRequest(
     bool IsError,
     int Turns,
     decimal CostUsd,
-    IReadOnlyList<WorkLogModelUseDto>? Models);
+    IReadOnlyList<WorkLogModelUseDto>? Models,
+    int? Requests = null,
+    long? PeakContextTokens = null,
+    int? PromptChars = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -1497,7 +1500,10 @@ public record WorkLogEntryDto(
     long CacheCreationTokens,
     long CacheReadTokens,
     long TotalTokens,
-    IReadOnlyList<WorkLogModelUseDto> Models);
+    IReadOnlyList<WorkLogModelUseDto> Models,
+    int? Requests,
+    long? PeakContextTokens,
+    int? PromptChars);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
@@ -1611,7 +1617,10 @@ public record WorkLogSessionDto(
     long OutputTokens,
     long CacheCreationTokens,
     long CacheReadTokens,
-    long TotalTokens);
+    long TotalTokens,
+    int? Requests,
+    long? PeakContextTokens,
+    int? PromptChars);
 
 /// <summary>
 /// The sessions in a range, ranked - and what that whole range cost, whether or

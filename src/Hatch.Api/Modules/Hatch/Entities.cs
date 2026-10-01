@@ -1660,6 +1660,19 @@ public class EfHatchWorkLogEntry
     public int Turns { get; set; }
 
     /// <summary>
+    /// One request per distinct assistant message id the stream carried. Null
+    /// on a row posted by an older runner, or by a <c>--quiet</c> run - neither
+    /// ever sees the per-message stream this is counted from.
+    /// </summary>
+    public int? Requests { get; set; }
+
+    /// <summary>The largest <c>input + cache creation + cache read</c> carried by any one request. Null for the same reason <see cref="Requests"/> can be.</summary>
+    public long? PeakContextTokens { get; set; }
+
+    /// <summary>How long the prompt the session was handed was, in characters. Known regardless of <c>--quiet</c>.</summary>
+    public int? PromptChars { get; set; }
+
+    /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
     /// it to two would make a night of them add up to nothing.
