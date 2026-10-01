@@ -459,7 +459,11 @@ public class IssuesController(
         WipVerdict? wip = null;
         if (status is not null)
         {
-            wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, wipOverride, ct);
+            // The parent the card is left with after this edit: the one it is
+            // being reparented to, when it is, otherwise its own - the same
+            // rule the type is already judged by just above.
+            var parentId = edit.ParentKey is not null ? parent.Issue?.Id : issue.ParentId;
+            wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, parentId, wipOverride, ct);
             if (wip.Kind == WipVerdictKind.Refused) return (false, null, wip.Refusal);
         }
 
@@ -499,7 +503,8 @@ public class IssuesController(
             issue.Rank = await bottoms.NextAsync(status.Id, ct);
 
             if (wip is { Kind: WipVerdictKind.Overridden } overridden)
-                events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, new { limit = overridden.Limit, load = overridden.Load, to = status.Name }, now));
+                foreach (var over in overridden.Overrides)
+                    events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, WipOverriddenPayload(over, status.Name), now));
 
             // Newly shelved - not shuffled between two deferred columns. See
             // Deferrals: the issues waiting on this one are about to wait
@@ -632,14 +637,15 @@ public class IssuesController(
         {
             var now = time.GetUtcNow();
             var gate = new WipGate(db, claims, now);
-            var wip = await gate.AdmitAsync(issue, status.Id, issue.Type, request.WipOverride, ct);
+            var wip = await gate.AdmitAsync(issue, status.Id, issue.Type, issue.ParentId, request.WipOverride, ct);
             if (wip.Kind == WipVerdictKind.Refused) return Conflict(wip.Refusal);
 
             var actor = await caller.ActorNameAsync(ct);
             var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
             issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, new { from = from?.Name, to = status.Name }, now));
             if (wip.Kind == WipVerdictKind.Overridden)
-                issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, new { limit = wip.Limit, load = wip.Load, to = status.Name }, now));
+                foreach (var over in wip.Overrides)
+                    issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, WipOverriddenPayload(over, status.Name), now));
             issue.UpdatedAt = now;
             issue.StatusId = status.Id;
 
@@ -767,6 +773,17 @@ public class IssuesController(
         Payload = payload is null ? null : JsonSerializer.Serialize(payload),
         At = at,
     };
+
+    /// <summary>
+    /// One <c>wip_overridden</c> event's payload for one limit stepped over -
+    /// <c>epic</c> present only when <paramref name="over"/> names one, so the
+    /// section's own event never carries a null <c>epic</c> where it could
+    /// simply carry none.
+    /// </summary>
+    private static object WipOverriddenPayload(WipOverride over, string to) =>
+        over.Epic is { } epic
+            ? new { limit = over.Limit, load = over.Load, to, epic }
+            : new { limit = over.Limit, load = over.Load, to };
 
     private async Task<string> KeyOfAsync(EfHatchIssue issue, CancellationToken ct) =>
         IssueKey.Format(

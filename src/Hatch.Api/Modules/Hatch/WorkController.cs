@@ -55,9 +55,10 @@ public class WorkController(
     /// <para>Nothing else changes - still right to left, still top of the
     /// column down, still folding past a ready date, an open question, a
     /// terminal column, a missing playbook, an unfinished dependency, a full
-    /// WIP section, or a branch that
-    /// merges cleanly. The load a full section is judged against is always the
-    /// board's own, never the scope's - see <see cref="Wip.LoadAsync"/>. The
+    /// WIP section, an epic at its own limit, or a branch that
+    /// merges cleanly. The load a full section or a full epic is judged
+    /// against is always the board's own, never the scope's - see
+    /// <see cref="Wip.LoadAsync"/> and <see cref="Wip.EpicsAsync"/>. The
     /// scope narrows the candidates and decides nothing about them.</para>
     ///
     /// <para>The issue itself is not a candidate. "Under AER-1" is a question
@@ -122,7 +123,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, ct);
     }
 
     /// <summary>
@@ -294,6 +295,7 @@ public class WorkController(
             new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
             RepositoryDeclaration.From(remote, standing, clones),
             await Wip.LoadAsync(db, claims, statuses, now, ct),
+            await Wip.EpicsAsync(db, [issue.ParentId], ct),
             ct);
     }
 
@@ -354,7 +356,8 @@ public class WorkController(
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses,
-            await Wip.LoadAsync(db, claims, statuses, now, ct));
+            await Wip.LoadAsync(db, claims, statuses, now, ct),
+            await Wip.EpicsAsync(db, [issue.ParentId], ct));
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
@@ -411,9 +414,16 @@ public class WorkController(
     /// on. A fact about the board, not the loop's policy: an issue somebody
     /// named by hand is refused by a full section too.
     /// </param>
+    /// <param name="epics">
+    /// This issue's own parent's epic limit, if it has one - see
+    /// <see cref="Wip.EpicsAsync"/>. The same guarantee as <paramref name="wip"/>:
+    /// a fact about the board, so an issue somebody named by hand is held by
+    /// its epic's limit too.
+    /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate, FamilyGate family,
-        ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip, CancellationToken ct)
+        ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip, IReadOnlyDictionary<long, EpicLimit> epics,
+        CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -482,7 +492,7 @@ public class WorkController(
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting, loop, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop, statuses, wip);
+            repos, merged, built, hop, statuses, wip, epics);
         var hopped = hop && blocked is null;
 
         return new WorkDto(

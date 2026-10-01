@@ -286,8 +286,10 @@ the flag existed.
 A migration flags `In Progress` and `In Review` on a board that still has
 columns of exactly those names, and writes no limit row — the WIP section is
 marked, and from then on `board.wip` reports a real load for both slices, but
-nothing is drawn, refused or folded until the operator types a number on the
-Statuses page. A renamed board seeds neither.
+the section-wide limit draws, refuses or folds nothing until the operator
+types a number on the Statuses page. An epic's own limit is different: it
+holds from the day this landed, at one, with no number typed anywhere — see
+["An epic's own limit"](#an-epics-own-limit). A renamed board seeds neither.
 
 **Which column belongs to whom is not a field.** It is derived: a column an
 agent may leave is a column some [playbook](#playbooks) names as its `from`, for
@@ -549,15 +551,20 @@ is a nullable int on the issue, meaning something on an epic and nothing on
 any other type; null reads as **one** — `EfHatchIssue.DefaultEpicWipLimit`,
 the one constant that says so, aliasing `IssueWipLimitRequest.DefaultLimit` in
 `Hatch.Contracts` so the CLI can read the same number without seeing this
-entity. Holding stories to it — folding a story past the first N in progress —
-is a separate mechanism; this field is only the setting.
+entity. Holding stories to it — folding a story past the first N in
+progress — is a separate mechanism, [an epic's own
+limit](#an-epics-own-limit); this field is only the setting.
 
 It is not the [WIP](#wip) section above, whatever the shared vocabulary.
 *WIP* bounds how many issues of a *type* sit in progress across the whole
 board at once, in at most two slices everybody shares. This field bounds how
 many of *one epic's own children* run at once, and every epic has its own.
-Nothing here counts toward a WIP slice's load, and nothing there counts
-toward this.
+Nothing here counts toward a WIP slice's load — an epic's own limit adds no
+issue and no slot to it. What *does* read this field is the rule beside it: an
+epic's own limit is measured against the same counted rows the section-wide
+slice already holds, just narrowed to this one epic's direct children, so the
+two limits can both apply to the same move without either counting the
+other's load twice.
 
 Written only through `PATCH /api/hatch/issues/{key}/wip` with `{ limit }` as a
 string — `""` clears it back to the default, a whole number of one or more
@@ -956,6 +963,50 @@ the board and on the issue page, the browser never sends that flag on its own
 first guess: the `409` raises a dialog quoting the sentence above and asking
 *move anyway?*, and only a press of *Move anyway* resends the same request
 with `wipOverride: true` - the event that follows names who pressed it.
+
+#### An epic's own limit
+
+**Held beside the section-wide slice above, not instead of it.** After the
+section-wide check has had its say, a story or a bug moving from outside the
+section to inside it, whose parent is an epic, is further held to that epic's
+own [`WipLimit`](#stories-at-once) - null reading as **one**, the same
+default *Stories at once* reads. A task, an epic moving itself, a move within
+the section or out of it, and an issue the section already counts are never
+held by this either, for the same reasons the section-wide slice never holds
+them.
+
+**The load under an epic** is its direct stories and bugs the section-wide
+slice already counts - inside the section, or outside it on a live claim
+whose next column is inside - narrowed to this one epic's own children.
+Direct children only: a bug under a story under the epic is the story's line,
+not the epic's, exactly as [a line of the tree costs the section one
+slot](#wip) above. Where the epic itself stands does not matter - an epic in
+*Backlog*, inside the section, or in *Done* holds its direct stories and bugs
+to its limit just the same; pulling the epic itself into the section is a
+separate question. **On by default**: the section exists wherever a column is
+flagged, so an epic with no `WipLimit` set holds its stories to one from the
+moment the section does, whether or not the section-wide slice has a limit
+row of its own.
+
+**The section's sentence wins where both are full.** It is the more general
+fact, and both the `409` and the fold say it first - a caller holding neither
+limit never sees the epic's sentence at all. Where only the epic is full, the
+`409` carries `{ error, load, limit }` exactly as the section-wide refusal
+does, except the numbers and the sentence are the epic's own: *`{epic} is at
+its limit - {load} of {limit} of its stories and bugs {is/are} in the WIP
+section`*. A move is judged by the parent the card is left with in the same
+request - a `PATCH` that moves a story in and reparents it under a full epic
+in one call is refused by the epic it is left under, and one that moves a
+story in while clearing its parent in the same call is judged with none at
+all.
+
+**An override past both limits writes two `wip_overridden` events, not one** -
+the section's first, as `{ limit, load, to }`, then the epic's, as
+`{ limit, load, to, epic }` naming it - see [Issue event](#issue-event). One
+`wipOverride: true` steps over both; the dialog shown is still the section's,
+because the refusal that raised it was. A story an epic refuses spends no
+section slot at all: within one bulk batch, the section's free slot a
+refused story would have taken is still there for the next one.
 
 ### Claim
 
@@ -1448,9 +1499,13 @@ written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none), `claim_cleared`,
 `merge_check_changed`, `build_check_changed`, `wip_overridden` (a move into a
-full [WIP](#wip) section, let through because a person said *move anyway* -
-payload `{ limit, load, to }`, `load` counting the card itself, written beside
-`status_changed` only when the move would otherwise have been refused),
+full [WIP](#wip) section, or past [an epic's own
+limit](#an-epics-own-limit), let through because a person said *move
+anyway* - payload `{ limit, load, to, epic? }`, `load` counting the card
+itself and `epic` present only when it was the epic's own limit that was
+stepped over, naming it; written beside `status_changed` only when the move
+would otherwise have been refused, and twice - the section's first, with no
+`epic`, then the epic's - where both limits were over at once),
 `commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered` (payload `{ questionId,
 lapsed }`, `lapsed: true` only where a take answered a stall question nobody
@@ -1760,9 +1815,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
-| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section is a per-key failure, named in `failures` |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section anyway, `409` (`WipRefusalDto`) otherwise, `403` from a key or a keyless runner |
-| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section is the same, unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
+| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures` |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner |
+| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
@@ -2330,7 +2385,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Ten refusals**, and two of them are rules of the whole loop rather than
+**Eleven refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -2371,7 +2426,12 @@ missing configuration:
    verdict below, which needs nothing at all once a branch is clean — a full
    section needs other work to leave. The load is always the board's own,
    whatever `ancestorKey` narrows the candidates to.
-10. It is in review and there is nothing for an agent to do on its branch: it
+10. The move is into the WIP section, the issue's parent is an epic, and that
+    epic is at its own [limit](#an-epics-own-limit) — the load under it, not
+    counting this issue, is already at or over its `WipLimit`. Said right
+    after the section-wide check above, for the same reason: it too needs
+    other work to leave before anything more of this epic is pulled in.
+11. It is in review and there is nothing for an agent to do on its branch: it
     neither conflicts with the trunk nor has a build that failed on its current
     tip — because it merges cleanly and its build passes, is still running, was
     not read on that tip or has no checks, because it has no branch on origin
@@ -2439,10 +2499,11 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 `hatch queue`:
 
 - The issue is blocked by some other fold — a claim, a ready date, an
-  assignee, a question, a repository, a dependency, a terminal next column, or
-  (for a child of a `ParentPulls` column) a parent that has not reached the
-  implementation column, or a sibling already in flight. The sentence is
-  exactly the one `Blocked` already gives for that fold.
+  assignee, a question, a repository, a dependency, a full [WIP](#wip)
+  section, [an epic at its own limit](#an-epics-own-limit), a terminal next
+  column, or (for a child of a `ParentPulls` column) a parent that has not
+  reached the implementation column, or a sibling already in flight. The
+  sentence is exactly the one `Blocked` already gives for that fold.
 - The issue is clear, but is not a hop — not express, not a child its parent
   pulls, or standing in a column nothing has ticked. A session moves this
   issue, and a hop does not.
@@ -2697,9 +2758,10 @@ Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
 question, a repository this runner lacks, an unmet dependency, a full [WIP
-section](#wip), and — for an issue in review — the verdict on its branch, then
-[the hop](#the-hop), and last the missing playbook — last because it is only
-worth saying about an issue that is otherwise a candidate. The two that are the
+section](#wip), [an epic at its own limit](#an-epics-own-limit), and — for an
+issue in review — the verdict on its branch, then [the hop](#the-hop), and
+last the missing playbook — last because it is only worth saying about an
+issue that is otherwise a candidate. The two that are the
 *loop's* policy rather than a fact about an issue — the ready date and the
 assignee — are asked only when the pass is asking, so `work/{key}` still
 ignores them.
@@ -2847,7 +2909,7 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Twelve conditions, the last one a way out of the eleventh rather than one more
+Thirteen conditions, the last one a way out of the twelfth rather than one more
 gate. An issue is the loop's to pick up when it meets every one before it, and
 the sentence saying which one it failed is what `work/queue` reports:
 
@@ -2855,7 +2917,7 @@ the sentence saying which one it failed is what `work/queue` reports:
    most columns that is the column to their right: the end of the board is not a
    transition, and the step into a terminal column is the operator's — *only the
    operator decides that something shipped*. The review column is dispatched to
-   itself instead (see the tenth condition), and never into the column after it.
+   itself instead (see the eleventh condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -2900,13 +2962,23 @@ the sentence saying which one it failed is what `work/queue` reports:
    ancestor of this issue already standing in it — a family crosses together,
    at the cost of the one slot its nearest counted member already spent. Said
    after the dependency above, which needs other work to land, and before the
-   verdict below, which needs nothing at all once a branch is clean — a full
-   section needs other work to leave. The load is always the board's own,
+   epic's own limit and the verdict below, neither of which need anything at
+   all once a branch is clean and nothing more of an epic is pulled in — a
+   full section needs other work to leave. The load is always the board's own,
    whatever `ancestorKey` narrows the candidates to, and the limit is a fact
    about the board rather than the loop's policy: `work/{key}` is refused by
    it too, and overriding it
    is done on the board, by moving the card in.
-10. **In review, its branch conflicts with the trunk or its build failed.** An
+10. **An epic above it has room too**, when the move is into the WIP section
+    and this issue's parent is an epic: the load under that epic, not
+    counting this issue, is below its own `WipLimit` (null reading as one) —
+    see [An epic's own limit](#an-epics-own-limit). Said right after the
+    section-wide check above, for the same reason — it too needs other work
+    to leave before anything more of this epic is pulled in, and it is a fact
+    about the board rather than the loop's policy, so `work/{key}` is refused
+    by it too. Not asked for a task, for an epic moving itself, or for an
+    issue whose parent is not an epic.
+11. **In review, its branch conflicts with the trunk or its build failed.** An
     issue in the review column is the loop's only when a [merge check](#merge-check)
     says `conflicted`, or — on a branch that merges cleanly — when the
     [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -2915,21 +2987,21 @@ the sentence saying which one it failed is what `work/queue` reports:
     on this tip, no checks, no branch, more than one branch and an unchecked one
     are what `hatch queue` prints. A clean branch that has merely fallen behind
     the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-11. **A playbook covers that transition for that type — or it does not need
+12. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-12. **Unless it does not need a session at all.** An issue that is
+13. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the eleventh condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the twelfth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository, a dependency, an open child or
-    a full section, only from needing a playbook.
+    date, an assignee, a question, a repository, a dependency, an open child, a
+    full section or an epic at its own limit, only from needing a playbook.
 
     A child standing in a column marked [`ParentPulls`](#status) is the same
     kind of hop, for a different reason: its parent stands in the
@@ -2937,16 +3009,16 @@ the sentence saying which one it failed is what `work/queue` reports:
     along, in board order, than the column this issue would be pulled into.
     Where the column is so marked but one of those two is not yet true, the
     refinement is its own two-sentence fold rather than a fall-through to the
-    eleventh condition's "no playbook covers this": "its parent has not
+    twelfth condition's "no playbook covers this": "its parent has not
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
 
-Nine of them — 1, 2, 5, 6, 7, 8, 9, 10 and 11 — are facts about the issue, and
-`work/{key}` asks them too. The twelfth is as well, and `work/{key}` answers
-it the same way `work/queue` does: `WorkDto.Hop`. The other two are the loop's
-policy and are asked only when the pass is asking; see [one more, on `next`
-alone](#one-more-on-next-alone).
+Ten of them — 1, 2, 5, 6, 7, 8, 9, 10, 11 and 12 — are facts about the issue,
+and `work/{key}` asks them too. The thirteenth is as well, and `work/{key}`
+answers it the same way `work/queue` does: `WorkDto.Hop`. The other two are
+the loop's policy and are asked only when the pass is asking; see [one more,
+on `next` alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
 overnight it is the difference between a shape and a mess: a loop working left

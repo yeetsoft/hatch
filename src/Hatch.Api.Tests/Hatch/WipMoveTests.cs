@@ -479,6 +479,287 @@ public class WipMoveTests
         Assert.Empty(result.Failures);
     }
 
+    // ---- An epic's own limit ----
+    //
+    // HA-112: a story or a bug moving from outside the section to inside it,
+    // whose parent is an epic, is held to that epic's own WipLimit (null
+    // reading as one) - independent of the section-wide slice above, and on
+    // by default wherever the section exists at all.
+
+    [Fact]
+    public async Task AMoveIntoAnEpicAtItsLimit_Is409NamingTheEpicAndWritesNothing()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+        var eventsBefore = (await h.EventsAsync(moving)).Count;
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        var dto = Assert.IsType<WipRefusalDto>(refusal.Value);
+        Assert.Equal($"{epic} is at its limit - 1 of 1 of its stories and bugs is in the WIP section", dto.Error);
+        Assert.Equal(1, dto.Load);
+        Assert.Equal(1, dto.Limit);
+
+        var after = Value(await h.Issues.GetIssue(moving, default));
+        Assert.Equal(h.ToDo, after.StatusId);
+        Assert.Equal(eventsBefore, (await h.EventsAsync(moving)).Count);
+    }
+
+    [Fact]
+    public async Task APersonsOverrideOfAnEpicsOwnLimit_LandsAndWritesOneEventNamingTheEpic()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = await h.Issues.MoveIssue(
+            moving, new IssueMoveRequest(h.InProgress, null, null, WipOverride: true), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+
+        var events = await h.EventsAsync(moving);
+        Assert.Single(events, e => e.Kind == EfHatchIssueEvent.StatusChanged);
+        var overridden = Assert.Single(events, e => e.Kind == EfHatchIssueEvent.WipOverridden);
+        Assert.Equal("Nathan", overridden.Actor);
+
+        var payload = overridden.Payload!.Value;
+        Assert.Equal(1, payload.GetProperty("limit").GetInt32());
+        Assert.Equal(2, payload.GetProperty("load").GetInt32());
+        Assert.Equal("In Progress", payload.GetProperty("to").GetString());
+        Assert.Equal(epic, payload.GetProperty("epic").GetString());
+    }
+
+    [Fact]
+    public async Task AKeysOverrideOfAnEpicsOwnLimit_Is403AndWritesNothing()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var full = await h.StoryAsync(h.ToDo, epic);
+        h.Caller.Key = AKey();
+
+        var refused = await h.Issues.MoveIssue(
+            full, new IssueMoveRequest(h.InProgress, null, null, WipOverride: true), default);
+
+        var obj = Assert.IsType<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(h.ToDo, Value(await h.Issues.GetIssue(full, default)).StatusId);
+    }
+
+    [Fact]
+    public async Task APatchIntoAnEpicAtItsLimit_IsTheSame409AndWritesNothing()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+        var eventsBefore = (await h.EventsAsync(moving)).Count;
+
+        var result = await h.Issues.PatchIssue(moving, Patch(statusId: h.InProgress), default);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        var dto = Assert.IsType<WipRefusalDto>(refusal.Value);
+        Assert.Equal($"{epic} is at its limit - 1 of 1 of its stories and bugs is in the WIP section", dto.Error);
+
+        var after = Value(await h.Issues.GetIssue(moving, default));
+        Assert.Equal(h.ToDo, after.StatusId);
+        Assert.Equal(eventsBefore, (await h.EventsAsync(moving)).Count);
+    }
+
+    [Fact]
+    public async Task ABulkMoveNamingOneStoryUnderAFullEpic_FailsItByKeyWithTheEpicsSentence()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([moving], statusId: h.InProgress), default));
+
+        Assert.Empty(result.Changed);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(moving, failure.Key);
+        Assert.Equal($"{epic} is at its limit - 1 of 1 of its stories and bugs is in the WIP section", failure.Reason);
+    }
+
+    [Fact]
+    public async Task ABulkMoveOfTwoStoriesUnderAnEpicWithRoomForOne_MovesTheFirstAndFailsTheSecondWithTheEpicsSentence()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 2);
+        await h.StoryAsync(h.InProgress, epic);
+        var storyOne = await h.StoryAsync(h.ToDo, epic);
+        var storyTwo = await h.StoryAsync(h.ToDo, epic);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([storyOne, storyTwo], statusId: h.InProgress), default));
+
+        Assert.Equal([storyOne], result.Changed);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(storyTwo, failure.Key);
+        Assert.Equal($"{epic} is at its limit - 2 of 2 of its stories and bugs are in the WIP section", failure.Reason);
+    }
+
+    [Fact]
+    public async Task ABulkMoveRefusedByAFullEpic_SpendsNoSectionSlot_AndAnUnrelatedStoryStillLands()
+    {
+        var h = await NewAsync(storyLimit: 2);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var underEpic = await h.StoryAsync(h.ToDo, epic);
+        var unrelated = await h.StoryAsync(h.ToDo);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk([underEpic, unrelated], statusId: h.InProgress), default));
+
+        Assert.Equal([unrelated], result.Changed);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(underEpic, failure.Key);
+        Assert.Equal($"{epic} is at its limit - 1 of 1 of its stories and bugs is in the WIP section", failure.Reason);
+    }
+
+    [Fact]
+    public async Task APatchThatMovesInAndReparentsUnderAFullEpicInTheSameRequest_IsRefusedByTheParentItIsLeftWith()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo);
+        var eventsBefore = (await h.EventsAsync(moving)).Count;
+
+        var result = await h.Issues.PatchIssue(moving, Patch(statusId: h.InProgress, parentKey: epic), default);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        var dto = Assert.IsType<WipRefusalDto>(refusal.Value);
+        Assert.Equal($"{epic} is at its limit - 1 of 1 of its stories and bugs is in the WIP section", dto.Error);
+
+        var after = Value(await h.Issues.GetIssue(moving, default));
+        Assert.Equal(h.ToDo, after.StatusId);
+        Assert.Null(after.ParentKey);
+        Assert.Equal(eventsBefore, (await h.EventsAsync(moving)).Count);
+    }
+
+    [Fact]
+    public async Task APatchThatMovesInAndClearsItsParentInTheSameRequest_IsJudgedWithNoParentAndLands()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = await h.Issues.PatchIssue(moving, Patch(statusId: h.InProgress, parentKey: ""), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+        Assert.Null(Value(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task AMoveRefusedByBothTheSectionAndItsEpic_SaysTheSectionsSentence()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        var dto = Assert.IsType<WipRefusalDto>(refusal.Value);
+        Assert.Equal("the WIP section is full - 1 of 1 stories and bugs are in it", dto.Error);
+    }
+
+    [Fact]
+    public async Task APersonsOverrideOfBothLimits_WritesTheSectionsEventFirstThenTheEpics()
+    {
+        var h = await NewAsync(storyLimit: 1);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = await h.Issues.MoveIssue(
+            moving, new IssueMoveRequest(h.InProgress, null, null, WipOverride: true), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+
+        // Events come back newest first; sort by id ascending to read the
+        // order they were written in.
+        var overrides = (await h.EventsAsync(moving))
+            .Where(e => e.Kind == EfHatchIssueEvent.WipOverridden)
+            .OrderBy(e => e.Id)
+            .ToList();
+        Assert.Equal(2, overrides.Count);
+
+        var section = overrides[0].Payload!.Value;
+        Assert.Equal(1, section.GetProperty("limit").GetInt32());
+        Assert.Equal(2, section.GetProperty("load").GetInt32());
+        Assert.False(section.TryGetProperty("epic", out _));
+
+        var epicPayload = overrides[1].Payload!.Value;
+        Assert.Equal(1, epicPayload.GetProperty("limit").GetInt32());
+        Assert.Equal(2, epicPayload.GetProperty("load").GetInt32());
+        Assert.Equal(epic, epicPayload.GetProperty("epic").GetString());
+    }
+
+    // ---- Never held by an epic's own limit ----
+
+    [Fact]
+    public async Task ATaskUnderAFullEpic_IsNeverGatedByIt()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var task = await h.IssueAsync("task", h.ToDo, epic);
+
+        var result = await h.Issues.MoveIssue(task, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task ABugWhoseParentIsAStoryUnderAFullEpic_IsNeverGatedByTheEpicsLimit()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var outsideStory = await h.StoryAsync(h.ToDo, epic);
+        var bug = await h.BugAsync(h.ToDo, outsideStory);
+
+        // The bug's own parent is the story, not the epic - the epic's limit
+        // never asks about it, whatever its grandparent's load.
+        var result = await h.Issues.MoveIssue(bug, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AStoryAlreadyInsideReparentedUnderAFullEpic_IsNeverGated_TheRuleIsOnTheMoveIn()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var already = await h.StoryAsync(h.InProgress);
+
+        var result = await h.Issues.PatchIssue(already, Patch(parentKey: epic), default);
+
+        Assert.Equal(epic, Value(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task AStoryWithALiveClaimMovingIntoAFullEpic_IsNeverGated()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress, wipLimit: 1);
+        await h.StoryAsync(h.InProgress, epic);
+        var claimed = await h.StoryAsync(h.ToDo, epic);
+        await h.ClaimAsync(claimed);
+
+        var result = await h.Issues.MoveIssue(claimed, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
+
     // ---- Harness ----
 
     private sealed class Harness
@@ -494,9 +775,21 @@ public class WipMoveTests
         public required int InReview { get; init; }
         public required int Done { get; init; }
 
-        public Task<string> StoryAsync(int statusId) => IssueAsync("story", statusId);
+        public Task<string> StoryAsync(int statusId, string? parentKey = null) => IssueAsync("story", statusId, parentKey);
 
-        public Task<string> EpicAsync(int statusId) => IssueAsync("epic", statusId);
+        public async Task<string> EpicAsync(int statusId, int? wipLimit = null)
+        {
+            var key = await IssueAsync("epic", statusId);
+            if (wipLimit is not null)
+            {
+                IssueKey.TryParse(key, out var projectKey, out var number);
+                var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+                issue.WipLimit = wipLimit;
+                await Db.SaveChangesAsync();
+            }
+
+            return key;
+        }
 
         public Task<string> BugAsync(int statusId, string? parentKey = null) => IssueAsync("bug", statusId, parentKey);
 
@@ -628,7 +921,8 @@ public class WipMoveTests
         CreatedAt = Now,
     };
 
-    private static IssuePatchRequest Patch(int? statusId = null) => new(null, null, null, statusId, null, null, null, null);
+    private static IssuePatchRequest Patch(int? statusId = null, string? parentKey = null) =>
+        new(null, null, null, statusId, parentKey, null, null, null);
 
     private static IssueBulkEditRequest Bulk(IReadOnlyList<string> keys, int? statusId = null) =>
         new(keys, null, statusId, null, null, null);

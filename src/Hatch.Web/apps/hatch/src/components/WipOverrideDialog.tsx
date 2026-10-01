@@ -40,8 +40,7 @@ export function WipOverrideDialog({
         <p>{refusalText(asking.refusal)}</p>
 
         <p className="text-muted">
-          The history will say you moved it in past the limit, and nothing more is pulled in until the section has
-          room.
+          The history will say you moved it in past the limit, and nothing more is pulled in until there is room.
         </p>
 
         {error && <p className="text-danger">{error}</p>}

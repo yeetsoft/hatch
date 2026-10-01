@@ -343,6 +343,176 @@ public class WipTests
             Wip.Sentence(1, 1, ["story", "bug", "task"]));
     }
 
+    // ---- The load under an epic ----
+
+    [Fact]
+    public async Task LoadUnder_CountsAnEpicsDirectStoriesAndBugsInsideTheSection()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        await h.IssueAsync("story", h.InProgress, epic);
+        await h.IssueAsync("bug", h.InReview, epic);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(2, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_CountsAStoryClaimedInboundFromAFeederColumn()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        var claimed = await h.IssueAsync("story", h.ToDo, epic);
+        await h.ClaimAsync(claimed);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(1, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_DoesNotCountATaskUnderTheEpic()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        await h.IssueAsync("task", h.InProgress, epic);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_DoesNotCountABugUnderOneOfItsStories()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        var story = await h.IssueAsync("story", h.InProgress, epic);
+        await h.BugAsync(h.InReview, story);
+
+        var section = await h.LoadAsync();
+
+        // The bug is the story's line, already counted once under the story -
+        // the story, and not the bug, is the epic's direct child.
+        Assert.Equal(1, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_DoesNotCountAnEpicUnderIt()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        await h.IssueAsync("epic", h.InProgress, epic);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_DoesNotCountAnUnclaimedStoryInTheFeederColumn()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        await h.IssueAsync("story", h.ToDo, epic);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_DoesNotCountAStoryInADeferredColumn()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+
+        var todo = await h.Db.Statuses.SingleAsync(s => s.Id == h.ToDo);
+        todo.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var claimed = await h.IssueAsync("story", h.ToDo, epic);
+        await h.ClaimAsync(claimed);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    [Fact]
+    public async Task LoadUnder_IsZeroForAnEpicWithNothingCounted()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    // ---- EpicsAsync ----
+
+    [Fact]
+    public async Task EpicsAsync_ANullLimitReadsAsOne()
+    {
+        var h = await NewAsync();
+        var epic = await h.IssueAsync("epic", h.Backlog);
+
+        var epics = await Wip.EpicsAsync(h.Db, [epic], default);
+
+        Assert.Equal(1, epics[epic].Limit);
+    }
+
+    [Fact]
+    public async Task EpicsAsync_ASetLimitReadsItself()
+    {
+        var h = await NewAsync();
+        var epic = await h.IssueAsync("epic", h.Backlog);
+        await h.SetWipLimitAsync(epic, 3);
+
+        var epics = await Wip.EpicsAsync(h.Db, [epic], default);
+
+        Assert.Equal(3, epics[epic].Limit);
+    }
+
+    [Fact]
+    public async Task EpicsAsync_AParentThatIsAStoryIsAbsent()
+    {
+        var h = await NewAsync();
+        var story = await h.IssueAsync("story", h.Backlog);
+
+        var epics = await Wip.EpicsAsync(h.Db, [story], default);
+
+        Assert.False(epics.ContainsKey(story));
+    }
+
+    // ---- The epic's own sentence ----
+
+    [Fact]
+    public void EpicSentence_ALoadOfOneReadsIs()
+    {
+        Assert.Equal(
+            "AER-1 is at its limit - 1 of 1 of its stories and bugs is in the WIP section",
+            Wip.EpicSentence("AER-1", 1, 1, ["story", "bug"]));
+    }
+
+    [Fact]
+    public void EpicSentence_ALoadOfTwoReadsAre()
+    {
+        Assert.Equal(
+            "AER-1 is at its limit - 2 of 2 of its stories and bugs are in the WIP section",
+            Wip.EpicSentence("AER-1", 2, 2, ["story", "bug"]));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
@@ -432,6 +602,12 @@ public class WipTests
             await Db.SaveChangesAsync();
         }
 
+        public async Task SetWipLimitAsync(long issueId, int? limit)
+        {
+            var issue = await Db.Issues.SingleAsync(i => i.Id == issueId);
+            issue.WipLimit = limit;
+            await Db.SaveChangesAsync();
+        }
     }
 
     private static async Task<Harness> NewAsync()

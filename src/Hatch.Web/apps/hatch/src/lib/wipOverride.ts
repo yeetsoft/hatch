@@ -35,10 +35,15 @@ export function refusalText(refusal: WipRefusal): string {
 
 /** The event trail's line for a `wip_overridden` payload, or null when the
     payload does not carry what it needs - so `describe` falls back to its
-    generic line rather than drawing a broken one. */
+    generic line rather than drawing a broken one. `epic` is present only when
+    it was the epic's own limit (HA-112) that was stepped over, and names it. */
 export function overrideLine(payload: { [key: string]: unknown } | null): string | null {
   if (!payload) return null;
-  const { load, limit, to } = payload;
+  const { load, limit, to, epic } = payload;
   if (typeof load !== 'number' || typeof limit !== 'number' || typeof to !== 'string') return null;
-  return `overrode the WIP limit — ${load} of ${limit} into ${to}`;
+  if (epic !== undefined && typeof epic !== 'string') return null;
+
+  return typeof epic === 'string'
+    ? `overrode ${epic}'s limit — ${load} of ${limit} into ${to}`
+    : `overrode the WIP limit — ${load} of ${limit} into ${to}`;
 }

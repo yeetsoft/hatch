@@ -103,6 +103,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
 
+        // Every epic a candidate's own parent might be, read once for the
+        // whole pass - HA-112's own limit, beside the section-wide one.
+        var epics = await Wip.EpicsAsync(db, candidates.Select(i => i.ParentId), ct);
+
         // What runners have found about the branches of the issues in review,
         // read once for the pass and grouped, the way `open` is. Only that
         // column is asked about: it is the only move a verdict gates.
@@ -162,7 +166,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hop = hopKind is not null;
                     var blocked = Blocked(
                         issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
-                        assignees[issue.Id], repos, merged, built, hop, statuses, wip);
+                        assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
@@ -173,7 +177,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, null);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null);
     }
 
     /// <summary>
@@ -252,23 +256,44 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     /// <summary>
     /// Why a move into the WIP section is not this issue's to make: the move
-    /// leaves outside it and lands inside it, a slice counts the type, and that
-    /// slice's load - not counting this issue - is already at or over its
-    /// limit. Null where the board has never turned WIP on, where the move does
-    /// not cross into the section, where no slice counts the type, or where the
-    /// slice that does has no limit.
+    /// leaves outside it and lands inside it, a slice counts the type, and
+    /// either that slice's load or - for a story or a bug under an epic - the
+    /// load under that epic, neither counting this issue, is already at or
+    /// over its limit. Null where the board has never turned WIP on, where the
+    /// move does not cross into the section, where no slice counts the type,
+    /// or where neither limit is over (the section-wide slice may simply have
+    /// no row).
     /// </summary>
-    private static string? WipFold(WipSection? wip, EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to)
+    /// <param name="epics">
+    /// Every epic a candidate in this pass or this named dispatch might stand
+    /// under, with its own limit - see <see cref="Wip.EpicsAsync"/>. The
+    /// section's sentence wins where both limits are over, the more general
+    /// fact, said first.
+    /// </param>
+    private static string? WipFold(
+        WipSection? wip, EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to,
+        IReadOnlyDictionary<long, EpicLimit> epics)
     {
         if (wip is null) return null;
         if (wip.Inside(from.Id)) return null;
         if (!wip.Inside(to.Id)) return null;
-        if (wip.SliceFor(issue.Type) is not { Limit: { } limit } slice) return null;
+        if (wip.SliceFor(issue.Type) is not { } slice) return null;
 
-        var room = slice.Load - (slice.Counted(issue) ? 1 : 0);
-        return room >= limit
-            ? $"{Wip.Sentence(room, limit, slice.Types)} - nothing more is pulled in until something leaves"
-            : null;
+        if (slice.Limit is { } limit)
+        {
+            var room = slice.Load - (slice.Counted(issue) ? 1 : 0);
+            if (room >= limit)
+                return $"{Wip.Sentence(room, limit, slice.Types)} - nothing more is pulled in until something leaves";
+        }
+
+        if (slice.Counts("story") && issue.ParentId is { } parentId && epics.TryGetValue(parentId, out var epic))
+        {
+            var epicRoom = wip.LoadUnder(epic.Id) - (slice.Counted(issue) ? 1 : 0);
+            if (epicRoom >= epic.Limit)
+                return $"{Wip.EpicSentence(epic.Key, epicRoom, epic.Limit, slice.Types)} - nothing more of it is pulled in until one leaves";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -318,15 +343,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// first: a terminal column, no column after this one, a terminal next
     /// column, a live claim, a ready date, an assignee, an unanswered question,
     /// a repository the caller has no checkout of, an unmet dependency, an open
-    /// child, a full WIP section, the verdict on an issue's branch, and last a
-    /// missing playbook. A column with nowhere an agent may go is a fact about
-    /// the board and no argument alters it; a ready date needs time; a question
-    /// needs a person; a repository needs a clone; a dependency needs other
-    /// work to land; an open child needs its own session or its own close; a
-    /// full section needs other work to leave; a clean branch with a build that
-    /// passes, is running or has not been read needs nothing at all; and a
-    /// missing playbook needs the operator, which is last because it is only
-    /// worth saying about an issue that is otherwise a candidate.</para>
+    /// child, a full WIP section or an epic at its own limit, the verdict on an
+    /// issue's branch, and last a missing playbook. A column with nowhere an
+    /// agent may go is a fact about the board and no argument alters it; a
+    /// ready date needs time; a question needs a person; a repository needs a
+    /// clone; a dependency needs other work to land; an open child needs its
+    /// own session or its own close; a full section or a full epic each need
+    /// other work to leave; a clean branch with a build that passes, is
+    /// running or has not been read needs nothing at all; and a missing
+    /// playbook needs the operator, which is last because it is only worth
+    /// saying about an issue that is otherwise a candidate.</para>
     ///
     /// <para>The verdict is asked only of the review column, which is
     /// dispatched to itself (<see cref="Columns.Target"/>) and only when its
@@ -424,6 +450,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// pass and once per named dispatch, always over the whole board, whatever
     /// a scope narrows the candidates to.
     /// </param>
+    /// <param name="epics">
+    /// Every epic this issue's own parent might be, with its own limit - see
+    /// <see cref="Wip.EpicsAsync"/>. A fact about the board, like
+    /// <paramref name="wip"/>, and read the same way: once per pass over
+    /// whichever parent ids the candidates hold, once per named dispatch over
+    /// this issue's own.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -441,7 +474,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         IReadOnlyList<EfHatchBuildCheck> builds,
         bool hop,
         List<EfHatchStatus> statuses,
-        WipSection? wip)
+        WipSection? wip,
+        IReadOnlyDictionary<long, EpicLimit> epics)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -520,10 +554,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
             return "its children are the work, and some are still open";
 
-        // A full section needs other work to leave, so it is said after a
-        // dependency, which needs other work to land, and before a missing
-        // playbook, which needs the operator - see Wip.LoadAsync.
-        if (WipFold(wip, issue, from, to) is { } full) return full;
+        // A full section, or an epic at its own limit, needs other work to
+        // leave, so it is said after a dependency, which needs other work to
+        // land, and before a missing playbook, which needs the operator - see
+        // Wip.LoadAsync.
+        if (WipFold(wip, issue, from, to, epics) is { } full) return full;
 
         // Last before the playbook, and after the repository: a question needs a
         // person, a repository needs a clone, and a clean branch with a build
@@ -641,10 +676,13 @@ public sealed record ScanRow(
 /// </summary>
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
-    FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip, string? Failure)
+    FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure)
 {
     public static Scan Refused(string why) =>
-        new([], [], null, DependencyGate.None, FamilyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, null, why);
+        new(
+            [], [], null, DependencyGate.None, FamilyGate.None, ClaimGate.None, RepositoryDeclaration.Undeclared, null,
+            new Dictionary<long, EpicLimit>(), why);
 }
 
 /// <summary>
