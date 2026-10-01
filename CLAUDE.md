@@ -79,6 +79,12 @@ reading the terminal, and that the next increment starts the moment yours ends.
   unmerged branches for one key stop the loop from spawning at all: it asks on
   the ticket which to use, and you will find the answer under **Decisions
   already made**.
+- **A hop may have carried the ticket here, with nobody reading it first.**
+  Express, an epic entering the WIP section, or a story or bug under an epic
+  already running there — the trail on the ticket names which; see "the hop"
+  in [`docs/hatch.md`](docs/hatch.md#the-hop). It is not a session and not a
+  stall: nothing was spent, and the increment you are running now is the first
+  one to actually look at it.
 - **What you leave is put right for you, and said on the ticket.** When you
   stop, and before the claim is let go, the loop aborts a merge, rebase or
   cherry-pick you left in progress, stashes what is uncommitted (under a message

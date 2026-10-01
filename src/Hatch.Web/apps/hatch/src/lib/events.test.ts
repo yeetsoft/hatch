@@ -20,6 +20,30 @@ describe('describe', () => {
     ).toBe('Backlog → To Do, express');
   });
 
+  it('marks a hop with parent pulled, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'To Do', to: 'In Progress', pulled: true } }),
+      ),
+    ).toBe('To Do → In Progress, parent pulled');
+  });
+
+  it('marks a hop with epic, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'To Do', to: 'In Progress', epic: true } }),
+      ),
+    ).toBe('To Do → In Progress, epic');
+  });
+
+  it('marks a hop under a running epic, naming it, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'Backlog', to: 'To Do', under: 'HA-86' } }),
+      ),
+    ).toBe('Backlog → To Do, under HA-86');
+  });
+
   it('marks an issue filed under an express parent, naming the parent', () => {
     expect(
       describeEvent(

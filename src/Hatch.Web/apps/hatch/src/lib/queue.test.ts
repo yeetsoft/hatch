@@ -98,6 +98,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   kind: 'advance',
   hop: false,
   hopKind: null,
+  hopUnder: null,
   clearNote: null,
   ...over,
 });
@@ -191,6 +192,18 @@ describe('queueWords', () => {
     const row = entry({ hop: true, hopKind: 'parent' });
 
     expect(queueWords(row)).toBe('-> In Progress  (parent pulled, no session)');
+  });
+
+  it('says epic for an epic hop', () => {
+    const row = entry({ hop: true, hopKind: 'epic' });
+
+    expect(queueWords(row)).toBe('-> In Progress  (epic, no session)');
+  });
+
+  it('says under the epic for an under hop', () => {
+    const row = entry({ hop: true, hopKind: 'under', hopUnder: 'HA-86' });
+
+    expect(queueWords(row)).toBe('-> In Progress  (under HA-86, no session)');
   });
 
   it('says a plain arrow for an ordinary advance', () => {

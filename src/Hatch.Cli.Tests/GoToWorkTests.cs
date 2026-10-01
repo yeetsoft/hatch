@@ -895,6 +895,22 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_hop_under_a_running_epic_names_it()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86") }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("under HA-86, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Max_runs_1_with_a_hop_then_a_session_runs_exactly_one_session()
     {
         using var h = new Harness();
