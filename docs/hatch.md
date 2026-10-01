@@ -184,7 +184,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`IsWip`, `ExpressSkips`, `ParentPulls`, `Color` (`#rrggbb`).
+`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -258,6 +258,20 @@ own route (`PUT /api/hatch/statuses/{id}/parent-pulls`), for the same reason
 Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can
 set it either.
 
+`AgentFiles` marks the column a program's issue is born in — filing an issue
+reads the leftmost column, as it always has, except where an issue is being
+filed by a program (`ICallerIdentity.IsProgramAsync`) and a column carries
+this flag, in which case that column is used instead. At most one column ever
+holds it — `PUT /api/hatch/statuses/{id}/agent-files` clears every other row
+when it ticks one, the same way `express-skips` does. It is read only where
+the column is neither deferred nor terminal: a flag stranded on a column that
+has since become either does not silently apply, the same guard `IsWip` reads
+under. Set only by a person, through its own route
+(`PUT /api/hatch/statuses/{id}/agent-files`), unreachable from either ordinary
+status write — neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it. A board with nothing ticked files
+every issue leftmost, whoever files it, exactly as it always has.
+
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
@@ -277,7 +291,7 @@ the flag existed.
 |---|---|---|---|---|---|
 | Draft | 10 | | | operator | An idea being written. Nothing reads it. |
 | Breakdown | 20 | | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
-| Backlog | 30 | | | operator | Specified work, awaiting selection. |
+| Backlog | 30 | | | operator | Specified work, awaiting selection. `AgentFiles` is ticked here, so an issue a program files is born in this column. |
 | To Do | 40 | | | **agent** | Analyse it until implementing it is mechanical. |
 | In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. |
 | In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
@@ -1811,6 +1825,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/parent-pulls` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ parentPulls }` — the column a child is carried on out of while its parent stands in the implementation column. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/agent-files` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ agentFiles }` — the column a program's issue is born in. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |

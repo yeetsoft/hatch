@@ -70,6 +70,112 @@ public class IssuesControllerTests
         Assert.True(second.Rank > first.Rank);
     }
 
+    // ---- Where a program files ----
+
+    [Fact]
+    public async Task AKeysIssue_IsBornInTheTickedColumn()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed by a key");
+
+        Assert.Equal(h.Todo, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task AKeysIssue_IsBornInTheTickedColumn_WithAParent()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("story", "filed under a parent", parentKey: "AER-1");
+
+        Assert.Equal(h.Todo, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task APersonsIssue_IsBornLeftmost_WhileTheColumnIsTicked()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var issue = await h.CreateAsync("task", "filed by a person");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task NothingTicked_BothCallersLandLeftmost()
+    {
+        var h = await NewAsync();
+
+        var person = await h.CreateAsync("task", "filed by a person");
+        h.Caller.Key = AProgram();
+        var key = await h.CreateAsync("task", "filed by a key");
+
+        Assert.Equal(h.Inbox, person.StatusId);
+        Assert.Equal(h.Inbox, key.StatusId);
+    }
+
+    [Fact]
+    public async Task ATickedColumnMadeDeferred_FilesLeftmostAgain()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed after the tick went stale");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task ATickedColumnMadeTerminal_FilesLeftmostAgain()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsTerminal = true;
+        await h.Db.SaveChangesAsync();
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed after the tick went stale");
+
+        Assert.Equal(h.Inbox, issue.StatusId);
+    }
+
+    [Fact]
+    public async Task AKeysIssue_LandsBelowOneAlreadyInTheTickedColumn()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+        h.Caller.Key = AProgram();
+
+        var first = await h.CreateAsync("task", "first");
+        var second = await h.CreateAsync("task", "second");
+
+        Assert.Equal(h.Todo, first.StatusId);
+        Assert.Equal(h.Todo, second.StatusId);
+        Assert.True(second.Rank > first.Rank);
+    }
+
+    /// <summary>The key a test files as, when it wants the caller to be a program rather than a person.</summary>
+    private static EfApiKey AProgram() => new()
+    {
+        Name = "hatch",
+        Hash = [1],
+        Prefix = "hatch_ak_x",
+        Scopes = [ApiKeyScopes.Hatch],
+        CreatedAt = Now,
+    };
+
     // ---- Resolving a key ----
 
     [Fact]
@@ -292,10 +398,10 @@ public class IssuesControllerTests
         await h.CreateAsync("epic", "the epic");
         await h.ExpressAsync("AER-1", true);
 
-        // CreateIssue does not distinguish caller kind - the flag is taken from
-        // the parent regardless of who is filing, so a key filing children
-        // under something a person marked express is exactly how an express
-        // epic's stories run overnight.
+        // Inheritance does not distinguish caller kind - the flag is taken
+        // from the parent regardless of who is filing, so a key filing
+        // children under something a person marked express is exactly how an
+        // express epic's stories run overnight.
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
         Assert.True(child.Express);
@@ -2663,6 +2769,7 @@ public class IssuesControllerTests
     {
         public required HatchContext Db { get; init; }
         public required FakeTimeProvider Time { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
 
         /// <summary>Who the house knows. Empty until a test says otherwise, which reads as "nobody is assigned to anything".</summary>
         public required StubActorDirectory Actors { get; init; }
@@ -2808,6 +2915,7 @@ public class IssuesControllerTests
         {
             Db = db,
             Time = time,
+            Caller = caller,
             Actors = actors,
             Issues = new IssuesController(db, ranks, actors, TestClaims.With(), caller, time),
             Thread = new IssueThreadController(db, caller, time),
