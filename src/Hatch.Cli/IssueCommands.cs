@@ -18,6 +18,8 @@ public sealed class IssueCommands(Cli cli)
         "  anything else, emergency before expedited before the rest. A level an",
         "  issue only holds because an ancestor carries it names that ancestor:",
         "  \"expedited - this one goes first (inherited from AER-12)\".",
+        "  A paused ticket says so too: a person set it aside, and nothing picks",
+        "  it up until they set it back.",
         "  An express ticket says so too: standing in a column marked to skip, it",
         "  is carried on with no session. There is no verb here that sets either -",
         "  the CLI holds a key, and both are a person's write.",
@@ -91,6 +93,8 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"priority:  emergency - top of the walk, before anything else{inherited}");
         else if (issue.Priority == PriorityLevels.ExpeditedName)
             cli.Say.Line($"priority:  expedited - this one goes first{inherited}");
+        else if (issue.Priority == PriorityLevels.PausedName)
+            cli.Say.Line($"priority:  paused - set aside; the loop leaves it where it stands{inherited}");
         if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
         if (issue.Type == "epic")
         {

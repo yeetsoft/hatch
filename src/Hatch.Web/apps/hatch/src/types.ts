@@ -169,10 +169,10 @@ export interface IssueCard {
       IssueCardDto.Priority and PriorityLevels. The raw level, for the one place
       that needs to tell expedited apart from emergency rather than collapse
       them: the optimistic float in lib/place.ts. */
-  priority: 'normal' | 'expedited' | 'emergency';
+  priority: 'normal' | 'expedited' | 'emergency' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCardDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCardDto.PriorityFrom. */
   priorityFrom: string | null;
@@ -342,10 +342,10 @@ export interface Issue {
       IssueExpediteController. Derived from `priority` - see IssueCard.expedited. */
   expedited: boolean;
   /** The level's name - see IssueCard.priority and IssueDto.Priority. */
-  priority: 'normal' | 'expedited' | 'emergency';
+  priority: 'normal' | 'expedited' | 'emergency' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCard.priorityOwn and IssueDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCard.priorityFrom and
       IssueDto.PriorityFrom. */
