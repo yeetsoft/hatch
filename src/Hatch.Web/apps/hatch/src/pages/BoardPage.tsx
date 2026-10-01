@@ -551,7 +551,7 @@ export function BoardPage() {
         collapsed={isPhone}
         trailing={
           <>
-            <QueueControl />
+            <QueueControl cards={board.issues} onTake={onTake} />
             {isPhone ? (
               <button
                 type="button"

@@ -1,8 +1,8 @@
 import { Button, EmptyState, Modal, Text } from '@hatch/ui';
-import { anyAboveNormal, queueMarker, queueTally, queueWords } from '../lib/queue';
+import { anyAboveNormal, queueCard, queueMarker, queueTally, queueWords } from '../lib/queue';
 import { TypeBadge } from './TypeBadge';
 import { StatusPill } from './StatusPill';
-import type { QueueEntry } from '../types';
+import type { IssueCard, QueueEntry } from '../types';
 import type { QueueStatus } from '../lib/useQueue';
 
 /**
@@ -19,6 +19,8 @@ export function QueueModal({
   queue,
   error,
   onRefresh,
+  cards,
+  onTake,
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,6 +28,8 @@ export function QueueModal({
   queue: QueueEntry[];
   error: string | null;
   onRefresh: () => Promise<void>;
+  cards: readonly IssueCard[];
+  onTake: (card: IssueCard) => void;
 }) {
   const showMarker = anyAboveNormal(queue);
   const tally = queueTally(queue);
@@ -71,19 +75,27 @@ export function QueueModal({
         <ul className="hatch-queue-rows">
           {queue.map((entry, at) => {
             const marker = queueMarker(entry);
+            const card = queueCard(entry, cards);
             return (
-              <li
-                key={entry.issue.key}
-                className={`hatch-queue-row ${entry.blocked === null ? 'hatch-queue-row--clear' : 'hatch-queue-row--folded'}`}
-              >
-                <span className="hatch-queue-ordinal">{at + 1}</span>
-                {showMarker && (
-                  <span className={`hatch-queue-marker${marker === '!!' ? ' emergency' : ''}`}>{marker}</span>
-                )}
-                <span className="hatch-card-key">{entry.issue.key}</span>
-                <TypeBadge type={entry.issue.type} />
-                <StatusPill status={entry.fromStatus} />
-                <span className="hatch-queue-words">{queueWords(entry)}</span>
+              <li key={entry.issue.key}>
+                <button
+                  type="button"
+                  className={`hatch-queue-row ${entry.blocked === null ? 'hatch-queue-row--clear' : 'hatch-queue-row--folded'}`}
+                  disabled={!card}
+                  onClick={() => {
+                    onClose();
+                    if (card) onTake(card);
+                  }}
+                >
+                  <span className="hatch-queue-ordinal">{at + 1}</span>
+                  {showMarker && (
+                    <span className={`hatch-queue-marker${marker === '!!' ? ' emergency' : ''}`}>{marker}</span>
+                  )}
+                  <span className="hatch-card-key">{entry.issue.key}</span>
+                  <TypeBadge type={entry.issue.type} />
+                  <StatusPill status={entry.fromStatus} />
+                  <span className="hatch-queue-words">{queueWords(entry)}</span>
+                </button>
               </li>
             );
           })}

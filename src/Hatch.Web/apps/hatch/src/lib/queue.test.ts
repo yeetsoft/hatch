@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { anyAboveNormal, queueMarker, queueTally, queueWords } from './queue';
-import type { BuildCheck, Issue, MergeCheck, QueueEntry, Status } from '../types';
+import { anyAboveNormal, queueCard, queueMarker, queueTally, queueWords } from './queue';
+import type { BuildCheck, Issue, IssueCard, MergeCheck, QueueEntry, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -88,6 +88,25 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   hop: false,
   hopKind: null,
   clearNote: null,
+  ...over,
+});
+
+const card = (over: Partial<IssueCard> = {}): IssueCard => ({
+  key: 'AER-1',
+  projectKey: 'AER',
+  type: 'task',
+  title: 'A task',
+  statusId: 1,
+  rank: 0,
+  parentKey: null,
+  readyAt: null,
+  dueAt: null,
+  openQuestions: 0,
+  assignee: null,
+  claim: null,
+  expedited: false,
+  priority: 'normal',
+  express: false,
   ...over,
 });
 
@@ -205,5 +224,20 @@ describe('queueTally', () => {
     const tally = queueTally([entry(), entry({ blocked: 'waiting' }), entry(), entry({ blocked: 'waiting' })]);
 
     expect(tally).toEqual({ total: 4, clear: 2 });
+  });
+});
+
+describe('queueCard', () => {
+  it('finds the board card sharing the row\'s key', () => {
+    const row = entry({ issue: issue({ key: 'AER-2' }) });
+    const found = card({ key: 'AER-2' });
+
+    expect(queueCard(row, [card({ key: 'AER-1' }), found])).toBe(found);
+  });
+
+  it('is undefined for a row the board is not holding', () => {
+    const row = entry({ issue: issue({ key: 'AER-9' }) });
+
+    expect(queueCard(row, [card({ key: 'AER-1' })])).toBeUndefined();
   });
 });
