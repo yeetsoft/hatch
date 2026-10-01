@@ -163,8 +163,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
-                    var hopKind = HopKind(issue, status, family, statuses);
+                    var parent = family.ParentOf(issue.Id);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent);
                     var hop = hopKind is not null;
+                    var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var blocked = Blocked(
                         issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
                         assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
@@ -173,6 +175,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         KindOf(issue, status, to, merged, built),
                         hop && blocked is null,
                         blocked is null ? hopKind : null,
+                        blocked is null ? hopUnder : null,
                         blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
@@ -597,6 +600,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // fold above still applies exactly as it applies to any other issue.
         if (hop) return null;
 
+        // Reached only when hop is false and an epic is otherwise entering the
+        // WIP section - every other condition HopKind's own epic branch checks
+        // has already held, so the only thing that can have failed is the
+        // children check. An epic with nothing filed under it is not a hop,
+        // and never silently "no playbook covers this" (HA-113).
+        if (issue.Type == "epic" && wip is not null && !wip.Inside(from.Id) && to is not null && wip.Inside(to.Id))
+            return FamilyGate.NothingUnder;
+
         // A column that pulls its children is never "no playbook covers
         // this" - it is one of these two, naming which of FamilyGate.Pulls's
         // two conditions is unmet. A childless issue in such a column (e.g.
@@ -615,14 +626,42 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     /// <summary>
     /// Whether this issue crosses the column it stands in with no session, and
-    /// which of the two reasons - see HopKinds. Asked by the scan, a named
+    /// which of <see cref="HopKinds"/> carried it. Asked by the scan, a named
     /// dispatch and the write itself, so the three cannot disagree about what a
     /// hop is.
     /// </summary>
-    public static string? HopKind(EfHatchIssue issue, EfHatchStatus from, FamilyGate family, List<EfHatchStatus> statuses)
+    /// <remarks>
+    /// Asked in order: an express issue in a ticked column; an epic standing
+    /// outside the WIP section whose next column is inside it, with something
+    /// filed under it; a story or bug in a ticked column whose parent is a
+    /// running epic; and last, unrelated to the WIP section, a child a
+    /// ParentPulls column pulls (HA-149). The order matters only where a board
+    /// ticks both ExpressSkips and ParentPulls on the same column and an epic
+    /// stands exactly in the implementation column - see HA-113's own
+    /// decision on the overlap. Never on a move that ends where it starts: a
+    /// review self-move is never a hop for the first three, by construction.
+    /// </remarks>
+    public static string? HopKind(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
+        List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent)
     {
-        if (issue.Express && from.ExpressSkips) return HopKinds.Express;
+        var crosses = to is not null && to.Id != from.Id;
+
+        if (crosses && issue.Express && from.ExpressSkips) return HopKinds.Express;
+
+        if (crosses && wip is not null)
+        {
+            if (issue.Type == "epic" && !wip.Inside(from.Id) && wip.Inside(to!.Id)
+                && family.Children(issue.Id).Count > 0)
+                return HopKinds.Epic;
+
+            if (issue.Type is "story" or "bug" && from.ExpressSkips
+                && parent is { Type: "epic" } p && wip.Inside(p.StatusId))
+                return HopKinds.Under;
+        }
+
         if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
+
         return null;
     }
 
@@ -692,8 +731,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
-    string? HopKind = null, string? ClearNote = null, int EffectivePriority = PriorityLevels.Normal,
-    string? EffectiveFrom = null);
+    string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
+    int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
@@ -959,7 +998,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey);
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], []);
+    public static readonly FamilyGate None = new([], [], [], []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -967,15 +1006,22 @@ public sealed class FamilyGate
     /// </summary>
     public const string NothingUnder = "nothing is filed under it - an epic runs its stories, and it has none";
 
+    /// <summary>One issue's own parent, as <see cref="ParentOf"/> answers it - see HA-113.</summary>
+    public sealed record Parent(string Key, string Type, int StatusId);
+
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
     private readonly Dictionary<long, int> _statusById;
+    private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> _byId;
 
-    private FamilyGate(Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById)
+    private FamilyGate(
+        Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
+        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId)
     {
         _children = children;
         _open = open;
         _statusById = statusById;
+        _byId = byId;
     }
 
     public static async Task<FamilyGate> ForAsync(
@@ -985,28 +1031,42 @@ public sealed class FamilyGate
 
         var rows = await db.Issues.AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { i.Id, i.ParentId, i.StatusId })
+            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number })
             .ToListAsync(ct);
 
         var children = new Dictionary<long, List<long>>();
         var open = new HashSet<long>();
         var statusById = new Dictionary<long, int>();
+        var byId = new Dictionary<long, (long?, string, string, int)>();
         foreach (var row in rows)
         {
             if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
             statusById[row.Id] = row.StatusId;
+            byId[row.Id] = (row.ParentId, row.Type, IssueKey.Format(row.ProjectKey, row.Number), row.StatusId);
 
             if (row.ParentId is not { } parent) continue;
             if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
             siblings.Add(row.Id);
         }
 
-        return new FamilyGate(children, open, statusById);
+        return new FamilyGate(children, open, statusById, byId);
     }
 
     /// <summary>The direct children of this issue, in board order.</summary>
     public IReadOnlyList<long> Children(long issueId) =>
         _children.TryGetValue(issueId, out var kids) ? kids : [];
+
+    /// <summary>
+    /// This issue's own parent - its key, type and column - or null where it
+    /// has none, or where its parent id does not resolve against the issues
+    /// loaded for this pass. Read off the same rows <see cref="Children"/> and
+    /// <see cref="OpenChildren"/> already hold, not a second query.
+    /// </summary>
+    public Parent? ParentOf(long issueId)
+    {
+        if (!_byId.TryGetValue(issueId, out var row) || row.ParentId is not { } parentId) return null;
+        return _byId.TryGetValue(parentId, out var p) ? new Parent(p.Key, p.Type, p.StatusId) : null;
+    }
 
     /// <summary>
     /// The direct children whose column is not terminal. A deferred child

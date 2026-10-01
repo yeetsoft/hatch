@@ -813,11 +813,14 @@ export interface QueueEntry {
       latter two are a review-column dispatch that starts and ends in the
       same column. As on `Work`. */
   kind: 'advance' | 'conflicts' | 'build';
-  /** Carried past a column with no session - an express issue or a child its
-      parent pulled. As on `Work`. */
+  /** Carried past a column with no session - an express issue, a child its
+      parent pulled, an epic entering the WIP section, or a story or bug
+      carried under a running epic. As on `Work`. */
   hop: boolean;
-  /** Which of the two reasons carried `hop`. Null when `hop` is false. */
-  hopKind: 'express' | 'parent' | null;
+  /** Which of the four reasons carried `hop`. Null when `hop` is false. */
+  hopKind: 'express' | 'parent' | 'epic' | 'under' | null;
+  /** The epic's key that carried this hop, when `hopKind` is `'under'` - null otherwise. */
+  hopUnder: string | null;
   /** Why a row that carries no `blocked` is clear at all, where that is not
       otherwise obvious - today, only that a stall question lapsed. Null on
       every row that is clear for the ordinary reason, which is most of

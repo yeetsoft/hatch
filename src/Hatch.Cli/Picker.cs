@@ -110,9 +110,17 @@ public sealed class Picker(
 
     private readonly bool _clones = workspace is not null;
 
-    /// <summary>The label a hop row prints, naming which of the two reasons carried it.</summary>
-    public static string HopReason(string? hopKind) =>
-        hopKind == HopKinds.Parent ? "parent pulled, no session" : "express, no session";
+    /// <summary>The word a hop row prints, naming which of the four reasons carried it.</summary>
+    public static string HopWord(string? hopKind, string? hopUnder) => hopKind switch
+    {
+        HopKinds.Parent => "parent pulled",
+        HopKinds.Epic => "epic",
+        HopKinds.Under => $"under {hopUnder}",
+        _ => "express",
+    };
+
+    /// <summary>The label a hop row prints - <see cref="HopWord"/>, plus the reason nothing was spawned.</summary>
+    public static string HopReason(string? hopKind, string? hopUnder) => $"{HopWord(hopKind, hopUnder)}, no session";
 
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)
@@ -173,7 +181,7 @@ public sealed class Picker(
                 }
 
                 return new Picked(Pick.Hopped, null, null, queue, busy, Checkouts: checkouts,
-                    Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?", HopReason(entry.HopKind)));
+                    Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?", HopReason(entry.HopKind, entry.HopUnder)));
             }
 
             var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat);

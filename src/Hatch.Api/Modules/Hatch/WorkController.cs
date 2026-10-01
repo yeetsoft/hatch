@@ -190,6 +190,7 @@ public class WorkController(
             r.Kind,
             r.Hop,
             r.HopKind,
+            r.HopUnder,
             r.ClearNote)).ToList();
     }
 
@@ -345,7 +346,9 @@ public class WorkController(
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
         var built = inReview ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
 
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, family, statuses);
+        var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
+        var parent = family.ParentOf(issue.Id);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent);
         var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting,
@@ -356,18 +359,22 @@ public class WorkController(
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses,
-            await Wip.LoadAsync(db, claims, statuses, now, ct),
+            wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct));
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
 
-        var target = Columns.Advance(statuses, from)!;
+        var target = to!;
         var actor = await caller.ActorNameAsync(ct);
 
-        var payload = hopKind == HopKinds.Parent
-            ? JsonSerializer.Serialize(new { from = from.Name, to = target.Name, pulled = true })
-            : JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true });
+        var payload = hopKind switch
+        {
+            HopKinds.Parent => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, pulled = true }),
+            HopKinds.Epic => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, epic = true }),
+            HopKinds.Under => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, under = parent?.Key }),
+            _ => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
+        };
 
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -487,7 +494,8 @@ public class WorkController(
             .Select((r, i) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, i == 0, repos.Match(r.Canonical)))
             .ToList();
 
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, family, statuses);
+        var hopParent = family.ParentOf(issue.Id);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent);
         var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting, loop, gate, family, claimed, Columns.Implementation(statuses),
@@ -525,6 +533,7 @@ public class WorkController(
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
             hopped ? hopKind : null,
+            hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
             await LetGoAsync(issue.Id, ct));
     }
 

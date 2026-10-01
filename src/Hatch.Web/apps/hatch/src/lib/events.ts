@@ -17,10 +17,22 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
 
   /* The hop: a move the loop made itself, with nobody reading the ticket
-     first - see docs/hatch.md, "The hop". Rendered before the ordinary
-     from/to line, which it is a variant of. */
+     first - see docs/hatch.md, "The hop". Four kinds now carry it: express,
+     a child its parent pulled (HA-149's `pulled`, never rendered before this -
+     a pre-existing gap this closes rather than opens), an epic entering the
+     WIP section, and a story or bug carried under a running epic. Rendered
+     before the ordinary from/to line, which it is a variant of. */
   if (event.kind === 'status_changed' && event.payload?.express === true) {
     return `${short(from)} → ${short(to)}, express`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.pulled === true) {
+    return `${short(from)} → ${short(to)}, parent pulled`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.epic === true) {
+    return `${short(from)} → ${short(to)}, epic`;
+  }
+  if (event.kind === 'status_changed' && typeof event.payload?.under === 'string') {
+    return `${short(from)} → ${short(to)}, under ${short(event.payload.under)}`;
   }
 
   /* Filed under an express parent, and born express itself - see

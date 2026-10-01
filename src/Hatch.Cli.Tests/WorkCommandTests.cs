@@ -53,6 +53,32 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_on_an_epic_hop_names_the_epic_kind()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1", hop: true, hopKind: HopKinds.Epic));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(h.Say.Said, l => l.Contains("epic: carried across with no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_dry_run_on_an_under_hop_names_the_epic()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/next",
+            Fixtures.Work("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86"));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(h.Say.Said, l => l.Contains("under HA-86: carried across with no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_named_hop_exits_0_takes_no_claim_and_spawns_nothing()
     {
         using var h = new Harness();
@@ -66,6 +92,21 @@ public sealed class WorkCommandTests
         Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
         Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_named_hop_under_a_running_epic_names_it()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86"));
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("under HA-86, no session", StringComparison.Ordinal));
     }
 
     [Fact]
