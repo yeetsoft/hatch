@@ -375,6 +375,12 @@ public class AdminSurfaceTests
         // StatusesController.PutParentPulls.
         "StatusesController.PutParentPulls",
 
+        // Where an agent's own issues are born. Reading it is open, the same
+        // as ExpressSkips and ParentPulls - only the write is here. This one
+        // decides a gate the loop must not be able to move for itself: the
+        // column its own filing lands in. See StatusesController.PutAgentFiles.
+        "StatusesController.PutAgentFiles",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -489,6 +495,10 @@ public class AdminSurfaceTests
         "IssueExpressController.PutIssueExpress",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",
+
+        // Where an agent's own issues are born, which the loop must not be
+        // able to move for itself.
+        "StatusesController.PutAgentFiles",
         "ProjectsController.PutRepositories",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

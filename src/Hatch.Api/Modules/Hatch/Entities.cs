@@ -237,6 +237,19 @@ public class EfHatchStatus
     public bool ParentPulls { get; set; }
 
     /// <summary>
+    /// The column an issue filed by a program is born in, rather than the
+    /// leftmost one - see HA-195, the first thing that reads it. At most one
+    /// column holds this; <see cref="StatusesController.PutAgentFiles"/> clears
+    /// every other row when it sets one.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutAgentFiles"/>) for the same reason as
+    /// <see cref="ParentPulls"/>: it decides where a program's own issues enter
+    /// the board, and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool AgentFiles { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave

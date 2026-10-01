@@ -2022,6 +2022,87 @@ public class IssuesControllerTests
         Assert.True(patched.ParentPulls);
     }
 
+    // ---- Agent files ----
+    //
+    // The column an issue filed by a program is born in. Set only through its
+    // own route - PutAgentFiles - and untouched by the two ordinary routes,
+    // the same split ParentPulls draws. Unlike ExpressSkips and ParentPulls,
+    // at most one column ever holds it, and it refuses a deferred or a
+    // terminal column outright.
+
+    [Fact]
+    public async Task ANewColumn_StartsWithAgentFilesUnticked()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
+
+        Assert.False(created.AgentFiles);
+    }
+
+    [Fact]
+    public async Task PutAgentFiles_TicksAndUnticksIt()
+    {
+        var h = await NewAsync();
+
+        var ticked = Value(await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default));
+        Assert.True(ticked.AgentFiles);
+
+        var unticked = Value(await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(false), default));
+        Assert.False(unticked.AgentFiles);
+    }
+
+    [Fact]
+    public async Task APatchOfOtherFields_LeavesAgentFilesAlone()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, new StatusPatchRequest("later", null, null), default));
+
+        Assert.Equal("later", patched.Name);
+        Assert.True(patched.AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingASecondColumn_MovesTheTickRatherThanAddingOne()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutAgentFiles(h.Todo, new AgentFilesRequest(true), default);
+
+        var ticked = Value(await h.Statuses.PutAgentFiles(h.Inbox, new AgentFilesRequest(true), default));
+
+        Assert.True(ticked.AgentFiles);
+        var statuses = Value(await h.Statuses.GetStatuses(default));
+        Assert.Single(statuses, s => s.AgentFiles);
+        Assert.False(statuses.Single(s => s.Id == h.Todo).AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingATerminalColumn_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Statuses.PutAgentFiles(h.Done, new AgentFilesRequest(true), default);
+
+        Assert.Contains("\"done\" is a done column", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.AgentFiles);
+    }
+
+    [Fact]
+    public async Task TickingADeferredColumn_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Inbox);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Statuses.PutAgentFiles(h.Inbox, new AgentFilesRequest(true), default);
+
+        Assert.Contains("\"inbox\" is deferred", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.AgentFiles);
+    }
+
     [Fact]
     public async Task ReorderingAColumn_MovesIt()
     {
