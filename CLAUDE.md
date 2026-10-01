@@ -98,8 +98,10 @@ reading the terminal, and that the next increment starts the moment yours ends.
   untracked files included — onto your issue's branch and pushes it for you,
   then says so on the ticket along with when it expects you back.
 - **Leave the ticket somewhere new.** An increment that ends with the ticket in
-  the column it started in is a *stall*, and the first one in a row is let go
-  quietly: the loop comments saying why, and moves on — the ticket is free for
+  the column it started in is a *stall* — unless it filed issues under the
+  ticket, which is progress whether or not the ticket moved — and the first
+  one in a row is let go quietly: the loop comments saying why, and moves on —
+  the ticket is free for
   the very next pass, since most of the time whatever happened is weather and
   a retry a few minutes later just works. The second stall in a row on the
   same ticket is flagged the way every stall used to be: the loop comments,
