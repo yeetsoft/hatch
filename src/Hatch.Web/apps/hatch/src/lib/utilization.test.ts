@@ -5,11 +5,19 @@ import {
   batteryLabel,
   hasBattery,
   percentLabel,
+  rampColor,
+  rampInk,
   resetPhrase,
   ringFraction,
+  rowPercent,
+  rowResetPhrase,
+  rowSentence,
   sessionLimit,
-  toneClass,
+  timeGoneFraction,
+  usageVars,
+  worstRow,
 } from './utilization';
+import { luminance } from './color';
 import type { Utilization, UtilizationLimit } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');
@@ -20,7 +28,6 @@ const limit = (over: Partial<UtilizationLimit> = {}): UtilizationLimit => ({
   window: 'session',
   label: 'Session',
   percent: 17,
-  tone: 'normal',
   resetsAt: at(90 * 60_000),
   ...over,
 });
@@ -57,6 +64,30 @@ describe('ringFraction', () => {
   });
 });
 
+describe('timeGoneFraction', () => {
+  it('is the share of a seven-day window that has gone, for weekly and weeklyModel alike', () => {
+    const week = 7 * 24 * 60 * 60 * 1000;
+    expect(timeGoneFraction('weekly', at(week), NOW)).toBeCloseTo(0);
+    expect(timeGoneFraction('weekly', at(week / 2), NOW)).toBeCloseTo(0.5);
+    expect(timeGoneFraction('weeklyModel', at(0), NOW)).toBeCloseTo(1);
+  });
+
+  it('clamps past both ends', () => {
+    const week = 7 * 24 * 60 * 60 * 1000;
+    expect(timeGoneFraction('weekly', at(-60 * 60_000), NOW)).toBe(1);
+    expect(timeGoneFraction('weekly', at(week * 3), NOW)).toBe(0);
+  });
+
+  it('is unknown with no reset instant', () => {
+    expect(timeGoneFraction('weekly', null, NOW)).toBeNull();
+  });
+
+  it('is unknown for a window with no known length - extra, or a word never seen', () => {
+    expect(timeGoneFraction('extra', at(1000), NOW)).toBeNull();
+    expect(timeGoneFraction('something-new', at(1000), NOW)).toBeNull();
+  });
+});
+
 describe('resetPhrase', () => {
   it('says hours and minutes', () => {
     expect(resetPhrase(at(80 * 60_000), NOW)).toBe('resets in 1h 20m');
@@ -77,6 +108,38 @@ describe('resetPhrase', () => {
   it('says the reset time is unknown when there is no instant', () => {
     expect(resetPhrase(null, NOW)).toBe('reset time unknown');
     expect(resetPhrase('whenever', NOW)).toBe('reset time unknown');
+  });
+});
+
+describe('rowPercent', () => {
+  it("is the row's own percentage while the window is still running", () => {
+    expect(rowPercent(limit({ percent: 42 }), NOW)).toBe(42);
+  });
+
+  it('is 0 once the reset instant has passed - the window it described is over', () => {
+    expect(rowPercent(limit({ percent: 99, resetsAt: at(-1) }), NOW)).toBe(0);
+    expect(rowPercent(limit({ percent: 99, resetsAt: at(0) }), NOW)).toBe(0);
+  });
+
+  it('is unaffected by a reset instant still ahead of us', () => {
+    expect(rowPercent(limit({ percent: 99, resetsAt: at(1) }), NOW)).toBe(99);
+  });
+});
+
+describe('rowResetPhrase', () => {
+  it('reads as resetPhrase does while the window has not reset', () => {
+    expect(rowResetPhrase(limit({ resetsAt: at(80 * 60_000) }), NOW)).toBe('resets in 1h 20m');
+  });
+
+  /* The bug this rule exists to close: resetPhrase alone would say "resets in
+     under a minute" forever once the instant is behind us. */
+  it('says it has reset, not "resets in under a minute", once the instant has passed', () => {
+    expect(rowResetPhrase(limit({ resetsAt: at(-1) }), NOW)).toBe('has reset');
+    expect(rowResetPhrase(limit({ resetsAt: at(0) }), NOW)).toBe('has reset');
+  });
+
+  it('is unknown, not reset, when there is no instant at all', () => {
+    expect(rowResetPhrase(limit({ resetsAt: null }), NOW)).toBe('reset time unknown');
   });
 });
 
@@ -124,19 +187,86 @@ describe('sessionLimit', () => {
   });
 });
 
-describe('toneClass', () => {
-  it('paints the three tones the server sends', () => {
-    expect(toneClass('normal')).toBe('hatch-battery-normal');
-    expect(toneClass('warn')).toBe('hatch-battery-warn');
-    expect(toneClass('danger')).toBe('hatch-battery-danger');
+describe('rampColor', () => {
+  it('is exactly the given colour at each of the seven control points', () => {
+    expect(rampColor(0)).toBe('#1fd65f');
+    expect(rampColor(5)).toBe('#2e9e44');
+    expect(rampColor(40)).toBe('#f2c500');
+    expect(rampColor(70)).toBe('#f07c00');
+    expect(rampColor(85)).toBe('#d32f2f');
+    expect(rampColor(95)).toBe('#7f1010');
+    expect(rampColor(100)).toBe('#000000');
   });
 
-  /* An unexpected word must not produce an unstyled glyph. The server decides
-     the tone; this only guarantees the class exists. */
-  it('falls back to normal for anything else', () => {
-    expect(toneClass('chartreuse')).toBe('hatch-battery-normal');
-    expect(toneClass(null)).toBe('hatch-battery-normal');
-    expect(toneClass(undefined)).toBe('hatch-battery-normal');
+  it('gives 101 distinct colours across 0..100, one per whole percent', () => {
+    const colors = new Set(Array.from({ length: 101 }, (_, percent) => rampColor(percent)));
+    expect(colors.size).toBe(101);
+  });
+
+  it('clamps below 0 and above 100 rather than extrapolating past the ends', () => {
+    expect(rampColor(-10)).toBe(rampColor(0));
+    expect(rampColor(140)).toBe(rampColor(100));
+  });
+});
+
+describe('rampInk', () => {
+  it('measures at least 4.5:1 against every one of the 101 colours', () => {
+    for (let percent = 0; percent <= 100; percent++) {
+      const color = rampColor(percent);
+      const ink = rampInk(color);
+      const l = luminance(color);
+      const inkLuminance = ink === '#ffffff' ? 1 : 0;
+      const [hi, lo] = inkLuminance >= l ? [inkLuminance, l] : [l, inkLuminance];
+      const ratio = (hi + 0.05) / (lo + 0.05);
+
+      expect(ratio).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+describe('usageVars', () => {
+  it('hands the stylesheet the ramp colour and its ink', () => {
+    expect(usageVars(0)).toEqual({ '--usage-color': '#1fd65f', '--usage-ink': rampInk('#1fd65f') });
+  });
+});
+
+describe('worstRow', () => {
+  it('picks the highest percentage among the rows', () => {
+    const worst = worstRow(
+      reading({
+        limits: [limit({ window: 'session', percent: 10 }), limit({ window: 'weekly', percent: 60, label: 'Weekly' })],
+      }),
+      NOW,
+    );
+
+    expect(worst?.window).toBe('weekly');
+  });
+
+  it('never lets extra decide, however full it is', () => {
+    const worst = worstRow(
+      reading({
+        limits: [
+          limit({ window: 'session', percent: 10 }),
+          limit({ window: 'extra', percent: 100, label: 'Extra usage', resetsAt: null }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(worst?.window).toBe('session');
+  });
+
+  it('is coloured by whatever a reading with no session row has', () => {
+    const worst = worstRow(reading({ limits: [limit({ window: 'weekly', percent: 33, label: 'Weekly' })] }), NOW);
+
+    expect(worst?.window).toBe('weekly');
+  });
+
+  it('is null only when the reading is null, or carries nothing but extra', () => {
+    expect(worstRow(null, NOW)).toBeNull();
+    expect(
+      worstRow(reading({ limits: [limit({ window: 'extra', label: 'Extra usage', resetsAt: null })] }), NOW),
+    ).toBeNull();
   });
 });
 
@@ -158,6 +288,27 @@ describe('percentLabel', () => {
 
   it('is an em dash when there is no reading behind it', () => {
     expect(percentLabel(null)).toBe('—');
+  });
+});
+
+describe('rowSentence', () => {
+  it('says the name, the percent used, the percent of the window gone, and when it resets', () => {
+    const week = 7 * 24 * 60 * 60 * 1000;
+    const row = limit({ window: 'weekly', label: 'Weekly', percent: 40, resetsAt: at(week / 2) });
+
+    expect(rowSentence(row, NOW)).toBe('Weekly: 40% used, 50% of the window gone, resets in 84h');
+  });
+
+  it('leaves out the window-gone clause for a row with no known length', () => {
+    const extra = limit({ window: 'extra', label: 'Extra usage', percent: 12, resetsAt: null });
+
+    expect(rowSentence(extra, NOW)).toBe('Extra usage: 12% used, reset time unknown');
+  });
+
+  it('says a row past its reset has reset, and draws at 0', () => {
+    const past = limit({ window: 'session', label: 'Session', percent: 88, resetsAt: at(-1) });
+
+    expect(rowSentence(past, NOW)).toBe('Session: 0% used, 100% of the window gone, has reset');
   });
 });
 
@@ -188,6 +339,24 @@ describe('batteryLabel', () => {
     const weeklyOnly = reading({ limits: [limit({ window: 'weekly', label: 'Weekly' })] });
 
     expect(batteryLabel(weeklyOnly, NOW)).toBe('Claude session usage unknown — the session window has not been reported');
+  });
+
+  /* Criterion 3.4: the battery's accessible name says which window the colour
+     came from whenever it is not the session's. */
+  it('names the other window when it is the one colouring the battery', () => {
+    const worseWeekly = reading({
+      limits: [limit({ window: 'session', percent: 17 }), limit({ window: 'weekly', percent: 91, label: 'Weekly' })],
+    });
+
+    expect(batteryLabel(worseWeekly, NOW)).toBe('Claude session usage 17%, resets in 1h 30m, coloured by Weekly at 91%');
+  });
+
+  it('says nothing extra when the session is already the worst', () => {
+    const sessionWorst = reading({
+      limits: [limit({ window: 'session', percent: 91 }), limit({ window: 'weekly', percent: 10, label: 'Weekly' })],
+    });
+
+    expect(batteryLabel(sessionWorst, NOW)).toBe('Claude session usage 91%, resets in 1h 30m');
   });
 });
 

@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { batteryLabel, percentLabel, ringFraction, sessionLimit, toneClass } from '../lib/utilization';
+import { batteryLabel, percentLabel, ringFraction, rowPercent, sessionLimit, usageVars, worstRow } from '../lib/utilization';
 import type { Utilization } from '../types';
 
 /** The ring's geometry, in the SVG's own units. A 24-unit box with a stroke
@@ -47,12 +47,17 @@ export function UtilizationBattery({
   // disc under an em dash rather than a made-up level.
   const filled = limit === null ? 0 : Math.min(100, Math.max(0, limit.percent)) / 100;
 
+  // The colour is the worst window's, not the session's own - the battery
+  // says the worst news in the account without being opened.
+  const worst = worstRow(reading, now);
+
   if (reading === null) return null;
 
   return (
     <button
       type="button"
-      className={`hatch-battery ${toneClass(limit?.tone)}`}
+      className="hatch-battery"
+      style={usageVars(worst ? rowPercent(worst, now) : 0)}
       onClick={onOpen}
       title={label}
       aria-label={label}
