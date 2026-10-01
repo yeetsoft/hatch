@@ -443,6 +443,20 @@ export interface IssueEvent {
   at: string;
 }
 
+/** One row of the event trail read across every issue - the same shape as
+    `IssueEvent`, naming the issue it belongs to. Mirrors ActivityEventDto. */
+export interface ActivityEvent extends IssueEvent {
+  issueKey: string;
+}
+
+/** A page of `ActivityEvent`, newest first. Mirrors ActivityPageDto. There is
+    no total - the page says whether there is another, not how many there
+    are. */
+export interface ActivityPage {
+  events: ActivityEvent[];
+  hasMore: boolean;
+}
+
 /** How full the WIP section is right now. Mirrors WipDto - not WipSection
     (the settings shape, with a nullable limit and no load): this one carries a
     load for every slice, whether or not it has a limit. */

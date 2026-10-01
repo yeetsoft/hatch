@@ -40,12 +40,14 @@ export const NAV: NavEntry[] = [
     kind: 'group',
     label: 'Manage',
     // Pages about the board's shape and data: what it looks like, what comes
-    // into it, what changes in bulk, and last the operator's own controls.
+    // into it, what changes in bulk, what happened last, and last the
+    // operator's own controls.
     rows: [
       { to: '/projects', label: 'Projects' },
       { to: '/statuses', label: 'Statuses' },
       { to: '/import', label: 'Import' },
       { to: '/bulk', label: 'Bulk edit' },
+      { to: '/history', label: 'History' },
       // Admin only, and only where the wall gives anybody a role.
       { to: '/users', label: 'Users', adminOnly: true },
       { to: '/api-keys', label: 'API keys', adminOnly: true },
