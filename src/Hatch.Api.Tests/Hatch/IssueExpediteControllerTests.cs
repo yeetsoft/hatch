@@ -328,6 +328,39 @@ public class IssueExpediteControllerTests
         Assert.Equal([there.Key], await h.ColumnAsync(h.DoneId));
     }
 
+    [Fact]
+    public async Task AnInheritedLevel_FloatsTheSameAsAnOwnOne()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic");
+        await h.PriorityAsync(epic.Key, PriorityLevels.ExpeditedName);
+        var child = await h.FileAsync("story", "the story", parentKey: epic.Key);
+        var unrelated = await h.FileAsync("story", "unrelated");
+
+        // The child's own level stays Normal - it is the epic's Expedited that
+        // floats it, exactly as AnExpeditedCard_IsServedAboveEveryOtherCardInItsColumn
+        // proves for a card expedited on its own row.
+        Assert.Equal([epic.Key, child.Key, unrelated.Key], await h.ColumnAsync(h.InboxId));
+    }
+
+    [Fact]
+    public async Task AnInheritedLevel_IsNotOutrankedByRank()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic");
+        await h.PriorityAsync(epic.Key, PriorityLevels.ExpeditedName);
+        var child = await h.FileAsync("story", "the story", parentKey: epic.Key);
+        var unrelated = await h.FileAsync("story", "unrelated");
+
+        // Drop the unrelated card to the top of the rank order - ahead of the
+        // epic's child by rank alone.
+        Value(await h.Issues.MoveIssue(unrelated.Key, new IssueMoveRequest(h.InboxId, null, child.Key), default));
+
+        // The inherited level still wins: rank is not enough to place a lower
+        // effective level above a higher one, inherited or own.
+        Assert.Equal([epic.Key, child.Key, unrelated.Key], await h.ColumnAsync(h.InboxId));
+    }
+
     // ---- The legacy alias ----
 
     [Fact]
@@ -384,8 +417,8 @@ public class IssueExpediteControllerTests
         public required int InboxId { get; init; }
         public required int DoneId { get; init; }
 
-        public async Task<IssueDto> FileAsync(string type = "task", string title = "a thing") =>
-            Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, null, null, null), default));
+        public async Task<IssueDto> FileAsync(string type = "task", string title = "a thing", string? parentKey = null) =>
+            Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, parentKey, null, null), default));
 
         public async Task<IssueDto> PriorityAsync(string key, string level) =>
             Value(await Priority.PutIssuePriority(key, new PriorityRequest(level), default));
