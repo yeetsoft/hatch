@@ -98,6 +98,34 @@ function hasReset(resetsAt: string | null | undefined, now: Date): boolean {
 export const rowPercent = (limit: UtilizationLimit, now: Date): number =>
   hasReset(limit.resetsAt, now) ? 0 : limit.percent;
 
+/** The floor on the elapsed share `pace` divides by, so that the opening
+    minutes of a window - which genuinely cannot support a rate - cannot
+    project to several times the allowance. The first fifteen minutes of a
+    five-hour window read as though fifteen minutes had gone; the floor can
+    only ever read better than the truth, never worse. */
+const PACE_GRACE = 0.05;
+
+/** The ramp's top control point, and the ceiling `pace` clamps at. */
+const PACE_CEILING = 150;
+
+/**
+ * The share of a row's allowance it is on course to have spent by its own
+ * reset - the percentage spent divided by the share of its window's time
+ * gone, as a projected percentage. `1.0` (100%) is level: the window
+ * refreshes at the moment the allowance runs out. A row whose elapsed share
+ * is unknown (`extra`, or any window with no reset instant) reads `gone` as
+ * `1`, the same reading a window at its own end would give.
+ *
+ * Clamped at `PACE_CEILING` rather than left to run away.
+ */
+export function pace(limit: UtilizationLimit, now: Date): number {
+  const used = rowPercent(limit, now) / 100;
+  const goneFraction = timeGoneFraction(limit.window, limit.resetsAt, now);
+  const gone = goneFraction ?? 1;
+
+  return Math.min(PACE_CEILING, (used / Math.max(gone, PACE_GRACE)) * 100);
+}
+
 /**
  * When the window comes back, in plain words: `resets in 1h 20m`, `resets in
  * under a minute`, `reset time unknown`.
@@ -168,10 +196,10 @@ export const sessionLimit = (reading: Utilization | null): UtilizationLimit | nu
   reading?.limits.find((limit) => limit.window === 'session') ?? null;
 
 /**
- * The row that colours the battery: the highest percentage a row draws at,
- * `extra` left out - a spent credit line is a monthly budget the operator
- * chose to buy, not a window the account will refuse on, and it must never
- * paint the nav black on its own.
+ * The row that colours the battery: the highest pace a row is on, `extra`
+ * left out - a spent credit line is a monthly budget the operator chose to
+ * buy, not a window the account will refuse on, and it must never paint the
+ * nav black on its own.
  *
  * Null only when the reading itself is null, or when every row it carries is
  * `extra`.
@@ -180,14 +208,14 @@ export function worstRow(reading: Utilization | null, now: Date): UtilizationLim
   if (reading === null) return null;
 
   let worst: UtilizationLimit | null = null;
-  let worstPercent = -Infinity;
+  let worstPace = -Infinity;
 
   for (const limit of reading.limits) {
     if (limit.window === 'extra') continue;
 
-    const percent = rowPercent(limit, now);
-    if (percent > worstPercent) {
-      worstPercent = percent;
+    const limitPace = pace(limit, now);
+    if (limitPace > worstPace) {
+      worstPace = limitPace;
       worst = limit;
     }
   }
@@ -196,23 +224,33 @@ export function worstRow(reading: Utilization | null, now: Date): UtilizationLim
 }
 
 /**
- * The seven control points of the ramp every usage bar and the battery itself
- * are painted from, one shade per whole percent between them.
+ * The five control points of the ramp every usage bar and the battery itself
+ * are painted from, one shade per whole projected percent between them -
+ * and, beside each colour, the phrase that names its band, so the two can
+ * never name different bands.
  *
- * Constants here rather than tokens: CSS cannot interpolate a hundred shades
- * of a gradient by itself, which is the same reason `INK_ON_LIGHT`/
+ * Constants here rather than tokens: CSS cannot interpolate a hundred-odd
+ * shades of a gradient by itself, which is the same reason `INK_ON_LIGHT`/
  * `INK_ON_DARK` in `lib/color.ts` are literals rather than tokens. The same
- * ramp in both themes - black at 100% is the point, and a themed black is not
- * black.
+ * ramp in both themes.
+ *
+ * Over percentage used, 100% was the point an allowance ran out, so the ramp
+ * ran all the way to black. Over pace, 100% is level - the window refreshes
+ * at the moment the allowance would run out, which is a window spent exactly
+ * as intended, not bad news - so black and the deep red beside it both leave
+ * the ramp, and the ramp runs to 150: real headroom above level for spending
+ * ahead of the reset to still read as a gradient rather than a cliff.
  */
-const RAMP: readonly [percent: number, color: string][] = [
-  [0, '#1fd65f'],
-  [5, '#2e9e44'],
-  [40, '#f2c500'],
-  [70, '#f07c00'],
-  [85, '#d32f2f'],
-  [95, '#7f1010'],
-  [100, '#000000'],
+const RAMP: readonly [percent: number, color: string, phrase: string][] = [
+  [0, '#1fd65f', 'allowance to spare'],
+  // One off the old ramp's #2e9e44 (blue channel) - the 60-wide first
+  // segment moves each channel by under one unit per percent in places, and
+  // #2e9e44 lets two neighbouring percents (22 and 23) land on the same
+  // rounded colour, which 1.6 forbids. Indistinguishable to the eye.
+  [60, '#2e9e43', 'well ahead of the reset'],
+  [90, '#f2c500', 'just ahead of the reset'],
+  [100, '#f07c00', 'level with the reset'],
+  [150, '#d32f2f', 'spending ahead of the reset'],
 ];
 
 function mix(from: string, to: string, at: number): string {
@@ -226,13 +264,13 @@ function mix(from: string, to: string, at: number): string {
 }
 
 /**
- * The ramp's colour at a percentage, clamped to 0..100 and rounded to the
- * nearest whole percent before it is looked up - 101 percentages, 101
+ * The ramp's colour at a projected percentage, clamped to 0..150 and rounded
+ * to the nearest whole percent before it is looked up - 151 percentages, 151
  * distinct colours, interpolated linearly in sRGB between whichever pair of
  * control points the percentage falls between.
  */
 export function rampColor(percent: number): string {
-  const clamped = Math.round(Math.min(100, Math.max(0, percent)));
+  const clamped = Math.round(Math.min(PACE_CEILING, Math.max(0, percent)));
 
   for (let i = 0; i < RAMP.length - 1; i++) {
     const [from, fromColor] = RAMP[i];
@@ -245,15 +283,39 @@ export function rampColor(percent: number): string {
   return RAMP[RAMP.length - 1][1];
 }
 
+/** Which of the ramp's five control points a projected percentage names, for
+    the phrase alone - the hex itself stays continuously interpolated. Ties
+    round up, towards the band that is on its way. */
+function nearestBand(percent: number): number {
+  const clamped = Math.round(Math.min(PACE_CEILING, Math.max(0, percent)));
+
+  for (let i = 0; i < RAMP.length - 1; i++) {
+    const [from] = RAMP[i];
+    const [to] = RAMP[i + 1];
+    if (clamped >= from && clamped <= to) {
+      return clamped - from < to - clamped ? i : i + 1;
+    }
+  }
+
+  return RAMP.length - 1;
+}
+
+/** The phrase naming the band a projected percentage falls in - the same
+    five words `batteryLabel` and `rowSentence` say out loud as the colour
+    they sit beside. */
+const paceLabel = (percent: number): string => RAMP[nearestBand(percent)][2];
+
 /**
  * The ink to write on a ramp fill: pure black or pure white, whichever
  * measures the higher WCAG contrast ratio against it.
  *
  * Not `contrastInk` (`lib/color.ts:53`) as it stands - its dark ink is
- * `#1a1a1a`, and against these fills the better of its two inks dips to
- * 4.18:1 at 80%. With `#000000`/`#ffffff` the lowest step across the ramp is
- * 4.66:1, at 83% - comfortably over the 4.5:1 floor. `luminance` is the same
- * arithmetic `contrastInk` uses; only the two inks being compared change.
+ * `#1a1a1a`, which does not clear 4.5:1 against every colour on this ramp.
+ * With `#000000`/`#ffffff` the lowest step across the ramp is 4.59:1, at a
+ * projected 142% - comfortably over the 4.5:1 floor, and with headroom to
+ * spare now that black and the deep red that used to sit at the top both
+ * left the ramp. `luminance` is the same arithmetic `contrastInk` uses; only
+ * the two inks being compared change.
  */
 export function rampInk(color: string): string {
   const l = luminance(color);
@@ -267,9 +329,12 @@ export function rampInk(color: string): string {
  * The custom properties a ramp-coloured element's `style` carries, read by
  * App.css - a copy of `statusVars` (`lib/color.ts:62`), and the only way a
  * ramp colour reaches the stylesheet. App.css holds no literal of its own.
+ *
+ * Takes a projected percentage of the allowance - a pace - not a percentage
+ * spent.
  */
-export function usageVars(percent: number): Record<string, string> {
-  const color = rampColor(percent);
+export function usageVars(pace: number): Record<string, string> {
+  const color = rampColor(pace);
   return { '--usage-color': color, '--usage-ink': rampInk(color) };
 }
 
@@ -293,19 +358,21 @@ export const percentLabel = (limit: UtilizationLimit | null): string =>
 
 /**
  * The row's sentence for a screen reader: its name, the percent used, the
- * percent of its window gone, and when it resets - one picture, one sentence,
- * the way `StatusMeter.tsx` announces its bar.
+ * percent of its window gone, what its pace says in words, and when it
+ * resets - one picture, one sentence, the way `StatusMeter.tsx` announces its
+ * bar.
  *
- * The middle clause is left out for a row `timeGoneFraction` has nothing to
- * say about - the `extra` row, or a window with no reset instant - which is
- * exactly the row that draws no time bar at all.
+ * The window-gone clause is left out for a row `timeGoneFraction` has
+ * nothing to say about - the `extra` row, or a window with no reset instant -
+ * which is exactly the row that draws no time bar at all. The pace phrase is
+ * said regardless: `pace` always has an answer, even there.
  */
 export function rowSentence(limit: UtilizationLimit, now: Date): string {
   const percent = rowPercent(limit, now);
   const goneFraction = timeGoneFraction(limit.window, limit.resetsAt, now);
   const goneClause = goneFraction === null ? '' : `, ${Math.round(goneFraction * 100)}% of the window gone`;
 
-  return `${limit.label}: ${percent}% used${goneClause}, ${rowResetPhrase(limit, now)}`;
+  return `${limit.label}: ${percent}% used${goneClause}, ${paceLabel(pace(limit, now))}, ${rowResetPhrase(limit, now)}`;
 }
 
 /**
@@ -313,8 +380,10 @@ export function rowSentence(limit: UtilizationLimit, now: Date): string {
  *
  * The state comes first when it is not `ok`, because "this number is old" is
  * the thing somebody reading a stale battery most needs to know and a screen
- * reader reads in order. The colour's own window is named whenever it is not
- * the session's, so the battery never says less than the chip it wears.
+ * reader reads in order. The pace phrase names whichever row is colouring the
+ * chip - `worstRow`, not the session row - and that row's own window is named
+ * too whenever it is not the session's, so the battery never says less than
+ * the chip it wears.
  */
 export function batteryLabel(reading: Utilization | null, now: Date): string {
   if (reading === null) return 'Claude usage unknown — no runner of mine has reported one';
@@ -322,9 +391,10 @@ export function batteryLabel(reading: Utilization | null, now: Date): string {
   const limit = sessionLimit(reading);
   if (limit === null) return 'Claude session usage unknown — the session window has not been reported';
 
-  const headline = `Claude session usage ${Math.round(limit.percent)}%, ${resetPhrase(limit.resetsAt, now)}`;
-
   const worst = worstRow(reading, now);
+  const phrase = paceLabel(worst ? pace(worst, now) : 0);
+  const headline = `Claude session usage ${Math.round(limit.percent)}%, ${phrase}, ${resetPhrase(limit.resetsAt, now)}`;
+
   const colouredBy =
     worst && worst.window !== 'session' ? `, coloured by ${worst.label} at ${rowPercent(worst, now)}%` : '';
 

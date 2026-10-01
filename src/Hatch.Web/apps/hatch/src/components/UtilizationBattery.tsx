@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { batteryLabel, percentLabel, ringFraction, rowPercent, sessionLimit, usageVars, worstRow } from '../lib/utilization';
+import { batteryLabel, pace, percentLabel, ringFraction, sessionLimit, usageVars, worstRow } from '../lib/utilization';
 import type { Utilization } from '../types';
 
 /** The ring's geometry, in the SVG's own units. A 24-unit box with a stroke
@@ -57,7 +57,7 @@ export function UtilizationBattery({
     <button
       type="button"
       className="hatch-battery"
-      style={usageVars(worst ? rowPercent(worst, now) : 0)}
+      style={usageVars(worst ? pace(worst, now) : 0)}
       onClick={onOpen}
       title={label}
       aria-label={label}
