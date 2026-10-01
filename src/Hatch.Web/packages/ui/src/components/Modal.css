@@ -67,7 +67,14 @@
    are laid out against block flow inside it: a footer nobody passes moves
    nothing. */
 
-.hatch-modal__panel--framed {
+/* Anchored to the panel's own class, not the modifier alone: a single-class
+   `.hatch-modal__panel--framed` ties at 0,1,0 with any app's own `.hatch-card`
+   rule, and source order then decides which wins - which is how
+   `apps/hatch/src/App.css`'s later `.hatch-card { display: block }` was
+   beating this `display: flex` and leaving the framed panel with nothing to
+   scroll. `.hatch-modal__panel.hatch-modal__panel--framed` is 0,2,0 and wins
+   regardless of which stylesheet the bundle puts last. */
+.hatch-modal__panel.hatch-modal__panel--framed {
   display: flex;
   flex-direction: column;
   /* The body scrolls now, and this is what keeps what it scrolls inside the

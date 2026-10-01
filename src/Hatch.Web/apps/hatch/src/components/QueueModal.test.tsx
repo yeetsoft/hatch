@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueueModal } from './QueueModal';
 import type { QueueStatus } from '../lib/useQueue';
-import type { Issue, IssueCard, QueueEntry, Status } from '../types';
+import type { Issue, IssueCard, IssueClaim, QueueEntry, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -62,6 +62,17 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   hopKind: null,
   hopUnder: null,
   clearNote: null,
+  ...over,
+});
+
+const claim = (over: Partial<IssueClaim> = {}): IssueClaim => ({
+  claimedBy: 'hatch',
+  runner: 'Buster Bluth',
+  claimedAt: new Date().toISOString(),
+  heartbeatAt: new Date().toISOString(),
+  chatter: null,
+  chatterAt: null,
+  ttlSeconds: 300,
   ...over,
 });
 
@@ -143,6 +154,24 @@ describe('QueueModal', () => {
     const html = render('ready', [entry(), entry()]);
 
     expect(html).not.toContain('hatch-queue-marker');
+  });
+
+  it('draws the robot head on every row once any entry\'s issue is claimed', () => {
+    const html = render('ready', [entry(), entry({ issue: issue({ claim: claim() }) })]);
+
+    expect(html.match(/hatch-card-claim /g)).toHaveLength(1);
+  });
+
+  it('draws no robot head when nothing in the pass is claimed', () => {
+    const html = render('ready', [entry(), entry()]);
+
+    expect(html).not.toContain('hatch-card-claim');
+  });
+
+  it('reads the row\'s own claim, not a relative\'s, for the robot head', () => {
+    const html = render('ready', [entry({ blocked: 'HA-12, above this, is working this' })]);
+
+    expect(html).not.toContain('hatch-card-claim');
   });
 
   it('tallies the pass in the footer', () => {
