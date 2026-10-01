@@ -11,6 +11,7 @@ const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Stat
   isWip: false,
   expressSkips: false,
   parentPulls: false,
+  agentFiles: false,
   color: '#6b7280',
   ...opts,
 });
