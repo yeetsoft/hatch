@@ -765,29 +765,64 @@
   margin-left: var(--sp-1);
 }
 
-/* Something is holding this card right now.
-
-   A dot rather than a word, and the smallest thing on the card that is still
-   visible: the board is read all day, a ticket is claimed for a few minutes,
-   and the marker has to cost nothing beside a nine-rem assignee name. The whole
-   sentence - who, from where, how long since a word - is on the hover.
-
-   Sized in ems so it tracks the head row's type rather than needing its own
-   number, and given a flex basis it cannot be squeezed out of: everything else
-   in that row may shrink, and this is the one thing that reads as nothing at
-   all if it half-disappears. */
-.hatch-card-claim {
-  flex: 0 0 auto;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
+/* The robot glyph: head, antenna, lamp and eyes - the shape the nav's
+   attention control draws (below), shared with a claimed card. Hollow at
+   rest; the lamp and eyes fill when `lit`. Nothing here sizes or colours it -
+   that is each call site's own rule, which is why every part strokes
+   currentColor. */
+.hatch-robot-head {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
 }
 
-/* Green is being heard from. A ring rather than a fill so the dot has an edge
-   against a coloured column header. */
+.hatch-robot-antenna {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.hatch-robot-lamp,
+.hatch-robot-eye {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.hatch-robot-eye.lit {
+  fill: currentColor;
+}
+
+.hatch-robot-lamp.lit {
+  fill: currentColor;
+}
+
+/* Something is holding this card right now.
+
+   A robot head rather than a dot, and in its own colour rather than the
+   board's green - the green dot read as the same fact as the express badge
+   beside it, and the two are opposite: one is a runner mid-increment right
+   now, the other is a column skipped with no session at all.
+
+   The whole sentence - who, from where, how long since a word - is on the
+   hover and the accessible name; the glyph alone only has room for which of
+   the two colours. */
+.hatch-card-claim {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.hatch-card-claim-glyph {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
+/* Blue is being heard from - --primary, the one blue the tokens carry. It is
+   also expedite's, which is fine: expedite is a filled pill holding an arrow,
+   and this is a stroked head, so the two never read as the same mark. */
 .hatch-card-claim-fresh {
-  background: var(--success);
-  box-shadow: 0 0 0 2px var(--success-bg);
+  color: var(--primary);
 }
 
 /* Amber is a holder that has gone quiet on a lease it still holds - the same
@@ -795,8 +830,7 @@
    "expired": an expired claim is drawn as no claim at all, because the server
    stopped sending one. */
 .hatch-card-claim-quiet {
-  background: var(--warn);
-  box-shadow: 0 0 0 2px var(--warn-bg);
+  color: var(--warn);
 }
 
 .hatch-card-parent {
@@ -2684,7 +2718,7 @@ input.hatch-inline-title-input {
 }
 
 /* The beacon: the emergency badge's own glyph, pulsing - the second thing on
-   this page (after .hatch-attention-lamp.lit, App.css:3117) allowed to move
+   this page (after .hatch-attention-glyph .hatch-robot-lamp.lit, App.css:3457) allowed to move
    without a person having moved it, for the same reason: this exists to be
    noticed. Slower than the attention lamp's 2s blink, so the two don't read
    as the same rhythm on a board carrying both. */
@@ -3412,40 +3446,19 @@ button.hatch-option.chosen {
   border: 1.5px solid var(--chrome);
 }
 
-.hatch-attention-head {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-}
+/* The glyph's own parts (fill, stroke, the lit states) are shared with a
+   claimed card and live with it (above) - currentColor rather than --primary
+   either way: --primary cannot be ink on this gradient (HA-25's "Tones on the
+   bar" rule), and currentColor is already --on-chrome here.
 
-.hatch-attention-antenna {
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-}
-
-/* The lamp and the eyes: hollow at rest, filled when something is waiting. The
-   whole point of the glyph having two states is that the bar reads as lit
-   from the corner of an eye, before the pills are legible. currentColor
-   rather than --primary: --primary cannot be ink on this gradient (HA-25's
-   "Tones on the bar" rule), and currentColor is already --on-chrome here. */
-.hatch-attention-lamp,
-.hatch-attention-eye {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-}
-
-.hatch-attention-eye.lit {
-  fill: currentColor;
-}
-
-.hatch-attention-lamp.lit {
-  fill: currentColor;
+   The blink is this control's alone, which is why it is scoped through
+   .hatch-attention-glyph rather than living on .hatch-robot-lamp.lit itself -
+   a claimed card's robot lights the same way and never moves. */
+.hatch-attention-glyph .hatch-robot-lamp.lit {
   /* The one thing on the page that moves without a person having moved it -
      against the house's calm-motion rule (tokens.css) on purpose, because this
-     control exists to be noticed. Scoped to this one element and nothing else,
-     and off entirely under reduced motion below. */
+     control exists to be noticed. Scoped to this one selector and nothing
+     else, and off entirely under reduced motion below. */
   animation: hatch-attention-blink 2s ease-in-out infinite;
 }
 
@@ -3461,7 +3474,7 @@ button.hatch-option.chosen {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hatch-attention-lamp.lit {
+  .hatch-attention-glyph .hatch-robot-lamp.lit {
     animation: none;
   }
 }

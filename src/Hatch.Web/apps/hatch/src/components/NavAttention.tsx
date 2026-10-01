@@ -3,9 +3,7 @@ import { attentionLabel, attentionTone } from '../lib/attention';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useAttentionNow } from '../lib/useAttentionNow';
 import { AttentionPanel } from './AttentionPanel';
-
-/** The glyph's own units. A 24-unit box, matching the battery beside it. */
-const SIZE = 24;
+import { Robot } from './Robot';
 
 /**
  * Whether the loop is waiting on a person, at the right end of the bar.
@@ -78,7 +76,7 @@ export function NavAttention() {
         aria-expanded={open}
       >
         <span className="hatch-attention-glyph-wrap">
-          <Robot lit={tone === 'asking'} />
+          <Robot lit={tone === 'asking'} className="hatch-attention-glyph" />
           {/* A dot, not a pill: a runner out of usage is not a count of
               anything to fix, so it never changes the control's width or its
               review-and-question pills - only the accessible name above does
@@ -103,33 +101,5 @@ export function NavAttention() {
 
       {open && <AttentionPanel attention={attention} now={now} reload={reload} />}
     </div>
-  );
-}
-
-/**
- * A robot head with an antenna, inline the way the battery's glyph is.
- *
- * The whole thing is muted at rest with the antenna's lamp unlit. When
- * something is waiting the lamp and the eyes light, and the lamp is the only
- * part that moves - the motion is confined to it, and there is none at all
- * under `prefers-reduced-motion: reduce` (App.css).
- */
-function Robot({ lit }: { lit: boolean }) {
-  return (
-    <svg
-      className="hatch-attention-glyph"
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
-      aria-hidden="true"
-      focusable="false"
-    >
-      {/* The antenna: a stalk up out of the head, and the lamp on top of it. */}
-      <line className="hatch-attention-antenna" x1="12" y1="6" x2="12" y2="3.5" />
-      <circle className={`hatch-attention-lamp${lit ? ' lit' : ''}`} cx="12" cy="2.5" r="1.75" />
-
-      <rect className="hatch-attention-head" x="4" y="6" width="16" height="13" rx="4" />
-
-      <circle className={`hatch-attention-eye${lit ? ' lit' : ''}`} cx="9" cy="12" r="1.5" />
-      <circle className={`hatch-attention-eye${lit ? ' lit' : ''}`} cx="15" cy="12" r="1.5" />
-    </svg>
   );
 }
