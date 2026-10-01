@@ -206,15 +206,23 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// the one ordered list rather than sorting for itself - so the board, the plan
 /// and the queue cannot disagree about where a card sits. Trailing and
 /// defaulted for the reason <paramref name="OpenQuestions"/> is, though every
-/// list that draws a card fills it. Derived from <paramref name="Priority"/>
-/// as <c>Priority >= PriorityLevels.Expedited</c> - nothing writes it
-/// directly any more.
+/// list that draws a card fills it. Derived from the effective level - the one
+/// <paramref name="Priority"/> names - as
+/// <c>effective >= PriorityLevels.Expedited</c> - nothing writes it directly
+/// any more.
 /// </param>
 /// <param name="Priority">
-/// The level's name - see <see cref="PriorityLevels"/> - <c>"normal"</c>,
-/// <c>"expedited"</c> or <c>"emergency"</c>. Trailing and defaulted for the
-/// reason <paramref name="OpenQuestions"/> is, though every list that draws a
-/// card fills it.
+/// The effective level's name - see <see cref="PriorityLevels"/> -
+/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
+/// read, to the nearest ancestor - including this issue itself - that is not
+/// Normal; never stored or copied. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is, though every list that draws a card
+/// fills it.
+/// </param>
+/// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
+/// <param name="PriorityFrom">
+/// The ancestor <paramref name="Priority"/> was inherited from, or null when
+/// the effective level is this issue's own, or Normal.
 /// </param>
 public record IssueCardDto(
     string Key,
@@ -231,7 +239,9 @@ public record IssueCardDto(
     IssueClaimDto? Claim = null,
     bool Expedited = false,
     bool Express = false,
-    string Priority = PriorityLevels.NormalName);
+    string Priority = PriorityLevels.NormalName,
+    string PriorityOwn = PriorityLevels.NormalName,
+    string? PriorityFrom = null);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -314,13 +324,21 @@ public record IssueClaimDto(
 /// because it is a sort key and not a gate. Readable by a key for the reason
 /// <paramref name="ModelOverride"/> is, and writable only by a person through
 /// <see cref="IssueExpediteController"/>: a key that could set one could put
-/// its own ticket at the front of every night. Derived from
-/// <paramref name="Priority"/> as <c>Priority >= PriorityLevels.Expedited</c> -
-/// nothing writes it directly any more.
+/// its own ticket at the front of every night. Derived from the effective
+/// level - the one <paramref name="Priority"/> names - as
+/// <c>effective >= PriorityLevels.Expedited</c> - nothing writes it directly
+/// any more.
 /// </param>
 /// <param name="Priority">
-/// The level's name - see <see cref="PriorityLevels"/> - <c>"normal"</c>,
-/// <c>"expedited"</c> or <c>"emergency"</c>.
+/// The effective level's name - see <see cref="PriorityLevels"/> -
+/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
+/// read, to the nearest ancestor - including this issue itself - that is not
+/// Normal; never stored or copied.
+/// </param>
+/// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
+/// <param name="PriorityFrom">
+/// The ancestor <paramref name="Priority"/> was inherited from, or null when
+/// the effective level is this issue's own, or Normal.
 /// </param>
 /// <param name="WipLimit">
 /// How many of an epic's stories may be in progress at once, or null for
@@ -358,6 +376,8 @@ public record IssueDto(
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
     bool Express = false,
     string Priority = PriorityLevels.NormalName,
+    string PriorityOwn = PriorityLevels.NormalName,
+    string? PriorityFrom = null,
     int? WipLimit = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
