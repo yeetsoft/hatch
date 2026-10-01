@@ -66,6 +66,9 @@ export interface Status {
       session while its parent stands in the implementation column. Nothing
       reads this yet. */
   parentPulls: boolean;
+  /** Whether a program's own issues are born here rather than in the
+      leftmost column - see HA-195. At most one column ever holds it. */
+  agentFiles: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;

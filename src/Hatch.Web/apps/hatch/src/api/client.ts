@@ -151,6 +151,15 @@ export const setParentPulls = (id: number, parentPulls: boolean) =>
     ...asJson({ parentPulls }),
   });
 
+/** Which column a program's own issues are born in, rather than the
+    leftmost one. Its own route for the same reason ParentPulls has one:
+    writing it is closed to an API key - see StatusesController.PutAgentFiles. */
+export const setAgentFiles = (id: number, agentFiles: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/agent-files`, {
+    method: 'PUT',
+    ...asJson({ agentFiles }),
+  });
+
 // ---- Issues ----
 
 // ---- Playbooks ----

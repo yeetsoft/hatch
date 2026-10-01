@@ -11,6 +11,7 @@ const status = (id: number, name: string, sortOrder: number, isTerminal = false)
   isWip: false,
   expressSkips: false,
   parentPulls: false,
+  agentFiles: false,
   color: '#6b7280',
 });
 
