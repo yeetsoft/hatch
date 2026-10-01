@@ -41,6 +41,10 @@ export function compactTokens(n: number): string {
   return `${Math.round(n)}`;
 }
 
+/** `compactTokens`, or a dash for a figure no run ever reported - an older
+    runner's row, or one from a `--quiet` run. */
+export const compactTokensOrDash = (n: number | null): string => (n === null ? '—' : compactTokens(n));
+
 /**
  * The secondary figure: `$3.41`, `$0.0012`, `$0`.
  *

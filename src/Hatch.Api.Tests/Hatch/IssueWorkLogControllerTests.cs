@@ -49,6 +49,37 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task RequestsPeakContextAndPromptChars_ArePassedThroughUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            Requests = 103,
+            PeakContextTokens = 183_000,
+            PromptChars = 16_533,
+        });
+
+        Assert.Equal(103, entry.Requests);
+        Assert.Equal(183_000, entry.PeakContextTokens);
+        Assert.Equal(16_533, entry.PromptChars);
+    }
+
+    [Fact]
+    public async Task RequestsPeakContextAndPromptChars_AreNullWhenNotSent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported());
+
+        Assert.Null(entry.Requests);
+        Assert.Null(entry.PeakContextTokens);
+        Assert.Null(entry.PromptChars);
+    }
+
+    [Fact]
     public async Task TheFourCounts_AreTheSumOfTheBreakdownAndNotSentByTheCaller()
     {
         var h = await NewAsync();

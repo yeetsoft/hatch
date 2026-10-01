@@ -311,6 +311,38 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task RequestsRanksOnItsOwnCount_AndNullsSortLast()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), requests: 12);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), requests: 103);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), requests: null);
+
+        var byRequests = await h.SessionsAsync(sort: "requests");
+
+        Assert.Equal("requests", byRequests.Sort);
+        Assert.Equal([103, 12, null], byRequests.Sessions.Select(s => s.Requests));
+    }
+
+    [Fact]
+    public async Task PeakContextRanksOnItsOwnFigure_AndNullsSortLast()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), peakContextTokens: 70_000);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), peakContextTokens: 264_000);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), peakContextTokens: null);
+
+        var byPeak = await h.SessionsAsync(sort: "peakContext");
+
+        Assert.Equal("peakContext", byPeak.Sort);
+        Assert.Equal([264_000, 70_000, null], byPeak.Sessions.Select(s => s.PeakContextTokens));
+    }
+
+    [Fact]
     public async Task TiedSessions_BreakOnWhenTheyEndedAndThenOnId()
     {
         var h = await NewAsync();
@@ -495,7 +527,9 @@ public class WorkLogControllerTests
     {
         var h = await NewAsync();
 
-        Assert.Equal("a sort is tokens, cost or ended - not \"turns\"", await h.SessionRefusalAsync(sort: "turns"));
+        Assert.Equal(
+            "a sort is tokens, cost, ended, requests or peakContext - not \"turns\"",
+            await h.SessionRefusalAsync(sort: "turns"));
     }
 
     [Fact]
@@ -552,7 +586,9 @@ public class WorkLogControllerTests
             string? title = null,
             bool described = false,
             long durationMs = 1_000,
-            int turns = 1)
+            int turns = 1,
+            int? requests = null,
+            long? peakContextTokens = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -572,6 +608,8 @@ public class WorkLogControllerTests
                 Turns = turns,
                 CostUsd = usd,
                 InputTokens = tokens,
+                Requests = requests,
+                PeakContextTokens = peakContextTokens,
                 CreatedAt = Now,
             };
 

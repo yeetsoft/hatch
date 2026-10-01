@@ -94,8 +94,10 @@ public static class Banner
     {
         var elapsed = Format.Duration((long)(report.EndedAt - report.StartedAt).TotalSeconds);
         var tokens = report.TotalTokens is { } t ? $"{Format.Compact(t)} tokens" : "tokens not reported";
+        var requests = report.Requests is { } r ? $"{r} requests" : "requests not reported";
+        var peak = report.PeakContextTokens is { } p ? $"{Format.Compact(p)} peak context" : "peak context not reported";
         var cost = report.Cost is { } c ? Format.Spent(c) : "cost not reported";
         var turns = report.Turns is { } n ? $"{n} turns" : "turns not reported";
-        return $"{elapsed}, {tokens}, {cost}, {turns}";
+        return $"{elapsed}, {tokens}, {requests}, {peak}, {cost}, {turns}";
     }
 }

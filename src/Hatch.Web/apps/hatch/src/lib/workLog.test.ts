@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compactTokens,
+  compactTokensOrDash,
   durationPhrase,
   entryMark,
   entryTitle,
@@ -44,6 +45,9 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   cacheReadTokens: 59_000,
   totalTokens: 63_380,
   models: [],
+  requests: 42,
+  peakContextTokens: 140_000,
+  promptChars: 16_533,
   ...over,
 });
 
@@ -74,6 +78,16 @@ describe('compactTokens', () => {
     expect(compactTokens(0)).toBe('0');
     expect(compactTokens(-1)).toBe('0');
     expect(compactTokens(Number.NaN)).toBe('0');
+  });
+});
+
+describe('compactTokensOrDash', () => {
+  it('draws a dash for a figure no run ever reported', () => {
+    expect(compactTokensOrDash(null)).toBe('—');
+  });
+
+  it('otherwise reads exactly as compactTokens does', () => {
+    expect(compactTokensOrDash(912_400)).toBe(compactTokens(912_400));
   });
 });
 

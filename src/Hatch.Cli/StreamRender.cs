@@ -60,6 +60,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     private long _thinking;
     private long _said;
     private readonly HashSet<string> _counted = [];
+    private long _peakContext;
 
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
@@ -67,6 +68,16 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     /// answers with, read by the readout while the session is still running.
     /// </summary>
     public long TokensSoFar { get; private set; }
+
+    /// <summary>One request per distinct assistant message id seen so far.</summary>
+    public int Requests => _counted.Count;
+
+    /// <summary>
+    /// The largest <c>input + cache creation + cache read</c> carried by any one
+    /// message so far - output tokens excluded, since they do not weigh on the
+    /// next turn's context the way the other three do.
+    /// </summary>
+    public long PeakContextTokens => _peakContext;
 
     /// <summary>
     /// The account's usage windows, out of the session's own stream - the
@@ -224,6 +235,10 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
         TokensSoFar += Long(usage, "input_tokens") + Long(usage, "output_tokens")
             + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
+
+        var context = Long(usage, "input_tokens") + Long(usage, "cache_creation_input_tokens")
+            + Long(usage, "cache_read_input_tokens");
+        if (context > _peakContext) _peakContext = context;
     }
 
     /// <summary>

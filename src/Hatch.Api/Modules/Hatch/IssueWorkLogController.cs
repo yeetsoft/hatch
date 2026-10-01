@@ -113,6 +113,13 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.CacheReadTokens = models.Sum(m => m.CacheReadTokens);
         entry.ModelUsage = WriteModels(models);
 
+        // Passthrough, not derived: unlike the four token counts above, there is
+        // no breakdown to recompute these from - the runner is the only thing
+        // that ever knows them.
+        entry.Requests = request.Requests;
+        entry.PeakContextTokens = request.PeakContextTokens;
+        entry.PromptChars = request.PromptChars;
+
         await db.SaveChangesAsync(ct);
 
         return Project(entry);
@@ -200,7 +207,10 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         w.CacheCreationTokens,
         w.CacheReadTokens,
         w.InputTokens + w.OutputTokens + w.CacheCreationTokens + w.CacheReadTokens,
-        ReadModels(w.ModelUsage));
+        ReadModels(w.ModelUsage),
+        w.Requests,
+        w.PeakContextTokens,
+        w.PromptChars);
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>

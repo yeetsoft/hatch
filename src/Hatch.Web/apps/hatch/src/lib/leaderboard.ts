@@ -160,7 +160,9 @@ export const parsePreset = (raw: string | null): RangePreset =>
   PRESETS.some((p) => p.key === raw) ? (raw as RangePreset) : DEFAULT_PRESET;
 
 export const parseSort = (raw: string | null): SessionSort =>
-  raw === 'tokens' || raw === 'cost' || raw === 'ended' ? raw : DEFAULT_SORT;
+  raw === 'tokens' || raw === 'cost' || raw === 'ended' || raw === 'requests' || raw === 'peakContext'
+    ? raw
+    : DEFAULT_SORT;
 
 export const parseMeasure = (raw: string | null): SpendMeasure =>
   raw === 'tokens' || raw === 'cost' ? raw : DEFAULT_MEASURE;
