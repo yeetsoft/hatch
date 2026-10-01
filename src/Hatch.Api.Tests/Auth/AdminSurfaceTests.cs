@@ -260,6 +260,12 @@ public class AdminSurfaceTests
         "WorkLogController.GetHistory",
         "WorkLogController.GetSessions",
 
+        // The event trail across every issue rather than about one - the
+        // module's other cross-issue read, Hatch-scoped and open to a person
+        // the same way WorkLogController's reads are: it says nothing about an
+        // issue its own thread would refuse to.
+        "ActivityController.GetActivity",
+
         // Playbooks are guarded twice over. Reading one is Hatch-scoped like
         // the rest; writing one names no scope at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its

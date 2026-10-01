@@ -1093,6 +1093,7 @@ public class EfHatchTrunkBuild
 /// </remarks>
 [Table("IssueEvents")]
 [Index(nameof(IssueId), nameof(At))]
+[Index(nameof(At), nameof(Id))]
 public class EfHatchIssueEvent
 {
     public const int MaxKindLength = 32;
