@@ -3512,6 +3512,19 @@ nothing was spent on a ticket that did not move - the ticket did move, one
 column, and the runner never held a claim to have written anything on it. See
 [the hop](#the-hop).
 
+**Filing is progress.** An increment that ends with its ticket in the column
+it started in, but with new keys under it that were not there at dispatch, is
+not a stall either - it is measured against the dispatch's own children, so a
+child filed and a child moved elsewhere during the same run both count, and
+nothing about a child that disappeared counts against it. This matters because
+an increment's job is not always to move the one ticket it was dispatched
+against: a verification that finds gaps in an epic files them and has to leave
+the epic exactly where it found it, and a breakdown that filed every story it
+was asked for did the work even if it forgot to also move the task describing
+it. It applies the same way to every issue type, and a ticket that filed work
+is offered again on the next pass exactly as if it had moved, unless something
+else - a dependency, a playbook, a question - holds it back.
+
 **Neither is a usage limit.** A session that ends because the Claude account it
 ran under hit its usage limit is read from what it said on its way out — the
 reported sentence is `You've hit your session limit · resets 7:40pm

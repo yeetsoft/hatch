@@ -187,8 +187,9 @@ public sealed class Tally
         // row to leave a ticket alone, freed for the next pass rather than
         // flagged. A conflict that was resolved is something the night got
         // done, though the ticket did not move, and so is a fix pushed to a
-        // failing build.
-        if (report.Moved || report.Resolved || report.FixPushed) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
+        // failing build - and so is work filed under the ticket, though it
+        // stayed put.
+        if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
         else if (report.LetGo) _letGo.Add($"hatch:   let go   {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
@@ -1380,6 +1381,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // fail to: it stays in review, which is where it belongs.
             var said = report.Moved ? $"{report.Key} moved, {report.Outcome}"
                 : report.Resolved || report.FixPushed ? $"{report.Key} {report.Outcome}"
+                : report.Filed.Count > 0 ? $"{report.Key} {report.Outcome}"
                 : $"{report.Key} did not move - {report.Outcome}";
 
             runtime.Say.Line("");
