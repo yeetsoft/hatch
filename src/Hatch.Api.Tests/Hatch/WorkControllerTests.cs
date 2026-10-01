@@ -3661,6 +3661,208 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
     }
 
+    // ---- An epic's own limit ----
+    //
+    // HA-112: a story or a bug moving from outside the section to inside it,
+    // whose parent is an epic, is held to that epic's own WipLimit (null
+    // reading as one) - the same fold as above, with the epic's own numbers,
+    // asked beside the section-wide one and on by default wherever the
+    // section exists at all, with no WipLimits row of its own needed.
+
+    [Fact]
+    public async Task EpicFold_FoldsAnEpicsSecondAndThirdStoryWhileItsFirstIsInTheSection()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        await h.FileAsync("story", "S1, already inside", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var s2 = await h.FileAsync("story", "S2, waiting", h.Todo, rank: 1024, parentId: epic.Id);
+        var s3 = await h.FileAsync("story", "S3, waiting", h.Todo, rank: 2048, parentId: epic.Id);
+        var x = await h.FileAsync("story", "X, no parent", h.Todo, rank: 4096);
+
+        var otherEpic = await h.FileAsync("epic", "another epic", h.Todo, rank: 8192);
+        var otherChild = await h.FileAsync("story", "under another epic", h.Todo, rank: 8200, parentId: otherEpic.Id);
+
+        var sentence = $"{Key(epic)} is at its limit - 1 of 1 of its stories and bugs is in the WIP section - "
+            + "nothing more of it is pulled in until one leaves";
+
+        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+        Assert.Equal(sentence, queue[Key(s2)]);
+        Assert.Equal(sentence, queue[Key(s3)]);
+        Assert.Null(queue[Key(x)]);
+        Assert.Null(queue[Key(otherChild)]);
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, null, null, null, false, default));
+        Assert.NotEqual(Key(s2), next.Issue.Key);
+        Assert.NotEqual(Key(s3), next.Issue.Key);
+
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task EpicFold_WithALimitOfTwo_ASecondStoryLandsAndAClaimedOneStaysClearWhileAThirdFolds()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 2);
+        await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
+        var s3 = await h.FileAsync("story", "S3", h.Todo, rank: 2048, parentId: epic.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+
+        var token = await h.ClaimAsync(s2);
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), token, default)).Blocked);
+
+        var sentence = $"{Key(epic)} is at its limit - 2 of 2 of its stories and bugs are in the WIP section - "
+            + "nothing more of it is pulled in until one leaves";
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s3), null, default)).Blocked);
+
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var storyBug = board.Wip!.Slices.Single(s => s.Types.SequenceEqual(new[] { "story", "bug" }));
+        Assert.Equal(2, storyBug.Load);
+        Assert.Equal(1, storyBug.ClaimedInbound);
+    }
+
+    [Fact]
+    public async Task EpicFold_WhenAStoryLeavesTheNextPassIsClear_ThenFoldsAgainOnceItIsClaimed()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        var s1 = await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+        var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
+        var s3 = await h.FileAsync("story", "S3", h.Todo, rank: 2048, parentId: epic.Id);
+
+        var sentence = $"{Key(epic)} is at its limit - 1 of 1 of its stories and bugs is in the WIP section - "
+            + "nothing more of it is pulled in until one leaves";
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+
+        s1.StatusId = h.Done;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+
+        await h.ClaimAsync(s2);
+
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s3), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task EpicFold_AtLimitMinusOne_AClaimedStoryStaysClearAndASecondClaimFolds()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 2);
+        await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
+        var s3 = await h.FileAsync("story", "S3", h.Todo, rank: 2048, parentId: epic.Id);
+
+        var tokenS2 = await h.ClaimAsync(s2);
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), tokenS2, default)).Blocked);
+
+        var tokenS3 = await h.ClaimAsync(s3);
+        var sentence = $"{Key(epic)} is at its limit - 2 of 2 of its stories and bugs are in the WIP section - "
+            + "nothing more of it is pulled in until one leaves";
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s3), tokenS3, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task EpicFold_WhenBothLimitsAreFull_SaysTheSectionsSentence()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(1, h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+        var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
+
+        Assert.Equal(
+            "the WIP section is full - 1 of 1 stories and bugs are in it - nothing more is pulled in until something leaves",
+            Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task EpicFold_HoldsAnExpressHop_AndTheHopEndpointIs409AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var s2 = await h.FileAsync("story", "S2, express", h.Todo, rank: 1024, parentId: epic.Id);
+        await h.ExpressAsync(s2);
+
+        var sentence = $"{Key(epic)} is at its limit - 1 of 1 of its stories and bugs is in the WIP section - "
+            + "nothing more of it is pulled in until one leaves";
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        var row = Assert.Single(queue, e => e.Issue.Key == Key(s2));
+        Assert.Equal(sentence, row.Blocked);
+
+        var result = await h.Work.HopWork(Key(s2), null, null, null, default);
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal(sentence, response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == s2.Id)).Events);
+    }
+
+    [Fact]
+    public async Task EpicFold_NeverHoldsATaskAnEpicOrAnAdvanceAlreadyInsideTheSection()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        var s1 = await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var task = await h.FileAsync("task", "a task under E", h.Todo, rank: 1024, parentId: epic.Id);
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
+
+        var anotherEpic = await h.FileAsync("epic", "another epic moving in", h.Todo, rank: 2048);
+        Assert.Null(Value(await h.Work.GetWork(Key(anotherEpic), null, default)).Blocked);
+
+        // Inside the section both ways - S1 advancing from In Progress into
+        // Review is never held by its own epic's limit.
+        Assert.Null(Value(await h.Work.GetWork(Key(s1), null, default)).Blocked);
+
+        var underEpic = await h.FileAsync("story", "a story under E", h.Todo, rank: 4096, parentId: epic.Id);
+        var bug = await h.FileAsync("bug", "under that story, not under E", h.Todo, rank: 4100, parentId: underEpic.Id);
+
+        // The bug's own parent is the story, not the epic - never held by E's
+        // limit, whatever E's own load.
+        Assert.Null(Value(await h.Work.GetWork(Key(bug), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task EpicFold_WithNoColumnFlagged_HoldsNothingAtAll()
+    {
+        var h = await NewAsync();
+
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        await h.SetEpicLimitAsync(epic, 1);
+        await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
+        var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -3824,6 +4026,22 @@ public class WorkControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Turns the WIP section on with no <c>WipLimits</c> row at all - what
+        /// HA-112's own setup starts from, since an epic's limit holds whether
+        /// or not the section-wide one is set.
+        /// </summary>
+        public async Task TickWipAsync(params int[] statusIds)
+        {
+            foreach (var id in statusIds)
+            {
+                var status = await Db.Statuses.FirstAsync(s => s.Id == id);
+                status.IsWip = true;
+            }
+
+            await Db.SaveChangesAsync();
+        }
+
         /// <summary>The same as <see cref="WipAsync"/>, for the epic slice.</summary>
         public async Task EpicWipAsync(int limit, params int[] statusIds)
         {
@@ -3834,6 +4052,18 @@ public class WorkControllerTests
             }
 
             Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.Epics, Limit = limit });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// One epic's own <c>WipLimit</c>, written straight onto the row - what
+        /// <c>IssueWipLimitController</c> accepts and refuses is its own tests'
+        /// business; these tests are about what HA-112's fold does with the
+        /// limit once it is set.
+        /// </summary>
+        public async Task SetEpicLimitAsync(EfHatchIssue epic, int limit)
+        {
+            epic.WipLimit = limit;
             await Db.SaveChangesAsync();
         }
 

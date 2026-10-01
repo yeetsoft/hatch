@@ -156,7 +156,43 @@ public static class Wip
     /// </summary>
     public static string Sentence(int load, int limit, IReadOnlyList<string> types) =>
         $"the WIP section is full - {load} of {limit} {TypeWords.Plural(types)} are in it";
+
+    /// <summary>
+    /// The sentence an epic's own limit refuses or overrides with - "E is at
+    /// its limit - 1 of 1 of its stories and bugs is in the WIP section" -
+    /// built once here the way <see cref="Sentence"/> is, so the gate's 409
+    /// and the dispatcher's fold (HA-112) never spell the epic's numbers
+    /// twice. The fold adds its own tail, as it does to <see cref="Sentence"/>.
+    /// </summary>
+    public static string EpicSentence(string epicKey, int load, int limit, IReadOnlyList<string> types) =>
+        $"{epicKey} is at its limit - {load} of {limit} of its {TypeWords.Plural(types)} {(load == 1 ? "is" : "are")} in the WIP section";
+
+    /// <summary>
+    /// Every epic a move or a fold needs the limit of, read once over the
+    /// distinct non-null parent ids a caller hands in - a memoizable, bulk-safe
+    /// counterpart to <see cref="LoadAsync"/>'s own board-wide reads. A parent
+    /// id that is not an epic is simply absent, so a story's story parent (a
+    /// task's story) never looks like an epic with a limit.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<long, EpicLimit>> EpicsAsync(
+        HatchContext db, IEnumerable<long?> parentIds, CancellationToken ct)
+    {
+        var ids = parentIds.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<long, EpicLimit>();
+
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => ids.Contains(i.Id) && i.Type == "epic")
+            .Select(i => new { i.Id, i.Project!.Key, i.Number, i.WipLimit })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(
+            r => r.Id,
+            r => new EpicLimit(r.Id, IssueKey.Format(r.Key, r.Number), r.WipLimit ?? EfHatchIssue.DefaultEpicWipLimit));
+    }
 }
+
+/// <summary>An epic's own limit, as <see cref="Wip.EpicsAsync"/> reads it - the key for the sentence, the limit for the gate and the fold.</summary>
+public sealed record EpicLimit(long Id, string Key, int Limit);
 
 /// <summary>
 /// One reading of the WIP section, as <see cref="Wip.LoadAsync"/> takes it: the
@@ -185,6 +221,15 @@ public sealed class WipSection
 
     /// <summary>The slice whose types cover this issue type, or null for a type no slice counts (a task).</summary>
     public WipSlice? SliceFor(string type) => Slices.FirstOrDefault(s => s.Counts(type));
+
+    /// <summary>
+    /// The load under one epic - its direct stories and bugs the section
+    /// counts - asked of the one slice <see cref="EfHatchWipLimit.StoriesAndBugs"/>
+    /// names, always the first of <see cref="EfHatchWipLimit.Slices"/>. HA-112's
+    /// own question, answered from the same rows the section-wide slice already
+    /// holds: no second query, and no new column.
+    /// </summary>
+    public int LoadUnder(long epicId) => Slices.First(s => s.Counts("story")).LoadUnder(epicId);
 
     public WipDto ToDto() => new(StatusIds, Slices.Select(s => s.ToDto()).ToList());
 }
@@ -232,6 +277,14 @@ public sealed class WipSlice
         _counted.Contains(issue.Id)
         || Wip.HasAncestorIn(issue.Id, _counted, _parents)
         || (alsoAdmitted is { Count: > 0 } && Wip.HasAncestorIn(issue.Id, alsoAdmitted.ToHashSet(), _parents));
+
+    /// <summary>
+    /// How many of this slice's counted issues are this epic's direct children -
+    /// the load HA-112 holds an epic's own limit against. Direct children only,
+    /// by construction: <see cref="_parents"/> holds one level, so a bug under
+    /// a story under the epic carries the story's id, never the epic's.
+    /// </summary>
+    public int LoadUnder(long epicId) => _counted.Count(id => _parents.GetValueOrDefault(id) == epicId);
 
     public WipSliceLoadDto ToDto() => new(Types, Limit, Load, ClaimedInbound);
 }

@@ -56,9 +56,19 @@ describe('overrideLine', () => {
     );
   });
 
+  it('names the epic when the payload carries one - HA-112', () => {
+    expect(overrideLine({ limit: 1, load: 2, to: 'In Progress', epic: 'AER-1' })).toBe(
+      "overrode AER-1's limit — 2 of 1 into In Progress",
+    );
+  });
+
   it('returns null when the payload is missing a numeric field or to', () => {
     expect(overrideLine({ limit: 5, to: 'In Progress' })).toBeNull();
     expect(overrideLine({ limit: 5, load: 6 })).toBeNull();
     expect(overrideLine(null)).toBeNull();
+  });
+
+  it('returns null when epic is present but not a string', () => {
+    expect(overrideLine({ limit: 5, load: 6, to: 'In Progress', epic: 5 })).toBeNull();
   });
 });
