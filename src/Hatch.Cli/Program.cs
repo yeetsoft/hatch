@@ -138,6 +138,7 @@ using var terminate = Handle(PosixSignal.SIGTERM);
 using var hangup = Handle(PosixSignal.SIGHUP);
 
 LiveTerminal? live = null;
+KeyReader? keys = null;
 
 try
 {
@@ -150,11 +151,28 @@ try
         // there was never anything to erase.
         var readoutState = new ReadoutState();
         var attached = command == "work" && (rest.Contains("-i") || rest.Contains("--interactive"));
-        if (!attached && !Console.IsOutputRedirected && Environment.GetEnvironmentVariable("TERM") != "dumb" &&
-            (!OperatingSystem.IsWindows() || WindowsConsole.TryEnableVirtualTerminalProcessing()))
+        var noKeys = rest.Contains("--no-keys");
+
+        // Whether a footer is drawn here at all - read once, since it decides
+        // both whether a LiveTerminal is built and whether keys are read: a
+        // process with no readout has nowhere for a legend to live.
+        var drawsReadout = !attached && !Console.IsOutputRedirected && Environment.GetEnvironmentVariable("TERM") != "dumb" &&
+            (!OperatingSystem.IsWindows() || WindowsConsole.TryEnableVirtualTerminalProcessing());
+
+        // Constructed unconditionally, same as readoutState - nothing has to
+        // ask who is listening. Keys are read only where the readout draws
+        // and only when this process's own standard input is itself a
+        // terminal - a pipe, a service, or --no-keys reads none.
+        var controls = new Controls(keysOn: drawsReadout && !Console.IsInputRedirected && !noKeys);
+
+        if (drawsReadout)
         {
             say = live = new LiveTerminal(
-                readoutState, TimeProvider.System, color: Environment.GetEnvironmentVariable("NO_COLOR") is null);
+                readoutState, TimeProvider.System, color: Environment.GetEnvironmentVariable("NO_COLOR") is null,
+                controls: controls);
+
+            if (controls.KeysOn) keys = new KeyReader(controls, say, cancelling);
+            else if (!noKeys) say.Line("hatch: keys are off — use Ctrl-C or --stop-file to stop this runner");
         }
 
         var runtime = new Runtime(
@@ -174,6 +192,7 @@ try
             // again. See docs/hatch.md, "What it stops for".
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
             Readout = readoutState,
+            Controls = controls,
         }.WithGit();
 
         return command switch
@@ -242,6 +261,7 @@ finally
     // Erase the footer so whatever prints after this - the closing tally, the
     // shell's own prompt - scrolls normally with nothing pinned below it.
     live?.Stop();
+    keys?.Stop();
 }
 
 PosixSignalRegistration? Handle(PosixSignal signal)

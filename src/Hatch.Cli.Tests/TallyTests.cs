@@ -122,9 +122,28 @@ public sealed class TallyTests
     }
 
     [Fact]
+    public void A_keyboard_asking_to_stop_ends_the_night_and_names_the_keyboard()
+    {
+        var controls = new Controls(keysOn: true);
+        controls.Press('s');
+        var tally = new Tally(TimeProvider.System) { Controls = controls };
+
+        Assert.True(tally.ShouldStop());
+        Assert.Contains("keyboard", tally.StopWhy!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_fresh_keyboard_that_has_pressed_nothing_does_not_stop_the_night()
+    {
+        var tally = new Tally(TimeProvider.System) { Controls = new Controls(keysOn: true) };
+
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
     public void Max_runs_and_max_spend_are_both_read_before_the_next_increment()
     {
-        var runs = new Tally(TimeProvider.System) { MaxRuns = 2 };
+        var runs = new Tally(TimeProvider.System) { MaxRuns = 2, Controls = new Controls(keysOn: true) };
         runs.Record(Report());
         Assert.False(runs.ShouldStop());
         runs.Record(Report());

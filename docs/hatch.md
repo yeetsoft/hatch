@@ -4174,6 +4174,26 @@ life of this process — leaves the panel exactly as it was. Only where neither
 source has ever answered does the readout and the closing banner alike simply
 draw no usage line rather than complain.
 
+**The bottom row, when it is drawn, is a legend of the keys that do
+something** — see HA-129 for the operator's brief. `s` stops the runner after
+the increment in flight finishes, pushes and is written up — press again to
+undo it, which the legend says while it is armed; `c` asks for confirmation
+(`y` to confirm, any other key to take it back) and then ends the run exactly
+as Ctrl-C does, process tree and all. Keys are read exactly where the readout
+draws, and only when this process's own standard input is itself a terminal —
+a pipe, a service, or a container with no TTY reads no keys and draws no
+legend, and `go-to-work`, `do-my-work` and `hatch work` all say so once at
+startup, naming Ctrl-C and `--stop-file` as the ways to stop instead.
+`--no-keys` turns the keyboard off outright on all three commands, and draws
+the readout exactly as before minus the legend row and with no startup line —
+nobody needs telling about a control they switched off. A key that means
+nothing does nothing and says nothing; every key that changes what the runner
+will do writes one line to the log, so a redirected run read the next morning
+still says what was asked, and when. Ctrl-C is unchanged, and works at any
+moment whether keys are on or off, including while a confirmation is
+outstanding — a second way to reach the same cancellation, never a
+replacement for it.
+
 ## The level above the board
 
 The board shows every card, which is the one thing it cannot do: say which of

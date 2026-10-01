@@ -70,6 +70,7 @@ public sealed class LiveTerminal : Terminal, IDisposable
 {
     private readonly Lock _gate = new();
     private readonly ReadoutState _state;
+    private readonly Controls? _controls;
     private readonly TimeProvider _clock;
     private readonly bool _color;
     private readonly Timer _timer;
@@ -85,11 +86,17 @@ public sealed class LiveTerminal : Terminal, IDisposable
     /// scheduling this thread late can never fire the timer mid-assertion and
     /// write to whatever <see cref="Console.Out"/> happens to be by then.
     /// </param>
-    public LiveTerminal(ReadoutState state, TimeProvider clock, bool color, TimeSpan? tickEvery = null)
+    /// <param name="controls">
+    /// What the keyboard has decided, read fresh on every draw - null where
+    /// nothing reads keys for this run, which draws the footer exactly as
+    /// before with no legend row.
+    /// </param>
+    public LiveTerminal(ReadoutState state, TimeProvider clock, bool color, TimeSpan? tickEvery = null, Controls? controls = null)
     {
         _state = state;
         _clock = clock;
         _color = color;
+        _controls = controls;
 
         var every = tickEvery ?? TimeSpan.FromMilliseconds(500);
         _timer = new Timer(_ => Tick(), null, every, every);
@@ -170,7 +177,7 @@ public sealed class LiveTerminal : Terminal, IDisposable
     private void Draw()
     {
         var width = SafeWidth();
-        var rows = Readout.Draw(_state.Snapshot(), _clock.GetUtcNow(), width, _color);
+        var rows = Readout.Draw(_state.Snapshot(_controls?.Snapshot()), _clock.GetUtcNow(), width, _color);
         if (rows.Count == 0) return;
 
         foreach (var row in rows) Console.Out.Write(row + "\n");
