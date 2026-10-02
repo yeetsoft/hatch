@@ -58,7 +58,14 @@ public static class ReviewWork
     /// review row has always kept - nothing reads the kind of a folded row.
     /// </param>
     /// <param name="Fold">Null when there is something for an agent to do.</param>
-    public readonly record struct Judgement(string Kind, string? Fold);
+    /// <param name="BoardHeld">
+    /// Whether <paramref name="Fold"/>, when it is not null, clears on its own
+    /// as the board changes - a branch nobody has checked yet, or a build
+    /// still running or unread - rather than only on the operator's say-so, as
+    /// every "merges cleanly" variant does, and an ambiguous or absent branch
+    /// too. Meaningless when <see cref="Fold"/> is null, and never read then.
+    /// </param>
+    public readonly record struct Judgement(string Kind, string? Fold, bool BoardHeld = false);
 
     public static Judgement Judge(
         EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds)
@@ -71,13 +78,13 @@ public static class ReviewWork
             return new Judgement(WorkKinds.Conflicts, null);
 
         if (counted.Count == 0)
-            return Fold($"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet");
+            return Fold($"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet", true);
 
         if (counted.Any(v => v.Verdict == MergeVerdicts.Ambiguous))
-            return Fold("more than one branch on origin is named for it - delete the ones that are not its branch");
+            return Fold("more than one branch on origin is named for it - delete the ones that are not its branch", false);
 
         if (counted.All(v => v.Verdict == MergeVerdicts.None))
-            return Fold("no branch on origin is named for it");
+            return Fold("no branch on origin is named for it", false);
 
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;
@@ -92,21 +99,21 @@ public static class ReviewWork
             return new Judgement(WorkKinds.Build, null);
 
         if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Pending) is { } running)
-            return Fold($"its build on {Short(running.Sha)} is still running");
+            return Fold($"its build on {Short(running.Sha)} is still running", true);
 
         if (builtAt.Except(about).FirstOrDefault() is { } stale)
         {
             // The sha the merge check read is the one nobody has read a build on.
             var read = clean.First(m => m.Canonical == stale.Canonical).BranchSha;
-            return Fold($"no runner has read its build on {Short(read)} yet");
+            return Fold($"no runner has read its build on {Short(read)} yet", true);
         }
 
         if (builtAt.Count == 0)
-            return Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do");
+            return Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do", false);
 
         return about.All(b => b.Verdict == BuildVerdicts.Passed)
-            ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do")
-            : Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
+            ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do", false)
+            : Fold($"its branch merges cleanly with {trunk} and no checks ran on it", false);
     }
 
     /// <summary>The merge verdicts for repositories the project still binds - every one, if it binds none.</summary>
@@ -123,7 +130,7 @@ public static class ReviewWork
         builds.Where(b => clean.Any(m => m.Canonical == b.Canonical && m.BranchSha == b.Sha)).ToList();
 
     /// <summary>A folded row, which keeps the conflicts kind it has always had.</summary>
-    private static Judgement Fold(string why) => new(WorkKinds.Conflicts, why);
+    private static Judgement Fold(string why, bool boardHeld) => new(WorkKinds.Conflicts, why, boardHeld);
 
     private static string Short(string? sha) => sha is null ? "" : sha.Length > 7 ? sha[..7] : sha;
 }
