@@ -82,6 +82,34 @@ public class EfHatchProject
 
     public static bool IsValidKey(string? key) =>
         key is not null && Regex.IsMatch(key, KeyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    public const int MaxColorLength = 7;
+    public const int MaxIconLength = 40;
+
+    /// <summary>
+    /// The project's colour, as <c>#rrggbb</c>, or null if nobody has chosen one
+    /// yet. Nullable with no default - unlike <see cref="EfHatchStatus.Color"/> -
+    /// because "no colour chosen yet" is a fact worth keeping, not a
+    /// <c>--muted</c> the browser can paint instead. See HA-216's "Decisions"
+    /// table.
+    /// </summary>
+    [MaxLength(MaxColorLength)]
+    public string? Color { get; set; }
+
+    /// <summary>
+    /// A slug naming one of a closed set of stock icons the browser owns; the
+    /// server stores the slug and does not know the set. See HA-216.
+    /// </summary>
+    [MaxLength(MaxIconLength)]
+    public string? Icon { get; set; }
+
+    public static bool IsValidColor(string? color) => HexColor.IsValid(color);
+    public static string NormalizeColor(string color) => HexColor.Normalize(color);
+
+    public const string IconPattern = "^[a-z0-9-]{1,40}$";
+
+    public static bool IsValidIcon(string? icon) =>
+        icon is not null && Regex.IsMatch(icon, IconPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
 }
 
 /// <summary>
@@ -139,6 +167,16 @@ public class EfHatchProjectRepository
 /// Rows rather than an enum because the operator reorders and renames them from
 /// the Statuses page, and an enum would make "add a review column" a deploy.
 /// </summary>
+internal static class HexColor
+{
+    private static readonly Regex Shape =
+        new("^#[0-9a-f]{6}$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    public static bool IsValid(string? color) => color is not null && Shape.IsMatch(color);
+
+    public static string Normalize(string color) => color.Trim().ToLowerInvariant();
+}
+
 [Table("Statuses")]
 [Index(nameof(Name), IsUnique = true)]
 public class EfHatchStatus
@@ -265,9 +303,6 @@ public class EfHatchStatus
     [MaxLength(MaxColorLength)]
     public string Color { get; set; } = DefaultColor;
 
-    private static readonly Regex ColorShape =
-        new("^#[0-9a-f]{6}$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
-
     /// <summary>
     /// Whether a string is a colour this will store. Six digits and a hash,
     /// deliberately narrow: three-digit shorthands, <c>rgb()</c> and named
@@ -275,11 +310,10 @@ public class EfHatchStatus
     /// a contrast calculation could read them, and one shape stored is one
     /// shape to reason about.
     /// </summary>
-    public static bool IsValidColor(string? color) =>
-        color is not null && ColorShape.IsMatch(color);
+    public static bool IsValidColor(string? color) => HexColor.IsValid(color);
 
     /// <summary>The stored form of a colour a client sent: lower case, so two spellings of one colour compare equal.</summary>
-    public static string NormalizeColor(string color) => color.Trim().ToLowerInvariant();
+    public static string NormalizeColor(string color) => HexColor.Normalize(color);
 }
 
 /// <summary>

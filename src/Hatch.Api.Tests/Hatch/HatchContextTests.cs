@@ -297,6 +297,40 @@ public class HatchContextTests
         Assert.Equal(valid, EfHatchProject.IsValidKey(key));
     }
 
+    // ---- Colour and icon format ----
+
+    [Theory]
+    [InlineData("#ab12ef", true)]
+    [InlineData("#AB12EF", true)]
+    [InlineData("red", false)]
+    [InlineData("#ab1", false)]
+    [InlineData("6b7280", false)]
+    [InlineData("#gggggg", false)]
+    [InlineData("rgb(1,2,3)", false)]
+    [InlineData(null, false)]
+    public void AProjectColour_IsASixDigitHexValue(string? color, bool valid)
+    {
+        Assert.Equal(valid, EfHatchProject.IsValidColor(color));
+    }
+
+    [Fact]
+    public void AProjectColour_IsStoredInOneCase()
+    {
+        Assert.Equal("#ab12ef", EfHatchProject.NormalizeColor("#AB12EF"));
+    }
+
+    [Theory]
+    [InlineData("ui-flask", true)]
+    [InlineData("a", true)]
+    [InlineData("UI-Flask", false)]   // icons are not shouted
+    [InlineData("ui flask", false)]   // no spaces
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void AProjectIcon_IsALowerCaseSlug(string? icon, bool valid)
+    {
+        Assert.Equal(valid, EfHatchProject.IsValidIcon(icon));
+    }
+
     [Theory]
     [InlineData("epic", true)]
     [InlineData("story", true)]
