@@ -467,13 +467,15 @@ an API key; see [The one edge that is deliberately cut](#the-one-edge-that-is-de
 
 #### Expedite
 
-**An issue sits at one of four levels, and emergency is the highest, paused
-the lowest.** `Priority` is an int on the issue — paused, normal, expedited or
-emergency, in that order — set by a person, and honoured by both halves of
-Hatch: the board floats an expedited or emergency card to the top of its
-column and sinks a paused one to the bottom, and the dispatcher considers
+**An issue sits at one of five levels, and emergency is the highest, paused
+the lowest.** `Priority` is an int on the issue — paused, economy, normal,
+expedited or emergency, in that order — set by a person, and honoured by both
+halves of Hatch: the board floats an expedited or emergency card to the top of
+its column and sinks a paused one to the bottom, and the dispatcher considers
 every emergency candidate before every expedited candidate before anything
-else, and never considers a paused one at all. `PUT
+else, considers an economy candidate only when an unattended pass finds the
+account it would spend has a reserve of usage to spare, and never considers a
+paused one at all. `PUT
 /api/hatch/issues/{key}/priority` sets the level by name; the older
 `PUT .../expedite` stays as a two-level alias (`{ expedited: true }` sets
 expedited, `false` sets normal), so a script or a browser tab written against
@@ -492,13 +494,20 @@ same sentence. Priority changes the order candidates are *considered* in, and
 nothing else — so an emergency issue that is blocked is still blocked, and the
 pass carries on past it.
 
-**Paused is the one level that is also a gate.** Every other level only
-reorders what is already dispatchable; paused takes the issue out of dispatch
-entirely, folded by `Dispatch.Blocked` with its own sentence — *a person set
-it aside, and nothing picks it up until they set it back* — for `work/next`,
-`work/queue`, `work/{key}` and a hop alike, right after a live claim and
-before a ready date. Nothing else about the issue changes: its assignee, its
-claim, its questions and its dependencies stand exactly where they were.
+**Paused and economy are the two levels that are also gates — differently.**
+Every other level only reorders what is already dispatchable. Paused takes the
+issue out of dispatch entirely, folded by `Dispatch.Blocked` with its own
+sentence — *a person set it aside, and nothing picks it up until they set it
+back* — for `work/next`, `work/queue`, `work/{key}` and a hop alike, right
+after a live claim and before anything else (`Dispatch.cs:555-559`) — nothing
+about who is asking changes it. Economy takes the issue out of dispatch only
+for an unattended pass — `work/next` and `work/queue` — when the account the
+dispatch would spend is not projected to reset with usage unspent; a person
+naming the issue by hand with `work/{key}`, or a hop that would otherwise
+carry it, gets it regardless (`Dispatch.cs:569-570`, right after the ready
+date and before the assignee fold). Nothing else about either issue changes:
+its assignee, its claim, its questions and its dependencies stand exactly
+where they were.
 
 **It is inherited, live, from the nearest ancestor that sets one.** An issue
 is at the first level other than normal found on itself or on its ancestors,
@@ -539,10 +548,14 @@ rather than sorted in the browser, so the board, the plan and the queue cannot
 disagree about where a card sits — a card dropped above an emergency or
 expedited one comes to rest below it, and a card dropped below a paused one
 comes to rest above it, because the float and the sink both win over the
-rank. In the dispatcher it is [four walks of the columns](#the-dispatcher)
-rather than a sort of the finished rows — paused walked last, and always
-folded, so it never changes which issue `next` or a hop picks, only that
-`queue` can report it.
+rank. In the dispatcher it is [five walks of the columns](#the-dispatcher)
+rather than a sort of the finished rows — economy walked fourth and paused
+walked last. Paused is always folded there, so it never changes which issue
+`next` or a hop picks, only that `queue` can report it; economy is gated
+rather than always folded, so unlike every other walk, a row reached on its
+own pass can still be skipped by the pace check for `next` and `queue` alike —
+a hop is exempt from that gate, the same way it is exempt from needing a
+playbook.
 
 Setting it is closed to an API key; see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). It follows that there is no
@@ -1962,6 +1975,14 @@ session runs, and it needs no credential pasted anywhere. What it buys is a
 battery that works on a fresh install, for anybody with a runner of their own,
 including a friend on `do-my-work` spending their own account.
 
+**A second reader, since HA-209: [economy's own gate](#expedite).** The
+dispatcher asks the same freshest-whole-reading this widget draws, through the
+same `IActorDirectory.PrincipalAsync` resolution, to judge whether the account
+an unattended pass would spend has a reserve left on every window before it
+will touch an economy issue. Nothing about the endpoint or its shape changes
+for this — `GET /api/hatch/utilization` answers exactly as it always has; the
+dispatcher is simply a second caller of the same `Utilization.Of`.
+
 **Between sessions, HA-173 asks a second source.** A session's own stream is
 silent while the loop is idle, so the reading would otherwise sit frozen from
 the last time a session ran. At the top of every idle pass the runner asks its
@@ -2429,17 +2450,22 @@ furthest along over the line before it opens anything new. The second is what a
 person does when they mean to ship.
 
 **Except for what somebody marked above normal**, which is considered first
-wherever it sits. The scan walks the columns four times — every
+wherever it sits. The scan walks the columns five times — every
 [emergency](#expedite) candidate right to left, then every
 [expedited](#expedite) candidate right to left, then everything else right to
-left, then every [paused](#expedite) candidate right to left — so an
-emergency bug in the leftmost column is reached before an expedited story in
-the rightmost one, which is reached before a normal one in the rightmost one,
-and inside each quarter the order is the board's own. The level that puts a
-candidate in the first, second or fourth walk may be its own or inherited
-from an ancestor — the walk does not care which. The paused walk is always
-last and always folded, so it never changes which issue `next` or a hop
-picks — only that `queue` can report it. Four passes rather than a sort of
+left, then every [economy](#expedite) candidate right to left, then every
+[paused](#expedite) candidate right to left — so an emergency bug in the
+leftmost column is reached before an expedited story in the rightmost one,
+which is reached before a normal one in the rightmost one, which is reached
+before an economy one wherever it sits, and inside each tier the order is the
+board's own. The level that puts a candidate in the first, second, fourth or
+fifth walk may be its own or inherited from an ancestor — the walk does not
+care which. The paused walk is always last and always folded, so it never
+changes which issue `next` or a hop picks — only that `queue` can report it.
+The economy walk, unlike every other, is gated rather than always folded: a
+row reached there can still be folded by [economy's own pace
+check](#expedite), so unlike emergency, expedited or normal, reaching that
+walk does not guarantee the row is clear. Five passes rather than a sort of
 the finished rows, because the [published scan](#what-a-pass-skipped) is the
 explanation of what `next` picked, and a comparator applied afterwards would
 be a second opinion about the order.
@@ -2551,9 +2577,13 @@ time". Every refusal above this one still applies to every kind of hop
 exactly as it applies to any other issue: a hop answers only "does this
 column still need a session", and nothing about a live claim, a pause, a
 ready date, an assignee, a question, a repository or a dependency is any
-different for it. Only where none of those folds it either, and it is not a
-hop, does the pass fall through to the ordinary refusal: no playbook covers
-this transition for this type.
+different for it. [Economy's own gate](#expedite) is a second exception,
+beside needing a playbook: both are loop policy rather than a fact about the
+issue, so a hop is exempt from each — an express economy issue in a column
+marked `ExpressSkips` is carried across whatever the account's pace reads.
+Only where none of those earlier folds it either, and it is not a hop, does
+the pass fall through to the ordinary refusal: no playbook covers this
+transition for this type.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -2720,7 +2750,10 @@ All five of these hold, or the heartbeating runner is told nothing:
    below emergency level that has not already been told. Ties break on issue
    key, so two heartbeats can never both believe they lost — though in
    practice there is no tie left to break, since the dispatcher's own order is
-   already the tie-break.
+   already the tie-break. A live claim on an [economy](#expedite) issue is
+   preempted before one on a normal or expedited issue, and after one on a
+   paused issue, if a paused issue is ever still carrying a live claim —
+   economy sits second-to-last in the walk, not last; paused does.
 4. Fewer runners have already been told than there are unclaimed actionable
    emergency issues.
 5. No live runner is free — a live row in `Runners`, holding no live claim. A
@@ -3111,7 +3144,7 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Fourteen conditions, the last one a way out of the thirteenth rather than one
+Fifteen conditions, the last one a way out of the fourteenth rather than one
 more gate. An issue is the loop's to pick up when it meets every one before
 it, and the sentence saying which one it failed is what `work/queue` reports:
 
@@ -3133,44 +3166,53 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
    other than normal, found the same walk the board and `hatch show` read — a
    person set it aside, and nothing picks it up until they set it back, named
    with the ancestor when the level is inherited. A fact about the issue like
-   the claim before it, so `work/{key}` asks it too — unlike the ready date
-   and the assignee right after it, which are the loop's own policy and are
-   not.
+   the claim before it, so `work/{key}` asks it too — unlike the ready date,
+   [economy's own gate](#expedite) and the assignee right after it, which are
+   the loop's own policy and are not.
 4. **Its ready date has arrived**, read against the caller's calendar day. A
    card folded off the board is not one to spend an increment on tonight.
-5. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
+5. **It is not [economy](#expedite) level on an account with no reserve to
+   spare**, asked only of an unattended pass. The account the dispatch would
+   spend — the calling key's owner, resolved the same way a `?mine=true` pass
+   resolves its own — is projected to reset with at least `Utilization.Reserve`
+   points of every window Hatch knows the length of still unspent; where it is
+   not, the issue is folded with the sentence naming the window and the
+   numbers, and where no reading exists for the account at all, or the key
+   belongs to nobody, with that sentence instead. `work/{key}` is not asked
+   this at all, and neither is a hop — see the fifteenth condition.
+6. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
    to an API key, or to nobody, is picked up exactly as it always was. A
    `?mine=true` pass inverts this condition rather than skipping it: it takes
    only a ticket assigned to the caller's own person or key, and folds every
    other one — see [one more, on `next` alone](#one-more-on-next-alone).
-6. **It holds no unanswered question.** It is waiting on a person, and another
+7. **It holds no unanswered question.** It is waiting on a person, and another
    agent sent at it would ask the same thing again or guess at the answer. A
    lapsed stall question does not count here - see [Comment, question and
    answer](#comment-question-and-answer).
-7. **The project's primary [repository](#repository) matches a remote the caller
+8. **The project's primary [repository](#repository) matches a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-8. **Nothing it depends on is unfinished** — and only when the move is into the
+9. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-9. **None of its children are still open**, when the move is out of the column
-   where the code gets written. An issue standing there with at least one
-   child not in a terminal column is not itself the work — its children are —
-   so it is folded rather than carried into review. A deferred child counts as
-   open, the same rule [Dependency](#dependency) already holds for a blocker.
-   A childless issue is unaffected. An epic reads this differently: it is held
-   wherever it stands in the WIP section, not only the column where the code
-   gets written, and a deferred child does not count against it at all — see
-   [Running an epic](#running-an-epic) for why. The sentence names how many of
-   its counted children are still open, that its only child is not done, or
-   that nothing is filed under it at all.
-10. **The [WIP section](#wip) has room for it**, when the move is into it: the
+10. **None of its children are still open**, when the move is out of the column
+    where the code gets written. An issue standing there with at least one
+    child not in a terminal column is not itself the work — its children are —
+    so it is folded rather than carried into review. A deferred child counts as
+    open, the same rule [Dependency](#dependency) already holds for a blocker.
+    A childless issue is unaffected. An epic reads this differently: it is held
+    wherever it stands in the WIP section, not only the column where the code
+    gets written, and a deferred child does not count against it at all — see
+    [Running an epic](#running-an-epic) for why. The sentence names how many of
+    its counted children are still open, that its only child is not done, or
+    that nothing is filed under it at all.
+11. **The [WIP section](#wip) has room for it**, when the move is into it: the
     load, not counting this issue, is below the limit, nor counting any
     ancestor of this issue already standing in it — a family crosses together,
     at the cost of the one slot its nearest counted member already spent. Said
@@ -3182,7 +3224,7 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy: `work/{key}` is refused by
     it too, and overriding it
     is done on the board, by moving the card in.
-11. **An epic above it has room too**, when the move is into the WIP section
+12. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
     counting this issue, is below its own `WipLimit` (null reading as one) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
@@ -3191,7 +3233,7 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-12. **In review, its branch conflicts with the trunk or its build failed.** An
+13. **In review, its branch conflicts with the trunk or its build failed.** An
     issue in the review column is the loop's only when a [merge check](#merge-check)
     says `conflicted`, or — on a branch that merges cleanly — when the
     [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -3200,27 +3242,27 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     on this tip, no checks, no branch, more than one branch and an unchecked one
     are what `hatch queue` prints. A clean branch that has merely fallen behind
     the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-13. **A playbook covers that transition for that type — or it does not need
+14. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-14. **Unless it does not need a session at all.** An issue that is
+15. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the thirteenth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the fourteenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, only from needing a
-    playbook.
+    playbook, or from [economy's own gate](#expedite) — the fifth condition.
 
     An epic standing in a column outside the WIP section whose next column is
     inside it is a second kind of hop: something is filed under it, of any
     type. Where nothing is, the refinement is its own fold rather than a
-    fall-through to the thirteenth condition: "nothing is filed under it — an
+    fall-through to the fourteenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic standing inside the
     WIP section, is a third kind: the epic's own pull reaching the work filed
@@ -3233,15 +3275,16 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     along, in board order, than the column this issue would be pulled into.
     Where the column is so marked but one of those two is not yet true, the
     refinement is its own two-sentence fold rather than a fall-through to the
-    thirteenth condition's "no playbook covers this": "its parent has not
+    fourteenth condition's "no playbook covers this": "its parent has not
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
 
-Eleven of them — 1, 2, 3, 6, 7, 8, 9, 10, 11, 12 and 13 — are facts about the
-issue, and `work/{key}` asks them too. The fourteenth is as well, and
+Eleven of them — 1, 2, 3, 7, 8, 9, 10, 11, 12, 13 and 14 — are facts about the
+issue, and `work/{key}` asks them too. The fifteenth is as well, and
 `work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The
-other two are the loop's policy and are asked only when the pass is asking;
+other three — 4, 5 and 6 — are the loop's policy and are asked only when the
+pass is asking;
 see [one more, on `next` alone](#one-more-on-next-alone).
 
 **The board is worked right to left**, for the reason the dispatcher gives, and

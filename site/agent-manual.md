@@ -211,7 +211,7 @@ usage: hatch config [--show | --origin <origin>]
 ### `hatch board`
 
 Takes nothing. `GET /api/hatch/board`, then one line per column, non-deferred
-columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)][  (n paused)]`.
+columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)][  (n economy)][  (n paused)]`.
 
 ### `hatch next [<column>]`
 
@@ -221,7 +221,7 @@ one column. Unknown: `hatch: no column called "<x>" - there is <names>`.
 The board arrives already ordered `(status, priority desc, rank, id)` and
 nothing is re-sorted client-side. The first card whose ready date has arrived
 on the caller's calendar day is printed as
-`<Key>  [<type>]  <Title>[  (emergency)|  (expedited)][  (due <date>)]`. Nothing workable:
+`<Key>  [<type>]  <Title>[  (emergency)|  (expedited)|  (economy)][  (due <date>)]`. Nothing workable:
 `hatch: nothing workable in "<column>"` on stderr, exit 2.
 
 ### `hatch queue [<ancestor key>]`
@@ -229,7 +229,8 @@ on the caller's calendar day is printed as
 `GET /api/hatch/work/queue?offsetMinutes=<utc offset>[&ancestorKey=<key>]`.
 Every issue a dispatch pass would look at, in the order it looks, each with
 the reason it would be folded past or `-> <next column>`. A row marked `!!`
-is emergency and one marked `! ` is expedited, and one marked `||` is
+is emergency and one marked `! ` is expedited, one marked `~ ` is economy —
+considered last of every level but paused — and one marked `||` is
 paused; the column only appears when some row is not normal. An empty answer is a
 sentence, not a blank line: `hatch: nothing on the board is on the
 dispatcher's path`, or the same `under <key>`. Exit 0.
@@ -239,7 +240,8 @@ dispatcher's path`, or the same `under <key>`. Exit 0.
 Three reads: the issue, the statuses, the comments. Prints the header
 `<Key>  [<type>]  <Title>`, `status:`, then only when the effective level is
 non-normal `priority:  emergency - top of the walk, before anything else`,
-`priority:  expedited - this one goes first` or
+`priority:  expedited - this one goes first`,
+`priority:  economy - worked only with usage that would otherwise go spare` or
 `priority:  paused - set aside; the loop leaves it where it stands`, with an
 `(inherited from <key>)` suffix when the level came from an ancestor rather
 than the issue itself — `priority:  expedited - this one goes first

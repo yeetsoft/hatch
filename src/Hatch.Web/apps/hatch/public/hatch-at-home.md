@@ -438,11 +438,12 @@ about a ticket that did not move, and what it stops for.
 column, and either the reason the pass would fold past it or the transition it
 is clear for, in the dispatcher's order: every emergency row first whatever
 column it sits in, then every expedited row, then the rest, then every
-paused row last, and inside each quarter the rightmost column first and the
-order the board itself draws that column in. A row marked `!!` is emergency,
-one marked `! ` is expedited, and one marked `||` is paused — its own level
-or one inherited from an ancestor, the walk does not care which. `hatch queue
-AER-1`
+economy row, then every paused row last, and inside each tier the rightmost
+column first and the order the board itself draws that column in. A row
+marked `!!` is emergency, one marked `! ` is expedited, one marked `~ ` is
+economy — worked only once the account an unattended pass would spend has
+usage to spare — and one marked `||` is paused — its own level or one
+inherited from an ancestor, the walk does not care which. `hatch queue AER-1`
 scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical
