@@ -3961,6 +3961,7 @@ public class WorkControllerTests
         var build = Assert.Single(row.BuildChecks!);
         Assert.Equal(BuildVerdicts.Failed, build.Verdict);
         Assert.Equal(["CI", "api"], build.Failing.Select(f => f.Name).Order(StringComparer.Ordinal));
+        Assert.Null(row.PullRequestUrl);
     }
 
     // ---- The review read ----
@@ -3973,6 +3974,7 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "up for review", h.Review);
         await h.FileAsync("story", "still being written", h.InProgress);
         await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
 
         var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
 
@@ -3980,6 +3982,7 @@ public class WorkControllerTests
         Assert.Equal(Key(issue), row.Key);
         Assert.Equal("git@example.com:o/r.git", Assert.Single(row.Repositories).MatchedRemote);
         Assert.Equal(MergeVerdicts.Conflicted, Assert.Single(row.MergeChecks).Verdict);
+        Assert.Equal("https://example.com/o/r/pull/1", row.PullRequestUrl);
     }
 
     /// <summary>
@@ -4062,6 +4065,200 @@ public class WorkControllerTests
         Assert.Equal(
             [Key(first), Key(second)],
             Value(await h.Work.GetReview(null, true, default)).Select(r => r.Key));
+    }
+
+    // ---- Merged: a runner reporting that the recorded pull request has merged ----
+
+    [Fact]
+    public async Task MergedWork_AdvancesAnIssueInReviewWithAMatchingUrl_ToDone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var moved = Value(await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Done, moved.StatusId);
+        Assert.Equal(h.Done, row.StatusId);
+    }
+
+    [Fact]
+    public async Task MergedWork_WritesOneStatusChangedEventNamingTheCallerAndCarryingMerged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("review", payload.GetProperty("from").GetString());
+        Assert.Equal("done", payload.GetProperty("to").GetString());
+        Assert.True(payload.GetProperty("merged").GetBoolean());
+        Assert.False(payload.TryGetProperty("runner", out _));
+    }
+
+    [Fact]
+    public async Task MergedWork_PlacesTheIssueAtTheBottomOfTheTargetColumn()
+    {
+        var h = await NewAsync();
+        var already = await h.FileAsync("task", "already shipped", h.Done, rank: 1024);
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task MergedWork_LeavesAChildsStatusUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        var child = await h.FileAsync("task", "still in progress", h.InProgress, parentId: issue.Id);
+
+        await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == child.Id);
+
+        Assert.Equal(h.InProgress, row.StatusId);
+    }
+
+    /// <summary>
+    /// A column inserted between review and done moves which column is
+    /// measured as <see cref="Columns.AwaitingReview"/> - so an issue left
+    /// standing in the old review column is no longer in the column this route
+    /// measures, and the newly inserted column is the one a merge now advances
+    /// out of.
+    /// </summary>
+    [Fact]
+    public async Task MergedWork_WithAColumnInsertedBetweenReviewAndDone_MovesTheMeasuredReviewColumn()
+    {
+        var h = await NewAsync();
+        var inserted = new EfHatchStatus { Name = "verification", SortOrder = 37 };
+        h.Db.Add(inserted);
+        await h.Db.SaveChangesAsync();
+
+        var stale = await h.FileAsync("task", "left in the old review column", h.Review);
+        await h.SetPullRequestAsync(stale, "https://example.com/o/r/pull/1");
+        var staleResult = await h.Work.MergedWork(
+            Key(stale), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        Assert.Equal(
+            "\"review\" is not the review column - a merge only advances a ticket waiting there",
+            Assert.IsType<ConflictObjectResult>(staleResult.Result).Value);
+
+        var current = await h.FileAsync("task", "in the newly inserted column", inserted.Id);
+        await h.SetPullRequestAsync(current, "https://example.com/o/r/pull/2");
+        var moved = Value(await h.Work.MergedWork(
+            Key(current), new PullRequestMergedRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default));
+
+        Assert.Equal(h.Done, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task MergedWork_RefusesAnIssueNotInTheReviewColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "still being written", h.InProgress);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"in progress\" is not the review column - a merge only advances a ticket waiting there",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task MergedWork_RefusesWhenNoPullRequestIsRecorded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "waiting, nothing recorded", h.Review);
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "no pull request is recorded on this issue, so there is nothing for a merge to confirm",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task MergedWork_RefusesWhenTheUrlDoesNotMatchTheRecordedOne()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "waiting for a different merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"https://example.com/o/r/pull/2\" is not the pull request recorded on this issue",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task MergedWork_RefusesWhenThereIsNoColumnAfterReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "at the end of the board", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        h.Db.Statuses.Remove(await h.Db.Statuses.SingleAsync(s => s.Id == h.Done));
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "there is no column after \"review\", so there is nowhere for this to go",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task MergedWork_RefusesAClaimedIssue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "being worked right now", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.ClaimAsync(issue);
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task MergedWork_Is404ForAKeyThatDoesNotParse()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.MergedWork(
+            "nonsense", new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
+    }
+
+    [Fact]
+    public async Task MergedWork_Is404ForAKeyThatDoesNotExist()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.MergedWork(
+            "AER-404", new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
     }
 
     // ---- The review playbook ----
@@ -5175,6 +5372,18 @@ public class WorkControllerTests
         {
             issue.AssigneePersonId = personId;
             issue.AssigneeApiKeyId = apiKeyId;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The pull request recorded on an issue, written straight onto the row
+        /// - what the route that writes it accepts and refuses is
+        /// <c>IssuesController</c>'s own business; these tests are about what a
+        /// merge does with it once it is there.
+        /// </summary>
+        public async Task SetPullRequestAsync(EfHatchIssue issue, string url)
+        {
+            issue.PullRequestUrl = url;
             await Db.SaveChangesAsync();
         }
 

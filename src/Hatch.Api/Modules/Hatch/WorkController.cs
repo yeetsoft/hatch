@@ -241,7 +241,8 @@ public class WorkController(
                 .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
                 .ToList(),
             (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeChecks.Project).ToList(),
-            (builds.TryGetValue(i.Id, out var built) ? built : []).Select(IssueBuildChecks.Project).ToList()))
+            (builds.TryGetValue(i.Id, out var built) ? built : []).Select(IssueBuildChecks.Project).ToList(),
+            i.PullRequestUrl))
             .ToList();
     }
 
@@ -387,6 +388,68 @@ public class WorkController(
         });
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
+    /// <summary>
+    /// Advances an issue waiting in review whose pull request has merged - the
+    /// one path that may move work into a terminal column without the operator
+    /// pressing it there themselves, because a merge on the forge <em>is</em>
+    /// that decision. Uses <see cref="Columns.Advance"/> rather than
+    /// <see cref="Columns.Target"/> and carries its own refusals rather than
+    /// <see cref="Dispatch.Blocked"/>'s, since <c>Target</c> and <c>Blocked</c>
+    /// both exist to keep an unattended pass from shipping anything itself.
+    /// </summary>
+    /// <remarks>
+    /// Takes no claim: like a hop, this is one write and not a session. A
+    /// claimed issue still refuses - a session is running on it, and a row must
+    /// not move out from under one.
+    /// </remarks>
+    [HttpPost("{key}/merged")]
+    public async Task<ActionResult<IssueDto>> MergedWork(
+        string key, PullRequestMergedRequest request, CancellationToken ct)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+
+        if (Columns.AwaitingReview(statuses)?.Id != from.Id)
+            return Conflict($"\"{from.Name}\" is not the review column - a merge only advances a ticket waiting there");
+
+        var recorded = issue.PullRequestUrl?.Trim();
+        if (string.IsNullOrEmpty(recorded))
+            return Conflict("no pull request is recorded on this issue, so there is nothing for a merge to confirm");
+
+        var url = request.Url?.Trim() ?? "";
+        if (!string.Equals(url, recorded, StringComparison.Ordinal))
+            return Conflict($"\"{url}\" is not the pull request recorded on this issue");
+
+        var to = Columns.Advance(statuses, from);
+        if (to is null)
+            return Conflict($"there is no column after \"{from.Name}\", so there is nowhere for this to go");
+
+        var now = time.GetUtcNow();
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        if (claimed.Held(issue) is { } holder) return Conflict(holder);
+
+        var actor = await caller.ActorNameAsync(ct);
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = actor,
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = JsonSerializer.Serialize(new { from = from.Name, to = to.Name, merged = true }),
+            At = now,
+        });
+        issue.Rank = await ranks.BottomAsync(to.Id, ct);
+        issue.StatusId = to.Id;
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
