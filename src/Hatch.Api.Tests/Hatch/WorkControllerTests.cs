@@ -1081,6 +1081,18 @@ public class WorkControllerTests
         Assert.Equal(work.FromStatus.Id, work.ToStatus.Id);
         Assert.Equal(WorkKinds.Conflicts, work.Kind);
         Assert.DoesNotContain("only the operator", work.Blocked);
+        Assert.True(work.InReview);
+    }
+
+    [Fact]
+    public async Task Work_InReview_IsFalseForAnIssueInAnEarlierColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "not there yet", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.False(work.InReview);
     }
 
     [Fact]

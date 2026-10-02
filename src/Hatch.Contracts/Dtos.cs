@@ -1204,6 +1204,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// written by a lapse, are skipped rather than counted or stopped at. Zero on
 /// a client too old to read it.
 /// </param>
+/// <param name="InReview">
+/// Whether <paramref name="FromStatus"/> is, right now, the board's review
+/// column - computed the same way <c>AttentionController</c> counts a ticket
+/// as waiting on a pull request, off <c>Columns.AwaitingReview</c> and never
+/// off a column's name. False on a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1219,7 +1225,8 @@ public record WorkDto(
     bool Hop = false,
     string? HopKind = null,
     string? HopUnder = null,
-    int LetGo = 0);
+    int LetGo = 0,
+    bool InReview = false);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only

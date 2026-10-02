@@ -542,7 +542,8 @@ public class WorkController(
             hopped,
             hopped ? hopKind : null,
             hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
-            await LetGoAsync(issue.Id, ct));
+            await LetGoAsync(issue.Id, ct),
+            inReview);
     }
 
     // ---- Waiting, past a lapsed stall question ----
