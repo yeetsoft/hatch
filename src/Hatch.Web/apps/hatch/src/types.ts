@@ -163,18 +163,18 @@ export interface IssueCard {
       IssueCardDto.Expedited. Derived from the effective level - true at
       expedited and emergency, false at normal, economy and paused - and kept
       alongside it rather than replaced by it, so a reader that only cares
-      whether this one goes first does not have to know there are five
+      whether this one goes first does not have to know there are six
       levels. */
   expedited: boolean;
-  /** The level's name - `'paused'`, `'economy'`, `'normal'`, `'expedited'` or
-      `'emergency'` - see IssueCardDto.Priority and PriorityLevels. The raw
-      level, for the one place that needs to tell expedited apart from
-      emergency rather than collapse them: the optimistic float in
-      lib/place.ts. */
-  priority: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
+  /** The level's name - `'paused'`, `'economy'`, `'low'`, `'normal'`,
+      `'expedited'` or `'emergency'` - see IssueCardDto.Priority and
+      PriorityLevels. The raw level, for the one place that needs to tell
+      expedited apart from emergency rather than collapse them: the
+      optimistic float in lib/place.ts. */
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCardDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCardDto.PriorityFrom. */
   priorityFrom: string | null;
@@ -344,10 +344,10 @@ export interface Issue {
       IssueExpediteController. Derived from `priority` - see IssueCard.expedited. */
   expedited: boolean;
   /** The level's name - see IssueCard.priority and IssueDto.Priority. */
-  priority: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCard.priorityOwn and IssueDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCard.priorityFrom and
       IssueDto.PriorityFrom. */

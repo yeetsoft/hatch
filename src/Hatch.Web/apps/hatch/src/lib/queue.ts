@@ -46,13 +46,15 @@ export function hopReason(hopKind: QueueEntry['hopKind'], hopUnder: string | nul
   return `${hopWord(hopKind, hopUnder)}, no session`;
 }
 
-/** `!!` for emergency, `!` for expedited, `~` for economy, null for normal -
-    the marker a row carries. Unlike the CLI's `"!!"`/`"! "`/`"~ "`, not
-    padded to a fixed width: that padding exists only to keep a monospace
-    column aligned, which a modal row does with CSS instead. */
-export function queueMarker(entry: QueueEntry): '!!' | '!' | '~' | null {
+/** `!!` for emergency, `!` for expedited, `-` for low, `~` for economy, null
+    for normal - the marker a row carries. Unlike the CLI's
+    `"!!"`/`"! "`/`"- "`/`"~ "`, not padded to a fixed width: that padding
+    exists only to keep a monospace column aligned, which a modal row does
+    with CSS instead. */
+export function queueMarker(entry: QueueEntry): '!!' | '!' | '-' | '~' | null {
   if (entry.issue.priority === 'emergency') return '!!';
   if (entry.issue.priority === 'expedited') return '!';
+  if (entry.issue.priority === 'low') return '-';
   if (entry.issue.priority === 'economy') return '~';
   return null;
 }

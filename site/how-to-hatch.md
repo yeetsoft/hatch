@@ -137,14 +137,15 @@ loop does here.
 Within a column, order is the order you see. Drag a card up and the runner
 reaches it sooner.
 
-**Priority** puts an issue at one of five levels: paused the lowest, then
-economy, normal, expedited, and emergency the highest. Set it on the issue page
-or the board's peek, from a pill that opens onto every level — press the one
-you want, and the card floats to the top of its column (or, for paused, sinks
-to the bottom), and the dispatcher considers every emergency card before every
-expedited card before anything else, right to left within each. So an
+**Priority** puts an issue at one of six levels: paused the lowest, then
+economy, low, normal, expedited, and emergency the highest. Set it on the issue
+page or the board's peek, from a pill that opens onto every level — press the
+one you want, and the card floats to the top of its column (or, for paused,
+sinks to the bottom), and the dispatcher considers every emergency card before
+every expedited card before anything else, right to left within each. So an
 emergency bug in Breakdown is reached before an expedited story in To Do,
-which is reached before a normal one in To Do. Three things it is not:
+which is reached before a normal one in To Do, which is reached before a low
+one wherever it sits. Three things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
   blocked is still blocked. Paused and economy are the exceptions: paused

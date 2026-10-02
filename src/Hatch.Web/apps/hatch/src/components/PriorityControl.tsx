@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { priorityLandingFocus } from '../lib/priority';
 import type { AssigneeDirectory } from '../types';
 
-export type Priority = 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
+export type Priority = 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
 
 interface PriorityLevel {
   name: Priority;
@@ -37,6 +37,13 @@ const LEVELS: PriorityLevel[] = [
     glyph: '',
     class: '',
     title: 'No float: this one waits its turn in the column, in the usual order.',
+  },
+  {
+    name: 'low',
+    word: 'Low',
+    glyph: '↓',
+    class: 'low',
+    title: 'Low — reached after everything normal, and only while the session window is on pace.',
   },
   {
     name: 'economy',

@@ -121,18 +121,22 @@ function CardFace({ card, waiting, terminal }: Required<Omit<CardProps, 'card'>>
                 ? 'Emergency - the highest priority, first above everything expedited'
                 : card.priority === 'expedited'
                   ? 'Expedited - this one goes first'
-                  : card.priority === 'economy'
-                    ? 'Economy - worked only with usage that would otherwise go spare'
-                    : 'Paused - a person set this aside; the loop leaves it where it stands'
+                  : card.priority === 'low'
+                    ? 'Low - reached after everything normal, and only while the session window is on pace'
+                    : card.priority === 'economy'
+                      ? 'Economy - worked only with usage that would otherwise go spare'
+                      : 'Paused - a person set this aside; the loop leaves it where it stands'
             }
           >
             {card.priority === 'emergency'
               ? '🚨'
               : card.priority === 'expedited'
                 ? '↑'
-                : card.priority === 'economy'
-                  ? '🌙'
-                  : '⏸'}
+                : card.priority === 'low'
+                  ? '↓'
+                  : card.priority === 'economy'
+                    ? '🌙'
+                    : '⏸'}
           </span>
         )}
         {/* Express, beside expedite and drawn the same way - its own glyph and

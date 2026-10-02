@@ -69,6 +69,19 @@ public class IssueExpediteControllerTests
     }
 
     [Fact]
+    public async Task AnIssue_IsMarkedLow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.LowName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.LowName, marked.Priority);
+        Assert.Equal(PriorityLevels.Low, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
     public async Task AnIssue_IsMarkedPaused()
     {
         var h = await NewAsync();
@@ -118,7 +131,15 @@ public class IssueExpediteControllerTests
 
         var result = await h.Priority.PutIssuePriority(issue.Key, new PriorityRequest("urgent"), default);
 
-        Assert.Contains("not a priority", Reason(result.Result));
+        var reason = Reason(result.Result);
+        Assert.Contains("not a priority", reason);
+        // Names all six, so a refusal is also the list of what it should have said.
+        foreach (var name in new[]
+                 {
+                     PriorityLevels.PausedName, PriorityLevels.EconomyName, PriorityLevels.LowName,
+                     PriorityLevels.NormalName, PriorityLevels.ExpeditedName, PriorityLevels.EmergencyName,
+                 })
+            Assert.Contains(name, reason);
     }
 
     [Fact]

@@ -9,7 +9,7 @@ const card = (
   key: string,
   statusId: number,
   rank: number,
-  priority: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused' = 'normal',
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' = 'normal',
 ): IssueCard => ({
   key,
   projectKey: 'AER',
@@ -266,6 +266,25 @@ describe('place, with an economy card below everything', () => {
     const placed = place(thrifty, thrifty, 'AER-1', 'AER-2')!;
 
     expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9']);
+  });
+});
+
+/* Low sinks below normal and above economy - the sixth group in reorder(),
+   proved the same way the economy test above proves its own group: dropped
+   from the reordered column rather than sorted into it would be the same
+   exhaustive-filter regression one tier up. */
+describe('place, with a low card below normal and above economy', () => {
+  const unhurried = [
+    card('AER-9', INBOX, 256, 'low'),
+    card('AER-5', INBOX, 384, 'economy'),
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('is not dropped from the reordered column, and sorts between normal and economy', () => {
+    const placed = place(unhurried, unhurried, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9', 'AER-5']);
   });
 });
 
