@@ -302,6 +302,25 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AHeartbeatOnAnIssuePausedMidIncrement_StillRefreshesTheLease()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        await h.PauseAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl - 1));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        // A pause takes effect between increments, not mid-one: the heartbeat
+        // answers exactly as it would for an issue nobody touched, and the
+        // runner is never told to stand down.
+        var row = await h.RowAsync(issue);
+        Assert.Equal(Now.AddSeconds(TestClaims.Ttl - 1), row.ClaimHeartbeatAt);
+    }
+
+    [SkippableFact]
     public async Task AHeartbeatWithSomebodyElsesToken_IsRefused()
     {
         await using var h = await NewAsync();
@@ -1237,6 +1256,21 @@ public class IssueClaimTests
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one") =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner), default)).Token;
+
+        /// <summary>
+        /// Paused, written straight to the row - a person setting a ticket
+        /// aside takes effect between increments, not mid-one, so these tests
+        /// are about what a live heartbeat does once the level changes under
+        /// it, not about the route that sets it (<see cref="IssueExpediteControllerTests"/>).
+        /// </summary>
+        public async Task PauseAsync(string key)
+        {
+            var db = Connect();
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.Priority = PriorityLevels.Paused;
+            await db.SaveChangesAsync();
+        }
 
         /// <summary>
         /// The row as the database has it, read past the change tracker -

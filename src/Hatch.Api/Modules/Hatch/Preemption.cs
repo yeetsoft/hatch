@@ -49,8 +49,9 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
 
         // Every live claim below emergency level, carrying the dispatcher's
         // own row order - emergency first, then expedited, then normal, then
-        // economy, each right to left - which is what makes "last" in rule 3
-        // the board's own order and not a second opinion about it.
+        // economy, then paused, each right to left - which is what makes
+        // "last" in rule 3 the board's own order and not a second opinion
+        // about it.
         var heldBelow = scan.Rows
             .Select((row, index) => (row, index))
             .Where(x => x.row.EffectivePriority < PriorityLevels.Emergency)

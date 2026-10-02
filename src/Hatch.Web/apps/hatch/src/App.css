@@ -2714,6 +2714,13 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--muted), var(--shadow);
 }
 
+/* Paused: muted rather than striped - a stripe reads as "look here first",
+   the opposite of what a card a person set aside means. */
+.hatch-card.paused,
+.hatch-card-preview.paused {
+  opacity: 0.6;
+}
+
 /* And the badge, for everything the stripe cannot say: what it means, on hover,
    and to a reader who is not going by colour. */
 .hatch-card-expedited {
@@ -2763,11 +2770,17 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* Paused: a muted tint, not a beacon - nothing here is asking to be noticed. */
+.hatch-card-expedited.paused {
+  background: var(--line-strong);
+  color: var(--muted);
+}
+
 /* The pill, on the issue page and in the summary: pixel for pixel what
    `ExpediteControl`'s button drew at rest, now opening a band instead of
    cycling - see PriorityControl. Each level owns one class and one face
-   (.expedited, .emergency, .economy; normal takes the bare rule), so adding a
-   level (HA-176) is a rule here and nothing to branch on. */
+   (.expedited, .emergency, .economy, .paused; normal takes the bare rule), so
+   adding a level is a rule here and nothing to branch on. */
 .hatch-priority-pill {
   display: inline-flex;
   align-items: center;
@@ -2808,6 +2821,12 @@ input.hatch-inline-title-input {
   border-color: var(--muted);
   background: var(--muted);
   color: var(--on-accent);
+}
+
+.hatch-priority-pill.paused {
+  border-color: var(--line-strong);
+  background: var(--line-strong);
+  color: var(--muted);
 }
 
 /* The pill's button chrome and caret, the same shapes `.hatch-status-pill-press`
@@ -2860,6 +2879,10 @@ input.hatch-inline-title-input {
   font-weight: 600;
 }
 
+.hatch-priority-said.paused {
+  color: var(--muted);
+}
+
 /* In the summary the pill sits on its own row under the title, with room for a
    refusal beside it, and for the band once it opens. */
 .hatch-peek-priority {
@@ -2901,6 +2924,11 @@ input.hatch-inline-title-input {
 .hatch-priority-band.economy {
   background: color-mix(in srgb, var(--muted) 10%, var(--card));
   border-left-color: var(--muted);
+}
+
+.hatch-priority-band.paused {
+  background: color-mix(in srgb, var(--line-strong) 25%, var(--card));
+  border-left-color: var(--line-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2945,6 +2973,10 @@ input.hatch-inline-title-input {
   border-color: var(--muted);
 }
 
+.hatch-priority-step.paused {
+  border-color: var(--line-strong);
+}
+
 /* The level this issue's own row already carries. Disabled rather than merely
    marked - pressing it would write an event saying priority moved from
    expedited to expedited. */
@@ -2968,6 +3000,11 @@ input.hatch-inline-title-input {
 .hatch-priority-step.economy.here {
   background: var(--muted);
   color: var(--on-accent);
+}
+
+.hatch-priority-step.paused.here {
+  background: var(--line-strong);
+  color: var(--muted);
 }
 
 /* Carried past a column marked Express skips, with no session.

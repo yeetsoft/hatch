@@ -393,9 +393,10 @@ hatch questions AER-12            ...or just this ticket's
 ```
 
 `hatch queue` is the dry run for the loop and the answer to "why did it not
-pick up the ticket I meant". A row marked `!!` is emergency and one marked
-`! ` is expedited. Columns are found by name on the letters and digits alone,
-so `todo` reaches `To Do`.
+pick up the ticket I meant". A row marked `!!` is emergency, one marked `! `
+is expedited, and one marked `||` is paused: a person set it aside, and
+nothing picks it up until they set it back. Columns are found by name on the
+letters and digits alone, so `todo` reaches `To Do`.
 
 ## Driving a ticket by hand
 

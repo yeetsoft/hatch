@@ -449,6 +449,35 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_paused()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, priority: PriorityLevels.PausedName), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 paused)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Next_skipsAColumnWhoseOnlyReadyCardIsPaused()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.PausedName)));
+
+        Assert.Equal(2, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Contains("nothing workable in \"todo\"", h.Complained);
+    }
+
+    [Fact]
     public async Task Next_marks_the_card_it_prints_when_somebody_expedited_it()
     {
         using var h = new CliHarness();
@@ -506,6 +535,26 @@ public sealed class BoardCommandsTests
             !!AER-9  [task]  In Progress  -> In Review
             ! AER-7  [task]  In Progress  -> In Review
               AER-1  [task]  In Progress  it waits on AER-7
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_a_paused_row_with_its_own_doubled_marker()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.Row("AER-9", priority: PriorityLevels.PausedName, blocked: "paused - a person set it aside, and nothing picks it up until they set it back"),
+            Fixtures.Row("AER-7", expedited: true),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            ||AER-9  [task]  In Progress  paused - a person set it aside, and nothing picks it up until they set it back
+            ! AER-7  [task]  In Progress  -> In Review
             """.ReplaceLineEndings("\n"),
             h.Said);
     }

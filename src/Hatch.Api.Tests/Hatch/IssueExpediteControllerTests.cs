@@ -69,6 +69,34 @@ public class IssueExpediteControllerTests
     }
 
     [Fact]
+    public async Task AnIssue_IsMarkedPaused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.PausedName, marked.Priority);
+        Assert.Equal(PriorityLevels.Paused, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task APausedIssue_RoundTripsBackToExpeditedAndToNormal()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+        var expedited = await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
+        Assert.Equal(PriorityLevels.ExpeditedName, expedited.Priority);
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+        var normal = await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
+        Assert.Equal(PriorityLevels.NormalName, normal.Priority);
+    }
+
+    [Fact]
     public async Task TheSameRoute_UnmarksIt()
     {
         var h = await NewAsync();

@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { priorityLandingFocus } from '../lib/priority';
 import type { AssigneeDirectory } from '../types';
 
-export type Priority = 'normal' | 'expedited' | 'emergency' | 'economy';
+export type Priority = 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused';
 
 interface PriorityLevel {
   name: Priority;
@@ -13,9 +13,8 @@ interface PriorityLevel {
   title: string;
 }
 
-/** Every level the picker offers, in the order the band draws them. HA-176 adds
-    paused here, after economy, and nowhere else - this is the one place in the
-    component that names a level. */
+/** Every level the picker offers, in the order the band draws them - this is
+    the one place in the component that names a level. */
 const LEVELS: PriorityLevel[] = [
   {
     name: 'emergency',
@@ -47,7 +46,13 @@ const LEVELS: PriorityLevel[] = [
     title:
       'Worked only with usage that would otherwise go spare - the dispatcher reaches for it last, and only when the account is ahead of pace.',
   },
-  // paused: added by HA-176, after this one - not here.
+  {
+    name: 'paused',
+    word: 'Paused',
+    glyph: '⏸',
+    class: 'paused',
+    title: 'Paused: a person set this aside; the loop leaves it where it stands until they set it back.',
+  },
 ];
 
 const NORMAL = LEVELS.find((level) => level.name === 'normal')!;

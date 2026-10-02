@@ -56,6 +56,19 @@ public class WipTests
     }
 
     [Fact]
+    public async Task APausedStoryInTheSection_FreesItsSlot()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        await h.IssueAsync("story", h.InProgress);
+        await h.IssueAsync("story", h.InReview, priority: PriorityLevels.Paused);
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        Assert.Equal(1, wip!.Slices[0].Load);
+    }
+
+    [Fact]
     public async Task ABugInTheSection_CountsAsAStoryDoes()
     {
         var h = await NewAsync();
@@ -403,6 +416,19 @@ public class WipTests
     }
 
     [Fact]
+    public async Task LoadUnder_DoesNotCountAStoryInheritingAPauseFromTheEpic()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        var epic = await h.IssueAsync("epic", h.Backlog, priority: PriorityLevels.Paused);
+        await h.IssueAsync("story", h.InProgress, epic);
+
+        var section = await h.LoadAsync();
+
+        Assert.Equal(0, section!.LoadUnder(epic));
+    }
+
+    [Fact]
     public async Task LoadUnder_DoesNotCountAnEpicUnderIt()
     {
         var h = await NewAsync();
@@ -540,7 +566,7 @@ public class WipTests
             return await Wip.LoadAsync(Db, Claims, statuses, Time.GetUtcNow(), default);
         }
 
-        public async Task<long> IssueAsync(string type, int statusId, long? parentId = null)
+        public async Task<long> IssueAsync(string type, int statusId, long? parentId = null, int priority = PriorityLevels.Normal)
         {
             var now = Time.GetUtcNow();
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
@@ -552,6 +578,7 @@ public class WipTests
                 Type = type,
                 Title = type,
                 StatusId = statusId,
+                Priority = priority,
                 Rank = 100,
                 CreatedBy = "hatch",
                 CreatedAt = now,

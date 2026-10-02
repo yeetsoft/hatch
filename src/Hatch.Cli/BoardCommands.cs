@@ -43,6 +43,9 @@ public sealed class BoardCommands(Cli cli)
         "  each sits in. A row marked \"~ \" is economy: the pass considers it",
         "  last, after every other row.",
         "",
+        "  A row marked \"||\" is paused: a person set it aside, and nothing picks",
+        "  it up until they set it back.",
+        "",
         "  A row marked \"(express, no session)\", \"(parent pulled, no session)\",",
         "  \"(epic, no session)\" or \"(under <epic>, no session)\" is a hop: the loop",
         "  carries it on itself with no session, rather than spawning one.",
@@ -88,10 +91,13 @@ public sealed class BoardCommands(Cli cli)
             var thrifty = column.Count(i => i.Priority == PriorityLevels.EconomyName);
             var economy = thrifty > 0 ? $"  ({thrifty} economy)" : "";
 
+            var asideCount = column.Count(i => i.Priority == PriorityLevels.PausedName);
+            var aside = asideCount > 0 ? $"  ({asideCount} paused)" : "";
+
             var express = column.Count(i => i.Express);
             var carried = express > 0 ? $"  ({express} express)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{economy}{carried}");
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{economy}{aside}{carried}");
         }
 
         if (board.Wip is { } wip)
@@ -155,7 +161,8 @@ public sealed class BoardCommands(Cli cli)
             return 1;
         }
 
-        var card = board.Issues.FirstOrDefault(i => i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now));
+        var card = board.Issues.FirstOrDefault(i =>
+            i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now) && i.Priority != PriorityLevels.PausedName);
         if (card is null)
         {
             cli.Say.Complain($"hatch: nothing workable in \"{want}\"");
@@ -233,10 +240,10 @@ public sealed class BoardCommands(Cli cli)
     /// the same idea one step further, and distinct from the singular
     /// <c>!</c> the expedited-only board used - both two characters, so column
     /// alignment is unaffected. <c>~ </c> marks an economy row the same way,
-    /// at the other end of the scale. The column appears only when the answer
-    /// holds one, so a board with nothing off normal prints exactly what it
-    /// printed before, and a queue whose order has been reordered by somebody
-    /// says which rows did it.
+    /// at the other end of the scale, and <c>||</c> marks a paused one. The
+    /// column appears only when the answer holds one, so a board with nothing
+    /// off normal prints exactly what it printed before, and a queue whose
+    /// order has been reordered by somebody says which rows did it.
     ///
     /// <para>A conflict dispatch starts and ends in the same column, so an arrow
     /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
@@ -257,6 +264,7 @@ public sealed class BoardCommands(Cli cli)
                         PriorityLevels.EmergencyName => "!!",
                         PriorityLevels.ExpeditedName => "! ",
                         PriorityLevels.EconomyName => "~ ",
+                        PriorityLevels.PausedName => "||",
                         _ => "  ",
                     }
                     : "")
