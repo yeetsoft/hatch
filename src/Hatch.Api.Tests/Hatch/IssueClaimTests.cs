@@ -999,6 +999,46 @@ public class IssueClaimTests
             (await h.Claims.Heartbeat(normal, new ClaimHeartbeatRequest(normalToken, null), default)).Result);
     }
 
+    // ---- Express protects nothing, and marks nothing (HA-241) ----
+    //
+    // Rule 2 reads effective level alone - Express is not read anywhere in
+    // Preemption.cs - so a held issue below emergency is exactly as exposed
+    // with the flag set as without it, and does not jump the board's own
+    // order by carrying it.
+
+    [SkippableFact]
+    public async Task AnExpressHeldIssue_IsPreemptedExactlyAsANonExpressOneWouldBe()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync(express: true);
+        var token = await h.TakeAsync(victim);
+
+        // Last in board order and held below emergency: told, the flag giving
+        // it no immunity rule 2 does not already grant emergency work itself.
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task AnExpressHeldIssue_NotLastInBoardOrder_IsNotToldAheadOfItsTurn()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var earlier = await h.FileAsync(express: true);
+        var later = await h.FileAsync();
+        var earlierToken = await h.TakeAsync(earlier, "somewhere:/checkouts/one");
+        var laterToken = await h.TakeAsync(later, "elsewhere:/checkouts/two");
+
+        // Express does not mark its own row as the one to preempt: the later,
+        // non-express claim is still last in board order and is the one told.
+        var told = Value(await h.Claims.Heartbeat(later, new ClaimHeartbeatRequest(laterToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(earlier, new ClaimHeartbeatRequest(earlierToken, null), default)).Result);
+    }
+
     [SkippableFact]
     public async Task WithNormalLowAndEconomyClaims_TheEconomyOneIsToldFirstAndTheLowOneSecond()
     {
@@ -1218,7 +1258,8 @@ public class IssueClaimTests
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<string> FileAsync(
-            string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do")
+            string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do",
+            bool express = false)
         {
             var number = next++;
             var db = Connect();
@@ -1240,6 +1281,7 @@ public class IssueClaimTests
                 ParentId = parentId,
                 Rank = 1024 * number,
                 Priority = priority,
+                Express = express,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
