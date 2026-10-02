@@ -78,6 +78,24 @@ public sealed class WorkspaceLeaveTests : RepoFixture
     }
 
     [Fact]
+    public void Leaving_reports_a_pushed_branchs_verdict_even_without_a_pull_request()
+    {
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-b", "ha-31-thing");
+        File.WriteAllText(Path.Combine(_work, "more.txt"), "more");
+        Commit(_work, "Session work");
+        G(_work, "push", "--quiet", "-u", "origin", "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.NotNull(left.Found);
+        Assert.Equal("ha-31-thing", left.Found!.Branch);
+        Assert.Equal(MergeVerdicts.Clean, left.Found.Kind);
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
     public void Leaving_brings_a_pull_requests_branch_up_to_the_trunk_when_the_merge_is_clean()
     {
         Publish("ha-31-thing", "x.txt", "x");

@@ -14,6 +14,11 @@ public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, str
 /// </summary>
 public sealed record PreemptionInfo(string EmergencyKey, string EmergencyTitle, string? SessionId);
 
+/// <summary>What <see cref="Lifecycle.LeaveAsync"/> learned on its way out.</summary>
+/// <param name="HasPullRequest">Whether a pull request is recorded on the issue.</param>
+/// <param name="BranchOnOrigin">Whether any checkout found a branch on origin for the issue.</param>
+public sealed record LeaveOutcome(bool HasPullRequest, bool BranchOnOrigin);
+
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
 /// <param name="Asked">Somebody has to say which branch, the question is on the ticket, and nothing is to be spawned.</param>
@@ -115,7 +120,7 @@ public sealed class Lifecycle(Runtime runtime)
     /// takes, for the same reason: the session did not get to say whether what
     /// it left is fit to publish, so the runner does not either.
     /// </param>
-    public async Task LeaveAsync(
+    public async Task<LeaveOutcome> LeaveAsync(
         WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct,
         UsageLimitInfo? limit = null, PreemptionInfo? preempted = null)
     {
@@ -127,7 +132,7 @@ public sealed class Lifecycle(Runtime runtime)
             if (!ownsTicket)
             {
                 foreach (var (path, baseBranch) in chosen.Resets) runtime.Workspace(path, baseBranch).Return();
-                return;
+                return new LeaveOutcome(false, false);
             }
 
             var pushed = new List<(string Path, LimitPushed Result)>();
@@ -136,6 +141,7 @@ public sealed class Lifecycle(Runtime runtime)
                     pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(key, work.Issue.Title)));
 
             var pullRequest = await HasPullRequestAsync(key, ct);
+            var branchOnOrigin = false;
 
             foreach (var (path, baseBranch) in chosen.Resets)
             {
@@ -143,31 +149,38 @@ public sealed class Lifecycle(Runtime runtime)
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
 
-                if (left.Found is { } found) await ReportAsync(key, chosen, path, found, ct);
+                if (left.Found is { } found)
+                {
+                    await ReportAsync(key, chosen, path, found, ct);
+                    if (found.Kind != MergeVerdicts.None) branchOnOrigin = true;
+                }
             }
 
             if (limit is not null)
             {
                 await runtime.Board.CommentAsync(key, UsageLimitBody(limit, chosen, pushed, lines), ct);
-                return;
+                return new LeaveOutcome(pullRequest, false);
             }
 
             if (preempted is not null)
             {
                 await runtime.Board.CommentAsync(key, PreemptedBody(preempted, chosen, pushed, lines), ct);
-                return;
+                return new LeaveOutcome(pullRequest, false);
             }
 
-            if (lines.Count == 0) return;
+            if (lines.Count == 0) return new LeaveOutcome(pullRequest, branchOnOrigin);
 
             await runtime.Board.CommentAsync(
                 key, "The runner tidied the tree after this increment:\n\n" + string.Join('\n', lines), ct);
+
+            return new LeaveOutcome(pullRequest, branchOnOrigin);
         }
         catch (Exception e)
         {
             // Nothing here fails an increment: the work happened, and what is
             // left is housekeeping that the next reset does as well.
             runtime.Say.Complain($"hatch: {key} - the tree could not be left tidy, or the ticket told - {e.Message}");
+            return new LeaveOutcome(false, false);
         }
     }
 
