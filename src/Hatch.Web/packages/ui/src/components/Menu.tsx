@@ -61,6 +61,15 @@ export interface MenuProps {
 
 const BarContext = createContext<MenuBarController | null>(null);
 const ItemContext = createContext<(() => void) | null>(null);
+const OpenContext = createContext<boolean>(false);
+
+/** Whether the nearest enclosing `Menu`'s panel is open. `false` outside any
+    menu - the same safe, render-anywhere default `ItemContext` already makes
+    for a value with no menu around it - so a component carrying it is safe in
+    the gallery, in `apps/auth`, anywhere that has never heard of `Menu`. */
+export function useMenuOpen(): boolean {
+  return useContext(OpenContext);
+}
 
 function newController(): MenuBarController {
   return createMenuBar({
@@ -244,7 +253,9 @@ function MenuRoot({
         className={`hatch-menu__panel hatch-menu__panel--${align}${open ? ' hatch-menu__panel--open' : ''}`}
       >
         <ItemContext.Provider value={() => controller.close(id)}>
-          <div className="hatch-menu__surface">{children}</div>
+          <OpenContext.Provider value={open}>
+            <div className="hatch-menu__surface">{children}</div>
+          </OpenContext.Provider>
         </ItemContext.Provider>
       </div>
     </div>
