@@ -191,6 +191,119 @@ public class ProjectsControllerTests
         Assert.Equal(["example.com/owner/one", "example.com/owner/two"], project.Repositories.Select(r => r.Canonical));
     }
 
+    // ---- Colour and icon ----
+
+    [Fact]
+    public async Task ACreatedProjectsColourAndIcon_RoundTripThroughTheList()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test", "#AB12EF", "rocket"), default));
+
+        Assert.Equal("#ab12ef", created.Color);
+        Assert.Equal("rocket", created.Icon);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal("#ab12ef", read.Color);
+        Assert.Equal("rocket", read.Icon);
+    }
+
+    [Fact]
+    public async Task PatchingColorToEmpty_ClearsJustTheColour()
+    {
+        var h = await NewAsync();
+        await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: "#2a78d6", Icon: "rocket"), default);
+
+        var patched = Value(await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: ""), default));
+
+        Assert.Null(patched.Color);
+        Assert.Equal("rocket", patched.Icon);
+    }
+
+    [Fact]
+    public async Task PatchingIconToEmpty_ClearsJustTheIcon()
+    {
+        var h = await NewAsync();
+        await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: "#2a78d6", Icon: "rocket"), default);
+
+        var patched = Value(await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Icon: ""), default));
+
+        Assert.Equal("#2a78d6", patched.Color);
+        Assert.Null(patched.Icon);
+    }
+
+    [Theory]
+    [InlineData("red")]
+    [InlineData("#ab1")]
+    [InlineData("6b7280")]
+    [InlineData("#gggggg")]
+    [InlineData("rgb(1,2,3)")]
+    public async Task ACreateWithAColourThatIsNotAHexValue_IsRefusedNamingColourAndWritesNothing(string color)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test", color), default);
+
+        Assert.Contains("colour", Reason(result.Result));
+        Assert.Empty(await h.Db.Projects.Where(p => p.Key == "TST").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("red")]
+    [InlineData("#ab1")]
+    [InlineData("6b7280")]
+    [InlineData("#gggggg")]
+    [InlineData("rgb(1,2,3)")]
+    public async Task APatchWithAColourThatIsNotAHexValue_IsRefusedNamingColourAndChangesNothing(string color)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: color), default);
+
+        Assert.Contains("colour", Reason(result.Result));
+        Assert.Null((await h.Db.Projects.FindAsync(h.ProjectId))!.Color);
+    }
+
+    [Theory]
+    [InlineData("Rocket")]
+    [InlineData("a slug")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task ACreateWithABadIconSlug_IsRefusedNamingIconAndWritesNothing(string icon)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test", Icon: icon), default);
+
+        Assert.Contains("icon", Reason(result.Result));
+        Assert.Empty(await h.Db.Projects.Where(p => p.Key == "TST").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("Rocket")]
+    [InlineData("a slug")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task APatchWithABadIconSlug_IsRefusedNamingIconAndChangesNothing(string icon)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Icon: icon), default);
+
+        Assert.Contains("icon", Reason(result.Result));
+        Assert.Null((await h.Db.Projects.FindAsync(h.ProjectId))!.Icon);
+    }
+
+    [Fact]
+    public async Task ResendingTheColourAndIconAProjectAlreadyHolds_IsANoOp()
+    {
+        var h = await NewAsync();
+        var first = Value(await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: "#2a78d6", Icon: "rocket"), default));
+
+        var second = Value(await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest(null, Color: "#2a78d6", Icon: "rocket"), default));
+
+        Assert.Equal(first.Color, second.Color);
+        Assert.Equal(first.Icon, second.Icon);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
@@ -262,6 +375,11 @@ public class ProjectsControllerTests
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");
+
+    private static T Created<T>(ActionResult<T> result) =>
+        result.Result is CreatedAtActionResult created
+            ? (T)created.Value!
+            : result.Value ?? throw new InvalidOperationException($"expected a created value, got {Reason(result.Result)}");
 
     /// <summary>The plain-text reason on a refusal - what the UI puts on screen.</summary>
     private static string Reason(IActionResult? result) => result switch

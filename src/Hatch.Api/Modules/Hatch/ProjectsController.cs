@@ -32,16 +32,19 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<IReadOnlyList<ProjectDto>>> GetProjects(CancellationToken ct)
     {
-        var projects = await db.Projects.AsNoTracking()
-            .OrderBy(p => p.Key)
-            .Select(p => new ProjectDto(
-                p.Id, p.Key, p.Name, p.Issues.Count, p.CreatedAt,
-                p.Repositories.OrderBy(r => r.SortOrder)
-                    .Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch))
-                    .ToList()))
-            .ToListAsync(ct);
+        var projects = await db.Projects.AsNoTracking().OrderBy(p => p.Key).ToListAsync(ct);
 
-        return projects;
+        var counts = await db.Issues.GroupBy(i => i.ProjectId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+
+        var reposByProject = (await db.ProjectRepositories.AsNoTracking().OrderBy(r => r.SortOrder).ToListAsync(ct))
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<ProjectRepositoryDto>)g.Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch)).ToList());
+
+        return projects.Select(p => ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []))).ToList();
     }
 
     [HttpPost]
@@ -64,11 +67,20 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
         if (await db.Projects.AnyAsync(p => p.Key == key, ct))
             return Conflict($"{key} is already taken");
 
-        var project = new EfHatchProject { Key = key!, Name = name, CreatedAt = time.GetUtcNow() };
+        var color = request.Color?.Trim();
+        if (string.IsNullOrEmpty(color)) color = null;
+        else if (!EfHatchProject.IsValidColor(color)) return BadRequest($"a project colour is a hex value like #6b7280 - not \"{request.Color}\"");
+        else color = EfHatchProject.NormalizeColor(color);
+
+        var icon = request.Icon?.Trim();
+        if (string.IsNullOrEmpty(icon)) icon = null;
+        else if (!EfHatchProject.IsValidIcon(icon)) return BadRequest($"a project icon is 1-40 lower-case letters, digits or hyphens - not \"{request.Icon}\"");
+
+        var project = new EfHatchProject { Key = key!, Name = name, Color = color, Icon = icon, CreatedAt = time.GetUtcNow() };
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(GetProjects), new ProjectDto(project.Id, project.Key, project.Name, 0, project.CreatedAt, []));
+        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, []));
     }
 
     /// <summary>
@@ -123,11 +135,35 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
             }
         }
 
+        if (request.Color is not null)
+        {
+            var color = request.Color.Trim();
+            if (color.Length == 0) project.Color = null;
+            else
+            {
+                if (!EfHatchProject.IsValidColor(color))
+                    return BadRequest($"a project colour is a hex value like #6b7280 - not \"{request.Color}\"");
+                project.Color = EfHatchProject.NormalizeColor(color);
+            }
+        }
+
+        if (request.Icon is not null)
+        {
+            var icon = request.Icon.Trim();
+            if (icon.Length == 0) project.Icon = null;
+            else
+            {
+                if (!EfHatchProject.IsValidIcon(icon))
+                    return BadRequest($"a project icon is 1-40 lower-case letters, digits or hyphens - not \"{request.Icon}\"");
+                project.Icon = icon;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
 
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         var repositories = await RepositoriesAsync(id, ct);
-        return new ProjectDto(project.Id, project.Key, project.Name, count, project.CreatedAt, repositories);
+        return ToDto(project, count, repositories);
     }
 
     /// <summary>
@@ -251,6 +287,9 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
 
         return await RepositoriesAsync(id, ct);
     }
+
+    private static ProjectDto ToDto(EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories) =>
+        new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories);
 
     private async Task<List<ProjectRepositoryDto>> RepositoriesAsync(int projectId, CancellationToken ct) =>
         await db.ProjectRepositories.AsNoTracking()
