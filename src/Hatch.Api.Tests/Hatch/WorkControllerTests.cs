@@ -1799,9 +1799,15 @@ public class WorkControllerTests
     public async Task AnAlreadyBlockedLowerTierRow_KeepsItsOwnSentence()
     {
         var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
         await h.FileAsync("bug", "normal, clear", h.Todo);
         var unhurried = await h.FileAsync("bug", "low, already folded", h.Inbox);
         await h.LowAsync(unhurried);
+
+        // Ahead of pace on every window, so low's own gate clears and does
+        // not mask the fold this test means to exercise.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
 
         // h.Inbox has no playbook into h.Todo, so this row is already folded
         // for a reason that has nothing to do with tier order - the override
