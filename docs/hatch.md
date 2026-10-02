@@ -592,6 +592,15 @@ express issue exactly as they hold any other. Express answers one question
 only — does this column still need a session — and changes nothing about
 order, on the board or in `hatch queue`.
 
+**It is in no tier either.** Preemption nominates and spares by effective
+level alone (see [Preemption](#preemption)) — an express row below
+emergency is neither protected from being preempted nor made eligible to
+preempt anything, exactly as a non-express row at the same level would be. The
+one place an express-carried hop meets the pace scale — an economy hop
+skipping the pace gate, above — is a rule about having hopped at all, not
+about Express: the exemption is keyed on `hop`, and three of the four
+`HopKinds` have nothing to do with the flag.
+
 **It is taken from the parent at filing, and at no other time.** An issue
 created under an express parent is born express, whoever files it — a person
 or a key — and however: the New issue dialog, the child composer, or the API

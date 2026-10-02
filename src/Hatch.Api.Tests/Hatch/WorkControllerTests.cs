@@ -3229,6 +3229,108 @@ public class WorkControllerTests
         Assert.False(entry.Hop);
     }
 
+    // ---- Express is routing, never priority (HA-241) ----
+    //
+    // Express decides whether a column needs a session - it is in no OrderBy
+    // and no tier, anywhere. These widen Express_ChangesNoOrderInTheQueue
+    // above into the general claim rather than one example of it.
+
+    [Fact]
+    public async Task Express_ChangesNoPositionAcrossSeveralLevelsAndColumns()
+    {
+        var h = await NewAsync();
+        var economyRow = await h.FileAsync("bug", "economy, inbox", h.Inbox, rank: 1024);
+        var lowRow = await h.FileAsync("bug", "low, inbox", h.Inbox, rank: 2048);
+        var normalA = await h.FileAsync("story", "normal, todo, first", h.Todo, rank: 1024);
+        var normalB = await h.FileAsync("story", "normal, todo, second", h.Todo, rank: 2048);
+        var emergencyRow = await h.FileAsync("bug", "emergency, in progress", h.InProgress, rank: 1024);
+        var expeditedRow = await h.FileAsync("bug", "expedited, in progress", h.InProgress, rank: 2048);
+
+        await h.EconomyAsync(economyRow);
+        await h.LowAsync(lowRow);
+        await h.EmergencyAsync(emergencyRow);
+        await h.ExpediteAsync(expeditedRow);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var queueBefore = Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key).ToList();
+        var boardBefore = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default))
+            .Issues.Select(c => c.Key).ToList();
+
+        // Flip every row to Express at once, Todo's own ExpressSkips included -
+        // if the flag floated anything, this is where it would show.
+        foreach (var row in new[] { economyRow, lowRow, normalA, normalB, emergencyRow, expeditedRow })
+            await h.ExpressAsync(row);
+
+        var queueAfter = Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key).ToList();
+        var boardAfter = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default))
+            .Issues.Select(c => c.Key).ToList();
+
+        Assert.Equal(queueBefore, queueAfter);
+        Assert.Equal(boardBefore, boardAfter);
+    }
+
+    [Fact]
+    public async Task Express_DoesNotLiftAnEconomyOrLowRowOutOfItsTier()
+    {
+        var h = await NewAsync();
+        var judged = await h.FileAsync("story", "awaiting the operator", h.Review);
+        var underway = await h.FileAsync("story", "underway", h.InProgress);
+        var hurry = await h.FileAsync("bug", "expedited, in the leftmost column", h.Inbox);
+        var alarm = await h.FileAsync("bug", "emergency, further along", h.Todo);
+        var unhurried = await h.FileAsync("bug", "low, express, in the leftmost column", h.Inbox);
+        var thrifty = await h.FileAsync("bug", "economy, express, in the leftmost column", h.Inbox);
+
+        await h.ExpediteAsync(hurry);
+        await h.EmergencyAsync(alarm);
+        await h.LowAsync(unhurried);
+        await h.EconomyAsync(thrifty);
+        await h.ExpressAsync(unhurried);
+        await h.ExpressAsync(thrifty);
+
+        // Express on the low and economy rows lifts neither out of its own
+        // tier - the same order Queue_ListsEveryLowCandidateAfterNormalAndBeforeEconomy
+        // asserts for the ordinary ones, above.
+        Assert.Equal(
+            new[] { alarm, hurry, judged, underway, unhurried, thrifty }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
+    public async Task Express_DoesNotOutrankASiblingAtTheSameLevel()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("story", "ranked first", h.Todo, rank: 1024);
+        var second = await h.FileAsync("story", "ranked second, express", h.Todo, rank: 2048);
+        await h.ExpressAsync(second);
+
+        Assert.Equal(
+            new[] { first, second }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        Assert.Equal(
+            new[] { first, second }.Select(Key),
+            board.Issues.Where(c => c.StatusId == h.Todo).Select(c => c.Key));
+    }
+
+    [Fact]
+    public async Task Express_IsNotALevel()
+    {
+        var h = await NewAsync();
+        var plain = await h.FileAsync("story", "plain", h.Todo);
+        var marked = await h.FileAsync("story", "express", h.Todo);
+        await h.ExpressAsync(marked);
+
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var plainCard = board.Issues.Single(c => c.Key == Key(plain));
+        var markedCard = board.Issues.Single(c => c.Key == Key(marked));
+
+        Assert.Equal(plainCard.Priority, markedCard.Priority);
+        Assert.Equal(plainCard.PriorityOwn, markedCard.PriorityOwn);
+        Assert.Equal(plainCard.PriorityFrom, markedCard.PriorityFrom);
+        Assert.False(markedCard.Expedited);
+    }
+
     // ---- Parent pulls, the hop ----
     //
     // A child standing in a column flagged ParentPulls, whose parent stands in

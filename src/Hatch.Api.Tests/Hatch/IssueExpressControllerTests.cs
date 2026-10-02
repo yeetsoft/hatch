@@ -121,6 +121,23 @@ public class IssueExpressControllerTests
     }
 
     [Fact]
+    public async Task Marking_WritesNothingThatTouchesPriority()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.ExpressAsync(issue.Key, true);
+
+        // Filing writes its own created event - beside that, this route
+        // writes exactly one express_changed event and nothing naming
+        // priority, which is a different row entirely (IssueExpediteController's).
+        var events = Value(await h.Thread.GetEvents(issue.Key, default));
+        Assert.DoesNotContain(events, e => e.Kind == EfHatchIssueEvent.PriorityChanged);
+        Assert.Single(events, e => e.Kind == EfHatchIssueEvent.ExpressChanged);
+        Assert.Equal(PriorityLevels.Normal, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
     public async Task UnmarkingSomethingNeverMarked_WritesNothing()
     {
         var h = await NewAsync();
