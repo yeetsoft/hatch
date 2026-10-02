@@ -1727,6 +1727,150 @@ public class WorkControllerTests
             Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
     }
 
+    // ---- A tranche is parked while a higher one has clear work (HA-239) ----
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindAClearNormalOne()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, clear", h.Todo);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // The normal candidate is the one a pass would actually dispatch -
+        // the park can only fold rows next was never going to reach.
+        Assert.Equal(Key(normal), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available",
+            queue.Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksEveryTierBelowAClearExpeditedCandidate()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var hurry = await h.FileAsync("bug", "expedited, clear", h.Todo);
+        await h.ExpediteAsync(hurry);
+        var normal = await h.FileAsync("bug", "normal, otherwise clear", h.Todo);
+        var unhurried = await h.FileAsync("bug", "low, otherwise clear", h.Todo);
+        await h.LowAsync(unhurried);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        // Every tier strictly below expedited, carrying the identical
+        // sentence - naming the expedited row, not an immediate neighbour.
+        string Sentence(string level) =>
+            $"{Key(hurry)} ranks expedited and is clear - nothing at {level} is picked up while higher-ranking work is available";
+        Assert.Equal(Sentence("normal"), queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
+        Assert.Equal(Sentence("low"), queue.Single(e => e.Issue.Key == Key(unhurried)).Blocked);
+        Assert.Equal(Sentence("economy"), queue.Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEmergencyCandidate_IsNeverParked()
+    {
+        var h = await NewAsync();
+        var alarm = await h.FileAsync("bug", "emergency, clear", h.Todo);
+        await h.EmergencyAsync(alarm);
+        var hurry = await h.FileAsync("bug", "expedited, clear", h.Todo);
+        await h.ExpediteAsync(hurry);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        // Nothing is ever above emergency to park it; expedited, one tier
+        // down, is parked by it - both directions of the same boundary.
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(alarm)).Blocked);
+        Assert.Equal(
+            $"{Key(alarm)} ranks emergency and is clear - nothing at expedited is picked up while higher-ranking work is available",
+            queue.Single(e => e.Issue.Key == Key(hurry)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnAlreadyBlockedLowerTierRow_KeepsItsOwnSentence()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.FileAsync("bug", "normal, clear", h.Todo);
+        var unhurried = await h.FileAsync("bug", "low, already folded", h.Inbox);
+        await h.LowAsync(unhurried);
+
+        // Ahead of pace on every window, so low's own gate clears and does
+        // not mask the fold this test means to exercise.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // h.Inbox has no playbook into h.Todo, so this row is already folded
+        // for a reason that has nothing to do with tier order - the override
+        // only ever replaces a null, never a fold that already exists.
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Contains("no playbook covers", queue.Single(e => e.Issue.Key == Key(unhurried)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressEconomyIssueBehindAClearNormalRow_IsStillHoppedAndNeverParked()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("bug", "normal, clear", h.Todo);
+        var thrifty = await h.FileAsync("story", "economy, express", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.ExpressAsync(thrifty);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var row = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty));
+        Assert.True(row.Hop);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task AClearHopInAHigherTier_StillParksTheTiersBelowIt()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var hop = await h.FileAsync("story", "normal, hopped", h.Todo);
+        await h.ExpressAsync(hop);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        var hopRow = queue.Single(e => e.Issue.Key == Key(hop));
+        Assert.True(hopRow.Hop);
+        Assert.Null(hopRow.Blocked);
+
+        // The row that parks need not itself spawn a session.
+        Assert.Equal(
+            $"{Key(hop)} ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available",
+            queue.Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task NamedDispatch_OnAParkedEconomyIssue_AnswersItAnyway()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.FileAsync("bug", "normal, clear", h.Todo);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // work/{key} never scans, so the park - a fact about the walk -
+        // never applies: a person naming a ticket is never told "parked".
+        Assert.Null(Value(await h.Work.GetWork(Key(thrifty), null, default)).Blocked);
+    }
+
     [Fact]
     public async Task Next_AnswersTheNormalCandidateOverTheLowOne()
     {

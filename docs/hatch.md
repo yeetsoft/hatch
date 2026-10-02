@@ -487,13 +487,16 @@ shape the status picker offers for a column, pressed rather than dragged.
 
 Two things it deliberately is not.
 
-**It is a sort key, not a gate.** Every existing fold still applies. An open
-question, an unmet dependency, a ready date in the future, a live claim, a
-missing playbook, a person's name on the ticket and a terminal column fold an
-expedited or emergency issue exactly as they fold any other, with exactly the
-same sentence. Priority changes the order candidates are *considered* in, and
-nothing else — so an emergency issue that is blocked is still blocked, and the
-pass carries on past it.
+**It is a sort key, not a gate — for the level an issue sets on itself.** Every
+existing fold still applies. An open question, an unmet dependency, a ready
+date in the future, a live claim, a missing playbook, a person's name on the
+ticket and a terminal column fold an expedited or emergency issue exactly as
+they fold any other, with exactly the same sentence. Priority changes the
+order candidates are *considered* in, and nothing else — so an emergency issue
+that is blocked is still blocked, and the pass carries on past it. It is no
+longer the whole truth about a tier *below* one with clear work, which [the
+park](#what-makes-an-issue-actionable) turns into a soft gate of its own: a
+tier is reached at all only once every tier above it has no clear candidate.
 
 **Paused, economy and low are the three levels that are also gates —
 differently.** Every other level only reorders what is already dispatchable.
@@ -2479,7 +2482,11 @@ never changes which issue `next` or a hop picks — only that `queue` can report
 it. The low and economy walks, unlike every other, are each gated rather than
 always folded: a row reached on either can still be folded by [its own pace
 check](#expedite), so unlike emergency, expedited or normal, reaching one of
-those two walks does not guarantee the row is clear. Six passes rather
+those two walks does not guarantee the row is clear. Since HA-239, every tier
+below the first one with a clear candidate is parked instead: the first clear
+row seen, top down, names itself on every clear row in a strictly lower tier,
+and `queue` reports the park rather than reporting the lower tier as available
+when it is not. Six passes rather
 than a sort of the finished rows, because the
 [published scan](#what-a-pass-skipped) is the explanation of what `next`
 picked, and a comparator applied afterwards would be a second opinion about
@@ -3161,9 +3168,10 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Sixteen conditions, the last one a way out of the fifteenth rather than one
-more gate. An issue is the loop's to pick up when it meets every one before
-it, and the sentence saying which one it failed is what `work/queue` reports:
+Seventeen conditions, the sixteenth a way out of the fifteenth rather than one
+more gate, and the seventeenth a fact about the walk rather than the issue. An
+issue is the loop's to pick up when it meets every one before it, and the
+sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
@@ -3283,8 +3291,11 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, only from needing a
-    playbook, or from [economy's or low's own gate](#expedite) — the fifth and
-    sixth conditions.
+    playbook, from [economy's or low's own gate](#expedite) — the fifth and
+    sixth conditions — or from the park below — the seventeenth. A clear hop
+    is still carried across either way, parked or not; being carried across is
+    not an escape from being the first clear row the walk saw, so a clear hop
+    in a higher tier still parks the tiers below it.
 
     An epic standing in a column outside the WIP section whose next column is
     inside it is a second kind of hop: something is filed under it, of any
@@ -3306,13 +3317,28 @@ it, and the sentence saying which one it failed is what `work/queue` reports:
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
+17. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+    six levels are walked top down, once each, across every row the walk
+    reaches; the first clear row the walk sees is remembered, and every row in
+    a tier strictly below that one that would otherwise be clear is folded
+    instead, with a sentence naming that row and its level — so `work/queue`
+    reports the park rather than listing a lower tier as available when it is
+    not. Two clear rows in the same tier never park each other, only a
+    strictly higher one does, and the row remembered is never replaced once
+    set: it is the first clear row in the whole walk, which is also the only
+    one the sentence ever needs to name. See [the dispatcher](#the-dispatcher).
 
 Eleven of them — 1, 2, 3, 8, 9, 10, 11, 12, 13, 14 and 15 — are facts about the
 issue, and `work/{key}` asks them too. The sixteenth is as well, and
 `work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The
 other four — 4, 5, 6 and 7 — are the loop's policy and are asked only when the
 pass is asking;
-see [one more, on `next` alone](#one-more-on-next-alone).
+see [one more, on `next` alone](#one-more-on-next-alone). The seventeenth is
+neither: not a fact about one issue, since it depends on every other row the
+same walk reaches, and not the loop's policy, since it folds `work/queue`
+exactly as it folds `work/next`. It is a fact about the walk itself, asked only
+by `Dispatch.ScanAsync` — so `work/{key}`, which never walks, never asks it,
+and a person naming a ticket by hand is never told it is parked.
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
 overnight it is the difference between a shape and a mess: a loop working left

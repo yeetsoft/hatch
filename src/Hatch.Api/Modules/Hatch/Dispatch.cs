@@ -160,8 +160,18 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
             pace = await PaceReadingsAsync(ct);
 
+        // Set only after a tier's own loop below has finished, so two clear rows
+        // in the same tier never park each other - only a strictly higher
+        // tier's clear row, remembered here on a previous iteration, can. Never
+        // reassigned once set: the first clear row in the whole (top-down) walk
+        // is also the only one the park sentence ever needs to name.
+        string? parkedByKey = null;
+        string? parkedByLevel = null;
+
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
+            string? firstClearThisTier = null;
+
             foreach (var status in Enumerable.Reverse(statuses))
             {
                 if (Columns.Target(statuses, status) is not { } to) continue;
@@ -182,6 +192,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var blocked = Blocked(
                         issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+
+                    // Nothing at a lower tier is picked up while a strictly
+                    // higher one still has clear work - a hop is exempt from
+                    // being parked itself, but still becomes the row that
+                    // parks the tiers below it.
+                    if (blocked is null && !hop && parkedByKey is not null)
+                        blocked = $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
+                            $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+                    else if (blocked is null && firstClearThisTier is null)
+                        firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
+
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
@@ -196,6 +217,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
                 }
+            }
+
+            if (parkedByKey is null && firstClearThisTier is not null)
+            {
+                parkedByKey = firstClearThisTier;
+                parkedByLevel = PriorityLevels.Name(level);
             }
         }
 
