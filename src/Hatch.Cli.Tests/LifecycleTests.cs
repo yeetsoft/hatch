@@ -321,6 +321,51 @@ public sealed class LifecycleTests
         Assert.False(Assert.Single(without.Workspace.Left).Sync);
     }
 
+    // ---- What LeaveAsync hands back ----
+
+    [Fact]
+    public async Task LeaveAsync_reports_a_branch_on_origin_with_no_pull_request_recorded()
+    {
+        using var h = new Harness();
+        Board(h);
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found(MergeVerdicts.Clean);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default);
+
+        Assert.False(left.HasPullRequest);
+        Assert.True(left.BranchOnOrigin);
+    }
+
+    [Fact]
+    public async Task LeaveAsync_reports_a_branch_on_origin_with_a_pull_request_recorded()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Workspace.FoundFor[h.Root] = Found(MergeVerdicts.Clean);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default);
+
+        Assert.True(left.HasPullRequest);
+        Assert.True(left.BranchOnOrigin);
+    }
+
+    [Fact]
+    public async Task LeaveAsync_with_no_branch_on_origin_reports_neither()
+    {
+        using var h = new Harness();
+        Board(h);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default);
+
+        Assert.False(left.HasPullRequest);
+        Assert.False(left.BranchOnOrigin);
+    }
+
     [Fact]
     public async Task A_lost_lease_puts_the_tree_back_and_writes_nothing()
     {

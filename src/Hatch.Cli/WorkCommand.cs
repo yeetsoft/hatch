@@ -575,7 +575,7 @@ public sealed class WorkCommand(Runtime runtime)
                 var preempted = report is { Preempted: true }
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted);
+                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted);
 
                 // Every opening banner has a closing one - null only for the
                 // attach path, which prints its own header and has no report to
