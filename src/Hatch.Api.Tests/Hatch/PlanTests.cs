@@ -95,6 +95,30 @@ public class PlanTests
             plan.Epics.Select(e => e.Issue.Key));
     }
 
+    [Fact]
+    public async Task Express_ChangesNoOrderInThePlan()
+    {
+        // Key order (above) regardless of rank already rules out anything
+        // Express could float the epics by - this is the HA-241 fence, said
+        // for the plan rather than assumed from the board and the queue.
+        var h = await NewAsync();
+        var one = await h.FileAsync("epic", "filed first, ranked last", h.Todo, rank: 4096);
+        var two = await h.FileAsync("epic", "filed second", h.Todo, rank: 1);
+        var three = await h.FileAsync("epic", "filed last, ranked in the middle", h.Todo, rank: 2048);
+
+        var before = Value(await h.Plan.GetPlan(null, default)).Epics.Select(e => e.Issue.Key).ToList();
+
+        foreach (var epic in new[] { one, two, three })
+        {
+            epic.Express = true;
+            await h.Db.SaveChangesAsync();
+        }
+
+        var after = Value(await h.Plan.GetPlan(null, default)).Epics.Select(e => e.Issue.Key).ToList();
+
+        Assert.Equal(before, after);
+    }
+
     // ---- What hangs under no epic ----
 
     [Fact]
