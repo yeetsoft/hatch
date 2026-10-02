@@ -153,12 +153,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
 
-        // Resolved only when some candidate actually reads at economy level -
-        // a pass with nothing at that tier has no reason to read an account's
-        // usage at all.
-        EconomyPace? economy = null;
-        if (effective.Values.Any(e => e.Level == PriorityLevels.Economy))
-            economy = await EconomyPaceAsync(ct);
+        // Resolved only when some candidate actually reads at economy or low
+        // level - a pass with nothing at either tier has no reason to read an
+        // account's usage at all. One read, judged twice - see PaceReadingsAsync.
+        PaceReadings? pace = null;
+        if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
+            pace = await PaceReadingsAsync(ct);
 
         // Set only after a tier's own loop below has finished, so two clear rows
         // in the same tier never park each other - only a strictly higher
@@ -190,7 +190,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, economy, gate, family, claimed,
+                        issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
 
                     // Nothing at a lower tier is picked up while a strictly
@@ -211,7 +211,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         blocked is null ? hopUnder : null,
                         blocked is null && summary.LapsedStall
                             ? ClearNote(claims.StallLapseSeconds)
-                            : blocked is null && effective[issue.Id].Level == PriorityLevels.Economy ? economy?.ClearNote : null,
+                            : blocked is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
+                            : blocked is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
+                            : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
                 }
@@ -224,29 +226,40 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, economy);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace);
     }
 
     /// <summary>
     /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
-    /// does - the freshest whole reading across its runners - and judged for
-    /// pace. Resolved lazily by <see cref="ScanAsync"/>, only when some
-    /// candidate actually reads at economy level.
+    /// does - the freshest whole reading across its runners - and judged twice:
+    /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
+    /// <see cref="ScanAsync"/>, only when some candidate actually reads at
+    /// economy or low level, and read once regardless of how many candidates
+    /// are at either.
     /// </summary>
-    private async Task<EconomyPace> EconomyPaceAsync(CancellationToken ct)
+    private async Task<PaceReadings> PaceReadingsAsync(CancellationToken ct)
     {
         var principal = await actors.PrincipalAsync(ct);
         if (principal is null)
-            return EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+        {
+            var noAccount = EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+            var noAccountLow = EconomyPace.Behind("low - this key belongs to nobody, so there is no account to read usage for");
+            return new PaceReadings(noAccount, noAccountLow);
+        }
 
         var runners = await db.Runners.AsNoTracking()
             .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
             .ToListAsync(ct);
 
         var reading = Utilization.Of(runners, time.GetUtcNow());
-        return reading is null
-            ? EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one")
-            : Utilization.Pace(reading, time.GetUtcNow());
+        if (reading is null)
+        {
+            var noReading = EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one");
+            var noReadingLow = EconomyPace.Behind("low - no usage reading for this account yet; a runner's first session gives one");
+            return new PaceReadings(noReading, noReadingLow);
+        }
+
+        return new PaceReadings(Utilization.Pace(reading, time.GetUtcNow()), Utilization.SessionPace(reading, time.GetUtcNow()));
     }
 
     /// <summary>
@@ -546,7 +559,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchPlaybook? playbook,
         int waiting,
         LoopScope? loop,
-        EconomyPace? economy,
+        PaceReadings? pace,
         DependencyGate gate,
         FamilyGate family,
         ClaimGate claimed,
@@ -593,9 +606,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
             // Loop policy, not a fact about the issue - a hop is exempt, the
             // same way it is exempt from needing a playbook, and a named
-            // dispatch (work/{key}) never sees loop at all.
-            if (!hop && pausedLevel == PriorityLevels.Economy && economy?.Fold is { } fold)
-                return fold;
+            // dispatch (work/{key}) never sees loop at all. Two gates, same
+            // shape, each reading its own level's judgement off the one pace
+            // reading.
+            if (!hop && pausedLevel == PriorityLevels.Economy && pace?.Economy.Fold is { } economyFold)
+                return economyFold;
+
+            if (!hop && pausedLevel == PriorityLevels.Low && pace?.Low.Fold is { } lowFold)
+                return lowFold;
 
             if (loop.Mine)
             {
@@ -839,7 +857,7 @@ public sealed record ScanRow(
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
-    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, EconomyPace? Economy = null)
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null)
 {
     public static Scan Refused(string why) =>
         new(
