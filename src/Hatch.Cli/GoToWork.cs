@@ -1421,7 +1421,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var preempted = report.Preempted
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
+                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
             }
             finally
             {

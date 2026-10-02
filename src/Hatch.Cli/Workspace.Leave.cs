@@ -93,10 +93,12 @@ public sealed partial class Workspace
 
         // Whether origin's branch now conflicts is reported from here too, so a
         // pull request that conflicts the moment it opens is conflict work on
-        // the next pass and does not wait for the poll. Only when Sync fetched:
-        // where it did not, the refs are as they were and nothing is known.
-        Verdict? found = null;
-        if (syncPullRequest && Sync(lower, trunk, Note)) found = Check(lower);
+        // the next pass and does not wait for the poll. The merge-forward stays
+        // gated on a pull request being recorded; the verdict itself does not -
+        // Check reads local remote-tracking refs, which are current for a branch
+        // this same tree just pushed, pull request or not.
+        if (syncPullRequest) Sync(lower, trunk, Note);
+        var found = Check(lower);
 
         return new Leaving(root, notes, found);
     }
