@@ -56,6 +56,19 @@ public class IssueExpediteControllerTests
     }
 
     [Fact]
+    public async Task AnIssue_IsMarkedEconomy()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.EconomyName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.EconomyName, marked.Priority);
+        Assert.Equal(PriorityLevels.Economy, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
     public async Task TheSameRoute_UnmarksIt()
     {
         var h = await NewAsync();

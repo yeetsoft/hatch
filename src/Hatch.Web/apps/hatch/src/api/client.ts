@@ -235,7 +235,7 @@ export const setAssignee = (key: string, request: AssigneeRequest) =>
     The level is sent by name rather than as a step, so two browsers looking
     at the same card cannot move it in conflicting directions and leave the
     answer depending on which request landed second. */
-export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'emergency') =>
+export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'emergency' | 'economy') =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/priority`, {
     method: 'PUT',
     ...asJson({ priority }),

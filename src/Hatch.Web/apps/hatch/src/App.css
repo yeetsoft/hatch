@@ -2703,6 +2703,17 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
 
+/* The other end of the scale: a quiet grey rather than a new accent colour -
+   economy is deliberately low visual weight, the opposite of "notice this
+   now". */
+.hatch-card.economy {
+  box-shadow: inset 3px 0 0 var(--muted);
+}
+
+.hatch-card-preview.economy {
+  box-shadow: inset 3px 0 0 var(--muted), var(--shadow);
+}
+
 /* And the badge, for everything the stripe cannot say: what it means, on hover,
    and to a reader who is not going by colour. */
 .hatch-card-expedited {
@@ -2745,11 +2756,18 @@ input.hatch-inline-title-input {
   }
 }
 
+/* Economy's badge: no pulse. The story asks only for a glyph, not a beacon -
+   economy is a quiet state, the opposite of "notice this now". */
+.hatch-card-expedited.economy {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--muted);
+}
+
 /* The pill, on the issue page and in the summary: pixel for pixel what
    `ExpediteControl`'s button drew at rest, now opening a band instead of
    cycling - see PriorityControl. Each level owns one class and one face
-   (.expedited, .emergency; normal takes the bare rule), so adding a level
-   (HA-176, HA-177) is a rule here and nothing to branch on. */
+   (.expedited, .emergency, .economy; normal takes the bare rule), so adding a
+   level (HA-176) is a rule here and nothing to branch on. */
 .hatch-priority-pill {
   display: inline-flex;
   align-items: center;
@@ -2783,6 +2801,12 @@ input.hatch-inline-title-input {
 .hatch-priority-pill.emergency {
   border-color: var(--danger);
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-pill.economy {
+  border-color: var(--muted);
+  background: var(--muted);
   color: var(--on-accent);
 }
 
@@ -2831,6 +2855,11 @@ input.hatch-inline-title-input {
   font-weight: 600;
 }
 
+.hatch-priority-said.economy {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 /* In the summary the pill sits on its own row under the title, with room for a
    refusal beside it, and for the band once it opens. */
 .hatch-peek-priority {
@@ -2867,6 +2896,11 @@ input.hatch-inline-title-input {
 .hatch-priority-band.emergency {
   background: color-mix(in srgb, var(--danger) 10%, var(--card));
   border-left-color: var(--danger);
+}
+
+.hatch-priority-band.economy {
+  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  border-left-color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2907,6 +2941,10 @@ input.hatch-inline-title-input {
   border-color: var(--danger);
 }
 
+.hatch-priority-step.economy {
+  border-color: var(--muted);
+}
+
 /* The level this issue's own row already carries. Disabled rather than merely
    marked - pressing it would write an event saying priority moved from
    expedited to expedited. */
@@ -2924,6 +2962,11 @@ input.hatch-inline-title-input {
 
 .hatch-priority-step.emergency.here {
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.economy.here {
+  background: var(--muted);
   color: var(--on-accent);
 }
 
@@ -4088,6 +4131,10 @@ button.hatch-option.chosen {
 
 .hatch-queue-marker.emergency {
   color: var(--danger);
+}
+
+.hatch-queue-marker.economy {
+  color: var(--muted);
 }
 
 .hatch-queue-words {

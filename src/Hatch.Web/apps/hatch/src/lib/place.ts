@@ -142,12 +142,13 @@ function reorder(
   ranked.splice(insertionIndex(ranked, afterKey, beforeKey), 0, moved);
 
   // And then the float, exactly as the board read applies it: emergency
-  // first, then expedited, then everything else - (rank, id) within each
-  // third, mirroring the server's (Priority desc, Rank, Id).
+  // first, then expedited, then normal, then economy - (rank, id) within
+  // each tier, mirroring the server's (Priority desc, Rank, Id).
   const ordered = [
     ...ranked.filter((i) => i.priority === 'emergency'),
     ...ranked.filter((i) => i.priority === 'expedited'),
     ...ranked.filter((i) => i.priority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'economy'),
   ];
 
   /* Written back into the slots the column already occupies, so the array stays

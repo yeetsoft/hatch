@@ -128,15 +128,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         var implementation = Columns.Implementation(statuses);
 
-        // The whole walk, three times: every emergency candidate right to
-        // left, then every expedited candidate right to left, then everything
-        // else right to left. So an emergency bug in the leftmost column is
-        // listed above an expedited story in the rightmost one, which is
-        // listed above a normal one in the rightmost one, while inside each
-        // third the order is the board's own - rightmost column first, and
-        // (Rank, Id) within a column.
+        // The whole walk, four times: every emergency candidate right to
+        // left, then every expedited candidate right to left, then every
+        // normal one right to left, then every economy one right to left. So
+        // an emergency bug in the leftmost column is listed above an expedited
+        // story in the rightmost one, which is listed above a normal one in
+        // the rightmost one, which is listed above an economy one wherever it
+        // sits, while inside each tier the order is the board's own -
+        // rightmost column first, and (Rank, Id) within a column.
         //
-        // Three passes over the same columns rather than a sort of the
+        // Four passes over the same columns rather than a sort of the
         // finished rows, because the published scan is the explanation of
         // what `next` picked: a comparator applied afterwards would be a
         // second opinion about the order, and passes that could disagree is
@@ -148,7 +149,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
-        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal })
+        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Economy })
         {
             foreach (var status in Enumerable.Reverse(statuses))
             {

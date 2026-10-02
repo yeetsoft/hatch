@@ -213,11 +213,11 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// </param>
 /// <param name="Priority">
 /// The effective level's name - see <see cref="PriorityLevels"/> -
-/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
-/// read, to the nearest ancestor - including this issue itself - that is not
-/// Normal; never stored or copied. Trailing and defaulted for the reason
-/// <paramref name="OpenQuestions"/> is, though every list that draws a card
-/// fills it.
+/// <c>"economy"</c>, <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>.
+/// Walked live, at read, to the nearest ancestor - including this issue itself
+/// - that is not Normal; never stored or copied. Trailing and defaulted for
+/// the reason <paramref name="OpenQuestions"/> is, though every list that
+/// draws a card fills it.
 /// </param>
 /// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
 /// <param name="PriorityFrom">
@@ -331,9 +331,9 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="Priority">
 /// The effective level's name - see <see cref="PriorityLevels"/> -
-/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
-/// read, to the nearest ancestor - including this issue itself - that is not
-/// Normal; never stored or copied.
+/// <c>"economy"</c>, <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>.
+/// Walked live, at read, to the nearest ancestor - including this issue itself
+/// - that is not Normal; never stored or copied.
 /// </param>
 /// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
 /// <param name="PriorityFrom">
@@ -455,15 +455,17 @@ public static class ClaimOutcomes
 }
 
 /// <summary>
-/// The three levels an issue's priority can sit at, ordered - see
+/// The four levels an issue's priority can sit at, ordered - see
 /// <see cref="EfHatchIssue.Priority"/>.
 /// </summary>
 public static class PriorityLevels
 {
+    public const int Economy = -1;
     public const int Normal = 0;
     public const int Expedited = 1;
     public const int Emergency = 2;
 
+    public const string EconomyName = "economy";
     public const string NormalName = "normal";
     public const string ExpeditedName = "expedited";
     public const string EmergencyName = "emergency";
@@ -473,16 +475,18 @@ public static class PriorityLevels
     {
         Emergency => EmergencyName,
         Expedited => ExpeditedName,
+        Economy => EconomyName,
         _ => NormalName,
     };
 
-    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the four.</summary>
     public static bool TryParse(string? name, out int level)
     {
         (level, var ok) = name switch
         {
             EmergencyName => (Emergency, true),
             ExpeditedName => (Expedited, true),
+            EconomyName => (Economy, true),
             NormalName => (Normal, true),
             _ => (Normal, false),
         };
@@ -1079,8 +1083,9 @@ public record AssigneeRequest(string? Kind, Guid? Id);
 public record ExpediteRequest(bool Expedited);
 
 /// <summary>
-/// The level to set, by name - <c>"normal"</c>, <c>"expedited"</c> or
-/// <c>"emergency"</c> - see <see cref="PriorityLevels"/>. One required string
+/// The level to set, by name - <c>"economy"</c>, <c>"normal"</c>,
+/// <c>"expedited"</c> or <c>"emergency"</c> - see <see cref="PriorityLevels"/>.
+/// One required string
 /// rather than a boolean, for the same reason <see cref="ExpediteRequest"/> is
 /// one required boolean: the same route both marks and unmarks, and the
 /// caller says which it meant.

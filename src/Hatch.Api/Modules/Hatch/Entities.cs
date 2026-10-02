@@ -493,7 +493,7 @@ public class EfHatchIssue
     /// Hatch: the board floats the card to the top of its column, and the
     /// dispatcher considers every issue at a higher level before anything at a
     /// lower one - see <see cref="Hatch.Contracts.PriorityLevels"/> for the
-    /// three levels and their order.
+    /// four levels and their order.
     /// </summary>
     /// <remarks>
     /// <para>A sort key, not a gate. Every fold still applies exactly as it

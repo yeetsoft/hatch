@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// One of three levels on an issue, set by a person and honoured by both
+/// One of four levels on an issue, set by a person and honoured by both
 /// halves of Hatch: the board floats the card to the top of its column, and
 /// the dispatcher considers every issue at a higher level before anything at
 /// a lower one - see <see cref="PriorityLevels"/>.
@@ -60,7 +60,7 @@ public class IssueExpediteController(
         PriorityLevels.TryParse(request.Priority, out var level)
             ? SetAsync(key, level, ct)
             : Task.FromResult<ActionResult<IssueDto>>(
-                BadRequest($"\"{request.Priority}\" is not a priority - normal, expedited or emergency"));
+                BadRequest($"\"{request.Priority}\" is not a priority - economy, normal, expedited or emergency"));
 
     /// <summary>
     /// Mark it expedited, or unmark it. The legacy two-level alias for

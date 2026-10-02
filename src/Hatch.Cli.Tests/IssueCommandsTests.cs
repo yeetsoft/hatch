@@ -150,6 +150,21 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
+    public async Task Show_says_when_the_issue_is_economy()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.EconomyName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("priority:  economy - worked only with usage that would otherwise go spare", h.Said);
+    }
+
+    [Fact]
     public async Task Show_says_when_the_issue_is_express()
     {
         using var h = new CliHarness();
