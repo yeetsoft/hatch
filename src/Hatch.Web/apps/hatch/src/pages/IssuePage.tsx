@@ -602,6 +602,11 @@ export function IssuePage() {
             onChange={(dueAt) => void save({ dueAt })}
           />
 
+          <PullRequestField
+            url={issue.pullRequestUrl}
+            onSave={(pullRequestUrl) => void save({ pullRequestUrl })}
+          />
+
           {/* The playbook for a transition prices every ticket that makes it.
               These two say this one is different, and they beat every playbook
               that could speak for it - not one transition's worth. `— playbook —`
@@ -1507,6 +1512,40 @@ function WipLimitField({ limit, onSetLimit }: { limit: number | null; onSetLimit
         onBlur={() => {
           const next = wipLimitRequest(draft);
           if (next !== wipLimitDraft(limit)) onSetLimit(next);
+        }}
+      />
+    </Field>
+  );
+}
+
+/**
+ * Where this issue is reviewed, editable right where it is read - blur-commit,
+ * re-sync when it changes underneath, the way WipLimitField is. For the
+ * changeset built out of band, with nowhere else in the web UI to link it
+ * back from. Emptying it clears the field, the same as the API reads it -
+ * see IssuePatchRequest. A bad address comes back as the server's own
+ * sentence, in the page's error line above.
+ */
+function PullRequestField({ url, onSave }: { url: string | null; onSave: (url: string) => void }) {
+  const [draft, setDraft] = useState(url ?? '');
+  const [known, setKnown] = useState(url);
+
+  // Re-syncs when the issue changes underneath - see WipLimitField.
+  if (url !== known) {
+    setKnown(url);
+    setDraft(url ?? '');
+  }
+
+  return (
+    <Field label="Pull request" hint="An absolute address. Emptied, it clears.">
+      <input
+        type="url"
+        value={draft}
+        placeholder="https://github.com/owner/repo/pull/12"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const trimmed = draft.trim();
+          if (trimmed !== (url ?? '')) onSave(trimmed);
         }}
       />
     </Field>
