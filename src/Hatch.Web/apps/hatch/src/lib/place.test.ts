@@ -9,7 +9,7 @@ const card = (
   key: string,
   statusId: number,
   rank: number,
-  priority: 'normal' | 'expedited' | 'emergency' | 'paused' = 'normal',
+  priority: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused' = 'normal',
 ): IssueCard => ({
   key,
   projectKey: 'AER',
@@ -248,6 +248,24 @@ describe('place, with an emergency card above an expedited one', () => {
     expect(placed.afterKey).toBe('AER-7');
     expect(placed.beforeKey).toBeNull();
     expect(keysIn(placed.issues, TODO)).toEqual(['AER-9', 'AER-7']);
+  });
+});
+
+/* The float's other end: economy sinks below normal rather than floating
+   above it. The regression this guards is place.ts#reorder dropping an
+   economy card from the column entirely, because its three filters used to
+   be exhaustive. */
+describe('place, with an economy card below everything', () => {
+  const thrifty = [
+    card('AER-9', INBOX, 256, 'economy'),
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('is not dropped from the reordered column, and sorts below the normal cards', () => {
+    const placed = place(thrifty, thrifty, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9']);
   });
 });
 

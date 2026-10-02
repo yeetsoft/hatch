@@ -318,7 +318,7 @@ export function IssuePage() {
      the press worked. A refusal lands in `error` above in the server's own
      words, and the control goes back to saying what the issue still holds. */
   const savePriority = useCallback(
-    async (priority: 'normal' | 'expedited' | 'emergency' | 'paused') => {
+    async (priority: 'normal' | 'expedited' | 'emergency' | 'economy' | 'paused') => {
       setPriorityBusy(true);
       try {
         await setPriority(key, priority);
@@ -562,7 +562,7 @@ export function IssuePage() {
           <Field
             label="Priority"
             as="div"
-            hint="Normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it. A level set on an ancestor reaches here too, until this issue sets its own."
+            hint="Economy, normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it. A level set on an ancestor reaches here too, until this issue sets its own."
           >
             <PriorityControl
               issueKey={key}
