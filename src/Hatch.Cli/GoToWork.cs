@@ -1422,6 +1422,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
                 var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
+
+                // Something happened - the ticket moved into review, or a
+                // conflict resolved, or a build fix pushed, on a branch judged
+                // by origin rather than the column - and nobody can find a
+                // pull request for it. Never also a stall: the two guards'
+                // conditions are mutually exclusive by construction.
+                if ((report.Moved || report.Resolved || report.FixPushed)
+                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                {
+                    releaseOutcome = await Unpublished.RefuseAsync(
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, ct);
+                }
             }
             finally
             {

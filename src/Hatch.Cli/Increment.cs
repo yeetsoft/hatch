@@ -23,6 +23,14 @@ public sealed class IncrementReport
     /// <summary>Whether those last two differ.</summary>
     public bool Moved { get; set; }
 
+    /// <summary>
+    /// The board's own read, taken in the same call as <see cref="Ended"/>, of
+    /// whether the ticket is sitting in the review column right now - not
+    /// <see cref="To"/>, which is the target computed before the session ran
+    /// and can be stale by the time it is over.
+    /// </summary>
+    public bool EndedInReview { get; set; }
+
     /// <summary>The board says it ended where it started: an increment that did nothing.</summary>
     public bool Stalled { get; set; }
 
@@ -169,12 +177,12 @@ public sealed class IncrementReport
 
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
-        Moved ? $"{From} -> {Ended}"
+        Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Skipped ? "skipped from the keyboard"
-        : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
-        : FixPushed ? "fix pushed, build pending"
+        : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? $"filed {Filed.Count} under it"
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -379,6 +387,7 @@ public sealed class Increment(
                 {
                     var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
                     report.Ended = later?.FromStatus.Name ?? report.From;
+                    report.EndedInReview = later?.InReview ?? false;
                     report.Filed = later?.Children.Select(c => c.Key).Except(work.Children.Select(c => c.Key)).ToList() ?? [];
 
                     // A conflict or a build increment is judged by the branch,
@@ -935,7 +944,7 @@ public sealed class Increment(
     /// plain numeral suffixed past that: nobody needs "twelfth" read out, but
     /// "12th" says exactly the same thing in fewer words.
     /// </summary>
-    private static string Ordinal(int n)
+    internal static string Ordinal(int n)
     {
         string[] named = ["zeroth", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
         if (n >= 0 && n < named.Length) return named[n];

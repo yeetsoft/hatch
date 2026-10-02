@@ -758,4 +758,78 @@ public sealed class WorkCommandTests
             StringComparison.Ordinal));
         Assert.DoesNotContain(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
     }
+
+    // ---- HA-245: a branch on origin nobody can find a pull request for ----
+
+    /// <summary>The wiring one named increment needs: a dispatch in progress, a post-run read in review, and the branch and pull request the guard is judged by.</summary>
+    private static void UnpublishedBoard(
+        Harness h, string key = "AER-1", bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0)
+    {
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+
+        h.Wire.Once(
+            "GET", $"/api/hatch/work/{key}", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo), Fixtures.Json));
+        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: "In Review", to: "In Review", inReview: true));
+
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest));
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/merge-check", Fixtures.MergeCheck());
+        Bookkeeping(h, key);
+
+        if (branchOnOrigin)
+            h.Workspace.FoundFor[h.Root] =
+                new Verdict(MergeVerdicts.Clean, "main", new string('a', 40), "aer-1-thing", new string('b', 40), []);
+    }
+
+    private static List<CommentCreateRequest> UnpublishedComments(Harness h, string key = "AER-1") =>
+        h.Wire.To("POST", $"/api/hatch/issues/{key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+
+    [Fact]
+    public async Task Hatch_work_notes_a_branch_on_origin_with_no_pull_request_and_releases_dropped()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Single(written);
+        Assert.DoesNotContain(written, c => c.Kind == "question");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hatch_work_escalates_to_a_question_the_second_time_in_a_row()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, letGo: 1);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Equal(2, written.Count);
+        Assert.Equal("question", written[1].Kind);
+        Assert.False(StallAnswers.IsStall(written[1].Options));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hatch_work_never_fires_the_guard_once_a_pull_request_is_recorded()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, pullRequest: "https://forge.example/pulls/1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
 }
