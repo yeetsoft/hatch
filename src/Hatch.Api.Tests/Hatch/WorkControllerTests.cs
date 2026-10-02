@@ -1744,11 +1744,15 @@ public class WorkControllerTests
     public async Task Next_AnswersTheLowCandidateWhenItIsTheOnlyOne()
     {
         var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
         var unhurried = await h.FileAsync("bug", "low", h.Todo);
         await h.LowAsync(unhurried);
 
-        // No pace gate yet (HA-226): a low candidate is picked exactly like a
-        // normal one once nothing above it is in the running.
+        // A 5-hour session window with 2 hours left - 60% elapsed - and only
+        // 10% spent, well ahead of pace, so low's own gate (HA-226) clears it.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
         Assert.Equal(Key(unhurried), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
@@ -1844,6 +1848,107 @@ public class WorkControllerTests
         await h.ExpressAsync(issue);
         await h.TickExpressSkipsAsync(h.Todo);
         await h.SeedUsageAsync(nathan.Id, Now, ("session", 51, Now + TimeSpan.FromHours(2)));
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.True(row.Hop);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
+    // ---- Low's own pace gate (HA-226) ----
+
+    [Fact]
+    public async Task ALowCandidateAheadOnTheSessionWindow_IsAnsweredByNextAndCarriesTheClearNote()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "unhurried", h.Todo);
+        await h.LowAsync(issue);
+
+        // A 5-hour session window with 2 hours left - 60% elapsed - and only
+        // 10% spent, 50 points ahead of pace.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.Contains("50", row.ClearNote);
+    }
+
+    [Fact]
+    public async Task ALowCandidateOnePointBehindOnTheSessionWindow_Answers204AndQueueCarriesTheNumbers()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "unhurried", h.Todo);
+        await h.LowAsync(issue);
+
+        // Same window - 60% elapsed - but 61% spent: low holds nothing in
+        // reserve, so a margin of -1 is the first point that reads behind.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 61, Now + TimeSpan.FromHours(2)));
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Contains("61%", row.Blocked);
+        Assert.Contains("60%", row.Blocked);
+    }
+
+    [Fact]
+    public async Task ALowCandidateWithNoUsageReadingAtAll_IsFoldedWithThatSentence()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "unhurried", h.Todo);
+        await h.LowAsync(issue);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+        Assert.Contains("no usage reading", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task ALowCandidateOnAnOwnerlessKey_IsFoldedWithThatSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("bug", "unhurried", h.Todo);
+        await h.LowAsync(issue);
+
+        // No Principal set on the directory at all - the key belongs to nobody.
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+        Assert.Contains("belongs to nobody", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task NamedDispatch_OnABehindPaceLowIssue_ReturnsItAnyway()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "unhurried", h.Todo);
+        await h.LowAsync(issue);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 61, Now + TimeSpan.FromHours(2)));
+
+        // work/{key} never scans, so the gate - a loop policy - never applies.
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressLowIssueBehindPace_IsClearAndStillHopped()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("story", "unhurried, carried across", h.Todo);
+        await h.LowAsync(issue);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 61, Now + TimeSpan.FromHours(2)));
 
         var row = Only(await h.Work.GetQueue(0, null, default));
         Assert.Null(row.Blocked);
