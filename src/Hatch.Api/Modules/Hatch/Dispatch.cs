@@ -151,6 +151,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
+
+        // Resolved only when some candidate actually reads at economy level -
+        // a pass with nothing at that tier has no reason to read an account's
+        // usage at all.
+        EconomyPace? economy = null;
+        if (effective.Values.Any(e => e.Level == PriorityLevels.Economy))
+            economy = await EconomyPaceAsync(ct);
+
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Economy, PriorityLevels.Paused })
         {
             foreach (var status in Enumerable.Reverse(statuses))
@@ -171,22 +179,46 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
-                        assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+                        issue, status, to, playbook, summary.Waiting, loop, economy, gate, family, claimed,
+                        implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
                     rows.Add(new ScanRow(
                         issue, status, to, blocked,
                         KindOf(issue, status, to, merged, built),
                         hop && blocked is null,
                         blocked is null ? hopKind : null,
                         blocked is null ? hopUnder : null,
-                        blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null,
+                        blocked is null && summary.LapsedStall
+                            ? ClearNote(claims.StallLapseSeconds)
+                            : blocked is null && effective[issue.Id].Level == PriorityLevels.Economy ? economy?.ClearNote : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
                 }
             }
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, economy);
+    }
+
+    /// <summary>
+    /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
+    /// does - the freshest whole reading across its runners - and judged for
+    /// pace. Resolved lazily by <see cref="ScanAsync"/>, only when some
+    /// candidate actually reads at economy level.
+    /// </summary>
+    private async Task<EconomyPace> EconomyPaceAsync(CancellationToken ct)
+    {
+        var principal = await actors.PrincipalAsync(ct);
+        if (principal is null)
+            return EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+
+        var runners = await db.Runners.AsNoTracking()
+            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
+            .ToListAsync(ct);
+
+        var reading = Utilization.Of(runners, time.GetUtcNow());
+        return reading is null
+            ? EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one")
+            : Utilization.Pace(reading, time.GetUtcNow());
     }
 
     /// <summary>
@@ -486,6 +518,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchPlaybook? playbook,
         int waiting,
         LoopScope? loop,
+        EconomyPace? economy,
         DependencyGate gate,
         FamilyGate family,
         ClaimGate claimed,
@@ -529,6 +562,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
                 return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
+
+            // Loop policy, not a fact about the issue - a hop is exempt, the
+            // same way it is exempt from needing a playbook, and a named
+            // dispatch (work/{key}) never sees loop at all.
+            if (!hop && pausedLevel == PriorityLevels.Economy && economy?.Fold is { } fold)
+                return fold;
 
             if (loop.Mine)
             {
@@ -772,7 +811,7 @@ public sealed record ScanRow(
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
-    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure)
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, EconomyPace? Economy = null)
 {
     public static Scan Refused(string why) =>
         new(

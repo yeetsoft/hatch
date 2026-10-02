@@ -123,7 +123,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Economy, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, ct);
     }
 
     /// <summary>
@@ -291,6 +291,7 @@ public class WorkController(
             issue,
             statuses,
             null,
+            null,
             await DependencyGate.ForAsync(db, statuses, ct),
             await FamilyGate.ForAsync(db, statuses, ct),
             new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
@@ -352,7 +353,8 @@ public class WorkController(
         var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting,
-            null, // a hop takes no ready-date fold of its own - see Dispatch.Blocked's loop parameter
+            null, // a hop takes no ready-date fold of its own, and no economy fold either - see Dispatch.Blocked's loop parameter
+            null,
             await DependencyGate.ForAsync(db, statuses, ct),
             family,
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
@@ -403,6 +405,11 @@ public class WorkController(
     /// Passed straight through to <see cref="Dispatch.Blocked"/> so that a row
     /// the scan called clear cannot come back blocked here.
     /// </param>
+    /// <param name="economy">
+    /// The scan's own pace judgement, or null where nothing in it needed one.
+    /// The same guarantee as <paramref name="loop"/>: a row the scan called
+    /// clear on pace cannot come back blocked here.
+    /// </param>
     /// <param name="gate">
     /// The unmet dependencies, for the same reason and with the same guarantee:
     /// the scan's own, so a row it called clear cannot come back blocked here.
@@ -428,9 +435,9 @@ public class WorkController(
     /// its epic's limit too.
     /// </param>
     private async Task<WorkDto> ResolveAsync(
-        EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, DependencyGate gate, FamilyGate family,
-        ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip, IReadOnlyDictionary<long, EpicLimit> epics,
-        CancellationToken ct)
+        EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, EconomyPace? economy, DependencyGate gate,
+        FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
+        IReadOnlyDictionary<long, EpicLimit> epics, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -498,7 +505,7 @@ public class WorkController(
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent);
         var hop = hopKind is not null;
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, loop, gate, family, claimed, Columns.Implementation(statuses),
+            issue, from, to, playbook, waiting, loop, economy, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses, wip, epics);
         var hopped = hop && blocked is null;

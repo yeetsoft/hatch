@@ -137,19 +137,24 @@ loop does here.
 Within a column, order is the order you see. Drag a card up and the runner
 reaches it sooner.
 
-**Priority** puts an issue at one of four levels: paused the lowest, then
-normal, expedited, and emergency the highest. Set it on the issue page or the
-board's peek, from a pill that opens onto every level — press the one you
-want, and the card floats to the top of its column (or, for paused, sinks to
-the bottom), and the dispatcher considers every emergency card before every
+**Priority** puts an issue at one of five levels: paused the lowest, then
+economy, normal, expedited, and emergency the highest. Set it on the issue page
+or the board's peek, from a pill that opens onto every level — press the one
+you want, and the card floats to the top of its column (or, for paused, sinks
+to the bottom), and the dispatcher considers every emergency card before every
 expedited card before anything else, right to left within each. So an
 emergency bug in Breakdown is reached before an expedited story in To Do,
 which is reached before a normal one in To Do. Three things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
-  blocked is still blocked. Paused is the exception: it *is* a gate, and a
-  paused issue is taken out of dispatch entirely, not merely reordered — the
-  loop leaves it exactly where it stands until a person sets it back.
+  blocked is still blocked. Paused and economy are the exceptions: paused
+  *is* a gate, and a paused issue is taken out of dispatch entirely, not
+  merely reordered — the loop leaves it exactly where it stands until a
+  person sets it back. Economy is a narrower gate: an unattended pass leaves
+  an economy issue alone only while the account it would spend has no reserve
+  to spare, so it is worked the moment there is room again, with no change on
+  anyone's part. Naming the issue directly, or a hop carrying it, is not held
+  by this at all.
 - It is inherited: a level set on an epic reaches everything under it that
   does not set its own level, both above and below normal. Raising an epic
   to emergency is enough to put every story and task under it ahead of

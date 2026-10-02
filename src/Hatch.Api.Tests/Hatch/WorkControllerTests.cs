@@ -1725,6 +1725,107 @@ public class WorkControllerTests
             Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
     }
 
+    // ---- Economy's own pace gate (HA-209) ----
+
+    [Fact]
+    public async Task AnEconomyCandidateAheadOnEveryWindow_IsAnsweredByNextAndCarriesTheClearNote()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "thrifty", h.Todo);
+        await h.EconomyAsync(issue);
+
+        // A 5-hour session window with 2 hours left - 60% elapsed - and only
+        // 10% spent, 50 points ahead of pace.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.Contains("50", row.ClearNote);
+    }
+
+    [Fact]
+    public async Task AnEconomyCandidateBehindPaceOnOneWindow_Answers204AndQueueCarriesTheNumbers()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "thrifty", h.Todo);
+        await h.EconomyAsync(issue);
+
+        // Same window - 60% elapsed - but 51% spent: one point short of the
+        // 10-point reserve.
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 51, Now + TimeSpan.FromHours(2)));
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Contains("51%", row.Blocked);
+        Assert.Contains("60%", row.Blocked);
+    }
+
+    [Fact]
+    public async Task AnEconomyCandidateWithNoUsageReadingAtAll_IsFoldedWithThatSentence()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "thrifty", h.Todo);
+        await h.EconomyAsync(issue);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+        Assert.Contains("no usage reading", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnEconomyCandidateOnAnOwnerlessKey_IsFoldedWithThatSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("bug", "thrifty", h.Todo);
+        await h.EconomyAsync(issue);
+
+        // No Principal set on the directory at all - the key belongs to nobody.
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+        Assert.Contains("belongs to nobody", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task NamedDispatch_OnABehindPaceEconomyIssue_ReturnsItAnyway()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("bug", "thrifty", h.Todo);
+        await h.EconomyAsync(issue);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 51, Now + TimeSpan.FromHours(2)));
+
+        // work/{key} never scans, so the gate - a loop policy - never applies.
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressEconomyIssueBehindPace_IsClearAndStillHopped()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var issue = await h.FileAsync("story", "thrifty, carried across", h.Todo);
+        await h.EconomyAsync(issue);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 51, Now + TimeSpan.FromHours(2)));
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.True(row.Hop);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
     [Fact]
     public async Task Queue_ListsATaskInheritingEmergencyFromItsEpicBeforeOneExpeditedOnItsOwnRow()
     {
@@ -4826,6 +4927,35 @@ public class WorkControllerTests
         public async Task EconomyAsync(EfHatchIssue issue)
         {
             issue.Priority = PriorityLevels.Economy;
+            await Db.SaveChangesAsync();
+        }
+
+        private int nextRunner = 1;
+
+        /// <summary>
+        /// A runner's usage reading, written straight to the table the way
+        /// <c>UtilizationControllerTests</c>' own <c>SeedAsync</c> does - what
+        /// <see cref="Dispatch"/>'s economy gate reads through the same
+        /// <see cref="Utilization.Of"/>. The runner's own name is manufactured,
+        /// since these tests are about whose account a reading belongs to and
+        /// how stale it is, never about the runner itself.
+        /// </summary>
+        public Task SeedUsageAsync(Guid forPersonId, DateTimeOffset readAt, (string Window, int Percent, DateTimeOffset? ResetsAt) window) =>
+            SeedUsageAsync(forPersonId, readAt, new RunnerUsageWindowDto(window.Window, window.Window, window.Percent, window.ResetsAt));
+
+        public async Task SeedUsageAsync(Guid forPersonId, DateTimeOffset readAt, params RunnerUsageWindowDto[] windows)
+        {
+            Db.Runners.Add(new EfHatchRunner
+            {
+                Name = $"economy-test:/checkouts/{nextRunner++}",
+                Kind = EfHatchRunner.LoopKind,
+                FirstSeenAt = readAt,
+                LastSeenAt = readAt,
+                State = EfHatchRunner.Running,
+                ForPersonId = forPersonId,
+                UsageReadAt = readAt,
+                Usage = JsonSerializer.Serialize(windows),
+            });
             await Db.SaveChangesAsync();
         }
 
