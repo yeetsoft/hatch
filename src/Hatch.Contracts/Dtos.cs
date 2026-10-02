@@ -1789,6 +1789,30 @@ public static class BuildVerdicts
     public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
 }
 
+/// <summary>
+/// What a forge says a pull request's own state is - the only place that tells
+/// a merged one from one closed without merging. Neither git nor the absence
+/// of a branch can: a squash merge puts none of the branch's commits in the
+/// trunk, and a branch only disappears where the repository is set to delete
+/// it on merge.
+/// </summary>
+public static class PullRequestStates
+{
+    /// <summary>The pull request was merged. The forge reports this and never <see cref="Closed"/> for one that was.</summary>
+    public const string Merged = "merged";
+
+    /// <summary>The pull request is still open.</summary>
+    public const string Open = "open";
+
+    /// <summary>The pull request was closed without merging.</summary>
+    public const string Closed = "closed";
+
+    /// <summary>The forge named a state this does not know. Not the same as a read that failed.</summary>
+    public const string Unknown = "unknown";
+
+    public static readonly IReadOnlyList<string> All = [Merged, Open, Closed, Unknown];
+}
+
 /// <summary>The three states of a review row's build icon - see <see cref="ReviewDto.BuildState"/>.</summary>
 public static class ReviewBuildStates
 {
