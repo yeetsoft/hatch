@@ -455,15 +455,17 @@ public static class ClaimOutcomes
 }
 
 /// <summary>
-/// The three levels an issue's priority can sit at, ordered - see
+/// The four levels an issue's priority can sit at, ordered - see
 /// <see cref="EfHatchIssue.Priority"/>.
 /// </summary>
 public static class PriorityLevels
 {
+    public const int Paused = -2;
     public const int Normal = 0;
     public const int Expedited = 1;
     public const int Emergency = 2;
 
+    public const string PausedName = "paused";
     public const string NormalName = "normal";
     public const string ExpeditedName = "expedited";
     public const string EmergencyName = "emergency";
@@ -473,10 +475,11 @@ public static class PriorityLevels
     {
         Emergency => EmergencyName,
         Expedited => ExpeditedName,
+        Paused => PausedName,
         _ => NormalName,
     };
 
-    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the four.</summary>
     public static bool TryParse(string? name, out int level)
     {
         (level, var ok) = name switch
@@ -484,6 +487,7 @@ public static class PriorityLevels
             EmergencyName => (Emergency, true),
             ExpeditedName => (Expedited, true),
             NormalName => (Normal, true),
+            PausedName => (Paused, true),
             _ => (Normal, false),
         };
         return ok;

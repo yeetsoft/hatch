@@ -137,21 +137,26 @@ loop does here.
 Within a column, order is the order you see. Drag a card up and the runner
 reaches it sooner.
 
-**Priority** puts an issue at one of three levels: normal, expedited, or
-emergency, the third and highest. Set it on the issue page or the board's
-peek, from a pill that opens onto every level — press the one you want, and
-the card floats to the top of its column, and the dispatcher considers every
-emergency card before every expedited card before anything else, right to left
-within each. So an emergency bug in Breakdown is reached before an expedited
-story in To Do, which is reached before a normal one in To Do. Two things it
-is not:
+**Priority** puts an issue at one of four levels: paused the lowest, then
+normal, expedited, and emergency the highest. Set it on the issue page or the
+board's peek, from a pill that opens onto every level — press the one you
+want, and the card floats to the top of its column (or, for paused, sinks to
+the bottom), and the dispatcher considers every emergency card before every
+expedited card before anything else, right to left within each. So an
+emergency bug in Breakdown is reached before an expedited story in To Do,
+which is reached before a normal one in To Do. Three things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
-  blocked is still blocked.
+  blocked is still blocked. Paused is the exception: it *is* a gate, and a
+  paused issue is taken out of dispatch entirely, not merely reordered — the
+  loop leaves it exactly where it stands until a person sets it back.
 - It is inherited: a level set on an epic reaches everything under it that
-  does not set its own level, both expedited and emergency. Raising an epic
+  does not set its own level, both above and below normal. Raising an epic
   to emergency is enough to put every story and task under it ahead of
-  everything else — nothing has to be set on each one by hand.
+  everything else — nothing has to be set on each one by hand. Pausing an
+  epic sets the whole subtree aside the same way.
+- It changes nothing else about the issue: its assignee, its claim, its
+  questions and its dependencies stand exactly where they were.
 
 A story under that epic can still set its own level, which wins over whatever
 the epic says above it. To point a night at one epic without changing

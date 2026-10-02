@@ -148,7 +148,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
-        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal })
+        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Paused })
         {
             foreach (var status in Enumerable.Reverse(statuses))
             {
@@ -515,6 +515,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (claimed.Held(issue) is { } holder)
             return holder;
+
+        var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
+        if (pausedLevel == PriorityLevels.Paused)
+            return pausedFrom is null
+                ? "paused - a person set it aside, and nothing picks it up until they set it back"
+                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back";
 
         if (loop is not null)
         {

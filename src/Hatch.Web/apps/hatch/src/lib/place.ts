@@ -148,6 +148,7 @@ function reorder(
     ...ranked.filter((i) => i.priority === 'emergency'),
     ...ranked.filter((i) => i.priority === 'expedited'),
     ...ranked.filter((i) => i.priority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'paused'),
   ];
 
   /* Written back into the slots the column already occupies, so the array stays

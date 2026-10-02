@@ -60,7 +60,7 @@ public class IssueExpediteController(
         PriorityLevels.TryParse(request.Priority, out var level)
             ? SetAsync(key, level, ct)
             : Task.FromResult<ActionResult<IssueDto>>(
-                BadRequest($"\"{request.Priority}\" is not a priority - normal, expedited or emergency"));
+                BadRequest($"\"{request.Priority}\" is not a priority - paused, normal, expedited or emergency"));
 
     /// <summary>
     /// Mark it expedited, or unmark it. The legacy two-level alias for

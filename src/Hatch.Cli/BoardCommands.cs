@@ -42,6 +42,9 @@ public sealed class BoardCommands(Cli cli)
         "  row before every expedited row before anything else, whatever column",
         "  each sits in.",
         "",
+        "  A row marked \"||\" is paused: a person set it aside, and nothing picks",
+        "  it up until they set it back.",
+        "",
         "  A row marked \"(express, no session)\", \"(parent pulled, no session)\",",
         "  \"(epic, no session)\" or \"(under <epic>, no session)\" is a hop: the loop",
         "  carries it on itself with no session, rather than spawning one.",
@@ -84,10 +87,13 @@ public sealed class BoardCommands(Cli cli)
             var hurried = column.Count(i => i.Priority == PriorityLevels.ExpeditedName);
             var first = hurried > 0 ? $"  ({hurried} expedited)" : "";
 
+            var asideCount = column.Count(i => i.Priority == PriorityLevels.PausedName);
+            var aside = asideCount > 0 ? $"  ({asideCount} paused)" : "";
+
             var express = column.Count(i => i.Express);
             var carried = express > 0 ? $"  ({express} express)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{carried}");
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{aside}{carried}");
         }
 
         if (board.Wip is { } wip)
@@ -151,7 +157,8 @@ public sealed class BoardCommands(Cli cli)
             return 1;
         }
 
-        var card = board.Issues.FirstOrDefault(i => i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now));
+        var card = board.Issues.FirstOrDefault(i =>
+            i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now) && i.Priority != PriorityLevels.PausedName);
         if (card is null)
         {
             cli.Say.Complain($"hatch: nothing workable in \"{want}\"");
@@ -250,6 +257,7 @@ public sealed class BoardCommands(Cli cli)
                     {
                         PriorityLevels.EmergencyName => "!!",
                         PriorityLevels.ExpeditedName => "! ",
+                        PriorityLevels.PausedName => "||",
                         _ => "  ",
                     }
                     : "")

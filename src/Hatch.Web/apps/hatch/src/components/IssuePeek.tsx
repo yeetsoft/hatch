@@ -26,8 +26,8 @@ interface Asked {
   /** What the server last said about the level in effect, the issue's own
       level and where the effective one came from, or undefined while the
       card's own value stands. */
-  priority?: 'normal' | 'expedited' | 'emergency';
-  priorityOwn?: 'normal' | 'expedited' | 'emergency';
+  priority?: 'normal' | 'expedited' | 'emergency' | 'paused';
+  priorityOwn?: 'normal' | 'expedited' | 'emergency' | 'paused';
   priorityFrom?: string | null;
   priorityError?: string;
   priorityBusy?: boolean;
@@ -172,7 +172,7 @@ export function IssuePeek({
      The board behind the dialog is reloaded too, because the float moves the
      card. */
   const changePriority = useCallback(
-    async (next: 'normal' | 'expedited' | 'emergency') => {
+    async (next: 'normal' | 'expedited' | 'emergency' | 'paused') => {
       if (!key) return;
       apply(key, { priorityBusy: true, priorityError: undefined });
       try {
