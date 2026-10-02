@@ -278,6 +278,15 @@ public sealed class FakeForge
     /// <summary>Every canonical identity a forge was made for, in order.</summary>
     public List<string?> Canonicals { get; } = [];
 
+    /// <summary>Every pull request asked for, as <c>path url</c>, in order.</summary>
+    public List<string> PullRequestReads { get; } = [];
+
+    /// <summary>What every pull request read answers, unless <see cref="PullRequestFor"/> says otherwise.</summary>
+    public PullRequestAnswer PullRequestAnswer { get; set; } = new(null, null);
+
+    /// <summary>What a read of one pull request's url answers.</summary>
+    public Dictionary<string, PullRequestAnswer> PullRequestFor { get; } = [];
+
     public IForge For(string path, string? canonical)
     {
         Canonicals.Add(canonical);
@@ -297,6 +306,12 @@ public sealed class FakeForge
         {
             owner.Logs.Add(check.Name);
             return Task.FromResult(owner.Excerpts.GetValueOrDefault(check.Name));
+        }
+
+        public Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct)
+        {
+            owner.PullRequestReads.Add($"{path} {url}");
+            return Task.FromResult(owner.PullRequestFor.GetValueOrDefault(url, owner.PullRequestAnswer));
         }
     }
 }

@@ -42,6 +42,13 @@ public sealed record EconomyPace(string? Fold, string? ClearNote)
     public static EconomyPace Clear(string? note) => new(null, note);
 }
 
+/// <summary>
+/// One read of an account's usage, judged twice: once at economy's stricter
+/// arithmetic, once at low's laxer one. See <see cref="Utilization.Pace"/> and
+/// <see cref="Utilization.SessionPace"/>.
+/// </summary>
+public sealed record PaceReadings(EconomyPace Economy, EconomyPace Low);
+
 /// <summary>The windows a runner's heartbeat reports - see <see cref="RunnerUsageWindowDto"/>.</summary>
 public static class UtilizationWindows
 {
@@ -125,20 +132,36 @@ public static class Utilization
     /// <see cref="UtilizationLimit.ResetsAt"/> at all, which this skips rather
     /// than guesses at.
     /// </summary>
-    public static EconomyPace Pace(UtilizationReading reading, DateTimeOffset now)
+    public static EconomyPace Pace(UtilizationReading reading, DateTimeOffset now) =>
+        PaceFor(reading, now, Reserve, "economy", "a gap", _ => true);
+
+    /// <summary>
+    /// Low's own pace, over the session window alone and with nothing held in
+    /// reserve - see "What 'green' is" on HA-226. Strictly laxer than
+    /// <see cref="Pace"/>: every reading that clears economy's gate clears
+    /// this one too.
+    /// </summary>
+    public static EconomyPace SessionPace(UtilizationReading reading, DateTimeOffset now) =>
+        PaceFor(reading, now, reserve: 0, "low", "the window to catch up",
+            window => window == UtilizationWindows.Session);
+
+    private static EconomyPace PaceFor(
+        UtilizationReading reading, DateTimeOffset now, int reserve, string label, string waitsFor,
+        Func<string, bool> includeWindow)
     {
         double? worstMargin = null;
         UtilizationLimit? worstLimit = null;
 
         foreach (var limit in reading.Limits)
         {
+            if (!includeWindow(limit.Window)) continue; // not one of the windows this judgement reads
             if (limit.ResetsAt is not { } resetsAt) continue; // no reset instant - skipped, not guessed at
             if (!WindowLengths.TryGetValue(limit.Window, out var length)) continue; // a window Hatch has no length for
 
             if (resetsAt <= now) continue; // already reset since the reading - unconditionally ahead, never the worst
 
             var elapsedPercent = 100 * (1 - (resetsAt - now) / length);
-            var margin = elapsedPercent - limit.Percent; // >= Reserve is ahead; the display number either way
+            var margin = elapsedPercent - limit.Percent; // >= reserve is ahead; the display number either way
 
             if (worstMargin is null || margin < worstMargin)
             {
@@ -151,14 +174,14 @@ public static class Utilization
 
         var phrase = WindowPhrase(worstLimit.Window);
 
-        if (worstMargin < Reserve)
+        if (worstMargin < reserve)
         {
             var elapsedPercent = Math.Round(worstMargin.Value + worstLimit.Percent);
             return EconomyPace.Behind(
-                $"economy - the account has spent {worstLimit.Percent}% of its {phrase} with {elapsedPercent}% of it elapsed; this waits for a gap");
+                $"{label} - the account has spent {worstLimit.Percent}% of its {phrase} with {elapsedPercent}% of it elapsed; this waits for {waitsFor}");
         }
 
-        return EconomyPace.Clear($"economy: {Math.Round(worstMargin.Value)} points ahead of pace on the {phrase}");
+        return EconomyPace.Clear($"{label}: {Math.Round(worstMargin.Value)} points ahead of pace on the {phrase}");
     }
 
     private static string WindowPhrase(string window) => window switch

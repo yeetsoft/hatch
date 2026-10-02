@@ -205,6 +205,15 @@ public class AdminSurfaceTests
         // the person-only edge that decides whether a hop exists at all.
         "WorkController.HopWork",
 
+        // The one path that may move an issue into a terminal column without
+        // the operator pressing it there themselves - but only because a
+        // merged pull request already is that decision, made on the forge and
+        // reported back. It refuses everything a hop refuses (wrong column, a
+        // claim) plus two of its own (no pull request recorded, or one that
+        // does not match), so a key can carry a ticket no further than the
+        // operator already agreed it may go.
+        "WorkController.MergedWork",
+
         // The same walk as GetNextWork, reported instead of acted on. A read,
         // and one a key already holds every part of: it says nothing about the
         // board that `next` and `/issues` do not already say, only in one

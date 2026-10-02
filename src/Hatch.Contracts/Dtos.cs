@@ -1204,6 +1204,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// written by a lapse, are skipped rather than counted or stopped at. Zero on
 /// a client too old to read it.
 /// </param>
+/// <param name="InReview">
+/// Whether <paramref name="FromStatus"/> is, right now, the board's review
+/// column - computed the same way <c>AttentionController</c> counts a ticket
+/// as waiting on a pull request, off <c>Columns.AwaitingReview</c> and never
+/// off a column's name. False on a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1219,7 +1225,8 @@ public record WorkDto(
     bool Hop = false,
     string? HopKind = null,
     string? HopUnder = null,
-    int LetGo = 0);
+    int LetGo = 0,
+    bool InReview = false);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only
@@ -1338,11 +1345,13 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
 /// <param name="BuildChecks">Every build verdict the board holds for the issue, one per repository. Absent from a board that predates them.</param>
+/// <param name="PullRequestUrl">The pull request recorded on the issue, or null where none is. Absent from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<MergeCheckDto> MergeChecks,
-    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null,
+    string? PullRequestUrl = null);
 
 // ---- Rollups ----
 
@@ -1737,6 +1746,13 @@ public record MergeCheckRequest(
     string Runner,
     bool? HoldsTrunk = null);
 
+/// <summary>
+/// A runner reporting that the pull request recorded on an issue has merged.
+/// </summary>
+/// <param name="Url">The pull request the runner read as merged, compared against the one recorded on the issue.</param>
+/// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record PullRequestMergedRequest(string Url, string Runner);
+
 /// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
 /// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
@@ -1787,6 +1803,30 @@ public static class BuildVerdicts
     public const string None = "none";
 
     public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
+}
+
+/// <summary>
+/// What a forge says a pull request's own state is - the only place that tells
+/// a merged one from one closed without merging. Neither git nor the absence
+/// of a branch can: a squash merge puts none of the branch's commits in the
+/// trunk, and a branch only disappears where the repository is set to delete
+/// it on merge.
+/// </summary>
+public static class PullRequestStates
+{
+    /// <summary>The pull request was merged. The forge reports this and never <see cref="Closed"/> for one that was.</summary>
+    public const string Merged = "merged";
+
+    /// <summary>The pull request is still open.</summary>
+    public const string Open = "open";
+
+    /// <summary>The pull request was closed without merging.</summary>
+    public const string Closed = "closed";
+
+    /// <summary>The forge named a state this does not know. Not the same as a read that failed.</summary>
+    public const string Unknown = "unknown";
+
+    public static readonly IReadOnlyList<string> All = [Merged, Open, Closed, Unknown];
 }
 
 /// <summary>The three states of a review row's build icon - see <see cref="ReviewDto.BuildState"/>.</summary>

@@ -153,15 +153,29 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
 
-        // Resolved only when some candidate actually reads at economy level -
-        // a pass with nothing at that tier has no reason to read an account's
-        // usage at all.
-        EconomyPace? economy = null;
-        if (effective.Values.Any(e => e.Level == PriorityLevels.Economy))
-            economy = await EconomyPaceAsync(ct);
+        // Resolved only when some candidate actually reads at economy or low
+        // level - a pass with nothing at either tier has no reason to read an
+        // account's usage at all. One read, judged twice - see PaceReadingsAsync.
+        PaceReadings? pace = null;
+        if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
+            pace = await PaceReadingsAsync(ct);
+
+        // Set only after a tier's own loop below has finished, so two live rows
+        // in the same tier never park each other - only a strictly higher
+        // tier's live row, remembered here on a previous iteration, can. Never
+        // reassigned once set: the first live row in the whole (top-down) walk
+        // is also the only one the park sentence ever needs to name. Live is
+        // clear, or folded by a board-held fold - a row waiting on a person can
+        // stand for weeks, and parking on it would park the tier below forever.
+        string? parkedByKey = null;
+        string? parkedByLevel = null;
+        bool parkedByBoardHeld = false;
 
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
+            string? firstLiveThisTierKey = null;
+            bool firstLiveThisTierBoardHeld = false;
+
             foreach (var status in Enumerable.Reverse(statuses))
             {
                 if (Columns.Target(statuses, status) is not { } to) continue;
@@ -180,46 +194,99 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, economy, gate, family, claimed,
+                        issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+
+                    var sentence = blocked?.Why;
+
+                    // Nothing at a lower tier is picked up while a strictly
+                    // higher one still has live work - a hop is exempt from
+                    // being parked itself, but still becomes the row that
+                    // parks the tiers below it.
+                    if (blocked is null && !hop && parkedByKey is not null)
+                        sentence = parkedByBoardHeld
+                            ? $"{parkedByKey} ranks {parkedByLevel} and is held by the board - " +
+                              $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is still live"
+                            : $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
+                              $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+
+                    // The first live row of this tier - clear, or folded by a
+                    // board-held fold - whichever this row turns out to be.
+                    // Independent of the park sentence above: a row already
+                    // parked was clear before the park replaced its sentence,
+                    // and still counts as live for the tier below it.
+                    if (firstLiveThisTierKey is null)
+                    {
+                        if (blocked is null)
+                        {
+                            firstLiveThisTierKey = IssueKey.Format(issue.Project!.Key, issue.Number);
+                            firstLiveThisTierBoardHeld = false;
+                        }
+                        else if (blocked.Value.BoardHeld)
+                        {
+                            firstLiveThisTierKey = IssueKey.Format(issue.Project!.Key, issue.Number);
+                            firstLiveThisTierBoardHeld = true;
+                        }
+                    }
+
                     rows.Add(new ScanRow(
-                        issue, status, to, blocked,
+                        issue, status, to, sentence,
                         KindOf(issue, status, to, merged, built),
-                        hop && blocked is null,
-                        blocked is null ? hopKind : null,
-                        blocked is null ? hopUnder : null,
-                        blocked is null && summary.LapsedStall
+                        hop && sentence is null,
+                        sentence is null ? hopKind : null,
+                        sentence is null ? hopUnder : null,
+                        sentence is null && summary.LapsedStall
                             ? ClearNote(claims.StallLapseSeconds)
-                            : blocked is null && effective[issue.Id].Level == PriorityLevels.Economy ? economy?.ClearNote : null,
+                            : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
+                            : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
+                            : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
                 }
             }
+
+            if (parkedByKey is null && firstLiveThisTierKey is not null)
+            {
+                parkedByKey = firstLiveThisTierKey;
+                parkedByLevel = PriorityLevels.Name(level);
+                parkedByBoardHeld = firstLiveThisTierBoardHeld;
+            }
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, economy);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace);
     }
 
     /// <summary>
     /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
-    /// does - the freshest whole reading across its runners - and judged for
-    /// pace. Resolved lazily by <see cref="ScanAsync"/>, only when some
-    /// candidate actually reads at economy level.
+    /// does - the freshest whole reading across its runners - and judged twice:
+    /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
+    /// <see cref="ScanAsync"/>, only when some candidate actually reads at
+    /// economy or low level, and read once regardless of how many candidates
+    /// are at either.
     /// </summary>
-    private async Task<EconomyPace> EconomyPaceAsync(CancellationToken ct)
+    private async Task<PaceReadings> PaceReadingsAsync(CancellationToken ct)
     {
         var principal = await actors.PrincipalAsync(ct);
         if (principal is null)
-            return EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+        {
+            var noAccount = EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+            var noAccountLow = EconomyPace.Behind("low - this key belongs to nobody, so there is no account to read usage for");
+            return new PaceReadings(noAccount, noAccountLow);
+        }
 
         var runners = await db.Runners.AsNoTracking()
             .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
             .ToListAsync(ct);
 
         var reading = Utilization.Of(runners, time.GetUtcNow());
-        return reading is null
-            ? EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one")
-            : Utilization.Pace(reading, time.GetUtcNow());
+        if (reading is null)
+        {
+            var noReading = EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one");
+            var noReadingLow = EconomyPace.Behind("low - no usage reading for this account yet; a runner's first session gives one");
+            return new PaceReadings(noReading, noReadingLow);
+        }
+
+        return new PaceReadings(Utilization.Pace(reading, time.GetUtcNow()), Utilization.SessionPace(reading, time.GetUtcNow()));
     }
 
     /// <summary>
@@ -512,14 +579,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// whichever parent ids the candidates hold, once per named dispatch over
     /// this issue's own.
     /// </param>
-    public static string? Blocked(
+    public static Fold? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
         EfHatchStatus? to,
         EfHatchPlaybook? playbook,
         int waiting,
         LoopScope? loop,
-        EconomyPace? economy,
+        PaceReadings? pace,
         DependencyGate gate,
         FamilyGate family,
         ClaimGate claimed,
@@ -533,8 +600,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics)
     {
+        // Waiting on a person below: nothing the board does clears any of
+        // these, so none of them parks a lower tier - see Fold.
         if (from.IsTerminal)
-            return $"\"{from.Name}\" is where work ends - there is nothing after it";
+            return new Fold($"\"{from.Name}\" is where work ends - there is nothing after it", false);
 
         // Said before the column-after test, which would otherwise refuse this
         // with "there is nowhere for this to go" - true, and no use to somebody
@@ -542,33 +611,41 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // moving. Nothing comes off the shelf on a pass's say-so: a deferred
         // ticket is waiting on a person deciding it is work again.
         if (from.IsDeferred)
-            return $"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass";
+            return new Fold($"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass", false);
 
         if (to is null)
-            return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
+            return new Fold($"there is no column after \"{from.Name}\", so there is nowhere for this to go", false);
 
         if (to.IsTerminal)
-            return $"the next column is \"{to.Name}\", and only the operator moves work there";
+            return new Fold($"the next column is \"{to.Name}\", and only the operator moves work there", false);
 
+        // Held by the board below: it clears when the board changes, with
+        // nobody asked, so it parks every tier below it.
         if (claimed.Held(issue) is { } holder)
-            return holder;
+            return new Fold(holder, true);
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
             return pausedFrom is null
-                ? "paused - a person set it aside, and nothing picks it up until they set it back"
-                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back";
+                ? new Fold("paused - a person set it aside, and nothing picks it up until they set it back", false)
+                : new Fold($"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", false);
 
         if (loop is not null)
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
-                return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
+                return new Fold($"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}", true);
 
             // Loop policy, not a fact about the issue - a hop is exempt, the
             // same way it is exempt from needing a playbook, and a named
-            // dispatch (work/{key}) never sees loop at all.
-            if (!hop && pausedLevel == PriorityLevels.Economy && economy?.Fold is { } fold)
-                return fold;
+            // dispatch (work/{key}) never sees loop at all. Two gates, same
+            // shape, each reading its own level's judgement off the one pace
+            // reading. Both windows reset on their own, so both are the
+            // board's to clear.
+            if (!hop && pausedLevel == PriorityLevels.Economy && pace?.Economy.Fold is { } economyFold)
+                return new Fold(economyFold, true);
+
+            if (!hop && pausedLevel == PriorityLevels.Low && pace?.Low.Fold is { } lowFold)
+                return new Fold(lowFold, true);
 
             if (loop.Mine)
             {
@@ -581,8 +658,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     (assignee is { Kind: ActorKind.Key } && assignee.Id == loop.CallerKeyId);
                 if (!isMine)
                     return assignee is null
-                        ? "assigned to nobody - a --mine pass takes only your own"
-                        : $"assigned to {assignee.Name}, not to you";
+                        ? new Fold("assigned to nobody - a --mine pass takes only your own", false)
+                        : new Fold($"assigned to {assignee.Name}, not to you", false);
             }
             else if (assignee?.Kind == ActorKind.Person)
             {
@@ -591,12 +668,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 // thing an agent should pick up, and one whose assignee no
                 // longer resolves is not assigned at all - the liveness rule
                 // reaching the dispatcher without a line of its own.
-                return $"assigned to {assignee.Name} - an unattended pass leaves a person's work alone";
+                return new Fold($"assigned to {assignee.Name} - an unattended pass leaves a person's work alone", false);
             }
         }
 
         if (waiting > 0)
-            return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
+            return new Fold($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", false);
 
         // A repository matters wherever a session is spawned, because every
         // session runs in the primary repository's checkout: every move but a
@@ -608,12 +685,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (!hop || to.Id == implementation?.Id)
         {
-            if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
+            // Never clears for this caller at all - parking on it would park
+            // forever, so it reads as waiting on a person, not the board.
+            if (RepositoryFold(issue, repos) is { } repoBlock) return new Fold(repoBlock, false);
         }
 
         if (to.Id == implementation?.Id)
         {
-            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
+            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return new Fold(WaitingOn(waitingOn), true);
         }
 
         // The mirror of the dependency fold above: that one gates the move in,
@@ -624,7 +703,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
         if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
-            return "its children are the work, and some are still open";
+            return new Fold("its children are the work, and some are still open", true);
 
         // An epic is verified by its own stories, not merely cleared off one
         // column: it is held wherever it stands in the WIP section, not only
@@ -632,7 +711,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // against it the way OpenChildren does for everything else above -
         // the operator shelving a story is not a gap in the epic (HA-114,
         // Taken here). Never on the move to itself: an epic in review is
-        // folded by a conflict or a failing build, not by this.
+        // folded by a conflict or a failing build, not by this. EpicFold
+        // classifies itself - a childless epic is the operator's to file
+        // something under, and an epic with open children clears on its own.
         if (issue.Type == "epic" && !conflicts && from.IsWip && family.EpicFold(issue.Id, statuses) is { } epicBlock)
             return epicBlock;
 
@@ -640,14 +721,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // leave, so it is said after a dependency, which needs other work to
         // land, and before a missing playbook, which needs the operator - see
         // Wip.LoadAsync.
-        if (WipFold(wip, issue, from, to, epics) is { } full) return full;
+        if (WipFold(wip, issue, from, to, epics) is { } full) return new Fold(full, true);
 
         // Last before the playbook, and after the repository: a question needs a
         // person, a repository needs a clone, and a clean branch with a build
         // that is passing, running or unread needs nothing at all - so it is the
         // least useful thing to say about an issue that is folded for a reason
-        // somebody can act on.
-        if (conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is { } reviewBlock) return reviewBlock;
+        // somebody can act on. Judge classifies itself - most of what it says
+        // waits on the operator to merge, and the rest clears on its own.
+        if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock } judgement)
+            return new Fold(reviewBlock, judgement.BoardHeld);
 
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
@@ -667,27 +750,28 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is null)
-                return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
+                return new Fold("a top-level epic is moved in by a person - its own column is the signal for everything under it", false);
 
             if (epicParent is not { Type: "epic" } || !wip.Inside(epicParent.StatusId))
-                return "its parent epic is not running, so nothing pulls it in";
+                return new Fold("its parent epic is not running, so nothing pulls it in", true);
 
-            return FamilyGate.NothingUnder;
+            return new Fold(FamilyGate.NothingUnder, false);
         }
 
         // A column that pulls its children is never "no playbook covers
         // this" - it is one of these two, naming which of FamilyGate.Pulls's
         // two conditions is unmet. A childless issue in such a column (e.g.
         // plain Backlog) has nothing to pull, so it falls through unchanged.
+        // Both clear on their own - a sibling finishing, or the parent moving.
         if (from.ParentPulls && issue.ParentId is { } parentId)
         {
             return family.ParentStarted(parentId, statuses)
-                ? "a sibling is already in flight, so only one child is pulled through at a time"
-                : "its parent has not reached the implementation column, so nothing pulls it forward yet";
+                ? new Fold("a sibling is already in flight, so only one child is pulled through at a time", true)
+                : new Fold("its parent has not reached the implementation column, so nothing pulls it forward yet", true);
         }
 
         return playbook is null
-            ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
+            ? new Fold($"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page", false)
             : null;
     }
 
@@ -806,13 +890,28 @@ public sealed record ScanRow(
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null);
 
 /// <summary>
+/// Why <see cref="Dispatch.Blocked"/> would not dispatch this issue, and which
+/// of the two kinds the fold is - the one thing <c>Blocked is null</c> alone
+/// cannot say. <see cref="BoardHeld"/> is true when the fold clears on its own
+/// as the board changes, with nobody asked - a live claim, a running build, an
+/// unmet dependency, a full WIP section, a ready date that arrives - and false
+/// when nothing the board does clears it - an unanswered question, a person's
+/// name on it, a repository this runner has no checkout of. The walk in
+/// <see cref="Dispatch.ScanAsync"/> parks a lower tier on the first of either
+/// kind; nothing downstream of it - <c>ScanRow.Blocked</c>, <c>QueueEntryDto</c>,
+/// the CLI, the web - needs the kind, only the walk comparing tiers does, so
+/// this never leaves <see cref="Dispatch"/>.
+/// </summary>
+public readonly record struct Fold(string Why, bool BoardHeld);
+
+/// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
 /// the sentence and nothing else; both endpoints turn it into the same 400.
 /// </summary>
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
-    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, EconomyPace? Economy = null)
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -1157,10 +1256,19 @@ public sealed class FamilyGate
     /// fold. Null where every counted child is terminal, including where
     /// every child is deferred and none are counted at all.
     /// </summary>
-    public string? EpicFold(long issueId, List<EfHatchStatus> statuses)
+    /// <remarks>
+    /// Classifies itself rather than leaving it to its one call site, because
+    /// the two branches are different kinds: a childless epic is identical in
+    /// meaning to <see cref="NothingUnder"/>'s direct return elsewhere in
+    /// <see cref="Dispatch.Blocked"/> - nobody files a story because the board
+    /// changed on its own, so it waits on a person - while an epic with open
+    /// children clears the moment one of them closes, which the board does on
+    /// its own.
+    /// </remarks>
+    public Fold? EpicFold(long issueId, List<EfHatchStatus> statuses)
     {
         var children = Children(issueId);
-        if (children.Count == 0) return NothingUnder;
+        if (children.Count == 0) return new Fold(NothingUnder, false);
 
         var counted = 0;
         var open = 0;
@@ -1176,9 +1284,11 @@ public sealed class FamilyGate
 
         if (open == 0) return null;
 
-        return counted == 1
-            ? "its only child is not done - an epic is verified once its stories are"
-            : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
+        return new Fold(
+            counted == 1
+                ? "its only child is not done - an epic is verified once its stories are"
+                : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are",
+            true);
     }
 
     /// <summary>Whether the parent's own column is Columns.Implementation.</summary>

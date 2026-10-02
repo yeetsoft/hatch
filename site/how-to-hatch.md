@@ -148,14 +148,17 @@ which is reached before a normal one in To Do, which is reached before a low
 one wherever it sits. Three things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
-  blocked is still blocked. Paused and economy are the exceptions: paused
+  blocked is still blocked. Paused, economy and low are the exceptions: paused
   *is* a gate, and a paused issue is taken out of dispatch entirely, not
   merely reordered — the loop leaves it exactly where it stands until a
-  person sets it back. Economy is a narrower gate: an unattended pass leaves
-  an economy issue alone only while the account it would spend has no reserve
-  to spare, so it is worked the moment there is room again, with no change on
-  anyone's part. Naming the issue directly, or a hop carrying it, is not held
-  by this at all.
+  person sets it back. Economy and low are narrower gates, each judged off the
+  same account's usage: an unattended pass leaves an economy issue alone only
+  while the account it would spend has no reserve to spare across every window
+  it reports, and leaves a low issue alone only while its session window alone
+  is behind its own pace — narrower still, since low watches only that one
+  window and holds nothing in reserve. Either way the issue is worked the
+  moment there is room again, with no change on anyone's part. Naming the
+  issue directly, or a hop carrying it, is not held by either gate at all.
 - It is inherited: a level set on an epic reaches everything under it that
   does not set its own level, both above and below normal. Raising an epic
   to emergency is enough to put every story and task under it ahead of
