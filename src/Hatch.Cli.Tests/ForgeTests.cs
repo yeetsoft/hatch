@@ -354,4 +354,84 @@ public sealed class ForgeTests
     {
         Assert.Null(GhForge.Excerpt(log));
     }
+
+    // ---- Reading a pull request ----
+
+    [Theory]
+    [InlineData("MERGED", PullRequestStates.Merged)]
+    [InlineData("OPEN", PullRequestStates.Open)]
+    [InlineData("CLOSED", PullRequestStates.Closed)]
+    [InlineData("merged", PullRequestStates.Merged)]
+    [InlineData("Open", PullRequestStates.Open)]
+    [InlineData("closed", PullRequestStates.Closed)]
+    public void A_state_gh_prints_reads_as_the_matching_verdict_regardless_of_case(string printed, string verdict)
+    {
+        Assert.Equal(verdict, GhForge.ClassifyState(printed));
+    }
+
+    [Fact]
+    public void A_state_gh_has_never_printed_reads_unknown_rather_than_throwing()
+    {
+        Assert.Equal(PullRequestStates.Unknown, GhForge.ClassifyState("DRAFT"));
+    }
+
+    [Fact]
+    public async Task It_asks_gh_pr_view_with_the_url_as_given_and_no_hostname()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"MERGED"}""", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Equal(PullRequestStates.Merged, answer.State);
+        Assert.Null(answer.Why);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state"], call.Args);
+        Assert.DoesNotContain("--hostname", call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task A_missing_gh_is_said_in_one_line_for_a_pull_request_too()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(-1, "", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Null(answer.State);
+        Assert.Equal("gh is not installed", answer.Why);
+    }
+
+    [Fact]
+    public async Task A_gh_that_refuses_the_pull_request_says_the_first_line_it_said()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(4, "", "\nTo get started with GitHub CLI, please run:  gh auth login\nmore\n") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Null(answer.State);
+        Assert.Equal("To get started with GitHub CLI, please run:  gh auth login", answer.Why);
+    }
+
+    [Fact]
+    public async Task Output_that_is_not_json_is_a_why_and_not_an_exception()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "<html>", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Null(answer.State);
+        Assert.NotNull(answer.Why);
+    }
+
+    [Fact]
+    public async Task A_local_path_asks_gh_nothing_for_a_pull_request()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: "/srv/git/repo.git").ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Null(answer.State);
+        Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
 }
