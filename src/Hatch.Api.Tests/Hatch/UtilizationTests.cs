@@ -98,4 +98,74 @@ public class UtilizationTests
         Assert.Contains("weekly", pace.Fold);
         Assert.DoesNotContain("session", pace.Fold);
     }
+
+    // ---- SessionPace, low's own arithmetic (HA-226) ----
+
+    [Fact]
+    public void SessionPace_AheadOnTheSessionWindow_ReadsClear()
+    {
+        // 60% elapsed, 10% spent -> 50 ahead.
+        var reading = Reading(Session(10, TimeSpan.FromHours(2)));
+
+        var pace = Utilization.SessionPace(reading, Now);
+
+        Assert.Null(pace.Fold);
+        Assert.NotNull(pace.ClearNote);
+        Assert.Contains("low", pace.ClearNote);
+    }
+
+    [Fact]
+    public void SessionPace_OnePointBehind_ReadsBehindWithBothPercentages()
+    {
+        // Low holds nothing in reserve, so only a negative margin reads behind:
+        // 61% spent, 60% elapsed -> margin -1.
+        var reading = Reading(Session(61, TimeSpan.FromHours(2)));
+
+        var pace = Utilization.SessionPace(reading, Now);
+
+        Assert.NotNull(pace.Fold);
+        Assert.Null(pace.ClearNote);
+        Assert.Contains("61%", pace.Fold);
+        Assert.Contains("60%", pace.Fold);
+        Assert.Contains("low", pace.Fold);
+    }
+
+    [Fact]
+    public void SessionPace_AWindowAlreadyReset_ReadsAheadRegardlessOfPercent()
+    {
+        var reading = Reading(Session(99, TimeSpan.FromMinutes(-1)));
+
+        var pace = Utilization.SessionPace(reading, Now);
+
+        Assert.Null(pace.Fold);
+    }
+
+    [Fact]
+    public void SessionPace_AReadingWithNoSessionWindow_IsVacuouslyAhead()
+    {
+        // A weekly window alone, deep behind pace for economy, is not even read
+        // by SessionPace - it only ever looks at the session window.
+        var reading = Reading(Weekly(80, TimeSpan.FromDays(1)));
+
+        var pace = Utilization.SessionPace(reading, Now);
+
+        Assert.Null(pace.Fold);
+        Assert.Null(pace.ClearNote);
+    }
+
+    [Fact]
+    public void TheAsymmetryBetweenEconomyAndLow_OnTheSameReading()
+    {
+        // 51% spent, 60% elapsed on the session window alone - margin 9.
+        // Economy holds 10 points in reserve, so margin 9 is behind.
+        // Low holds nothing in reserve, so the same margin 9 is clear.
+        var reading = Reading(Session(51, TimeSpan.FromHours(2)));
+
+        var economy = Utilization.Pace(reading, Now);
+        var low = Utilization.SessionPace(reading, Now);
+
+        Assert.NotNull(economy.Fold);
+        Assert.Null(low.Fold);
+        Assert.NotNull(low.ClearNote);
+    }
 }
