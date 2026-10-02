@@ -1445,3 +1445,35 @@ export interface ApiKeyCreateRequest {
   scopes: string[];
   ownerPersonId?: string;
 }
+
+// ---- Revision ----
+
+/** The four answers a drift comparison can give, mirroring RevisionDrift in
+    HatchRevisionInfo.cs - the enum's own member names, PascalCase, because
+    Program.cs registers a bare JsonStringEnumConverter with no naming policy
+    (see PlanState above for the same rule). `Ahead` must never earn a notice
+    the way `Behind` does: during a rolling deploy a page loaded from a new
+    replica can have its next request answered by an old one, and a client
+    that acts on any difference thrashes between the two until the rollout
+    finishes. */
+export type RevisionDrift = 'Unknown' | 'Current' | 'Behind' | 'Ahead';
+
+/** Where a calling client's build sits relative to this replica's. Mirrors
+    ClientRevisionVerdict in HatchRevisionInfo.cs. */
+export interface ClientRevisionVerdict {
+  revision: string;
+  sequence: number;
+  drift: RevisionDrift;
+}
+
+/** What commit this replica is running, and how the caller's own build
+    compares when it identified itself. Mirrors HatchRevisionInfo.cs.
+    `cluster` is typed `unknown` rather than mirrored - see
+    ClusterRevisions.cs for the three-level tree, which nothing here draws. */
+export interface Revision {
+  revision: string;
+  sequence: number;
+  builtAt: string | null;
+  client: ClientRevisionVerdict | null;
+  cluster: unknown;
+}

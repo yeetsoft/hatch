@@ -45,6 +45,7 @@ import type {
   ProjectRepository,
   ProjectRepositoryWriteRequest,
   QueueEntry,
+  Revision,
   Runner,
   RunnerDownloads,
   RunnerPatchRequest,
@@ -548,3 +549,11 @@ export const revokeGrant = (id: string) => fetchJson<void>(`/api/auth/grants/${s
 /** The grant this browser holds - how the Users page knows which session row is
     "this browser". Null when there is no grant (the wall is off). */
 export const getAuthMe = () => fetchJson<AuthMe | undefined>('/api/auth/me').then((me) => me ?? null);
+
+// ---- Revision ----
+
+/** The one call in this file that reaches outside `/api/hatch/*`, deliberately:
+    `/api/hatch-revision` sits on AuthGate's allow-list so it answers even to a
+    caller the wall has not let in yet, which is exactly the caller that most
+    needs to discover it is running a stale build. */
+export const getHatchRevision = () => fetchJson<Revision>('/api/hatch-revision');
