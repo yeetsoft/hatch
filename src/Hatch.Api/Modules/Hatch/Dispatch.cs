@@ -128,18 +128,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         var implementation = Columns.Implementation(statuses);
 
-        // The whole walk, five times: every emergency candidate right to
+        // The whole walk, six times: every emergency candidate right to
         // left, then every expedited candidate right to left, then every
-        // normal one right to left, then every economy one right to left,
-        // then every paused one right to left. So an emergency bug in the
-        // leftmost column is listed above an expedited story in the
-        // rightmost one, which is listed above a normal one in the rightmost
-        // one, which is listed above an economy one wherever it sits, which
-        // is listed above a paused one wherever it sits, while inside each
-        // tier the order is the board's own - rightmost column first, and
-        // (Rank, Id) within a column.
+        // normal one right to left, then every low one right to left, then
+        // every economy one right to left, then every paused one right to
+        // left. So an emergency bug in the leftmost column is listed above an
+        // expedited story in the rightmost one, which is listed above a
+        // normal one in the rightmost one, which is listed above a low one
+        // wherever it sits, which is listed above an economy one wherever it
+        // sits, which is listed above a paused one wherever it sits, while
+        // inside each tier the order is the board's own - rightmost column
+        // first, and (Rank, Id) within a column.
         //
-        // Five passes over the same columns rather than a sort of the
+        // Six passes over the same columns rather than a sort of the
         // finished rows, because the published scan is the explanation of
         // what `next` picked: a comparator applied afterwards would be a
         // second opinion about the order, and passes that could disagree is
@@ -159,7 +160,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (effective.Values.Any(e => e.Level == PriorityLevels.Economy))
             economy = await EconomyPaceAsync(ct);
 
-        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Economy, PriorityLevels.Paused })
+        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
             foreach (var status in Enumerable.Reverse(statuses))
             {

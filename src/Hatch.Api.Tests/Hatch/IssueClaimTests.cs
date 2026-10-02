@@ -1000,6 +1000,32 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task WithNormalLowAndEconomyClaims_TheEconomyOneIsToldFirstAndTheLowOneSecond()
+    {
+        await using var h = await NewAsync();
+        var emergencyA = await h.FileAsync(priority: PriorityLevels.Emergency);
+        await h.FileAsync(priority: PriorityLevels.Emergency);
+        var normal = await h.FileAsync();
+        var low = await h.FileAsync(priority: PriorityLevels.Low);
+        var economy = await h.FileAsync(priority: PriorityLevels.Economy);
+        var normalToken = await h.TakeAsync(normal, "somewhere:/checkouts/one");
+        var lowToken = await h.TakeAsync(low, "elsewhere:/checkouts/two");
+        var economyToken = await h.TakeAsync(economy, "anywhere:/checkouts/three");
+
+        // Economy sits last in the walk, low second-to-last - so economy is
+        // told first and low second, with two unclaimed emergency issues
+        // giving two runners a turn to be told before normal's.
+        var toldEconomy = Value(await h.Claims.Heartbeat(economy, new ClaimHeartbeatRequest(economyToken, null), default));
+        Assert.Equal(emergencyA, toldEconomy.Key);
+
+        var toldLow = Value(await h.Claims.Heartbeat(low, new ClaimHeartbeatRequest(lowToken, null), default));
+        Assert.Equal(emergencyA, toldLow.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(normal, new ClaimHeartbeatRequest(normalToken, null), default)).Result);
+    }
+
+    [SkippableFact]
     public async Task FewerRunnersToldThanEmergencyIssues_TellsExactlyThatMany()
     {
         await using var h = await NewAsync();

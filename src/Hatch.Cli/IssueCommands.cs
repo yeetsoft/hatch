@@ -15,10 +15,12 @@ public sealed class IssueCommands(Cli cli)
         "",
         "  An expedited or emergency ticket says so: somebody marked it \"this one",
         "  first\", and the board and the dispatcher both reach for it before",
-        "  anything else, emergency before expedited before the rest. An economy",
+        "  anything else, emergency before expedited before the rest. A low",
         "  ticket says so too, at the other end: the dispatcher reaches for it",
-        "  last. A level an issue only holds because an ancestor carries it names",
-        "  that ancestor: \"expedited - this one goes first (inherited from AER-12)\".",
+        "  only after every normal ticket. An economy ticket says so too,",
+        "  further still: the dispatcher reaches for it last. A level an issue",
+        "  only holds because an ancestor carries it names that ancestor:",
+        "  \"expedited - this one goes first (inherited from AER-12)\".",
         "  A paused ticket says so too: a person set it aside, and nothing picks",
         "  it up until they set it back.",
         "  An express ticket says so too: standing in a column marked to skip, it",
@@ -94,6 +96,8 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"priority:  emergency - top of the walk, before anything else{inherited}");
         else if (issue.Priority == PriorityLevels.ExpeditedName)
             cli.Say.Line($"priority:  expedited - this one goes first{inherited}");
+        else if (issue.Priority == PriorityLevels.LowName)
+            cli.Say.Line($"priority:  low - reached after everything normal, and only while the session window is on pace{inherited}");
         else if (issue.Priority == PriorityLevels.EconomyName)
             cli.Say.Line($"priority:  economy - worked only with usage that would otherwise go spare{inherited}");
         else if (issue.Priority == PriorityLevels.PausedName)

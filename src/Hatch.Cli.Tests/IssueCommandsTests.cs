@@ -150,6 +150,23 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
+    public async Task Show_says_when_the_issue_is_low()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.LowName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains(
+            "priority:  low - reached after everything normal, and only while the session window is on pace",
+            h.Said);
+    }
+
+    [Fact]
     public async Task Show_says_when_the_issue_is_economy()
     {
         using var h = new CliHarness();

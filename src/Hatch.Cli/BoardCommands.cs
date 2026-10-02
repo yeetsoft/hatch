@@ -40,8 +40,9 @@ public sealed class BoardCommands(Cli cli)
         "  A row marked \"!!\" is emergency and a row marked \"! \" is expedited:",
         "  somebody said this one first, and the pass considers every emergency",
         "  row before every expedited row before anything else, whatever column",
-        "  each sits in. A row marked \"~ \" is economy: the pass considers it",
-        "  last, after every other row.",
+        "  each sits in. A row marked \"- \" is low: the pass considers it after",
+        "  every normal row. A row marked \"~ \" is economy: the pass considers",
+        "  it last, after every other row.",
         "",
         "  A row marked \"||\" is paused: a person set it aside, and nothing picks",
         "  it up until they set it back.",
@@ -88,6 +89,9 @@ public sealed class BoardCommands(Cli cli)
             var hurried = column.Count(i => i.Priority == PriorityLevels.ExpeditedName);
             var first = hurried > 0 ? $"  ({hurried} expedited)" : "";
 
+            var unhurried = column.Count(i => i.Priority == PriorityLevels.LowName);
+            var low = unhurried > 0 ? $"  ({unhurried} low)" : "";
+
             var thrifty = column.Count(i => i.Priority == PriorityLevels.EconomyName);
             var economy = thrifty > 0 ? $"  ({thrifty} economy)" : "";
 
@@ -97,7 +101,7 @@ public sealed class BoardCommands(Cli cli)
             var express = column.Count(i => i.Express);
             var carried = express > 0 ? $"  ({express} express)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{economy}{aside}{carried}");
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{low}{economy}{aside}{carried}");
         }
 
         if (board.Wip is { } wip)
@@ -174,6 +178,7 @@ public sealed class BoardCommands(Cli cli)
         {
             PriorityLevels.EmergencyName => "  (emergency)",
             PriorityLevels.ExpeditedName => "  (expedited)",
+            PriorityLevels.LowName => "  (low)",
             PriorityLevels.EconomyName => "  (economy)",
             _ => "",
         };
@@ -239,11 +244,12 @@ public sealed class BoardCommands(Cli cli)
     /// The <c>!!</c> or <c>! </c> in front of an emergency or expedited row is
     /// the same idea one step further, and distinct from the singular
     /// <c>!</c> the expedited-only board used - both two characters, so column
-    /// alignment is unaffected. <c>~ </c> marks an economy row the same way,
-    /// at the other end of the scale, and <c>||</c> marks a paused one. The
-    /// column appears only when the answer holds one, so a board with nothing
-    /// off normal prints exactly what it printed before, and a queue whose
-    /// order has been reordered by somebody says which rows did it.
+    /// alignment is unaffected. <c>- </c> marks a low row the same way, one
+    /// step the other side of normal, <c>~ </c> marks an economy row further
+    /// still, and <c>||</c> marks a paused one. The column appears only when
+    /// the answer holds one, so a board with nothing off normal prints
+    /// exactly what it printed before, and a queue whose order has been
+    /// reordered by somebody says which rows did it.
     ///
     /// <para>A conflict dispatch starts and ends in the same column, so an arrow
     /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
@@ -263,6 +269,7 @@ public sealed class BoardCommands(Cli cli)
                     {
                         PriorityLevels.EmergencyName => "!!",
                         PriorityLevels.ExpeditedName => "! ",
+                        PriorityLevels.LowName => "- ",
                         PriorityLevels.EconomyName => "~ ",
                         PriorityLevels.PausedName => "||",
                         _ => "  ",

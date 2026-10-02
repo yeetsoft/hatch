@@ -1705,24 +1705,51 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_ListsEveryEconomyCandidateLastOfAll()
+    public async Task Queue_ListsEveryLowCandidateAfterNormalAndBeforeEconomy()
     {
         var h = await NewAsync();
         var judged = await h.FileAsync("story", "awaiting the operator", h.Review);
         var underway = await h.FileAsync("story", "underway", h.InProgress);
         var hurry = await h.FileAsync("bug", "expedited, in the leftmost column", h.Inbox);
         var alarm = await h.FileAsync("bug", "emergency, further along", h.Todo);
+        var unhurried = await h.FileAsync("bug", "low, in the leftmost column", h.Inbox);
         var thrifty = await h.FileAsync("bug", "economy, in the leftmost column", h.Inbox);
 
         await h.ExpediteAsync(hurry);
         await h.EmergencyAsync(alarm);
+        await h.LowAsync(unhurried);
         await h.EconomyAsync(thrifty);
 
-        // Emergency, then expedited, then everything else, then economy last
-        // of all - a fourth tier rather than three.
+        // Emergency, then expedited, then everything else, then low, then
+        // economy last of all - a fifth tier rather than four.
         Assert.Equal(
-            new[] { alarm, hurry, judged, underway, thrifty }.Select(Key),
+            new[] { alarm, hurry, judged, underway, unhurried, thrifty }.Select(Key),
             Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
+    public async Task Next_AnswersTheNormalCandidateOverTheLowOne()
+    {
+        var h = await NewAsync();
+        var unhurried = await h.FileAsync("bug", "low", h.Inbox);
+        var normal = await h.FileAsync("bug", "normal", h.Todo);
+        await h.LowAsync(unhurried);
+
+        // Whatever column each stands in - low never outranks a clear normal
+        // candidate, because it is a fourth tier below it and not a gate.
+        Assert.Equal(Key(normal), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Next_AnswersTheLowCandidateWhenItIsTheOnlyOne()
+    {
+        var h = await NewAsync();
+        var unhurried = await h.FileAsync("bug", "low", h.Todo);
+        await h.LowAsync(unhurried);
+
+        // No pace gate yet (HA-226): a low candidate is picked exactly like a
+        // normal one once nothing above it is in the running.
+        Assert.Equal(Key(unhurried), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
     // ---- Economy's own pace gate (HA-209) ----
@@ -4923,7 +4950,14 @@ public class WorkControllerTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>The same, one level down - see <see cref="ExpediteAsync"/>.</summary>
+        /// <summary>The same, one level below normal - see <see cref="ExpediteAsync"/>.</summary>
+        public async Task LowAsync(EfHatchIssue issue)
+        {
+            issue.Priority = PriorityLevels.Low;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same, one level further down still - see <see cref="ExpediteAsync"/>.</summary>
         public async Task EconomyAsync(EfHatchIssue issue)
         {
             issue.Priority = PriorityLevels.Economy;

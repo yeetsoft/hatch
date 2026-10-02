@@ -92,7 +92,7 @@ export function QueueModal({
                   <span className="hatch-queue-ordinal">{at + 1}</span>
                   {showMarker && (
                     <span
-                      className={`hatch-queue-marker${marker === '!!' ? ' emergency' : marker === '~' ? ' economy' : ''}`}
+                      className={`hatch-queue-marker${marker === '!!' ? ' emergency' : marker === '-' ? ' low' : marker === '~' ? ' economy' : ''}`}
                     >
                       {marker}
                     </span>

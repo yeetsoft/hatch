@@ -467,13 +467,14 @@ an API key; see [The one edge that is deliberately cut](#the-one-edge-that-is-de
 
 #### Expedite
 
-**An issue sits at one of five levels, and emergency is the highest, paused
-the lowest.** `Priority` is an int on the issue — paused, economy, normal,
-expedited or emergency, in that order — set by a person, and honoured by both
-halves of Hatch: the board floats an expedited or emergency card to the top of
-its column and sinks a paused one to the bottom, and the dispatcher considers
-every emergency candidate before every expedited candidate before anything
-else, considers an economy candidate only when an unattended pass finds the
+**An issue sits at one of six levels, and emergency is the highest, paused
+the lowest.** `Priority` is an int on the issue — paused, economy, low,
+normal, expedited or emergency, in that order — set by a person, and honoured
+by both halves of Hatch: the board floats an expedited or emergency card to
+the top of its column and sinks a paused one to the bottom, and the dispatcher
+considers every emergency candidate before every expedited candidate before
+anything else, considers a low candidate only after every normal one,
+considers an economy candidate only when an unattended pass finds the
 account it would spend has a reserve of usage to spare, and never considers a
 paused one at all. `PUT
 /api/hatch/issues/{key}/priority` sets the level by name; the older
@@ -548,14 +549,15 @@ rather than sorted in the browser, so the board, the plan and the queue cannot
 disagree about where a card sits — a card dropped above an emergency or
 expedited one comes to rest below it, and a card dropped below a paused one
 comes to rest above it, because the float and the sink both win over the
-rank. In the dispatcher it is [five walks of the columns](#the-dispatcher)
-rather than a sort of the finished rows — economy walked fourth and paused
-walked last. Paused is always folded there, so it never changes which issue
-`next` or a hop picks, only that `queue` can report it; economy is gated
-rather than always folded, so unlike every other walk, a row reached on its
-own pass can still be skipped by the pace check for `next` and `queue` alike —
-a hop is exempt from that gate, the same way it is exempt from needing a
-playbook.
+rank. In the dispatcher it is [six walks of the columns](#the-dispatcher)
+rather than a sort of the finished rows — low walked fourth, economy walked
+fifth and paused walked last. Paused is always folded there, so it never
+changes which issue `next` or a hop picks, only that `queue` can report it;
+economy is gated rather than always folded, so unlike every other walk, a row
+reached on its own pass can still be skipped by the pace check for `next` and
+`queue` alike — a hop is exempt from that gate, the same way it is exempt from
+needing a playbook. Low carries no gate of its own yet — it is picked exactly
+like a normal candidate, only after every one of them.
 
 Setting it is closed to an API key; see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). It follows that there is no
@@ -1900,7 +1902,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it back to the default; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
-| `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
@@ -2449,26 +2451,30 @@ everything and finishes nothing; one worked right to left pushes whatever is
 furthest along over the line before it opens anything new. The second is what a
 person does when they mean to ship.
 
-**Except for what somebody marked above normal**, which is considered first
-wherever it sits. The scan walks the columns five times — every
+**Except for what somebody marked off normal**, which is considered first or
+last wherever it sits. The scan walks the columns six times — every
 [emergency](#expedite) candidate right to left, then every
 [expedited](#expedite) candidate right to left, then everything else right to
-left, then every [economy](#expedite) candidate right to left, then every
+left, then every [low](#expedite) candidate right to left, then every
+[economy](#expedite) candidate right to left, then every
 [paused](#expedite) candidate right to left — so an emergency bug in the
 leftmost column is reached before an expedited story in the rightmost one,
 which is reached before a normal one in the rightmost one, which is reached
-before an economy one wherever it sits, and inside each tier the order is the
-board's own. The level that puts a candidate in the first, second, fourth or
-fifth walk may be its own or inherited from an ancestor — the walk does not
-care which. The paused walk is always last and always folded, so it never
-changes which issue `next` or a hop picks — only that `queue` can report it.
-The economy walk, unlike every other, is gated rather than always folded: a
+before a low one wherever it sits, which is reached before an economy one
+wherever it sits, and inside each tier the order is the
+board's own. The level that puts a candidate in the first, second, fourth,
+fifth or sixth walk may be its own or inherited from an ancestor — the walk
+does not care which. The paused walk is always last and always folded, so it
+never changes which issue `next` or a hop picks — only that `queue` can report
+it. The economy walk, unlike every other, is gated rather than always folded: a
 row reached there can still be folded by [economy's own pace
-check](#expedite), so unlike emergency, expedited or normal, reaching that
-walk does not guarantee the row is clear. Five passes rather than a sort of
-the finished rows, because the [published scan](#what-a-pass-skipped) is the
-explanation of what `next` picked, and a comparator applied afterwards would
-be a second opinion about the order.
+check](#expedite), so unlike emergency, expedited, normal or low, reaching
+that walk does not guarantee the row is clear. Low carries no gate yet — a row
+reached on that walk is clear exactly as a normal one is. Six passes rather
+than a sort of the finished rows, because the
+[published scan](#what-a-pass-skipped) is the explanation of what `next`
+picked, and a comparator applied afterwards would be a second opinion about
+the order.
 
 `?ancestorKey=AER-1` asks the same question of one epic's subtree instead of the
 whole board — the same rule, narrower candidates, nothing else changed. It
@@ -2751,9 +2757,11 @@ All five of these hold, or the heartbeating runner is told nothing:
    key, so two heartbeats can never both believe they lost — though in
    practice there is no tie left to break, since the dispatcher's own order is
    already the tie-break. A live claim on an [economy](#expedite) issue is
-   preempted before one on a normal or expedited issue, and after one on a
-   paused issue, if a paused issue is ever still carrying a live claim —
-   economy sits second-to-last in the walk, not last; paused does.
+   preempted before one on a low, normal or expedited issue, and a live claim
+   on a low issue is preempted before one on a normal or expedited issue — and
+   both are preempted after one on a paused issue, if a paused issue is ever
+   still carrying a live claim — economy sits second-to-last in the walk, low
+   third-to-last; paused does.
 4. Fewer runners have already been told than there are unclaimed actionable
    emergency issues.
 5. No live runner is free — a live row in `Runners`, holding no live claim. A
