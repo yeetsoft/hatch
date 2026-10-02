@@ -577,6 +577,19 @@ public sealed class WorkCommand(Runtime runtime)
                     : null;
                 var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted);
 
+                // Something happened - the ticket moved into review, or a
+                // conflict resolved, or a build fix pushed, on a branch judged
+                // by origin rather than the column - and nobody can find a
+                // pull request for it. Never also a stall: the two guards'
+                // conditions are mutually exclusive by construction.
+                if (report is not null
+                    && (report.Moved || report.Resolved || report.FixPushed)
+                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                {
+                    releaseOutcome = await Unpublished.RefuseAsync(
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, CancellationToken.None);
+                }
+
                 // Every opening banner has a closing one - null only for the
                 // attach path, which prints its own header and has no report to
                 // close with; a person is sitting at that session.

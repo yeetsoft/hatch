@@ -88,7 +88,9 @@ public static class Banner
     /// ("Moved from Breakdown to Backlog").
     /// </summary>
     private static string Outcome(IncrementReport report) =>
-        report.Moved ? $"Moved from {report.From} to {report.Ended}" : report.Outcome;
+        report.Moved
+            ? $"Moved from {report.From} to {report.Ended}{(report.Flag is { Length: > 0 } ? $", {report.Flag}" : "")}"
+            : report.Outcome;
 
     private static string Took(IncrementReport report)
     {

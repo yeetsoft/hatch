@@ -54,6 +54,32 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-245: <see cref="IncrementReport.EndedInReview"/> is the board's own
+    /// read of whether the ticket is sitting in the review column right now,
+    /// taken in the same call <see cref="IncrementReport.Ended"/> is - not the
+    /// playbook's stale target.
+    /// </summary>
+    [Fact]
+    public async Task EndedInReview_is_set_from_the_boards_own_read_after_the_session()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", inReview: true));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.EndedInReview);
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task The_posted_row_carries_requests_peak_context_and_prompt_chars()
     {
