@@ -318,7 +318,7 @@ export function IssuePage() {
      the press worked. A refusal lands in `error` above in the server's own
      words, and the control goes back to saying what the issue still holds. */
   const savePriority = useCallback(
-    async (priority: 'normal' | 'expedited' | 'emergency') => {
+    async (priority: 'normal' | 'expedited' | 'emergency' | 'paused') => {
       setPriorityBusy(true);
       try {
         await setPriority(key, priority);

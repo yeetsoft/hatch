@@ -99,14 +99,20 @@ public static class Wip
             .Select(i => new { i.Id, i.ParentId })
             .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
 
+        var tree = await PriorityTree.ForAsync(db, ct);
+
         var slices = new List<WipSlice>();
         foreach (var types in sliceTypes)
         {
             var typeSet = types.ToHashSet();
             var ofType = rows.Where(r => typeSet.Contains(r.Type)).ToList();
 
+            // An effectively-paused row - its own level or inherited - frees
+            // the slot it would otherwise hold: a pause is a person setting a
+            // ticket aside, not the section's business to keep room for.
             var counted = ofType
-                .Where(r => sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
+                .Where(r => (sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
+                    && tree.Effective(r.Id).Level != PriorityLevels.Paused)
                 .Select(r => r.Id)
                 .ToHashSet();
 

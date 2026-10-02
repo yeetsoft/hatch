@@ -1806,6 +1806,53 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task APausedIssue_IsFoldedOnAPassWithItsOwnSentence()
+    {
+        var h = await NewAsync();
+        var paused = await h.FileAsync("story", "set aside", h.Todo, rank: 1024);
+        var next = await h.FileAsync("story", "unrelated", h.Todo, rank: 2048);
+        await h.PauseAsync(paused);
+
+        var blocked = Value(await h.Work.GetQueue(0, null, default))
+            .Single(e => e.Issue.Key == Key(paused)).Blocked;
+        Assert.Equal("paused - a person set it aside, and nothing picks it up until they set it back", blocked);
+
+        // Never offered by next, and the pass carries on to the next issue.
+        Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task APausedIssue_NamedDirectly_IsRefusedWithTheSameSentence()
+    {
+        var h = await NewAsync();
+        var paused = await h.FileAsync("story", "set aside", h.Todo);
+        await h.PauseAsync(paused);
+
+        Assert.Equal(
+            "paused - a person set it aside, and nothing picks it up until they set it back",
+            Value(await h.Work.GetWork(Key(paused), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AStoryUnderAPausedEpic_IsFoldedNamingTheEpic_AndAnExpeditedTaskUnderItIsNot()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "set aside for now", h.Todo);
+        await h.PauseAsync(epic);
+        var story = await h.FileAsync("story", "inherits the pause", h.InProgress, parentId: epic.Id);
+        var task = await h.FileAsync("task", "its own level wins", h.InProgress, parentId: story.Id);
+        await h.ExpediteAsync(task);
+
+        Assert.Equal(
+            $"paused from {Key(epic)} - a person set it aside, and nothing picks it up until they set it back",
+            Value(await h.Work.GetWork(Key(story), null, default)).Blocked);
+
+        // The task's own expedited level is nearer than the epic's paused one,
+        // so it is not folded by it at all - reached in the expedited walk.
+        Assert.Equal(Key(task), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
     public async Task Queue_LeavesOutTheColumnsWithNowhereToGo_AndListsReview()
     {
         var h = await NewAsync();
@@ -2359,6 +2406,21 @@ public class WorkControllerTests
         Assert.Equal(h.InProgress, moved.StatusId);
     }
 
+    [Fact]
+    public async Task AnExpressPausedIssue_InATickedColumn_IsNotHopped()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "set aside, would otherwise be carried on", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.PauseAsync(issue);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            "paused - a person set it aside, and nothing picks it up until they set it back", entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
     // ---- Parent pulls, the hop ----
     //
     // A child standing in a column flagged ParentPulls, whose parent stands in
@@ -2403,6 +2465,21 @@ public class WorkControllerTests
         var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
         Assert.True(payload.GetProperty("pulled").GetBoolean());
         Assert.False(payload.TryGetProperty("express", out _));
+    }
+
+    [Fact]
+    public async Task APausedChild_InAColumnMarkedParentPulls_IsNotPulled()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        var child = await h.FileAsync("task", "set aside, would otherwise be pulled", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.PauseAsync(child);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+        Assert.Equal(
+            "paused - a person set it aside, and nothing picks it up until they set it back", entry.Blocked);
+        Assert.False(entry.Hop);
     }
 
     [Fact]
@@ -4721,6 +4798,13 @@ public class WorkControllerTests
         public async Task EmergencyAsync(EfHatchIssue issue)
         {
             issue.Priority = PriorityLevels.Emergency;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same, the one level that is also a gate - see <see cref="ExpediteAsync"/>.</summary>
+        public async Task PauseAsync(EfHatchIssue issue)
+        {
+            issue.Priority = PriorityLevels.Paused;
             await Db.SaveChangesAsync();
         }
 

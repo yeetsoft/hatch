@@ -211,7 +211,7 @@ usage: hatch config [--show | --origin <origin>]
 ### `hatch board`
 
 Takes nothing. `GET /api/hatch/board`, then one line per column, non-deferred
-columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)]`.
+columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)][  (n paused)]`.
 
 ### `hatch next [<column>]`
 
@@ -229,8 +229,8 @@ on the caller's calendar day is printed as
 `GET /api/hatch/work/queue?offsetMinutes=<utc offset>[&ancestorKey=<key>]`.
 Every issue a dispatch pass would look at, in the order it looks, each with
 the reason it would be folded past or `-> <next column>`. A row marked `!!`
-is emergency and one marked `! ` is expedited; the column only appears when
-some row is above normal. An empty answer is a
+is emergency and one marked `! ` is expedited, and one marked `||` is
+paused; the column only appears when some row is not normal. An empty answer is a
 sentence, not a blank line: `hatch: nothing on the board is on the
 dispatcher's path`, or the same `under <key>`. Exit 0.
 
@@ -238,11 +238,12 @@ dispatcher's path`, or the same `under <key>`. Exit 0.
 
 Three reads: the issue, the statuses, the comments. Prints the header
 `<Key>  [<type>]  <Title>`, `status:`, then only when the effective level is
-non-normal `priority:  emergency - top of the walk, before anything else` or
-`priority:  expedited - this one goes first`, with an `(inherited from <key>)`
-suffix when the level came from an ancestor rather than the issue itself —
-`priority:  expedited - this one goes first (inherited from HA-12)` — then
-`parent:`, `children:`,
+non-normal `priority:  emergency - top of the walk, before anything else`,
+`priority:  expedited - this one goes first` or
+`priority:  paused - set aside; the loop leaves it where it stands`, with an
+`(inherited from <key>)` suffix when the level came from an ancestor rather
+than the issue itself — `priority:  expedited - this one goes first
+(inherited from HA-12)` — then `parent:`, `children:`,
 `depends:`, `blocks:`, `ready:`, `due:`; the description verbatim; then
 `--- N comment(s) ---` with each as
 `[<timestamp>] <author>:` and its body. A missing issue: `hatch: <key> -

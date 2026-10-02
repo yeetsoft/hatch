@@ -27,6 +27,23 @@ describe('PriorityControl', () => {
     expect(html).not.toContain('inherited from');
   });
 
+  it('draws the pill for an issue holding its own paused level, closed', () => {
+    const html = renderToStaticMarkup(
+      <PriorityControl
+        issueKey="HA-14"
+        priority="paused"
+        priorityOwn="paused"
+        priorityFrom={null}
+        directory={directory()}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(html).toContain('Paused');
+    expect(html).toContain('⏸');
+    expect(html).toContain('aria-label="Priority: Paused. Set HA-14&#x27;s priority"');
+  });
+
   it('names the ancestor on a level this issue inherits', () => {
     const html = renderToStaticMarkup(
       <PriorityControl

@@ -9,7 +9,7 @@ const card = (
   key: string,
   statusId: number,
   rank: number,
-  priority: 'normal' | 'expedited' | 'emergency' = 'normal',
+  priority: 'normal' | 'expedited' | 'emergency' | 'paused' = 'normal',
 ): IssueCard => ({
   key,
   projectKey: 'AER',
@@ -23,7 +23,7 @@ const card = (
   openQuestions: 0,
   assignee: null,
   claim: null,
-  expedited: priority !== 'normal',
+  expedited: priority === 'expedited' || priority === 'emergency',
   priority,
   priorityOwn: priority,
   priorityFrom: null,
@@ -248,6 +248,35 @@ describe('place, with an emergency card above an expedited one', () => {
     expect(placed.afterKey).toBe('AER-7');
     expect(placed.beforeKey).toBeNull();
     expect(keysIn(placed.issues, TODO)).toEqual(['AER-9', 'AER-7']);
+  });
+});
+
+/* The sink, the mirror image of the float above: a paused card drops to the
+   bottom of its column regardless of rank, and a card dropped below it still
+   comes to rest above it - the fifth group in reorder() is always last.
+   AER-7 holds the lowest rank of the three despite sitting at the bottom on
+   screen, on purpose: that is what "regardless of rank" means to prove. */
+describe('place, with a paused card in the column', () => {
+  const setAside = [
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+    card('AER-7', INBOX, 512, 'paused'),
+  ];
+
+  it('sinks the paused card below every other card regardless of rank', () => {
+    const placed = place(setAside, setAside, 'AER-2', 'AER-1')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-7']);
+  });
+
+  it('rests a card dropped below the paused one above it, never below', () => {
+    // Dropped directly onto AER-7 from above: the raw geometry asks for a
+    // slot after it, same as it would for any other card - and the float
+    // still carries the drop above it in what actually gets painted.
+    const placed = place(setAside, setAside, 'AER-1', 'AER-7')!;
+
+    expect(placed.afterKey).toBe('AER-7');
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-1', 'AER-2', 'AER-7']);
   });
 });
 
