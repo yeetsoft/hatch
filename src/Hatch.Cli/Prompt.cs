@@ -328,6 +328,7 @@ public static class Prompt
 
                 case BranchKind.None:
                     yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
+                    yield return "  Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review.";
                     break;
 
                 case BranchKind.AlreadyMerged:
@@ -534,10 +535,12 @@ public static class Prompt
 
         return
         [
-            "## If you open a pull request",
+            "## Opening a pull request",
             "",
-            "Only if this increment opens one. Name the ticket in two places, so the",
-            "reviewer can tell where it came from and reach the brief in one click.",
+            "Open one before this increment ends, if it pushes any commit meant for a person to",
+            "review - the branch section above says which kind of increment this is. Name the",
+            "ticket in two places, so the reviewer can tell where it came from and reach the",
+            "brief in one click.",
             "",
             $"- **Title:** `{key} ` and then the subject in the usual house style, `Area: what",
             $"  changed, as a sentence`. No brackets and no second colon: `{key} Auth: the first",
