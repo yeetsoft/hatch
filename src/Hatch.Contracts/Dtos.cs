@@ -8,9 +8,14 @@ namespace Hatch.Contracts;
 /// What the delete guard will look at, so the Projects page can grey the button
 /// rather than offer a 409.
 /// </param>
+/// <param name="Color">
+/// <c>#rrggbb</c>, lower case, or null if nobody has chosen one yet - see
+/// <see cref="EfHatchProject.Color"/>.
+/// </param>
+/// <param name="Icon">A slug naming one of a closed set of stock icons, or null if nobody has chosen one yet - see <see cref="EfHatchProject.Icon"/>.</param>
 /// <param name="Repositories">The remotes this project is bound to, in order - the first is the primary.</param>
 public record ProjectDto(
-    int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt,
+    int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories);
 
 /// <summary>
@@ -19,7 +24,9 @@ public record ProjectDto(
 /// can be changed later, at a price the operator is shown first - see
 /// <see cref="EfHatchProject.Key"/>.
 /// </summary>
-public record ProjectCreateRequest(string Key, string Name);
+/// <param name="Color"><c>#rrggbb</c>, or absent to leave it unset.</param>
+/// <param name="Icon">A slug naming one of a closed set of stock icons, or absent to leave it unset.</param>
+public record ProjectCreateRequest(string Key, string Name, string? Color = null, string? Icon = null);
 
 /// <summary>
 /// A rename. <paramref name="Name"/> is what usually moves;
@@ -27,7 +34,9 @@ public record ProjectCreateRequest(string Key, string Name);
 /// every request - see <see cref="EfHatchProject.Key"/> for what a rekey breaks
 /// and what it does not.
 /// </summary>
-public record ProjectPatchRequest(string? Name, string? Key = null);
+/// <param name="Color">Null leaves it alone; <c>""</c> clears it; a hex value like <c>#6b7280</c> sets it.</param>
+/// <param name="Icon">Null leaves it alone; <c>""</c> clears it; a slug sets it.</param>
+public record ProjectPatchRequest(string? Name, string? Key = null, string? Color = null, string? Icon = null);
 
 /// <summary>
 /// One git remote bound to a project, as every client reads it back.
