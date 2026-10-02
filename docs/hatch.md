@@ -1915,6 +1915,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the one path past the terminal guard](#the-one-path-past-the-terminal-guard) |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
@@ -2876,6 +2877,24 @@ rest. There is no setting for keeping branches current, and a pull request that
 merges and builds cleanly is never touched. Re-running a failed check is not
 here either: a flaky check is a failure, and an increment that only re-runs one
 leaves the tip where it was, which is a stall.
+
+### The one path past the terminal guard
+
+Nothing above ever lands an issue in a terminal column — that is what
+`Columns.Target` is for, dispatching review to itself rather than past it, and
+what `Dispatch.Blocked` refuses in every other case with *"the next column is
+\<name\>, and only the operator moves work there"*. `POST
+/work/{key}/merged` is the one exception, and it is an exception on purpose: a
+merged pull request **is** the operator's decision to ship, made on the forge
+and reported back rather than pressed on the board. So this route calls
+`Columns.Advance` — the next column, terminal or not — and carries its own
+refusals rather than `Dispatch.Blocked`'s: the issue must be standing in
+whichever column is measured as review right now, it must carry a recorded
+pull request url, the url the caller names must match it exactly (trimmed,
+ordinal), there must be a column after review to advance into, and the issue
+must not be claimed. No ready date, no assignee, no WIP section and no
+dependency gate it — those all gate an agent picking up work, and nothing here
+is an agent picking up work.
 
 ### One more, on `next` alone
 

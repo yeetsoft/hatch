@@ -1338,11 +1338,13 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
 /// <param name="BuildChecks">Every build verdict the board holds for the issue, one per repository. Absent from a board that predates them.</param>
+/// <param name="PullRequestUrl">The pull request recorded on the issue, or null where none is. Absent from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<MergeCheckDto> MergeChecks,
-    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null,
+    string? PullRequestUrl = null);
 
 // ---- Rollups ----
 
@@ -1736,6 +1738,13 @@ public record MergeCheckRequest(
     IReadOnlyList<string>? Files,
     string Runner,
     bool? HoldsTrunk = null);
+
+/// <summary>
+/// A runner reporting that the pull request recorded on an issue has merged.
+/// </summary>
+/// <param name="Url">The pull request the runner read as merged, compared against the one recorded on the issue.</param>
+/// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record PullRequestMergedRequest(string Url, string Runner);
 
 /// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
