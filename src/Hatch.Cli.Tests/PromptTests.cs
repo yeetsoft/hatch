@@ -20,7 +20,10 @@ public sealed class PromptTests
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "https://hatch.example.test/apps/hatch/issues/AER-12"));
 
-        Assert.Contains("## If you open a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("Open one before this increment ends, if it pushes any commit meant for a person to", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("## If you open a pull request", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Only if this increment opens one", prompt, StringComparison.Ordinal);
         Assert.Contains("**Title:** `AER-12 ` and then", prompt, StringComparison.Ordinal);
         Assert.Contains("\n[AER-12](https://hatch.example.test/apps/hatch/issues/AER-12)\n", prompt, StringComparison.Ordinal);
         Assert.Contains("`hatch pr AER-12 <url>`", prompt, StringComparison.Ordinal);
@@ -43,6 +46,18 @@ public sealed class PromptTests
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "/apps/hatch/issues/AER-12"));
 
         Assert.DoesNotContain("](", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void No_branch_on_origin_says_a_pull_request_follows_once_there_is_code_on_it()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.Contains("cut `aer-12-x` from it.", prompt, StringComparison.Ordinal);
+        Assert.Contains(
+            "Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review.",
+            prompt, StringComparison.Ordinal);
     }
 
     [Fact]
