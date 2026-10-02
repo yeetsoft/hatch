@@ -110,6 +110,40 @@
   color: var(--muted);
 }
 
+/* The build stamp at the foot of the gear's panel - a quiet statement of fact,
+   the same register as .hatch-local-person, but a stack of muted lines rather
+   than a single row, so it is its own rule rather than that class reused.
+   Horizontal padding matches the rows above it (.hatch-menu__row,
+   .hatch-menu__item in packages/ui/src/components/Menu.css). No display: none
+   at any width - the gear's panel is the same panel on a phone, so this block
+   is in it at both widths by construction. */
+.hatch-build-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-build-stamp__sha {
+  font-family: var(--mono);
+
+  /* Reset for the <button> case; harmless on the <code> case. */
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.hatch-build-stamp__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
 .hatch-sign-out {
   background: none;
   border: 0;

@@ -5,6 +5,7 @@ import './App.css';
 import { AttentionProvider } from './components/AttentionProvider';
 import { ConfirmationsProvider } from './components/Confirmations';
 import { NavAttention } from './components/NavAttention';
+import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavUtilization } from './components/NavUtilization';
 import { PrimaryNav } from './components/PrimaryNav';
@@ -118,6 +119,7 @@ function AppShell() {
                   </div>
                 </>
               ) : null}
+              <NavBuild />
             </>
           }
         />
