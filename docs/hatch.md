@@ -3336,16 +3336,48 @@ sentence saying which one it failed is what `work/queue` reports:
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
-17. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
-    six levels are walked top down, once each, across every row the walk
-    reaches; the first clear row the walk sees is remembered, and every row in
-    a tier strictly below that one that would otherwise be clear is folded
-    instead, with a sentence naming that row and its level — so `work/queue`
-    reports the park rather than listing a lower tier as available when it is
-    not. Two clear rows in the same tier never park each other, only a
-    strictly higher one does, and the row remembered is never replaced once
-    set: it is the first clear row in the whole walk, which is also the only
-    one the sentence ever needs to name. See [the dispatcher](#the-dispatcher).
+17. **Nothing in a strictly higher [priority](#expedite) tier is live — clear,
+    or folded by something the board itself clears.** The six levels are
+    walked top down, once each, across every row the walk reaches; the first
+    *live* row the walk sees is remembered, and every row in a tier strictly
+    below that one that would otherwise be clear is folded instead, with a
+    sentence naming that row, its level, and which of the two kinds it is — so
+    `work/queue` reports the park rather than listing a lower tier as
+    available when it is not. Two live rows in the same tier never park each
+    other, only a strictly higher one does, and the row remembered is never
+    replaced once set: it is the first live row in the whole walk, which is
+    also the only one the sentence ever needs to name.
+
+    A row is live either way, but the two kinds read differently to somebody
+    waiting on the tier below. **Held by the board** clears on its own as the
+    board changes, with nobody asked — a live claim, a running or unread
+    build, an unmet dependency, open children that are the work, an epic's
+    open children, a full WIP section, a ready date that arrives, a sibling
+    pulled ahead of this one — so it still parks every tier below it even
+    though it is not itself clear:
+
+    ```
+    HA-225 ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live
+    ```
+
+    **Waiting on a person** is cleared by nothing the board does — an
+    unanswered question, a person's name on the ticket, a top-level epic
+    nobody has moved in, a repository this runner has no checkout of, nothing
+    filed under an epic, no playbook for the transition, a branch in review
+    that merges cleanly with nothing for an agent to do. Both can stand for
+    weeks, so neither parks anything: a lower tier is still answered by `next`
+    while the only row above it reads this way, or economy would never run
+    again while a stale question or an unmoved epic stood above it. The
+    ordinary sentence, naming a clear row, is unchanged:
+
+    ```
+    HA-216 ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available
+    ```
+
+    Classifying a fold is the dispatcher's own business and never reaches
+    `QueueEntryDto`, the CLI or the web: the sentence already names the row,
+    its level, and which of the two kinds parks it, which is everything a
+    reader needs. See [the dispatcher](#the-dispatcher).
 
 Eleven of them — 1, 2, 3, 8, 9, 10, 11, 12, 13, 14 and 15 — are facts about the
 issue, and `work/{key}` asks them too. The sixteenth is as well, and

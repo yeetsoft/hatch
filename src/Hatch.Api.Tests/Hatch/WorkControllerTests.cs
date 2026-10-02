@@ -1883,6 +1883,404 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(thrifty), null, default)).Blocked);
     }
 
+    // ---- A tranche is parked while a higher one is held by the board (HA-240) ----
+    //
+    // Held by the board: it clears when the board changes, with nobody asked,
+    // so it still parks every tier below it even though it is not clear.
+    // Waiting on a person: nothing the board does clears it, so it parks
+    // nothing - economy still runs on an otherwise-quiet board. See HA-217's
+    // own table for the full classification; these exercise one row of each
+    // kind rather than all of them.
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowALiveClaimHolds()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, somebody else's claim", h.Todo);
+        await h.ClaimAsync(normal, by: "Someone else");
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowWithARunningBuild()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.ConflictPlaybookAsync();
+        var normal = await h.FileAsync("story", "normal, build running", h.Review);
+        await h.VerdictAsync(normal, MergeVerdicts.Clean);
+        await h.BuildAsync(normal, BuildVerdicts.Pending);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowWithAnUnmetDependency()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        // Paused so this row is judged in the paused tier, last of all, and
+        // never competes with "normal" for the one slot the normal tier's
+        // own walk remembers - only whether it is done is what the
+        // dependency itself reads.
+        var blocker = await h.FileAsync("story", "not done yet", h.Review);
+        await h.PauseAsync(blocker);
+        var normal = await h.FileAsync("story", "normal, waiting on it", h.Todo);
+        await h.DependsAsync(normal, blocker);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowWhoseChildrenAreTheWork()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("story", "normal, its children are the work", h.InProgress);
+        await h.FileAsync("task", "not started", h.Todo, parentId: normal.Id);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindAnEpicWithAnOpenChild()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "normal, its only child is not done", h.InProgress);
+        await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(epic)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowHeldByAFullWipSection()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.WipAsync(1, h.InProgress, h.Review);
+        // Low, so the occupant that fills the section is judged in its own
+        // tier, after normal, and never competes for the one live row the
+        // normal tier's own walk remembers - a pause would free its slot
+        // instead of spending it, which is not what this fills the section
+        // with.
+        var occupant = await h.FileAsync("story", "already inside", h.InProgress, rank: 256);
+        await h.LowAsync(occupant);
+        var normal = await h.FileAsync("story", "normal, no room", h.Todo, rank: 1024);
+        // A task - the WIP slice above counts only stories and bugs, so this
+        // is never folded by the section itself, and the only board-held
+        // fold it can carry is the one the normal row above it parks it with.
+        var thrifty = await h.FileAsync("task", "economy, otherwise clear", h.Todo, rank: 2048);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowWithAReadyDateInTheFuture()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, not ready yet", h.Todo, readyAt: Now.AddDays(3));
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(normal)} ranks normal and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ParksAClearEconomyCandidateBehindANormalRowWithASiblingInFlight()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        await h.FileAsync("task", "already pulled through", h.InProgress, parentId: parent.Id);
+        await h.FileAsync("task", "normal, a sibling is in flight", h.Inbox, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // Whichever of the family's own board-held folds the walk reaches
+        // first - the parent's open children, or the sibling pulled past
+        // the one that would otherwise be pulled - a family mid-move is live
+        // work, so economy still runs nowhere near it.
+        Assert.Contains(
+            "held by the board",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindANormalRowWithAnUnansweredQuestion()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, waiting on an answer", h.Todo);
+        await h.AskAsync(normal, "which way?");
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // Nothing the board does answers a question - only a person - so it
+        // parks nothing.
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindANormalRowAssignedToAPerson()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var ada = h.Actors.AddPerson("Ada");
+        var normal = await h.FileAsync("bug", "normal, Ada's", h.Todo);
+        await h.AssignAsync(normal, personId: ada.Id);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindATopLevelEpicNobodyHasMovedIn()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E, a person moves it in", h.Todo);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+        Assert.Equal(
+            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindANormalRowNoPlaybookCovers()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        // h.Inbox has no playbook into h.Todo - see AnAlreadyBlockedLowerTierRow_KeepsItsOwnSentence.
+        var normal = await h.FileAsync("bug", "normal, nowhere a playbook covers", h.Inbox);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+        Assert.Contains(
+            "no playbook covers",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(normal)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindANormalRowWhoseBranchMergesCleanly()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.ConflictPlaybookAsync();
+        var normal = await h.FileAsync("story", "normal, nothing for an agent to do", h.Review);
+        await h.VerdictAsync(normal, MergeVerdicts.Clean);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // Most rows in review read this way, and if it parked, one pull
+        // request awaiting the operator would stop the whole board below
+        // normal.
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindAChildlessEpicWithNothingFiledUnderIt()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "nothing under it yet", h.InProgress);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+        Assert.Equal(
+            FamilyGate.NothingUnder,
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic)).Blocked);
+    }
+
+    [Fact]
+    public async Task ABoardHeldLowerTierRow_KeepsItsOwnSentenceRatherThanTheParks()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.FileAsync("bug", "normal, clear", h.Todo);
+        var blocker = await h.FileAsync("story", "not done yet", h.Review);
+        await h.PauseAsync(blocker);
+        var thrifty = await h.FileAsync("story", "economy, waiting on a dependency", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.DependsAsync(thrifty, blocker);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // The park only ever replaces a null - a row already folded, board-
+        // held or not, keeps the sentence that fold gives it.
+        Assert.Contains(
+            "is not done",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ABoardHeldExpeditedRowParksEveryTierBelowIt()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var hurry = await h.FileAsync("bug", "expedited, held by the board", h.Todo);
+        await h.ExpediteAsync(hurry);
+        await h.ClaimAsync(hurry, by: "Someone else");
+        var normal = await h.FileAsync("bug", "normal, otherwise clear", h.Todo);
+        var unhurried = await h.FileAsync("bug", "low, otherwise clear", h.Todo);
+        await h.LowAsync(unhurried);
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        // Every tier strictly below expedited, carrying the identical
+        // sentence - naming the expedited row, not an immediate neighbour.
+        string Sentence(string level) =>
+            $"{Key(hurry)} ranks expedited and is held by the board - nothing at {level} is picked up while higher-ranking work is still live";
+        Assert.Equal(Sentence("normal"), queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
+        Assert.Equal(Sentence("low"), queue.Single(e => e.Issue.Key == Key(unhurried)).Blocked);
+        Assert.Equal(Sentence("economy"), queue.Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ABoardHeldLowRowParksEconomy()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var unhurried = await h.FileAsync("bug", "low, held by the board", h.Todo);
+        await h.LowAsync(unhurried);
+        await h.ClaimAsync(unhurried, by: "Someone else");
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        Assert.Equal(
+            $"{Key(unhurried)} ranks low and is held by the board - nothing at economy is picked up while higher-ranking work is still live",
+            Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+    }
+
+    [Fact]
+    public async Task ABoardHeldEmergencyRow_KeepsItsOwnSentenceAndStillParksExpeditedBelowIt()
+    {
+        var h = await NewAsync();
+        var alarm = await h.FileAsync("bug", "emergency, held by the board", h.Todo);
+        await h.EmergencyAsync(alarm);
+        await h.ClaimAsync(alarm, by: "Someone else");
+        var hurry = await h.FileAsync("bug", "expedited, otherwise clear", h.Todo);
+        await h.ExpediteAsync(hurry);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        // Nothing is ever above emergency to replace its own sentence with a
+        // park sentence - but a board-held fold still counts as live, so it
+        // still parks the tier below it.
+        Assert.Contains("is working", queue.Single(e => e.Issue.Key == Key(alarm)).Blocked);
+        Assert.Equal(
+            $"{Key(alarm)} ranks emergency and is held by the board - nothing at expedited is picked up while higher-ranking work is still live",
+            queue.Single(e => e.Issue.Key == Key(hurry)).Blocked);
+    }
+
+    [Fact]
+    public async Task NamedDispatch_OnAnEconomyIssueParkedByABoardHeldRow_AnswersItAnyway()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, held by the board", h.Todo);
+        await h.ClaimAsync(normal, by: "Someone else");
+        var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        // work/{key} never scans, so the park - board-held or not - never
+        // applies: a person naming a ticket is never told "parked".
+        Assert.Null(Value(await h.Work.GetWork(Key(thrifty), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressEconomyIssueBehindABoardHeldNormalRow_IsClearAndStillHopped()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var normal = await h.FileAsync("bug", "normal, held by the board", h.Todo);
+        await h.ClaimAsync(normal, by: "Someone else");
+        var thrifty = await h.FileAsync("story", "economy, express", h.Todo);
+        await h.EconomyAsync(thrifty);
+        await h.ExpressAsync(thrifty);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
+
+        var row = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty));
+        Assert.True(row.Hop);
+        Assert.Null(row.Blocked);
+    }
+
     [Fact]
     public async Task Next_AnswersTheNormalCandidateOverTheLowOne()
     {
