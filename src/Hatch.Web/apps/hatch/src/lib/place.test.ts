@@ -317,6 +317,25 @@ describe('place, with a paused card in the column', () => {
   });
 });
 
+/* Express is routing, not a sort key (docs/hatch.md, "Express") - reorder()
+   groups by priority alone and never reads it. AER-9 carries the flag and the
+   highest rank in the column on purpose: a float keyed on express would carry
+   it to the top regardless of rank, the same bug a float keyed on priority
+   would produce, and this is the test that would catch it. */
+describe('place, with an express card', () => {
+  const carried = [
+    { ...card('AER-9', INBOX, 4096), express: true },
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('sorts by rank like any other normal card - express floats nothing', () => {
+    const placed = place(carried, carried, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9']);
+  });
+});
+
 describe('place, when the board has moved underneath', () => {
   it('has nothing to say about a card that is no longer there', () => {
     expect(place(board, board, 'AER-404', 'AER-1')).toBeNull();

@@ -130,6 +130,25 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Confirms a pull request's merge against the one recorded on an issue
+    /// waiting in review - see <see cref="PullRequestMergedRequest"/>. A
+    /// <c>409</c> is not a fault, the same as <see cref="HopAsync"/> documents:
+    /// the row changed between the poll's read and this write, and the caller
+    /// walks on rather than treating it as a refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> MergedAsync(
+        string key, PullRequestMergedRequest request, CancellationToken ct)
+    {
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/merged", request, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/merged"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
     /// What a pass would take, without taking it.
     /// </summary>
     /// <remarks>

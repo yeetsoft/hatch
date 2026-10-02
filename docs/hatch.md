@@ -592,6 +592,15 @@ express issue exactly as they hold any other. Express answers one question
 only — does this column still need a session — and changes nothing about
 order, on the board or in `hatch queue`.
 
+**It is in no tier either.** Preemption nominates and spares by effective
+level alone (see [Preemption](#preemption)) — an express row below
+emergency is neither protected from being preempted nor made eligible to
+preempt anything, exactly as a non-express row at the same level would be. The
+one place an express-carried hop meets the pace scale — an economy hop
+skipping the pace gate, above — is a rule about having hopped at all, not
+about Express: the exemption is keyed on `hop`, and three of the four
+`HopKinds` have nothing to do with the flag.
+
 **It is taken from the parent at filing, and at no other time.** An issue
 created under an express parent is born express, whoever files it — a person
 or a key — and however: the New issue dialog, the child composer, or the API
@@ -2145,7 +2154,10 @@ then pull requests to review, then questions to answer — and **Agent** —
 branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
-the group naming what is holding it back, rather than sitting in both.
+the group naming what is holding it back, rather than sitting in both. A
+merged pull request leaves the review half on its own: advancing the issue
+takes it out of `/api/hatch/work/review` and out of `/api/hatch/attention`
+both, so there is nothing left here for a person to look at either.
 
 Each row under *Pull requests to review* also carries two small icons, after
 the title, with no behaviour of their own — a click anywhere on the row,
@@ -3864,6 +3876,33 @@ checkout against it by the remote it spells until the board's canonical form
 for that pair is known. The terminal hears about a change the same way —
 `hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
 an issue.
+
+**The pull request half, asked of `gh` and keyed on the issue.** The three
+halves above are keyed on `(path, baseBranch)`, because a merge verdict and a
+build verdict are per repository. A pull request is not: `PullRequestUrl` is
+one field on one issue however many repositories its project binds, so this
+half iterates the `/api/hatch/work/review` answer itself rather than the
+per-checkout targets the others build, and reads each issue's pull request
+once regardless of how many repositories its project names — the checkout is
+only somewhere for `gh` to run, taken as the first one a project's
+repositories resolve to. It asks `gh pr view <url> --json state`, because
+`git` and the merge verdict both lie about this: a squash merge leaves no
+ancestry for `merge-tree` to find, and `MergeVerdicts.None` already means
+three different things — a merge, a close, and a branch never pushed — none of
+which `gh` confuses. On `merged` it calls the route that advances the issue
+out of review, with the url it read; a `409` is the row having moved under it
+between the read and the write, the same as [the hop](#the-hop) - a line at
+most, and the poll walks on to the next issue. On `open`, `closed` or
+`unknown` it does nothing - a closed-without-merging pull request is a real
+stuck state and is not this half's to surface. **There is no stored verdict
+and no window logic like `NoneWindow`**: an open pull request is asked about
+every interval, by design, since noticing the merge promptly is the point, and
+a merged one advances the issue out of review - so `/api/hatch/work/review`
+stops returning it and nothing asks again. The terminal hears about a change
+only - `hatch: HA-12 pull request merged -> Done` - and a quiet interval says
+nothing. A `gh` that cannot answer is one line per checkout, the same as the
+build half, and a board that predates the route answers `404`, which is asked
+again next interval.
 
 ### When an increment does nothing
 

@@ -167,14 +167,15 @@ public static class Fixtures
 
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
-        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
-        new(key, repositories ?? [], checks);
+        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, string? pullRequestUrl = null,
+        params MergeCheckDto[] checks) =>
+        new(key, repositories ?? [], checks, null, pullRequestUrl);
 
     /// <summary>The same, with the build verdicts the board holds as well.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto> repositories, IReadOnlyList<MergeCheckDto> checks,
-        IReadOnlyList<BuildCheckDto> builds) =>
-        new(key, repositories, checks, builds);
+        IReadOnlyList<BuildCheckDto> builds, string? pullRequestUrl = null) =>
+        new(key, repositories, checks, builds, pullRequestUrl);
 
     /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
     public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>
