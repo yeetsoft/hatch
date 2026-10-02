@@ -2703,6 +2703,17 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
 
+/* The other end of the scale: a quiet grey rather than a new accent colour -
+   economy is deliberately low visual weight, the opposite of "notice this
+   now". */
+.hatch-card.economy {
+  box-shadow: inset 3px 0 0 var(--muted);
+}
+
+.hatch-card-preview.economy {
+  box-shadow: inset 3px 0 0 var(--muted), var(--shadow);
+}
+
 /* Paused: muted rather than striped - a stripe reads as "look here first",
    the opposite of what a card a person set aside means. */
 .hatch-card.paused,
@@ -2752,6 +2763,13 @@ input.hatch-inline-title-input {
   }
 }
 
+/* Economy's badge: no pulse. The story asks only for a glyph, not a beacon -
+   economy is a quiet state, the opposite of "notice this now". */
+.hatch-card-expedited.economy {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--muted);
+}
+
 /* Paused: a muted tint, not a beacon - nothing here is asking to be noticed. */
 .hatch-card-expedited.paused {
   background: var(--line-strong);
@@ -2761,8 +2779,8 @@ input.hatch-inline-title-input {
 /* The pill, on the issue page and in the summary: pixel for pixel what
    `ExpediteControl`'s button drew at rest, now opening a band instead of
    cycling - see PriorityControl. Each level owns one class and one face
-   (.expedited, .emergency; normal takes the bare rule), so adding a level
-   (HA-176, HA-177) is a rule here and nothing to branch on. */
+   (.expedited, .emergency, .economy, .paused; normal takes the bare rule), so
+   adding a level is a rule here and nothing to branch on. */
 .hatch-priority-pill {
   display: inline-flex;
   align-items: center;
@@ -2796,6 +2814,12 @@ input.hatch-inline-title-input {
 .hatch-priority-pill.emergency {
   border-color: var(--danger);
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-pill.economy {
+  border-color: var(--muted);
+  background: var(--muted);
   color: var(--on-accent);
 }
 
@@ -2850,6 +2874,11 @@ input.hatch-inline-title-input {
   font-weight: 600;
 }
 
+.hatch-priority-said.economy {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .hatch-priority-said.paused {
   color: var(--muted);
 }
@@ -2890,6 +2919,11 @@ input.hatch-inline-title-input {
 .hatch-priority-band.emergency {
   background: color-mix(in srgb, var(--danger) 10%, var(--card));
   border-left-color: var(--danger);
+}
+
+.hatch-priority-band.economy {
+  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  border-left-color: var(--muted);
 }
 
 .hatch-priority-band.paused {
@@ -2935,6 +2969,10 @@ input.hatch-inline-title-input {
   border-color: var(--danger);
 }
 
+.hatch-priority-step.economy {
+  border-color: var(--muted);
+}
+
 .hatch-priority-step.paused {
   border-color: var(--line-strong);
 }
@@ -2956,6 +2994,11 @@ input.hatch-inline-title-input {
 
 .hatch-priority-step.emergency.here {
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.economy.here {
+  background: var(--muted);
   color: var(--on-accent);
 }
 
@@ -4125,6 +4168,10 @@ button.hatch-option.chosen {
 
 .hatch-queue-marker.emergency {
   color: var(--danger);
+}
+
+.hatch-queue-marker.economy {
+  color: var(--muted);
 }
 
 .hatch-queue-words {

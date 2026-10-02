@@ -115,16 +115,24 @@ function CardFace({ card, waiting, terminal }: Required<Omit<CardProps, 'card'>>
             App.css is drawing the same thing at arm's length. */}
         {card.priority !== 'normal' && (
           <span
-            className={`hatch-card-expedited${card.priority === 'emergency' ? ' emergency' : ''}${card.priority === 'paused' ? ' paused' : ''}`}
+            className={`hatch-card-expedited${card.priority !== 'expedited' ? ` ${card.priority}` : ''}`}
             title={
               card.priority === 'emergency'
                 ? 'Emergency - the highest priority, first above everything expedited'
-                : card.priority === 'paused'
-                  ? 'Paused - a person set this aside; the loop leaves it where it stands'
-                  : 'Expedited - this one goes first'
+                : card.priority === 'expedited'
+                  ? 'Expedited - this one goes first'
+                  : card.priority === 'economy'
+                    ? 'Economy - worked only with usage that would otherwise go spare'
+                    : 'Paused - a person set this aside; the loop leaves it where it stands'
             }
           >
-            {card.priority === 'emergency' ? '🚨' : card.priority === 'paused' ? '⏸' : '↑'}
+            {card.priority === 'emergency'
+              ? '🚨'
+              : card.priority === 'expedited'
+                ? '↑'
+                : card.priority === 'economy'
+                  ? '🌙'
+                  : '⏸'}
           </span>
         )}
         {/* Express, beside expedite and drawn the same way - its own glyph and

@@ -232,6 +232,10 @@ describe('queueMarker', () => {
     expect(queueMarker(entry({ issue: issue({ priority: 'expedited' }) }))).toBe('!');
   });
 
+  it('marks an economy row', () => {
+    expect(queueMarker(entry({ issue: issue({ priority: 'economy' }) }))).toBe('~');
+  });
+
   it('marks a normal row with nothing', () => {
     expect(queueMarker(entry({ issue: issue({ priority: 'normal' }) }))).toBeNull();
   });

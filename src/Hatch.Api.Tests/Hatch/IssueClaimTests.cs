@@ -980,6 +980,26 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AnEconomyClaim_IsPreemptedBeforeANormalOne()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var normal = await h.FileAsync();
+        var economy = await h.FileAsync(priority: PriorityLevels.Economy);
+        var normalToken = await h.TakeAsync(normal, "somewhere:/checkouts/one");
+        var economyToken = await h.TakeAsync(economy, "elsewhere:/checkouts/two");
+
+        // Economy sits last in the dispatcher's own walk - after normal, not
+        // merely below emergency - so it is the one told, with zero lines
+        // changed in Preemption.cs.
+        var told = Value(await h.Claims.Heartbeat(economy, new ClaimHeartbeatRequest(economyToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(normal, new ClaimHeartbeatRequest(normalToken, null), default)).Result);
+    }
+
+    [SkippableFact]
     public async Task FewerRunnersToldThanEmergencyIssues_TellsExactlyThatMany()
     {
         await using var h = await NewAsync();

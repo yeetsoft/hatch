@@ -1705,6 +1705,27 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_ListsEveryEconomyCandidateLastOfAll()
+    {
+        var h = await NewAsync();
+        var judged = await h.FileAsync("story", "awaiting the operator", h.Review);
+        var underway = await h.FileAsync("story", "underway", h.InProgress);
+        var hurry = await h.FileAsync("bug", "expedited, in the leftmost column", h.Inbox);
+        var alarm = await h.FileAsync("bug", "emergency, further along", h.Todo);
+        var thrifty = await h.FileAsync("bug", "economy, in the leftmost column", h.Inbox);
+
+        await h.ExpediteAsync(hurry);
+        await h.EmergencyAsync(alarm);
+        await h.EconomyAsync(thrifty);
+
+        // Emergency, then expedited, then everything else, then economy last
+        // of all - a fourth tier rather than three.
+        Assert.Equal(
+            new[] { alarm, hurry, judged, underway, thrifty }.Select(Key),
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+    }
+
+    [Fact]
     public async Task Queue_ListsATaskInheritingEmergencyFromItsEpicBeforeOneExpeditedOnItsOwnRow()
     {
         var h = await NewAsync();
@@ -4798,6 +4819,13 @@ public class WorkControllerTests
         public async Task EmergencyAsync(EfHatchIssue issue)
         {
             issue.Priority = PriorityLevels.Emergency;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same, one level down - see <see cref="ExpediteAsync"/>.</summary>
+        public async Task EconomyAsync(EfHatchIssue issue)
+        {
+            issue.Priority = PriorityLevels.Economy;
             await Db.SaveChangesAsync();
         }
 
