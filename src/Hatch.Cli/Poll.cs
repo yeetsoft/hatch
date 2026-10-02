@@ -118,6 +118,12 @@ public sealed class Poll
             return;
         }
 
+        // The pull request half, independent of the targets/headsByPath
+        // machinery below it: keyed on the issue rather than the checkout,
+        // since PullRequestUrl is one field on one issue however many
+        // repositories its project binds.
+        await ReadPullRequestsAsync(runtime, complain, review, ct);
+
         var targets = new Dictionary<(string Path, string? BaseBranch), List<Target>>();
         foreach (var issue in review)
         {
@@ -436,6 +442,94 @@ public sealed class Poll
             }
         }
     }
+
+    /// <summary>
+    /// The pull request half: for every issue in review that carries a
+    /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads and, on <c>merged</c>,
+    /// advance the issue. There is no stored verdict and no window logic like
+    /// <see cref="NoneWindow"/> - an open pull request is asked about every
+    /// interval by design, and a merged one stops appearing in
+    /// <c>/api/hatch/work/review</c> at all, so nothing asks again.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the issue and not the checkout, unlike the three halves above
+    /// it: a merge or build verdict is per repository, but a pull request url is
+    /// one field on one issue however many repositories its project binds - so
+    /// the checkout is only somewhere for <c>gh</c> to run, taken as the first
+    /// one <see cref="Checkouts.ToPoll"/> yields for the issue. <c>failed</c>
+    /// is the per-checkout dedupe the other halves get for free by being
+    /// grouped by checkout already: the first failing <c>gh</c> call for a path
+    /// adds it, and every later issue on that path is skipped silently for the
+    /// rest of this poll. The outer try/catch keeps anything unanticipated here
+    /// from propagating into <see cref="PollAsync"/> and aborting the halves
+    /// that run after it.
+    /// </remarks>
+    private async Task ReadPullRequestsAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        var failed = new HashSet<string>();
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
+                ct.ThrowIfCancellationRequested();
+
+                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
+                    .FirstOrDefault();
+                if (where is null || failed.Contains(where.Path)) continue;
+
+                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                var answer = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                if (answer.State is not { } state)
+                {
+                    failed.Add(where.Path);
+                    if (answer.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
+                    continue;
+                }
+
+                if (state != PullRequestStates.Merged) continue;
+
+                (IssueDto? Issue, string? WalkOn) result;
+                try
+                {
+                    result = await runtime.QuietBoard.MergedAsync(
+                        issue.Key, new PullRequestMergedRequest(url, runtime.RunnerName), ct);
+                }
+                catch (HatchException e)
+                {
+                    complain($"hatch: {issue.Key} - the board would not take the merge - {e.Message}");
+                    continue;
+                }
+
+                if (result.WalkOn is not null) continue;
+
+                var to = await ResolvedColumnNameAsync(runtime, result.Issue!.StatusId, ct);
+                runtime.Say.Line($"hatch: {PullRequestWords(issue.Key, to)}");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not read pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>The column a merged pull request advanced its issue into, by name - <c>"?"</c> where it cannot be read.</summary>
+    private static async Task<string> ResolvedColumnNameAsync(Runtime runtime, int statusId, CancellationToken ct)
+    {
+        try
+        {
+            var statuses = await runtime.QuietBoard.StatusesAsync(ct);
+            return statuses.FirstOrDefault(s => s.Id == statusId)?.Name ?? "?";
+        }
+        catch (HatchException)
+        {
+            return "?";
+        }
+    }
+
+    /// <summary>A line for the terminal: <c>HA-12 pull request merged -> Done</c>.</summary>
+    private static string PullRequestWords(string key, string to) => $"{key} pull request merged -> {to}";
 
     /// <summary>The trunk equivalent of <see cref="VouchesBuild"/>.</summary>
     private static bool VouchesTrunk(TrunkBuildDto? stored, string sha) =>
