@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { hatchRevision } from '../../vite-plugin-hatch-revision.mjs'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +12,16 @@ const projectRoot = resolve(__dirname, '../../../..')
 export default defineConfig({
   base: '/apps/hatch/',
   plugins: [react(), hatchRevision({ app: 'hatch' })],
+  test: {
+    // Vitest stubs every CSS import to an empty module by default, raw query
+    // or not - fine for a stylesheet nothing reads, wrong for tokens.css,
+    // which @hatch/ui's themeStore.ts reads as text via `?raw`. Scoped to
+    // that one file (no `$` anchor: the module id still carries the `?raw`
+    // suffix) so every other CSS import keeps costing nothing.
+    css: {
+      include: [/tokens\.css/],
+    },
+  },
   build: {
     outDir: resolve(projectRoot, 'src/Hatch.Api/wwwroot/apps/hatch'),
     emptyOutDir: true,
