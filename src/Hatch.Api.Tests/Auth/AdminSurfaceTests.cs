@@ -144,6 +144,7 @@ public class AdminSurfaceTests
         "ProjectsController.PatchProject",
         "ProjectsController.DeleteProject",
         "ProjectsController.GetRepositories",
+        "ProjectsController.GetLogo",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -397,6 +398,8 @@ public class AdminSurfaceTests
         // Hatch-scoped - it is exactly what a dispatch needs to know where to
         // check out. See ProjectsController.
         "ProjectsController.PutRepositories",
+        "ProjectsController.PutLogo",
+        "ProjectsController.DeleteLogo",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -509,6 +512,8 @@ public class AdminSurfaceTests
         // able to move for itself.
         "StatusesController.PutAgentFiles",
         "ProjectsController.PutRepositories",
+        "ProjectsController.PutLogo",
+        "ProjectsController.DeleteLogo",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

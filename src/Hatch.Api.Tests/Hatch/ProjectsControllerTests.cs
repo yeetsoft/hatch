@@ -1,6 +1,8 @@
+using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -304,7 +306,114 @@ public class ProjectsControllerTests
         Assert.Equal(first.Icon, second.Icon);
     }
 
+    // ---- Logo ----
+
+    [Fact]
+    public async Task APngUpload_Returns200AndSetsLogoUpdatedAt()
+    {
+        var h = await NewAsync();
+
+        var written = Value(await PutLogo(h.Projects, h.ProjectId, Png));
+
+        Assert.Equal(Now, written.LogoUpdatedAt);
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+        Assert.Equal(Now, read.LogoUpdatedAt);
+    }
+
+    [Fact]
+    public async Task TheUploadedBytes_AreServedBackWithTheSniffedTypeAndAnETag()
+    {
+        var h = await NewAsync();
+        await PutLogo(h.Projects, h.ProjectId, Png);
+
+        var result = Assert.IsType<FileContentResult>(await h.Projects.GetLogo(h.ProjectId, default));
+
+        Assert.Equal("image/png", result.ContentType);
+        Assert.Equal(Png, result.FileContents);
+        Assert.NotNull(result.EntityTag);
+        Assert.Equal("nosniff", h.Projects.ControllerContext.HttpContext.Response.Headers.XContentTypeOptions);
+    }
+
+    [Fact]
+    public async Task BytesThatAreNotAnImage_AreRefusedAndNothingIsStored()
+    {
+        var h = await NewAsync();
+
+        var result = await PutLogo(h.Projects, h.ProjectId, "<script>alert(1)</script>"u8.ToArray());
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(PersonPhoto.UnsupportedError, bad.Value);
+        Assert.Empty(await h.Db.ProjectLogos.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AnEmptyBody_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var result = await PutLogo(h.Projects, h.ProjectId, []);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(PersonPhoto.EmptyError, bad.Value);
+    }
+
+    [Fact]
+    public async Task AKey_IsRefusedOnThePutAndTheDeleteButNotTheGet()
+    {
+        var h = await NewAsync(program: true);
+
+        var put = await PutLogo(h.Projects, h.ProjectId, Png);
+        Assert.Equal(403, ((ObjectResult)put.Result!).StatusCode);
+
+        var delete = await h.Projects.DeleteLogo(h.ProjectId, default);
+        Assert.Equal(403, ((ObjectResult)delete.Result!).StatusCode);
+
+        Assert.IsType<NotFoundResult>(await h.Projects.GetLogo(h.ProjectId, default));
+    }
+
+    [Fact]
+    public async Task DeletingTheLogo_Makes404TheNextGetAndClearsLogoUpdatedAt()
+    {
+        var h = await NewAsync();
+        await PutLogo(h.Projects, h.ProjectId, Png);
+
+        var deleted = Value(await h.Projects.DeleteLogo(h.ProjectId, default));
+
+        Assert.Null(deleted.LogoUpdatedAt);
+        Assert.IsType<NotFoundResult>(await h.Projects.GetLogo(h.ProjectId, default));
+        Assert.Empty(await h.Db.ProjectLogos.ToListAsync());
+    }
+
+    [Fact]
+    public async Task DeletingAProject_TakesItsLogoWithIt()
+    {
+        var h = await NewAsync();
+        await PutLogo(h.Projects, h.ProjectId, Png);
+
+        await h.Projects.DeleteProject(h.ProjectId, default);
+
+        Assert.Empty(await h.Db.ProjectLogos.ToListAsync());
+    }
+
+    [Fact]
+    public async Task HasNoLogoToServeUntilOneIsUploaded()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>(await h.Projects.GetLogo(h.ProjectId, default));
+    }
+
+    [Fact]
+    public async Task DeletingALogoThatIsNotThere_Is404()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Projects.DeleteLogo(h.ProjectId, default)).Result);
+    }
+
     // ---- Harness ----
+
+    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01];
 
     private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
@@ -343,11 +452,22 @@ public class ProjectsControllerTests
 
         return new Harness
         {
-            Projects = new ProjectsController(db, time, caller),
+            Projects = new ProjectsController(db, time, caller)
+            {
+                ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+            },
             Db = db,
             Time = time,
             ProjectId = project.Id,
         };
+    }
+
+    private static Task<ActionResult<ProjectDto>> PutLogo(
+        ProjectsController controller, int id, byte[] bytes, string declaredContentType = "application/octet-stream")
+    {
+        controller.ControllerContext.HttpContext.Request.Body = new MemoryStream(bytes);
+        controller.ControllerContext.HttpContext.Request.ContentType = declaredContentType;
+        return controller.PutLogo(id, CancellationToken.None);
     }
 
     /// <summary>Whoever is holding the phone: a person, or the key an agent carries.</summary>
