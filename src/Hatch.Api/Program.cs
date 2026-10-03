@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Rewrite;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -525,6 +526,15 @@ if (Directory.Exists(appsPath))
     {
         FileProvider = appsFiles,
         RequestPath = "/apps",
+        // .webmanifest is absent from FileExtensionContentTypeProvider's own
+        // mapping table (checked directly against the installed shared
+        // frameworks' Microsoft.AspNetCore.StaticFiles.dll, not assumed), so
+        // without this a browser's manifest fetch gets application/octet-stream
+        // and silently refuses to treat the PWA as installable.
+        ContentTypeProvider = new FileExtensionContentTypeProvider
+        {
+            Mappings = { [".webmanifest"] = "application/manifest+json" },
+        },
         // Without an explicit Cache-Control, StaticFileMiddleware sends only
         // ETag/Last-Modified, which leaves a browser free to apply *heuristic*
         // freshness and serve index.html from cache without revalidating. On
