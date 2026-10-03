@@ -14,9 +14,10 @@ namespace Hatch.Contracts;
 /// </param>
 /// <param name="Icon">A slug naming one of a closed set of stock icons, or null if nobody has chosen one yet - see <see cref="EfHatchProject.Icon"/>.</param>
 /// <param name="Repositories">The remotes this project is bound to, in order - the first is the primary.</param>
+/// <param name="LogoUpdatedAt">When the project's logo was last written, or null if it has none.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
-    IReadOnlyList<ProjectRepositoryDto> Repositories);
+    IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt);
 
 /// <summary>
 /// A new project. <paramref name="Key"/> is checked against
