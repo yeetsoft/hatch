@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
-import { DEFAULT_FILTER, isDefault, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
+import { DEFAULT_FILTER, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
@@ -19,8 +19,8 @@ import { TypesFacet } from './TypesFacet';
  * would drop the drag in progress and would make typing into the box a
  * conversation with the server.
  *
- * The board opens on epics, stories and bugs (DEFAULT_FILTER). The last type
- * drawn cannot be switched off, so the board never goes blank from a checkbox.
+ * The board opens on every type (DEFAULT_FILTER). The last type drawn cannot
+ * be switched off, so the board never goes blank from a checkbox.
  */
 export function BoardFilters({
   filter,
@@ -114,7 +114,7 @@ export function BoardFilters({
           {showing} of {total}
         </span>
       )}
-      {!isDefault(filter) && (
+      {filtering && (
         <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
           Reset
         </button>

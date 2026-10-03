@@ -40,38 +40,18 @@ export interface CardFilter {
   project: string;
 }
 
-/** The types the board opens on: the levels a person plans at. Tasks are the
-    leaf work and bury them, and are one press away. */
-export const DEFAULT_TYPES: IssueType[] = ['epic', 'story', 'bug'];
-
-/** What the board opens on, and what Reset returns to. Not "no filter": it
-    hides tasks, and `isFiltering` says so. */
-export const DEFAULT_FILTER: CardFilter = { types: DEFAULT_TYPES, query: '', waiting: false, assignee: '', project: '' };
+/** What the board opens on, and what Reset returns to: every type, every
+    column saying what it holds. */
+export const DEFAULT_FILTER: CardFilter = { types: [...ISSUE_TYPES], query: '', waiting: false, assignee: '', project: '' };
 
 /** Whether this filter is hiding anything, which is what decides if the board
-    says so out loud - and it does at the default, because a filtered column and
-    a short one must not look alike. */
+    says so out loud, and if Reset is drawn. */
 export const isFiltering = (filter: CardFilter): boolean =>
   filter.types.length < ISSUE_TYPES.length ||
   filter.query.trim() !== '' ||
   filter.waiting ||
   filter.assignee !== '' ||
   filter.project !== '';
-
-/** Whether the types drawn are exactly the default ones. `types` is always in
-    `ISSUE_TYPES` order, so a length check and `every` need no sorting. */
-export const hasDefaultTypes = (filter: CardFilter): boolean =>
-  filter.types.length === DEFAULT_TYPES.length && filter.types.every((type, i) => type === DEFAULT_TYPES[i]);
-
-/** Whether every control is where the board opened it, which is what decides
-    if Reset is drawn. Not the same question as `isFiltering`: the default hides
-    tasks and is not a change anybody made. */
-export const isDefault = (filter: CardFilter): boolean =>
-  hasDefaultTypes(filter) &&
-  filter.query.trim() === '' &&
-  !filter.waiting &&
-  filter.assignee === '' &&
-  filter.project === '';
 
 /**
  * Everything about a card that a search box can see: its key, its title, its

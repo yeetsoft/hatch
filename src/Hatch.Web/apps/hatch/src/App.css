@@ -1023,7 +1023,7 @@
 
 .hatch-types-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   border-top: 1px solid var(--line-strong);
 }

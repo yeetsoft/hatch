@@ -1,7 +1,7 @@
 import { Menu } from '@hatch/ui';
 import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
-import { DEFAULT_TYPES, hasDefaultTypes, toggleType, typesSummary } from '../lib/filter';
+import { toggleType, typesSummary } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { Caret } from './Facet';
 import { facetClass } from '../lib/facet';
@@ -32,7 +32,7 @@ export function TypesFacet({
       label="Types"
       hover={false}
       trigger={(props) => (
-        <button {...props} className={facetClass(!hasDefaultTypes(filter))}>
+        <button {...props} className={facetClass(!all)}>
           <span className="hatch-facet__label">Types</span>
           {typesSummary(filter.types)}
           <Caret />
@@ -59,14 +59,6 @@ export function TypesFacet({
             onClick={() => onChange({ ...filter, types: [...ISSUE_TYPES] })}
           >
             All
-          </button>
-          <button
-            type="button"
-            className="hatch-filter-clear"
-            disabled={hasDefaultTypes(filter)}
-            onClick={() => onChange({ ...filter, types: [...DEFAULT_TYPES] })}
-          >
-            Reset
           </button>
         </div>
       </div>
