@@ -12,6 +12,7 @@ import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
+import { useStandalone } from '../lib/viewport';
 import type { AssigneeDirectory, IssueCard, Status } from '../types';
 
 /** What the peek had to ask for, and the card it asked about. `description`
@@ -228,6 +229,8 @@ export function IssuePeek({
     [key, apply, onExpedited],
   );
 
+  const standalone = useStandalone();
+
   // Rendered unconditionally so the dialog's own open/closed handling - focus,
   // escape, the scrim - is the one that runs. Its title needs a card, though,
   // so a closed peek has nothing to say. Below every hook: the rules of hooks
@@ -249,10 +252,15 @@ export function IssuePeek({
           <Button onClick={onClose}>Close</Button>
           {/* An anchor rather than a <Link>: target="_blank" opens a second
               document, which React Router does not route. appHref is what keeps
-              that second document on the right prefix - see lib/basename.ts. */}
-          <Button as="a" href={appHref(`/issues/${card.key}`)} target="_blank" rel="noreferrer">
-            New tab ↗
-          </Button>
+              that second document on the right prefix - see lib/basename.ts.
+              Also conditional on useStandalone(): in the installed app there is
+              no second document to open into, and "Open the issue" beside it is
+              the only way out there is. */}
+          {!standalone && (
+            <Button as="a" href={appHref(`/issues/${card.key}`)} target="_blank" rel="noreferrer">
+              New tab ↗
+            </Button>
+          )}
           <Button as={Link} variant="primary" to={`/issues/${card.key}`} onClick={onClose}>
             Open the issue
           </Button>
