@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { moveIssue } from '../api/client';
 import { appHref } from '../lib/basename';
+import { useStandalone } from '../lib/viewport';
 import {
   age,
   cascadeClause,
@@ -302,15 +304,25 @@ export function Chicklet({
   onDismiss: (id: number) => void;
   children?: ReactNode;
 }) {
+  const standalone = useStandalone();
+
   return (
     <li className="hatch-confirmation">
-      {/* An anchor rather than a <Link>: target="_blank" opens a second
-          document, which React Router does not route. appHref is what keeps
-          that second document on the right prefix - this bundle answers at two
+      {/* A <Link> in the installed app: there is no second document to open
+          there, so this is the only way to the issue, routed in place.
+          Otherwise an anchor - target="_blank" opens a second document,
+          which React Router does not route. appHref is what keeps that
+          second document on the right prefix - this bundle answers at two
           addresses and only one of them names it. See lib/basename.ts. */}
-      <a className="hatch-confirmation-key" href={appHref(`/issues/${c.issueKey}`)} target="_blank" rel="noreferrer">
-        {c.issueKey} ↗
-      </a>
+      {standalone ? (
+        <Link to={`/issues/${c.issueKey}`} className="hatch-confirmation-key">
+          {c.issueKey}
+        </Link>
+      ) : (
+        <a className="hatch-confirmation-key" href={appHref(`/issues/${c.issueKey}`)} target="_blank" rel="noreferrer">
+          {c.issueKey} ↗
+        </a>
+      )}
       <span className="hatch-confirmation-body">
         <span className="hatch-confirmation-title">{c.title}</span>
         {children}
