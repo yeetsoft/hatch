@@ -50,9 +50,9 @@ export function ImportPage() {
     getProjects().then(setProjects).catch((err: unknown) => setError(message(err)));
   }, []);
 
-  // The first project, until somebody picks another - the same choice the New
-  // issue dialog makes, and for the same reason.
-  const chosen = projectId ?? projects[0]?.id ?? null;
+  // No project until somebody picks one - imports write into a project's keys,
+  // and a page that guesses which one is a hazard behind every one of them.
+  const chosen = projectId;
 
   // Both halves, because the server refuses either one missing and a button
   // that reports that after a round trip is a button that wasted a click.
@@ -132,8 +132,9 @@ export function ImportPage() {
             <select
               value={chosen ?? ''}
               disabled={projects.length === 0}
-              onChange={(e) => setProjectId(Number(e.target.value))}
+              onChange={(e) => setProjectId(e.target.value === '' ? null : Number(e.target.value))}
             >
+              <option value="">— choose a project —</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.key} — {p.name}
