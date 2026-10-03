@@ -39,7 +39,6 @@ const PROJECT: Project = {
   icon: null,
   logoUpdatedAt: null,
   repositories: [],
-  logoUpdatedAt: null,
 };
 
 const noop = () => undefined;
