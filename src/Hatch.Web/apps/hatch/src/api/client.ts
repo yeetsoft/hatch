@@ -114,6 +114,10 @@ export const deleteProject = (id: number) =>
   fetchJson<void>(`/api/hatch/projects/${id}`, { method: 'DELETE' });
 export const putProjectRepositories = (id: number, request: ProjectRepositoryWriteRequest[]) =>
   fetchJson<ProjectRepository[]>(`/api/hatch/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
+export const putProjectLogo = (id: number, blob: Blob) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'PUT', body: blob });
+export const deleteProjectLogo = (id: number) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'DELETE' });
 
 // ---- Statuses ----
 

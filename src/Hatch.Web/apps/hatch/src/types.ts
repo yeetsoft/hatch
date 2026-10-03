@@ -27,6 +27,7 @@ export interface Project {
   createdAt: string;
   color: string | null;
   icon: string | null;
+  logoUpdatedAt: string | null;
   repositories: ProjectRepository[];
 }
 

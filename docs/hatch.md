@@ -138,7 +138,7 @@ having in one place.
 `NextIssueNumber`, `CreatedAt`, `Color` (`#rrggbb`, nullable - no default and no
 backfill, so the browser paints `--muted` when none is set), `Icon` (a slug
 into a closed set the browser owns, not the server, nullable the same way). A
-third mark, the logo, is HA-228's, not a field here yet.
+project may also carry an uploaded logo, in its own table — see [Logo](#logo).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -151,6 +151,29 @@ because those are references this database has never seen and cannot rewrite.
 What survives is the part that matters — parentage is a foreign key and the
 number is the issue's own column, so a rekeyed project keeps every story under
 its epic.
+
+### Logo
+
+`EfHatchProjectLogo` — `ProjectId` (PK, cascading FK), `Bytes`, `ContentType`,
+`UpdatedAt`. The shape of `EfPersonPhoto` (see `Ef/People.cs`), moved into the
+Hatch module: bytes in the row ride the existing backup, so there is no volume
+and no second backup story.
+
+The type is sniffed from the bytes by `PersonPhoto.TryDetectContentType`
+(PNG, JPEG, GIF, WebP), never taken from the request's declared Content-Type —
+a client that says PNG and sends HTML is describing an attack, not a logo. SVG
+is refused for the reason `PersonPhoto.cs` states: it is a document that can
+carry script, and an image format that executes is the one thing serving
+uploads from the install's own origin must not do.
+
+**Reading is open to a key; writing is a person's alone** — the same cut as a
+[repository](#repository): `[RequireRole(User)]` with no scope on the `PUT`
+and the `DELETE`, checked again in the action.
+
+`ProjectDto.LogoUpdatedAt` is what lets the browser point an `<img>` at a
+stable `/api/hatch/projects/{id}/logo?v={ticks}` URL and still see a new
+upload the moment it lands — the same role `PersonDto.PhotoUpdatedAt` plays for
+a person's photo. Deleting a project takes its logo with it.
 
 ### Repository
 
@@ -1900,6 +1923,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
+| `/projects/{id}/logo` | GET | The bytes, sniffed type and an ETag from `UpdatedAt` — see [Logo](#logo). 404 with none uploaded |
+| `/projects/{id}/logo` | PUT | **Person only** — plain `[RequireRole(User)]`. The body is the image itself, not multipart; refused with a sentence on an unsupported format, an empty body, or one over `PersonPhoto.MaxBytes` |
+| `/projects/{id}/logo` | DELETE | **Person only** — plain `[RequireRole(User)]`. 404 with none uploaded |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
