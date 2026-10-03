@@ -16,6 +16,7 @@
    of the library. */
 export { ThemeProvider } from './theme/ThemeProvider';
 export { useTheme } from './theme/useTheme';
+export { applyChoice, themeColorFor, applyThemeColor } from './theme/themeStore';
 export type { ThemeChoice, ResolvedTheme, ThemeContextValue } from './theme/themeContext';
 export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
