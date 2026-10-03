@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, fourteen tables.
+/// migration history, fifteen tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -12,6 +12,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
 
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
+    public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
@@ -193,6 +194,17 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .HasForeignKey(r => r.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // Cascade off the project for the same reason: a logo means nothing
+        // without the project it is on. No inverse navigation - nothing walks
+        // from a project to its logo through EF, the read path is a plain
+        // query (the same unread-from-one-side style EfHatchIssueDependency's
+        // two edges already use).
+        modelBuilder.Entity<EfHatchProjectLogo>()
+            .HasOne(l => l.Project)
+            .WithOne()
+            .HasForeignKey<EfHatchProjectLogo>(l => l.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // A verdict is about an issue and means nothing without it, the same
         // as its events: deleting the issue takes them.

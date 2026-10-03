@@ -160,6 +160,49 @@ public class EfHatchProjectRepository
 }
 
 /// <summary>
+/// One project's logo, stored as bytes in Postgres rather than as a path into a
+/// volume.
+///
+/// The size argument that usually rules this out does not apply: these are
+/// small images, one per project, in a household. What does apply is that a
+/// row and a file on a PVC can disagree - a restored database pointing at a
+/// logo that is not there is a failure mode with no obvious symptom - whereas
+/// bytes in the row ride the existing backup and the disaster-recovery path
+/// unchanged. No new volume, no new backup story.
+///
+/// Its own table, keyed by ProjectId, so that listing projects never drags the
+/// blobs along: EF has no way to project a column out of an entity that is
+/// always loaded, and the Projects page reads every row.
+/// </summary>
+[Table("ProjectLogos")]
+public class EfHatchProjectLogo
+{
+    /// <summary>Both the primary key and the foreign key - one logo per project, enforced by the schema rather than by the code that writes it.</summary>
+    [Key]
+    public int ProjectId { get; set; }
+
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served, so there is no second format to reason about.</summary>
+    public required byte[] Bytes { get; set; }
+
+    /// <summary>
+    /// Sniffed from the bytes, never taken from the request's Content-Type. A
+    /// client that says PNG and sends HTML is describing an attack, not a
+    /// picture.
+    /// </summary>
+    [MaxLength(64)]
+    public required string ContentType { get; set; }
+
+    /// <summary>
+    /// When these bytes were stored. Serves as the logo's ETag, which is what
+    /// lets the admin app point an &lt;img&gt; at a stable URL and still see a
+    /// new upload immediately.
+    /// </summary>
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
 /// One column on the board. Global rather than per-project - the board shows
 /// every project at once, so a per-project status set would have no column to
 /// put a foreign issue in.
