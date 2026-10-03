@@ -42,3 +42,14 @@ export const parentHint = (type: IssueType): string => {
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
   return `${article(type) === 'an' ? 'An' : 'A'} ${type} hangs under ${list}.`;
 };
+
+/**
+ * What an `IssuePicker` with no candidates says, for the New issue dialog's
+ * Parent field - `projectKey` is undefined until a project is chosen, and
+ * naming no project is what criterion 4 asks for rather than interpolating
+ * `undefined` into the sentence.
+ */
+export const parentEmptyMessage = (projectKey: string | undefined, type: IssueType): string =>
+  projectKey
+    ? `Nothing in ${projectKey} can be a parent of a ${type} yet.`
+    : 'Nothing can be a parent until a project is chosen.';

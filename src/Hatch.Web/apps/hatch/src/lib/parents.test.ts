@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parentCandidates, parentHint } from './parents';
+import { parentCandidates, parentEmptyMessage, parentHint } from './parents';
 import { ISSUE_TYPES, LEGAL_PARENT_TYPES } from '../types';
 import type { IssueCard, IssueType } from '../types';
 
@@ -81,5 +81,15 @@ describe('parentHint', () => {
 
   it('joins three with commas and a last "or"', () => {
     expect(parentHint('task')).toBe('A task hangs under a story, a bug or an epic.');
+  });
+});
+
+describe('parentEmptyMessage', () => {
+  it('names the project once one is chosen', () => {
+    expect(parentEmptyMessage('HATCH', 'task')).toBe('Nothing in HATCH can be a parent of a task yet.');
+  });
+
+  it('names no project while none is chosen', () => {
+    expect(parentEmptyMessage(undefined, 'task')).toBe('Nothing can be a parent until a project is chosen.');
   });
 });
