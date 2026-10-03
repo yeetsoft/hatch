@@ -322,10 +322,10 @@ board it introduces would misalign every column against it — and carries its
 primary nav in `leading` and the battery-and-attention cluster in `trailing`.
 Below `40rem` the hatch app changes what those slots hold rather than
 `<TopBar>`'s own markup: `leading` goes empty (the primary nav's pages move
-into the gear's panel instead, flattened with their group labels), the
-battery moves into that same panel as a row, and only the attention control -
-the one thing a phone user must always see - stays in `trailing` beside the
-gear.
+into the gear's panel instead, flattened with their group labels), and
+`trailing` keeps the same battery-and-attention cluster it carries on the
+desk, beside the gear - the attention control alone narrows, to make room in
+a row that no longer has the desk's width to spend.
 
 `<Modal>` has one slot worth naming. Its panel caps at the viewport and scrolls,
 which is right until the dialog holds a row that has to stay reachable — its
