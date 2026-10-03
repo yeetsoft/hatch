@@ -37,6 +37,7 @@ const PROJECT: Project = {
   createdAt: '2024-01-01T00:00:00Z',
   color: null,
   icon: null,
+  logoUpdatedAt: null,
   repositories: [],
 };
 
