@@ -43,6 +43,60 @@ export function usePhone(): boolean {
   return isPhone;
 }
 
+export const STANDALONE_QUERY = '(display-mode: standalone)';
+
+/** `navigator.standalone` is iOS Safari's own flag, non-standard and absent from lib.dom's Navigator type. */
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean;
+}
+
+/** Whether the app is running installed, given the two raw signals. Pure, so it's testable with no `window` at all. */
+export function isStandalone(matchesDisplayMode: boolean, iosStandalone: boolean): boolean {
+  return matchesDisplayMode || iosStandalone;
+}
+
+/**
+ * Whether {@link STANDALONE_QUERY} matches right now, or iOS Safari's own flag says so.
+ *
+ * `window` itself is absent in this workspace's tests (plain Node, no jsdom),
+ * not just `matchMedia` - the existence check has to come first or a call from
+ * viewport.test.ts throws.
+ */
+export function matchesStandalone(): boolean {
+  const matchesDisplayMode = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(STANDALONE_QUERY).matches;
+  const iosStandalone = typeof window !== 'undefined'
+    && Boolean((window.navigator as NavigatorWithStandalone)?.standalone);
+
+  return isStandalone(matchesDisplayMode, iosStandalone);
+}
+
+/** Calls back when the match flips. Returns the unsubscribe. */
+function watchStandalone(onChange: (isStandaloneNow: boolean) => void): () => void {
+  const query = window.matchMedia(STANDALONE_QUERY);
+  const listener = (event: MediaQueryListEvent) => {
+    const iosStandalone = Boolean((window.navigator as NavigatorWithStandalone)?.standalone);
+    onChange(isStandalone(event.matches, iosStandalone));
+  };
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
+
+/** Whether the app is running standalone (installed), re-answered as it changes. */
+export function useStandalone(): boolean {
+  const [standalone, setStandalone] = useState<boolean>(matchesStandalone);
+
+  useEffect(() => {
+    const unwatch = watchStandalone(setStandalone);
+    /* The display mode may have changed between the initial render and this effect. */
+    setStandalone(matchesStandalone());
+    return unwatch;
+  }, []);
+
+  return standalone;
+}
+
 /** How far the keyboard has pushed the visual viewport's bottom edge above
     the layout viewport's, in px. 0 wherever `visualViewport` is unsupported -
     there a `position: fixed; bottom: 0` row already sits at the true bottom,
