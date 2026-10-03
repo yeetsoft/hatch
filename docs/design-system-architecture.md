@@ -279,11 +279,23 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 | Frame | `<PageHeader>`, `<Card>`, `<Grid>`, `<Table>`, `<Modal>` |
 | Controls | `<Field>`, `<Button>` |
 | Text | `<Badge>`, `<Text>` |
+| Identity | `<ProjectMark>` |
 | The exception | `<EmptyState>` |
 
-The nine primitives after the chrome are extracted from CSS conventions that
-already existed and repeated across the house's apps, rather than invented.
-That is why the set is small and why it is the right small set.
+The ten primitives after the chrome are extracted from CSS conventions that
+already existed and repeated across the house's apps, rather than invented -
+`<ProjectMark>` is the one exception to "extracted rather than invented": a
+project never had a mark before HA-216, so this one was designed, not lifted.
+That is why the rest of the set is small and why it is the right small set.
+
+`<ProjectMark>` draws a project's own uploaded logo if it has one, else an
+icon from a curated, closed stock set vendored into `packages/ui/src/icons`
+(licence text beside the glyphs), else the letters of its key on a ground of
+its own colour. The colour arithmetic — is this a valid colour, and which ink
+reads on it — is `@hatch/ui`'s `color.ts`: it used to live only in
+`apps/hatch/src/lib/color.ts` for status columns, and moved here so a
+project's mark and a status pill compute their ink the same way; `apps/hatch`
+keeps just the status-specific default and `statusVars`.
 
 Four conventions run through them:
 

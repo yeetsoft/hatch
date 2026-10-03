@@ -46,3 +46,13 @@ export { Text } from './components/Text';
 export type { TextProps, TextTone } from './components/Text';
 export { EmptyState } from './components/EmptyState';
 export type { EmptyStateProps } from './components/EmptyState';
+export { ProjectMark } from './components/ProjectMark';
+export type { ProjectMarkProps, ProjectMarkSize } from './components/ProjectMark';
+
+/* The colour arithmetic a status column and a project's own mark both need:
+   is this a colour at all, and which ink reads on it. */
+export { isHexColor, safeColor, channels, luminance, contrastInk, INK_ON_LIGHT, INK_ON_DARK } from './color';
+
+/* The closed set of stock icons a project may draw instead of its letters. */
+export { PROJECT_ICONS, PROJECT_ICONS_BY_SLUG } from './icons';
+export type { ProjectIcon } from './icons';
