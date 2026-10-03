@@ -25,6 +25,8 @@ export interface Project {
   name: string;
   issueCount: number;
   createdAt: string;
+  color: string | null;
+  icon: string | null;
   repositories: ProjectRepository[];
 }
 
@@ -578,6 +580,8 @@ export interface ImportResult {
 export interface ProjectCreateRequest {
   key: string;
   name: string;
+  color?: string | null;
+  icon?: string | null;
 }
 
 /** Both optional, and `key` is the expensive one: it rekeys every issue in the
@@ -586,6 +590,8 @@ export interface ProjectCreateRequest {
 export interface ProjectPatchRequest {
   name?: string | null;
   key?: string | null;
+  color?: string | null;
+  icon?: string | null;
 }
 
 export interface StatusCreateRequest {

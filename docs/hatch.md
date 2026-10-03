@@ -135,7 +135,10 @@ having in one place.
 ### Project
 
 `EfHatchProject` — `Key` (unique, `^[A-Z][A-Z0-9]{1,5}$`), `Name`,
-`NextIssueNumber`, `CreatedAt`.
+`NextIssueNumber`, `CreatedAt`, `Color` (`#rrggbb`, nullable - no default and no
+backfill, so the browser paints `--muted` when none is set), `Icon` (a slug
+into a closed set the browser owns, not the server, nullable the same way). A
+third mark, the logo, is HA-228's, not a field here yet.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -1893,8 +1896,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 
 | Route | Verbs | Notes |
 |---|---|---|
-| `/projects` | GET, POST | POST validates key format and uniqueness |
-| `/projects/{id}` | PATCH, DELETE | PATCH name and key; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
+| `/projects` | GET, POST | POST validates key format and uniqueness, and carries `color`/`icon` |
+| `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/statuses` | GET, POST | |
