@@ -16,6 +16,7 @@ import { FieldPage } from './pages/FieldPage';
 import { ButtonPage } from './pages/ButtonPage';
 import { BadgePage } from './pages/BadgePage';
 import { TextPage } from './pages/TextPage';
+import { ProjectMarkPage } from './pages/ProjectMarkPage';
 import { EmptyStatePage } from './pages/EmptyStatePage';
 
 export interface Section {
@@ -63,6 +64,7 @@ export const SECTIONS: Section[] = [
   { group: 'Components', slug: 'button', title: 'Button', Page: ButtonPage },
   { group: 'Components', slug: 'badge', title: 'Badge', Page: BadgePage },
   { group: 'Components', slug: 'text', title: 'Text', Page: TextPage },
+  { group: 'Components', slug: 'project-mark', title: 'Project mark', Page: ProjectMarkPage },
   { group: 'Components', slug: 'empty-state', title: 'Empty state', Page: EmptyStatePage },
 ];
 

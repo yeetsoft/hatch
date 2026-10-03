@@ -303,7 +303,9 @@ every issue leftmost, whoever files it, exactly as it always has.
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
-from its luminance (`lib/color.ts`), because CSS still cannot ask that question.
+from its luminance (`@hatch/ui`'s `color.ts`, shared with `<ProjectMark>` — see
+[`docs/design-system-architecture.md`](design-system-architecture.md)), because
+CSS still cannot ask that question.
 
 Every install starts with the same seven columns, and with the same flow
 through them. `In Review` is the operator's except for two things: a pull request

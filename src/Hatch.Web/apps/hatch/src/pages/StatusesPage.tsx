@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Button, Card, Field, PageHeader, Table } from '@hatch/ui';
+import { Button, Card, Field, PageHeader, Table, safeColor } from '@hatch/ui';
 import {
   createStatus,
   deleteStatus,
@@ -12,7 +12,6 @@ import {
   setParentPulls,
 } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
-import { safeColor } from '../lib/color';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
 import { agentFilesBlocked, limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
