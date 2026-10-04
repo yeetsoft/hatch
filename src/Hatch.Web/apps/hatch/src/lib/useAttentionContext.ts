@@ -2,10 +2,9 @@ import { createContext, useContext } from 'react';
 import type { Attention } from '../types';
 
 /**
- * What `useAttention()` answers, read through one poll rather than two - the
- * bar's control and the board's "Waiting on you" section must never disagree
- * about what is waiting, and a second hook call would be a second request
- * that could land a beat apart from the first.
+ * What `useAttention()` answers, read through context rather than a second
+ * call to the hook - a second call would be a second request, polling on its
+ * own schedule, that could land a beat apart from the first.
  *
  * The context and its hook rather than the component that provides them, in a
  * file of their own, for lib/useIssueConfirmations.ts's own reason: a module
