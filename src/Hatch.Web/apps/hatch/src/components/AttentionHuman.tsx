@@ -131,11 +131,11 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
  * the order somebody would work through them.
  *
  * Exported alone, no outer heading and no `.hatch-attention-group` wrapper, so
- * both of its callers can wrap it in their own: the bar's `AttentionPanel`
- * (beside the Agent group it draws itself) and the board's "Waiting on you"
- * section (HA-159). The same rows, the same links and the same empty
- * wordings either place it is drawn, read off the one `useAttention` poll
- * both now share - see lib/useAttentionContext.ts.
+ * its caller - the bar's `AttentionPanel`, beside the Agent group it draws
+ * itself - can wrap it in its own (HA-279 removed the board's own "Waiting on
+ * you" section, the other caller this once shared the contract with).
+ * AttentionHuman.test.tsx still pins the no-wrapper shape, so it stays this
+ * way rather than folding back into the panel.
  */
 export function AttentionHuman({
   attention,

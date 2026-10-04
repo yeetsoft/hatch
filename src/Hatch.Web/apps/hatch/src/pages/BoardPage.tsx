@@ -14,7 +14,6 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, EmptyState } from '@hatch/ui';
 import { getAssignees, getBoard, getProjects, moveIssue } from '../api/client';
-import { AttentionHuman } from '../components/AttentionHuman';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -42,8 +41,6 @@ import type { Placement } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
-import { useAttentionContext } from '../lib/useAttentionContext';
-import { useAttentionNow } from '../lib/useAttentionNow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
@@ -86,7 +83,6 @@ const TOUCH_LIFT_TOLERANCE_PX = 8;
 
 export function BoardPage() {
   const isPhone = usePhone();
-  const { attention, reload: reloadAttention } = useAttentionContext();
 
   // The chosen layout at phone width, seeded from storage and written on
   // every press of the toggle - off the phone this is always 'full' (AC7),
@@ -94,7 +90,6 @@ export function BoardPage() {
   const [view, setView] = useState<BoardView>(readBoardView);
   const layout = resolveBoardLayout(isPhone, view);
   const stacked = layout === 'stacked';
-  const now = useAttentionNow(stacked);
 
   // The card under the cursor and the column it is over, kept only for the
   // duration of a drag: one paints the overlay, the other lights up the column
@@ -522,17 +517,6 @@ export function BoardPage() {
           is deliberately not a page heading, and the board is the one page whose
           visible title the operator asked to lose. */}
       <h1 className="hatch-visually-hidden">Board</h1>
-
-      {/* The phone's own chrome (AC1), drawn whenever the viewport is phone
-          width in either view - only the columns area below switches on
-          `stacked`. Full board is a toggle on the grid, not a trip back to
-          the desk's whole page. */}
-      {isPhone && (
-        <section className="hatch-board-waiting">
-          <h2 className="hatch-board-waiting-heading">Waiting on you</h2>
-          <AttentionHuman attention={attention} now={now} reload={reloadAttention} />
-        </section>
-      )}
 
       {isPhone && (
         <Button variant="primary" className="hatch-board-filing" onClick={() => setFiling(true)}>

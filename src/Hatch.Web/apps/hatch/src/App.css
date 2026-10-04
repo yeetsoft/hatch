@@ -302,18 +302,6 @@
     min-height: 0;
   }
 
-  .hatch-board-waiting {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-  }
-
-  .hatch-board-waiting-heading {
-    margin: 0;
-    font-size: var(--t-section);
-    font-weight: 700;
-  }
-
   .hatch-board-filing {
     width: 100%;
   }
