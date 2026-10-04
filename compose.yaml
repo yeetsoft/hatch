@@ -90,6 +90,17 @@ services:
       # writes is one no reviewer can open. Leaving it unset is fine: links then
       # use the address the runner itself reaches Hatch at (its HATCH_BASE).
       Apps__PublicBaseUrl: "${HATCH_PUBLIC_URL:-}"
+      # One phone's WebAPK, so Android can trust the installed app with this
+      # install's links without the user granting it by hand (HA-265). Chrome
+      # mints the package name per install; the fingerprint is the cert it
+      # signed the WebAPK with - both read off the phone, never known here.
+      # Unset serves no statements at all (404) and link taps keep opening the
+      # browser. A second phone mints its own package name for the same origin -
+      # add Apps__AssetLinks__1__PackageName and
+      # Apps__AssetLinks__1__Sha256CertFingerprints__0 the same way; this file
+      # wires only the first.
+      Apps__AssetLinks__0__PackageName: "${HATCH_ANDROID_PACKAGE:-}"
+      Apps__AssetLinks__0__Sha256CertFingerprints__0: "${HATCH_ANDROID_CERT_FINGERPRINT:-}"
     ports:
       - "${HATCH_PORT:-8080}:8080"
     restart: unless-stopped
