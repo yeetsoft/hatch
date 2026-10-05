@@ -24,7 +24,7 @@ export interface ProjectMarkProps {
 
 /** The custom properties the mark paints from, mirroring `statusVars` - unset
     when there is no colour, so the stylesheet's own `--muted` fallback applies. */
-function markVars(color: string | null | undefined): Record<string, string> {
+export function markVars(color: string | null | undefined): Record<string, string> {
   if (!isHexColor(color)) return {};
   const safe = safeColor(color);
   return { '--mark-color': safe, '--mark-ink': contrastInk(safe) };

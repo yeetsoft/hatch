@@ -1471,6 +1471,67 @@ button.hatch-chip {
   cursor: pointer;
 }
 
+/* A radio group of project tiles - same hidden-input mechanics as
+   .hatch-theme-switch__option, but the legend here is the control's own
+   visible label (never wrapped in a <Field>) rather than clipped offscreen,
+   and the checked tile fills with the project's own colour rather than a
+   fixed tone. */
+.hatch-project-chooser {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hatch-project-chooser__legend {
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: var(--sp-1);
+}
+
+.hatch-project-chooser__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-project-chooser__tile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1) var(--sp-2-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--muted);
+  font-size: var(--t-label);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+/* The input keeps its focus and keyboard behaviour and gives up only its
+   painting - the same technique ThemeSwitch.css's .hatch-theme-switch__option
+   input uses. */
+.hatch-project-chooser__tile input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.hatch-project-chooser__tile:has(input:checked) {
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+  border-color: transparent;
+}
+
+.hatch-project-chooser__tile:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* ---- Bulk edit ---- */
 
 /* A date field and the tick that turns it on. The tick has to come first and
