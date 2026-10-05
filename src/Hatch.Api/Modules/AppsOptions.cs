@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Hatch.Api.Modules;
 
 /// <summary>
@@ -44,4 +46,34 @@ public class AppsOptions
                 ? trimmed
                 : null;
     }
+
+    /// <summary>
+    /// The Android apps allowed to open this install's links without the user
+    /// granting it by hand - deploy-time only, and never a literal in the repo,
+    /// per docs/ethos.md (HA-265). Empty by default; <c>compose.yaml</c> passes
+    /// <c>Apps__AssetLinks__0__…</c> from the operator's <c>HATCH_ANDROID_PACKAGE</c>
+    /// and <c>HATCH_ANDROID_CERT_FINGERPRINT</c> variables. Unlike
+    /// <see cref="PublicBaseUrl"/>, a bad entry here is not left to degrade quietly:
+    /// <see cref="AssetLinksValidation"/> rejects it at startup, because Android's
+    /// own verification already fails silently and the config feeding it must not.
+    /// </summary>
+    public AssetLinkPackage[] AssetLinks { get; set; } = [];
+
+    public static bool IsValidPackageName(string value) =>
+        Regex.IsMatch(value, @"^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    public static bool IsValidFingerprint(string value) =>
+        Regex.IsMatch(value, @"^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$", RegexOptions.None, TimeSpan.FromSeconds(1));
+}
+
+/// <summary>
+/// A single statement's worth of <see cref="AppsOptions.AssetLinks"/>: one Android
+/// app, identified by its package name, trusted for every certificate fingerprint
+/// it was signed with (ordinarily one, until a key rotation needs both old and new
+/// recognised at once).
+/// </summary>
+public class AssetLinkPackage
+{
+    public string PackageName { get; set; } = "";
+    public string[] Sha256CertFingerprints { get; set; } = [];
 }
