@@ -47,7 +47,7 @@ export { Text } from './components/Text';
 export type { TextProps, TextTone } from './components/Text';
 export { EmptyState } from './components/EmptyState';
 export type { EmptyStateProps } from './components/EmptyState';
-export { ProjectMark } from './components/ProjectMark';
+export { ProjectMark, markVars } from './components/ProjectMark';
 export type { ProjectMarkProps, ProjectMarkSize } from './components/ProjectMark';
 
 /* The colour arithmetic a status column and a project's own mark both need:
