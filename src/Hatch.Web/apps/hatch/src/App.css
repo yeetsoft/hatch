@@ -1403,6 +1403,74 @@ button.hatch-chip {
   cursor: pointer;
 }
 
+/* The icon radio group, same shape as @hatch/ui's ThemeSwitch but drawing a
+   ProjectMark beside each hidden input rather than a <span>. */
+.hatch-icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Visually hidden, not display:none - the group still needs a name
+   announced. Clip rather than a zero-size box so it is never read as an
+   empty label. Same rule as .hatch-theme-switch__legend. */
+.hatch-icon-picker__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hatch-icon-picker__option {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The input keeps its focus and keyboard behaviour and gives up only its
+   painting; the mark next to it is what the operator sees and clicks. */
+.hatch-icon-picker__option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+}
+
+.hatch-icon-picker__option input:checked + .hatch-project-mark,
+.hatch-icon-picker__option input:checked + .hatch-icon-picker__none {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.hatch-icon-picker__option input:focus-visible + .hatch-project-mark,
+.hatch-icon-picker__option input:focus-visible + .hatch-icon-picker__none {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Sized to match .hatch-project-mark--md literally - there is no token for
+   "the md mark's exact box" to borrow instead, the same reason ProjectMark's
+   own three sizes stay literal. */
+.hatch-icon-picker__none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--on-accent);
+  font-size: 10px;
+  cursor: pointer;
+}
+
 /* ---- Bulk edit ---- */
 
 /* A date field and the tick that turns it on. The tick has to come first and
