@@ -119,6 +119,26 @@ key can `curl` the API on the same origin the browser uses. The bundle reads its
 basename off the URL (`lib/basename.ts`) rather than assuming a prefix, which is
 what lets it serve unchanged wherever `/apps/hatch/` ends up mounted.
 
+**The installed app.** `manifest.webmanifest`
+(`src/Hatch.Web/apps/hatch/public/manifest.webmanifest`) scopes itself to the
+whole origin, `/`, rather than `/apps/hatch/`, because sign-in lives outside
+that prefix (`/apps/auth/`) and because a deployment that serves Hatch at a
+host's own root has ticket links with no prefix at all — either one, inside
+a narrower scope, would open behind a browser bar instead of staying in the
+installed app's own window. There is no service worker: Hatch's deploy story
+depends on the browser revalidating `index.html` on every load, and a
+service worker's cache is exactly the layer that turns a deploy into a stale
+app until somebody clears it by hand. The manifest's own `<link>`, in
+`index.html`, carries `crossorigin="use-credentials"` because the wall
+answers a cookieless fetch with a 401, and a 401 on the manifest is an app
+that silently never offers to install. `GET /.well-known/assetlinks.json`
+(`AssetLinksController`, [below](#the-wall-the-roles-and-api-keys)) answers
+Android's own link-ownership check with the operator's package name and
+certificate fingerprint — supplied as deploy-time config
+(`Apps__AssetLinks__0__PackageName`/`…Sha256CertFingerprints__0`,
+`compose.yaml`), never a value this repository could know on an operator's
+behalf.
+
 **Read [`hatch-at-home.md`](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md)**
 for the operator-facing version of the above — the one line, the runner, and
 the block to paste into a friend's own `CLAUDE.md`. It ships inside the Hatch
