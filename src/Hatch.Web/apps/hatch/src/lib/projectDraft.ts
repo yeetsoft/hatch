@@ -7,9 +7,17 @@
 import type { Project, ProjectPatchRequest, ProjectRepositoryWriteRequest } from '../types';
 
 export interface ProjectDraft {
-  known: { name: string; key: string; repositories: ProjectRepositoryWriteRequest[] };
+  known: {
+    name: string;
+    key: string;
+    color: string | null;
+    icon: string | null;
+    repositories: ProjectRepositoryWriteRequest[];
+  };
   name: string;
   key: string;
+  color: string | null;
+  icon: string | null;
   repositories: ProjectRepositoryWriteRequest[];
 }
 
@@ -26,9 +34,11 @@ function sameRepositories(a: ProjectRepositoryWriteRequest[], b: ProjectReposito
 export function openProjectDraft(project: Project): ProjectDraft {
   const repositories = project.repositories.map(({ remote, baseBranch }) => ({ remote, baseBranch }));
   return {
-    known: { name: project.name, key: project.key, repositories },
+    known: { name: project.name, key: project.key, color: project.color, icon: project.icon, repositories },
     name: project.name,
     key: project.key,
+    color: project.color,
+    icon: project.icon,
     repositories,
   };
 }
@@ -37,6 +47,8 @@ export function projectDraftDiff(draft: ProjectDraft): ProjectDraftDiff {
   const patchFields: ProjectPatchRequest = {};
   if (draft.name !== draft.known.name) patchFields.name = draft.name;
   if (draft.key !== draft.known.key) patchFields.key = draft.key;
+  if (draft.color !== draft.known.color) patchFields.color = draft.color ?? '';
+  if (draft.icon !== draft.known.icon) patchFields.icon = draft.icon ?? '';
 
   return {
     patch: Object.keys(patchFields).length > 0 ? patchFields : null,

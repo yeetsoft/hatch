@@ -9,8 +9,8 @@ describe('openProjectDraft', () => {
       name: 'Aerial',
       issueCount: 0,
       createdAt: '2026-01-01',
-      color: null,
-      icon: null,
+      color: '#6b7280',
+      icon: 'rocket',
       logoUpdatedAt: null,
       repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: 'main' }],
     };
@@ -22,6 +22,8 @@ describe('openProjectDraft', () => {
     expect(draft.known).toEqual({
       name: 'Aerial',
       key: 'AER',
+      color: '#6b7280',
+      icon: 'rocket',
       repositories: [{ remote: 'a', baseBranch: 'main' }],
     });
   });
@@ -46,21 +48,47 @@ describe('openProjectDraft', () => {
 });
 
 describe('projectDraftDiff', () => {
-  const known = { name: 'Aerial', key: 'AER', repositories: [{ remote: 'a', baseBranch: 'main' }] };
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+  };
 
   it('is empty when nothing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories };
     expect(projectDraftDiff(draft)).toEqual({ patch: null, repositories: null });
   });
 
   it('carries only name when only name changed', () => {
-    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, color: known.color, icon: known.icon, repositories: known.repositories };
     expect(projectDraftDiff(draft)).toEqual({ patch: { name: 'Renamed' }, repositories: null });
   });
 
   it('carries only key when only key changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', color: known.color, icon: known.icon, repositories: known.repositories };
     expect(projectDraftDiff(draft)).toEqual({ patch: { key: 'NEW' }, repositories: null });
+  });
+
+  it('carries only color when only color changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: '#111827', icon: known.icon, repositories: known.repositories };
+    expect(projectDraftDiff(draft)).toEqual({ patch: { color: '#111827' }, repositories: null });
+  });
+
+  it('carries only icon when only icon changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: 'comet', repositories: known.repositories };
+    expect(projectDraftDiff(draft)).toEqual({ patch: { icon: 'comet' }, repositories: null });
+  });
+
+  it('sends an empty string to clear color', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: null, icon: known.icon, repositories: known.repositories };
+    expect(projectDraftDiff(draft)).toEqual({ patch: { color: '' }, repositories: null });
+  });
+
+  it('sends an empty string to clear icon', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: null, repositories: known.repositories };
+    expect(projectDraftDiff(draft)).toEqual({ patch: { icon: '' }, repositories: null });
   });
 
   it('reports a change when repositories are reordered despite identical membership', () => {
@@ -73,6 +101,8 @@ describe('projectDraftDiff', () => {
       known: reorderedKnown,
       name: reorderedKnown.name,
       key: reorderedKnown.key,
+      color: reorderedKnown.color,
+      icon: reorderedKnown.icon,
       repositories: [repositories[1], repositories[0]],
     };
 
@@ -93,7 +123,7 @@ describe('projectDraftDiff', () => {
     { label: 'a removed entry', repositories: [] },
     { label: 'an edited baseBranch', repositories: [{ remote: 'a', baseBranch: 'develop' }] },
   ])('reports a change on $label', ({ repositories }) => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories };
 
     const diff = projectDraftDiff(draft);
 
@@ -106,6 +136,8 @@ describe('projectDraftDiff', () => {
       known,
       name: known.name,
       key: known.key,
+      color: known.color,
+      icon: known.icon,
       repositories: known.repositories.map((r) => ({ ...r })),
     };
 
