@@ -185,6 +185,15 @@ The two are deliberately not conflated: an iPad has a coarse pointer and a
 desk-width screen, and either query trying to do both jobs would misclassify
 it.
 
+Display mode is a third axis, beside width (`PHONE_QUERY`) and pointer
+(`(pointer: coarse)`): read from `(display-mode: standalone)` - plus the
+iOS-only `navigator.standalone` flag, since Safari never implements the media
+query - via `useStandalone()`, also in `viewport.ts`. It governs one thing:
+whether a second document may ever be asked for at all, which is what gates
+`IssuePeek`'s "New tab" button and the confirmation chicklet's key link before
+either opens a `target="_blank"` anchor instead of a routed `<Link>`. Nothing
+else keys off it today.
+
 Below `40rem`, the document itself is the scroller — not a fixed-height shell
 with a nested element scrolling inside it. That is what lets an on-screen
 keyboard resize the visual viewport without leaving a nested scroller stranded,
