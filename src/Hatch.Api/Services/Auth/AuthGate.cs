@@ -201,7 +201,17 @@ public class AuthGate(
     /// mounted underneath it later. This list opens what it names and nothing
     /// else.
     /// </summary>
-    private static readonly PathString[] exemptExactPaths = ["/auth", "/auth/"];
+    private static readonly PathString[] exemptExactPaths =
+    [
+        "/auth",
+        "/auth/",
+
+        // Android's own Digital Asset Links verifier, which fetches this with no
+        // cookie jar at all - gating it would make every install's links open
+        // in a browser instead of the app. Exact rather than a prefix because
+        // this app owns assetlinks.json and nothing else under .well-known yet.
+        "/.well-known/assetlinks.json",
+    ];
 
     /// <summary>
     /// Exempt paths whose caller is still worth identifying. Deliberately one

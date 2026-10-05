@@ -18,13 +18,7 @@ public class AssetLinksValidation : IValidateOptions<AppsOptions>
         {
             var package = assetLinks[i];
 
-            // compose.yaml's Apps__AssetLinks__0__... defaults to "${HATCH_ANDROID_PACKAGE:-}" -
-            // blank until an operator has a phone to configure. The options binder turns that
-            // into one entry with every field blank, not into an empty array (there is no way
-            // to bind an array index "present but absent" otherwise), so a slot left blank in
-            // every field reads as unconfigured - same as PublicBaseUrl empty - rather than as
-            // the malformed entry it would be if only *some* of its fields were blank.
-            if (string.IsNullOrEmpty(package.PackageName) && Array.TrueForAll(package.Sha256CertFingerprints, string.IsNullOrEmpty))
+            if (package.IsUnconfigured)
             {
                 continue;
             }

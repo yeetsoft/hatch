@@ -1914,6 +1914,14 @@ is refused while a question is open, and the dispatch is a command the operator
 types. A second scope minted for agents would close it properly, and is not
 worth a column until somebody wants one.
 
+One route sits outside the wall entirely rather than riding the exempt-paths
+list for a reason worth stating: `/.well-known/assetlinks.json`
+(`AssetLinksController`) answers Android's own Digital Asset Links verifier,
+which holds no cookie and never will. That is safe to leave open because the
+answer is public by design - it is a list of which Android package may open
+this install's links without the user granting it by hand, nothing more, and
+it grants nothing to anyone who merely reads it.
+
 ## API surface
 
 Everything under `/api/hatch`, every route `[RequireRole(PersonRole.User,

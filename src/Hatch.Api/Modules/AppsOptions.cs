@@ -76,4 +76,14 @@ public class AssetLinkPackage
 {
     public string PackageName { get; set; } = "";
     public string[] Sha256CertFingerprints { get; set; } = [];
+
+    /// <summary>
+    /// compose.yaml's blank-default slot: every field empty. The options binder has no
+    /// way to represent "array index absent", so this is what an unconfigured phone
+    /// binds to rather than an empty array - and it reads as unconfigured both here and
+    /// in the route that serves it (AssetLinksController), not as the malformed entry it
+    /// would be if only some of its fields were blank.
+    /// </summary>
+    public bool IsUnconfigured =>
+        string.IsNullOrEmpty(PackageName) && Array.TrueForAll(Sha256CertFingerprints, string.IsNullOrEmpty);
 }
