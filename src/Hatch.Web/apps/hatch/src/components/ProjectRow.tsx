@@ -1,4 +1,5 @@
-import { Button } from '@hatch/ui';
+import { Button, ProjectMark } from '@hatch/ui';
+import { projectLogoUrl } from '../lib/projectLogo';
 import type { Project } from '../types';
 
 /**
@@ -18,6 +19,14 @@ export function ProjectRow({
   return (
     <tr>
       <td>
+        <ProjectMark
+          size="sm"
+          letters={project.key}
+          color={project.color}
+          icon={project.icon}
+          logoUrl={projectLogoUrl(project)}
+          title={project.name}
+        />
         <code>{project.key}</code>
       </td>
       <td>{project.name}</td>

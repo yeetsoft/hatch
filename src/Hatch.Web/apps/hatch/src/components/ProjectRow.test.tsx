@@ -23,6 +23,12 @@ describe('ProjectRow', () => {
     expect(html).toContain('<code>AER</code>');
   });
 
+  it("draws the project's mark", () => {
+    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} />);
+    expect(html).toContain('role="img"');
+    expect(html).toContain(`aria-label="${BASE.name}"`);
+  });
+
   it('shows the repository count and the primary\'s canonical, muted, when there are repositories', () => {
     const project: Project = {
       ...BASE,

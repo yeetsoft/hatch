@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
-import { patchProject, putProjectRepositories } from '../api/client';
+import { deleteProjectLogo, patchProject, putProjectLogo, putProjectRepositories } from '../api/client';
 import { message } from '../lib/errors';
 import { openProjectDraft, projectDraftDiff, type ProjectDraft } from '../lib/projectDraft';
 import { rekeyObjection } from '../lib/projectKey';
@@ -9,6 +9,7 @@ import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/re
 import type { Project } from '../types';
 import { ProjectIconPicker } from './ProjectIconPicker';
 import { ProjectKeyField } from './ProjectKeyField';
+import { ProjectLogoField, type LogoPending } from './ProjectLogoField';
 
 /**
  * The edit modal: name, key (with its speed bump) and the repositories list,
@@ -33,6 +34,7 @@ export function ProjectEditDialog({
   const [confirmation, setConfirmation] = useState('');
   const [remote, setRemote] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
+  const [logoPending, setLogoPending] = useState<LogoPending>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +49,7 @@ export function ProjectEditDialog({
     setConfirmation('');
     setRemote('');
     setBaseBranch('');
+    setLogoPending(null);
     setError(null);
   }
 
@@ -67,7 +70,7 @@ export function ProjectEditDialog({
 
   async function save() {
     const diff = projectDraftDiff(draft!);
-    if (diff.patch === null && diff.repositories === null) {
+    if (diff.patch === null && diff.repositories === null && logoPending === null) {
       onClose();
       return;
     }
@@ -76,6 +79,8 @@ export function ProjectEditDialog({
     try {
       if (diff.patch !== null) await patchProject(project!.id, diff.patch);
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
+      if (logoPending === 'removed') await deleteProjectLogo(project!.id);
+      else if (logoPending !== null) await putProjectLogo(project!.id, logoPending.blob);
       setError(null);
       onSaved();
       onClose();
@@ -106,7 +111,7 @@ export function ProjectEditDialog({
           letters={draft.key}
           color={draft.color}
           icon={draft.icon}
-          logoUrl={projectLogoUrl(project)}
+          logoUrl={logoPending === 'removed' ? null : logoPending ? logoPending.previewUrl : projectLogoUrl(project)}
           title={draft.name || draft.key}
         />
 
@@ -152,6 +157,8 @@ export function ProjectEditDialog({
           color={draft.color}
           onChange={(icon) => setDraft((d) => d && { ...d, icon })}
         />
+
+        <ProjectLogoField key={project.id} logoUpdatedAt={project.logoUpdatedAt} onChange={setLogoPending} />
 
         <h2 className="hatch-section-title">Repositories</h2>
         {list.length === 0 && <p className="text-muted">No repositories.</p>}
