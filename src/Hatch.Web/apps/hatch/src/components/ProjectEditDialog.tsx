@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Button, Field, Modal } from '@hatch/ui';
+import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
 import { patchProject, putProjectRepositories } from '../api/client';
 import { message } from '../lib/errors';
 import { openProjectDraft, projectDraftDiff, type ProjectDraft } from '../lib/projectDraft';
 import { rekeyObjection } from '../lib/projectKey';
+import { projectLogoUrl } from '../lib/projectLogo';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import type { Project } from '../types';
+import { ProjectIconPicker } from './ProjectIconPicker';
 import { ProjectKeyField } from './ProjectKeyField';
 
 /**
@@ -27,6 +29,7 @@ export function ProjectEditDialog({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<ProjectDraft | null>(null);
+  const [colorDraft, setColorDraft] = useState(safeColor(null));
   const [confirmation, setConfirmation] = useState('');
   const [remote, setRemote] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
@@ -40,6 +43,7 @@ export function ProjectEditDialog({
   if (project && project.id !== opened) {
     setOpened(project.id);
     setDraft(openProjectDraft(project));
+    setColorDraft(safeColor(project.color));
     setConfirmation('');
     setRemote('');
     setBaseBranch('');
@@ -97,6 +101,15 @@ export function ProjectEditDialog({
       }
     >
       <div className="hatch-form">
+        <ProjectMark
+          size="lg"
+          letters={draft.key}
+          color={draft.color}
+          icon={draft.icon}
+          logoUrl={projectLogoUrl(project)}
+          title={draft.name || draft.key}
+        />
+
         {error && <p className="text-danger">{error}</p>}
 
         <div className="hatch-field-grid">
@@ -110,7 +123,35 @@ export function ProjectEditDialog({
             confirmation={confirmation}
             onConfirmationChange={setConfirmation}
           />
+          <Field label="Colour">
+            <div className="hatch-color-cell">
+              <input
+                type="color"
+                value={colorDraft}
+                aria-label="Colour"
+                onChange={(e) => setColorDraft(e.target.value)}
+                onBlur={() => {
+                  if (colorDraft !== safeColor(draft.color)) setDraft((d) => d && { ...d, color: colorDraft });
+                }}
+              />
+              <Button
+                onClick={() => {
+                  setDraft((d) => d && { ...d, color: null });
+                  setColorDraft(safeColor(null));
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </Field>
         </div>
+
+        <h2 className="hatch-section-title">Icon</h2>
+        <ProjectIconPicker
+          value={draft.icon}
+          color={draft.color}
+          onChange={(icon) => setDraft((d) => d && { ...d, icon })}
+        />
 
         <h2 className="hatch-section-title">Repositories</h2>
         {list.length === 0 && <p className="text-muted">No repositories.</p>}
