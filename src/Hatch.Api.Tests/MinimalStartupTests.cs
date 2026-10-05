@@ -38,6 +38,23 @@ public class MinimalStartupTests
     private const string JobGroup = "Hatch.Api";
 
     /// <summary>
+    /// The whole assembly runs in about twenty seconds today and each of these
+    /// cases takes a few, so this is comfortably under the two minutes of
+    /// inactivity that aborts a run (<c>API_TEST_CLAMP</c> in the Makefile, and
+    /// the same flags in ci.yml) - a stalled phase fails this case alone,
+    /// rather than taking the clamp's abort of the whole host with it.
+    /// </summary>
+    private const int CaseBudgetSeconds = 60;
+
+    /// <summary>
+    /// Belt and braces over <see cref="Deadline"/>, a little past its own
+    /// budget so it only fires if <see cref="Deadline"/> itself fails to bound
+    /// something - it names no phase and captures no log, which is why it is
+    /// not the thing doing the bounding.
+    /// </summary>
+    private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
+
+    /// <summary>
     /// The exit 139. Resolving JobsInit constructs every job, one of which takes
     /// an HADotNet client whose registration blocks on a SiteSettings read - and
     /// on a database the migrate step has not touched, that table does not
@@ -50,14 +67,12 @@ public class MinimalStartupTests
     /// migrate step has not run. Criterion 5's clean log is the case below,
     /// which is the one a friend is actually left in.</para>
     /// </summary>
-    [SkippableFact]
+    [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task AgainstADatabaseNobodyHasMigrated_ItStaysUpAndSaysWhy()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
-        var (hatch, quartz) = await MinimalDatabases.CreateAsync();
-
-        var logs = await AssertStartsAndServesAsync(hatch, quartz);
+        var logs = await AssertStartsAndServesAsync(migrated: false);
 
         Assert.Contains(logs.Messages, m => m.Contains("Could not read the site settings", StringComparison.Ordinal));
     }
@@ -69,26 +84,31 @@ public class MinimalStartupTests
     /// weather call that would have gone out to the internet, and the 7,200 log
     /// lines a day, are not going to happen.
     /// </summary>
-    [SkippableFact]
+    [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task AgainstAMigratedDatabase_ItStartsCleanlyAndSchedulesNoHouseJob()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
-        var (hatch, quartz) = await MinimalDatabases.CreateAsync();
-        await MinimalDatabases.MigrateAsync(hatch);
-
-        var logs = await AssertStartsAndServesAsync(hatch, quartz);
+        var logs = await AssertStartsAndServesAsync(migrated: true);
 
         Assert.True(logs.AtErrorOrAbove.Count == 0, string.Join(Environment.NewLine, logs.AtErrorOrAbove));
     }
 
     /// <summary>
     /// What both cases share: the host builds and starts, /health/ready answers
-    /// 200, and the store holds no trigger for any house job.
+    /// 200, and the store holds no trigger for any house job - every phase of
+    /// it, including making the scratch databases, bounded against one
+    /// <see cref="Deadline"/> so a stalled phase fails this case alone, naming
+    /// itself, rather than taking the whole run with it.
     /// </summary>
-    private static async Task<CapturedLogs> AssertStartsAndServesAsync(string hatch, string quartz)
+    private static async Task<CapturedLogs> AssertStartsAndServesAsync(bool migrated)
     {
         var logs = new CapturedLogs();
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), () => string.Join(Environment.NewLine, logs.Messages));
+
+        var (hatch, quartz) = await deadline.BoundAsync("creating the scratch databases", MinimalDatabases.CreateAsync);
+
+        if (migrated) await deadline.BoundAsync("migrating", () => MinimalDatabases.MigrateAsync(hatch));
 
         // Quartz keeps its logging provider in a static, bound to whichever
         // host built a scheduler first. Production has one host per process and
@@ -104,24 +124,25 @@ public class MinimalStartupTests
         // which is why leaving here matters as much as arriving.
         QuartzLogProvider.SetCurrentLogProvider(null);
 
+        var factory = new MinimalFactory(hatch, quartz, logs);
         try
         {
-            await using var factory = new MinimalFactory(hatch, quartz, logs);
-
             // Creating the client is what builds and starts the host - before
             // this line nothing has run, and the exit 139 came out of exactly
-            // here.
-            using var client = factory.CreateClient();
+            // here. factory.CreateClient() blocks on Task.Wait() rather than
+            // awaiting, so Task.Run is what gives Deadline something to race.
+            using var client = await deadline.BoundAsync("starting the host", () => Task.Run(() => factory.CreateClient()));
 
-            var health = await client.GetAsync("/health/ready");
+            var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
         }
         finally
         {
+            await deadline.BoundAsync("stopping the host", () => factory.DisposeAsync().AsTask());
             QuartzLogProvider.SetCurrentLogProvider(null);
         }
 
-        Assert.Empty(await MinimalDatabases.TriggerNamesAsync(quartz, JobGroup));
+        Assert.Empty(await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
 
         return logs;
     }
