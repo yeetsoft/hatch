@@ -38,6 +38,7 @@ public class AuthMiddlewareTests
     [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
     [InlineData("/apps/auth/")]
+    [InlineData("/.well-known/assetlinks.json")]
     public async Task ExemptPathsAreServedAndNeverEvenReadTheCookie(string path)
     {
         var auth = new StubAuthService();
