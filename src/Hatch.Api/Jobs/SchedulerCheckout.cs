@@ -29,24 +29,39 @@ public class SchedulerCheckout(IScheduler scheduler, string connectionString, IL
 {
     public override async Task SchedulerShutdown(CancellationToken cancellationToken = default)
     {
+        // Quartz calls this with CancellationToken.None - SchedulerListenerSupport
+        // supplies no token of its own - so nothing bounds the round trip below
+        // unless this gives itself a deadline. Without one, a DELETE racing
+        // Quartz's own clustered check-in (ClusterManager, writing this same row
+        // on a recurring background loop for the scheduler's whole life, not only
+        // at Start()) waits on Postgres's row lock indefinitely: server-side and
+        // fully async, holding no CLR thread, which is exactly the hang HA-304
+        // read off a stalled MinimalStartupTests run's thread dump - 17 OS threads,
+        // all idle, none of them inside this call. CancelAfter rather than racing a
+        // Task.Delay, because Npgsql's own cancellation plumbing is what actually
+        // aborts the server-side wait rather than just abandoning the client-side one.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
         try
         {
             await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cts.Token);
 
             await using var command = new NpgsqlCommand(
                 "DELETE FROM qrtz_scheduler_state WHERE sched_name = @schedName AND instance_name = @instanceId",
                 connection);
             command.Parameters.AddWithValue("schedName", scheduler.SchedulerName);
             command.Parameters.AddWithValue("instanceId", scheduler.SchedulerInstanceId);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cts.Token);
         }
         catch (Exception ex)
         {
             // Caught here rather than left to Quartz, which logs a listener
             // that throws at Error. A row left behind costs one check-in
             // interval of recovery - what every unclean stop costs anyway -
-            // and is worth a Warning, not that.
+            // and is worth a Warning, not that. A timed-out wait lands here
+            // exactly like a dropped connection does, and costs the same.
             logger.LogWarning(ex, "Could not release this scheduler's cluster row; a surviving node will recover its jobs once the row goes stale.");
         }
     }
