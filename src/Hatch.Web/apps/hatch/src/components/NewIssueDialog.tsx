@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal } from '@hatch/ui';
 import { createIssue } from '../api/client';
+import { resolveDefaultProject, readRememberedProject, writeRememberedProject } from '../lib/defaultProject';
 import { message } from '../lib/errors';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { IssuePicker } from './IssuePicker';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MomentField } from './MomentField';
+import { ProjectChooser } from './ProjectChooser';
 import { ISSUE_TYPES } from '../types';
 import type { Issue, IssueCard, IssueType, Project } from '../types';
 
@@ -20,6 +22,7 @@ export function NewIssueDialog({
   open,
   projects,
   candidates,
+  defaultProjectKey,
   onClose,
   onCreated,
 }: {
@@ -28,6 +31,9 @@ export function NewIssueDialog({
   /** The board's cards. The dialog filters them down to what the chosen
       project and type may hang under - see lib/parents.ts. */
   candidates: IssueCard[];
+  /** The board's current project filter, `''` when unfiltered - tried before
+      the remembered project. */
+  defaultProjectKey: string;
   onClose: () => void;
   onCreated: (created: Issue) => void;
 }) {
@@ -42,11 +48,7 @@ export function NewIssueDialog({
   const [saving, setSaving] = useState(false);
   const { confirm } = useIssueConfirmations();
 
-  // No fallback: the dialog stays mounted across a close (Modal returns null
-  // but does not unmount it), so a chosen project persisting across opens
-  // would be a stale pick rather than a convenience. handleClose and a
-  // successful submit are what clear it.
-  const chosen = projectId;
+  const chosen = projectId ?? resolveDefaultProject(projects, defaultProjectKey, readRememberedProject());
 
   // The pick is kept as chosen and clamped on the way out, as ChildComposer
   // does its type: a project or type the pick is no candidate for reads
@@ -54,6 +56,7 @@ export function NewIssueDialog({
   const projectKey = projects.find((p) => p.id === chosen)?.key;
   const parents = projectKey ? parentCandidates(candidates, projectKey, type) : [];
   const parent = parentKey && parents.some((c) => c.key === parentKey) ? parentKey : null;
+  const keyPreview = projectKey ? `${projectKey}-…` : null;
 
   function handleClose() {
     setProjectId(null);
@@ -73,6 +76,7 @@ export function NewIssueDialog({
       // refused goes to the catch below and raises nothing, and the dialog goes
       // on showing the refusal as it always has.
       confirm(created);
+      if (projectKey) writeRememberedProject(projectKey);
       setProjectId(null);
       setParentKey(null);
       setTitle('');
@@ -96,19 +100,7 @@ export function NewIssueDialog({
           <EmptyState message="No projects yet. Make one on the Projects page first." />
         ) : (
           <>
-            <Field label="Project">
-              <select
-                value={chosen ?? ''}
-                onChange={(e) => setProjectId(e.target.value === '' ? null : Number(e.target.value))}
-              >
-                <option value="">— choose a project —</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.key} — {p.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <ProjectChooser legend="Project" projects={projects} value={chosen} onChange={setProjectId} />
 
             <Field label="Type">
               <select value={type} onChange={(e) => setType(e.target.value as IssueType)}>
@@ -162,13 +154,16 @@ export function NewIssueDialog({
           </>
         )}
 
-        <div className="hatch-form-actions">
-          <Button onClick={handleClose}>Cancel</Button>
-          {projects.length > 0 && (
-            <Button variant="primary" loading={saving} disabled={chosen === null} onClick={() => void submit()}>
-              File it
-            </Button>
-          )}
+        <div className="hatch-form-actions hatch-newissue-actions">
+          {keyPreview && <span className="hatch-key-preview">{keyPreview}</span>}
+          <div className="hatch-newissue-actions__buttons">
+            <Button onClick={handleClose}>Cancel</Button>
+            {projects.length > 0 && (
+              <Button variant="primary" loading={saving} disabled={chosen === null} onClick={() => void submit()}>
+                File it
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
