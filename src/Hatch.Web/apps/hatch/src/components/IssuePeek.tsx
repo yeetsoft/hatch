@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Modal } from '@hatch/ui';
+import { Button, Modal, ProjectMark } from '@hatch/ui';
 import { getIssue, patchIssue, setPriority, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { PriorityControl } from './PriorityControl';
@@ -12,8 +12,9 @@ import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
+import { projectLogoUrl } from '../lib/projectLogo';
 import { useStandalone } from '../lib/viewport';
-import type { AssigneeDirectory, IssueCard, Status } from '../types';
+import type { AssigneeDirectory, IssueCard, Project, Status } from '../types';
 
 /** What the peek had to ask for, and the card it asked about. `description`
     undefined is "not here yet", which is what the Loading line reads off; so is
@@ -85,6 +86,7 @@ export function IssuePeek({
   status,
   statuses,
   directory,
+  project,
   onExpedited,
   onMove,
   onClose,
@@ -100,6 +102,10 @@ export function IssuePeek({
       find out whether the reader is a person. Null while it is still loading,
       or where it could not be read. */
   directory: AssigneeDirectory | null;
+  /** The card's own project, resolved by the board - fetched once by the
+      board and handed down, the same convention as `directory`. Null draws no
+      mark, exactly as today. */
+  project?: Project | null;
   /** Something on this card changed on the server: the board reloads. */
   onExpedited: () => void;
   /** Move the card to another column, the same path a drag takes. Rejects with
@@ -246,7 +252,21 @@ export function IssuePeek({
     <Modal
       open
       onClose={onClose}
-      title={card.key}
+      title={
+        <span className="hatch-peek-key">
+          {project && (
+            <ProjectMark
+              size="sm"
+              letters={project.key}
+              color={project.color}
+              icon={project.icon}
+              logoUrl={projectLogoUrl(project)}
+              title={project.name}
+            />
+          )}
+          {card.key}
+        </span>
+      }
       footer={
         <div className="hatch-form-actions">
           <Button onClick={onClose}>Close</Button>
