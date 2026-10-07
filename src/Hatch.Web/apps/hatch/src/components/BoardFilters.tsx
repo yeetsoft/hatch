@@ -6,6 +6,7 @@ import type { CardFilter } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
 import { TypesFacet } from './TypesFacet';
+import { hasMultipleProjects } from '../lib/useProjects';
 
 /**
  * What the board is showing: a search box, a project, the types, a switch and
@@ -61,7 +62,7 @@ export function BoardFilters({
           same option text, as the picker on the Plan page. One project makes
           this a control with a single option, and Hatch ships to operators
           who will have several. */}
-      {projects.length > 1 && (
+      {hasMultipleProjects(projects) && (
         <Facet label="Project" lit={filter.project !== ''}>
           <select value={filter.project} onChange={(e) => onChange({ ...filter, project: e.target.value })}>
             <option value="">All projects</option>
