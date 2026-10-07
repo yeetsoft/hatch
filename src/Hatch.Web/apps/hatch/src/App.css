@@ -1904,6 +1904,11 @@ input.hatch-inline-title-input {
   margin: 0;
 }
 
+.hatch-key-preview {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* ---- What is next under this issue ----
 
    One line between the meter and the children: the ticket an agent would take
