@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { ProjectMark, markVars } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
 import { TypeBadge } from './TypeBadge';
 import { MomentChip } from './MomentChip';
+import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
 import { truncate } from '../lib/text';
-import type { IssueCard } from '../types';
+import type { IssueCard, Project } from '../types';
 
 export interface CardProps {
   card: IssueCard;
@@ -14,6 +16,9 @@ export interface CardProps {
   waiting?: boolean;
   /** In a column that means the work shipped, where a due date has nothing left to warn about. */
   terminal?: boolean;
+  /** The card's own project, resolved by the board - null draws no mark, the
+      same key the board always drew before this had anything to add. */
+  project?: Project | null;
 }
 
 interface BoardCardProps {
@@ -53,6 +58,7 @@ export function BoardCard({
   card,
   waiting = false,
   terminal = false,
+  project = null,
   found = false,
   onPeek,
 }: CardProps & BoardCardProps) {
@@ -74,7 +80,7 @@ export function BoardCard({
       {...attributes}
       {...listeners}
     >
-      <CardFace card={card} waiting={waiting} terminal={terminal} />
+      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
     </Link>
   );
 }
@@ -87,10 +93,10 @@ export function BoardCard({
  * understood the gesture. This is the same face, drawn in an overlay layer that
  * is positioned by the cursor rather than by the column it came from.
  */
-export function CardPreview({ card, waiting = false, terminal = false }: CardProps) {
+export function CardPreview({ card, waiting = false, terminal = false, project = null }: CardProps) {
   return (
     <div className={`hatch-card hatch-card-preview${askingClass(card)}${priorityClass(card)}`}>
-      <CardFace card={card} waiting={waiting} terminal={terminal} />
+      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
     </div>
   );
 }
@@ -103,11 +109,26 @@ export function CardPreview({ card, waiting = false, terminal = false }: CardPro
  * height; the first is what keeps a pasted paragraph out of the DOM, the
  * tooltip, and the drag preview even though the clamp would have hidden it.
  */
-function CardFace({ card, waiting, terminal }: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
+function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
   return (
     <>
       <div className="hatch-card-head">
-        <span className="hatch-card-key">{card.key}</span>
+        {project && (
+          <ProjectMark
+            size="sm"
+            letters={project.key}
+            color={project.color}
+            icon={project.icon}
+            logoUrl={projectLogoUrl(project)}
+            title={project.name}
+          />
+        )}
+        <span
+          className={`hatch-card-key${project ? ' hatch-card-key--tinted' : ''}`}
+          style={project ? markVars(project.color) : undefined}
+        >
+          {card.key}
+        </span>
         <TypeBadge type={card.type} />
         {/* This one first. On the face beside the type rather than pushed to
             the end of the head, because it is a fact about which card to read

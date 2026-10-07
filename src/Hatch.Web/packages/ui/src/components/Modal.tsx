@@ -7,7 +7,7 @@ export type ModalWidth = 'default' | 'narrow';
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: ReactNode;
   children?: ReactNode;
   /** The row that has to stay reachable, drawn under the body rather than in
       it. Given one, the panel stops scrolling and the body scrolls inside it,
