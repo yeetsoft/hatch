@@ -2967,8 +2967,10 @@ public class IssuesControllerTests
         string? parentKey = null,
         string? readyAt = null,
         string? dueAt = null,
-        string? pullRequestUrl = null) =>
-        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl);
+        string? pullRequestUrl = null,
+        int? projectId = null,
+        bool? moveDescendants = null) =>
+        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl, projectId, moveDescendants);
 
     private static IssueBulkEditRequest Bulk(
         IReadOnlyList<string> keys,

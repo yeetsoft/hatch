@@ -63,6 +63,13 @@ export function describe(event: IssueEvent): string {
     return `${short(from)} stopped answering, last heard from ${short(heardAt)}`;
   }
 
+  /* project_changed carries { from, to } on every issue the move touched,
+     plus { descendants } on the root - a count of how many others moved
+     with it. No descendants, or zero, falls through to the generic line. */
+  if (event.kind === 'project_changed' && typeof event.payload?.descendants === 'number' && event.payload.descendants > 0) {
+    return `${short(from)} → ${short(to)}, ${event.payload.descendants} more moved with it`;
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

@@ -239,7 +239,7 @@ public class IssueExpediteControllerTests
         // is a claim about every other route rather than about this one.
         await h.PatchAsync(issue.Key, new IssuePatchRequest(
             Title: "renamed", Description: null, Type: null, StatusId: null, ParentKey: epic.Key,
-            ReadyAt: null, DueAt: null, PullRequestUrl: null));
+            ReadyAt: null, DueAt: null, PullRequestUrl: null, ProjectId: null, MoveDescendants: null));
 
         var moved = Value(await h.Issues.MoveIssue(
             issue.Key, new IssueMoveRequest(h.DoneId, null, null), default));

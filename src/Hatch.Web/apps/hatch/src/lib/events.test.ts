@@ -44,6 +44,20 @@ describe('describe', () => {
     ).toBe('Backlog → To Do, under HA-86');
   });
 
+  it('names a project move that carried its descendants with it', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'project_changed', payload: { from: 'HA-12', to: 'OTHER-4', descendants: 3 } }),
+      ),
+    ).toBe('HA-12 → OTHER-4, 3 more moved with it');
+  });
+
+  it('leaves a project move with no descendants unchanged', () => {
+    expect(
+      describeEvent(event({ kind: 'project_changed', payload: { from: 'HA-12', to: 'OTHER-4' } })),
+    ).toBe('HA-12 → OTHER-4');
+  });
+
   it('marks an issue filed under an express parent, naming the parent', () => {
     expect(
       describeEvent(

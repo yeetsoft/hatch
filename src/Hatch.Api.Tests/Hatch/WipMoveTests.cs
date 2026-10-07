@@ -922,7 +922,7 @@ public class WipMoveTests
     };
 
     private static IssuePatchRequest Patch(int? statusId = null, string? parentKey = null) =>
-        new(null, null, null, statusId, parentKey, null, null, null);
+        new(null, null, null, statusId, parentKey, null, null, null, null, null);
 
     private static IssueBulkEditRequest Bulk(IReadOnlyList<string> keys, int? statusId = null) =>
         new(keys, null, statusId, null, null, null);

@@ -430,6 +430,7 @@ export type IssueEventKind =
   | 'retyped'
   | 'status_changed'
   | 'parent_changed'
+  | 'project_changed'
   | 'ready_changed'
   | 'due_changed'
   | 'pull_request_changed'
@@ -636,6 +637,8 @@ export interface IssuePatchRequest {
       Anything else is refused with a sentence - the field's only job is to be
       clicked. */
   pullRequestUrl?: string | null;
+  projectId?: number | null;
+  moveDescendants?: boolean | null;
   /** `true` to move into a full WIP section anyway - a person's call, and a
       key sending it is refused with `403`, whatever the load. */
   wipOverride?: boolean;
