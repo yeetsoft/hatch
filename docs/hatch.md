@@ -1257,8 +1257,8 @@ claim.
 in its head row, green while the holder is being heard from and amber once it
 has gone quiet, with who is working it and how long since a word on the hover.
 The issue page draws a **Claim** section saying the same things at length,
-leading with the runner rather than who it runs for — "Buster Bluth is working
-AER-12", with ", for Nathan" appended only when the two differ — plus when it
+leading with the runner rather than who it runs for — "Jeff Winger is working
+AER-12", with ", for Britta" appended only when the two differ — plus when it
 was taken, when it was last heard from, and the last line the runner printed
 with how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
@@ -4451,7 +4451,7 @@ reach. The cost is honest and is stated on the page: a press takes effect at the
 top of the next pass, *after* whatever increment is in flight has finished.
 
 **The runner is named as its claim names it** — a character off the cast list
-in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from five
+in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from three
 TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
 string every [claim](#claim) already carries. A runner has one identity and
 this is it; the table is keyed on it. The choice is made once per checkout —

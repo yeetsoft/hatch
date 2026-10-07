@@ -98,7 +98,7 @@ describe('claimedBySuffix', () => {
   });
 
   it('names who it runs for only when that differs from the runner', () => {
-    expect(claimedBySuffix(claim({ claimedBy: 'Ada', runner: 'Buster Bluth' }))).toBe(', for Ada');
+    expect(claimedBySuffix(claim({ claimedBy: 'Ada', runner: 'Jeff Winger' }))).toBe(', for Ada');
   });
 });
 
@@ -113,8 +113,8 @@ describe('claimTitle', () => {
   });
 
   it('does not append a for-clause when claimedBy and runner are the same name', () => {
-    const said = claimTitle(claim({ claimedBy: 'Buster Bluth', runner: 'Buster Bluth' }), NOW);
+    const said = claimTitle(claim({ claimedBy: 'Jeff Winger', runner: 'Jeff Winger' }), NOW);
 
-    expect(said).toBe(`Buster Bluth is working this, last heard from ${agoPhrase(claim().heartbeatAt, NOW)}`);
+    expect(said).toBe(`Jeff Winger is working this, last heard from ${agoPhrase(claim().heartbeatAt, NOW)}`);
   });
 });

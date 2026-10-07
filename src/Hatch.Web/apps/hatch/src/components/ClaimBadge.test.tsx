@@ -5,7 +5,7 @@ import type { IssueClaim } from '../types';
 
 const claim = (over: Partial<IssueClaim> = {}): IssueClaim => ({
   claimedBy: 'hatch',
-  runner: 'Buster Bluth',
+  runner: 'Jeff Winger',
   claimedAt: new Date().toISOString(),
   heartbeatAt: new Date().toISOString(),
   chatter: null,
@@ -36,9 +36,9 @@ describe('ClaimBadge', () => {
   });
 
   it('carries the sentence on the hover and the accessible name', () => {
-    const html = renderToStaticMarkup(<ClaimBadge claim={claim({ claimedBy: 'Ada', runner: 'Buster Bluth' })} />);
+    const html = renderToStaticMarkup(<ClaimBadge claim={claim({ claimedBy: 'Ada', runner: 'Jeff Winger' })} />);
 
-    expect(html).toContain('title="Buster Bluth is working this, for Ada, last heard from just now"');
-    expect(html).toContain('aria-label="Buster Bluth is working this, for Ada, last heard from just now"');
+    expect(html).toContain('title="Jeff Winger is working this, for Ada, last heard from just now"');
+    expect(html).toContain('aria-label="Jeff Winger is working this, for Ada, last heard from just now"');
   });
 });

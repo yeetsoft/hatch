@@ -102,7 +102,7 @@ export function claimedBySuffix(claim: IssueClaim): string {
 }
 
 /**
- * The whole claim in one sentence: `Buster Bluth is working this, for Ada,
+ * The whole claim in one sentence: `Jeff Winger is working this, for Ada,
  * last heard from 4 minutes ago`.
  *
  * The card's tooltip, and the line the clear dialog opens with. Every fact the
