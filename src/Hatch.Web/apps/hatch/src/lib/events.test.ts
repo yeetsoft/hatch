@@ -94,10 +94,10 @@ describe('describe', () => {
       describeEvent(
         event({
           kind: 'claim_lapsed',
-          payload: { from: 'Buster Bluth on here:/checkouts/one', heardAt: '2026-09-28T00:00:00Z' },
+          payload: { from: 'Jeff Winger on here:/checkouts/one', heardAt: '2026-09-28T00:00:00Z' },
         }),
       ),
-    ).toBe('Buster Bluth on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
+    ).toBe('Jeff Winger on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
   });
 });
 

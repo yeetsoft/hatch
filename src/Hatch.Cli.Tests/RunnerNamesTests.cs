@@ -15,7 +15,7 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void The_list_has_the_storys_count()
     {
-        Assert.Equal(98, RunnerNames.All.Count);
+        Assert.Equal(57, RunnerNames.All.Count);
     }
 
     [Fact]
@@ -125,31 +125,31 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Set_then_read_round_trips()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
 
-        Assert.Equal("Buster Bluth", RunnerNames.Record.Read(RunnersPath)["/Users/x/code/hatch"]);
+        Assert.Equal("Jeff Winger", RunnerNames.Record.Read(RunnersPath)["/Users/x/code/hatch"]);
     }
 
     [Fact]
     public void Setting_one_checkout_leaves_every_other_entry_alone()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Jeff Winger");
         RunnerNames.Record.Set(RunnersPath, "/Users/x/code/two", "Liz Lemon");
 
         var entries = RunnerNames.Record.Read(RunnersPath);
-        Assert.Equal("Buster Bluth", entries["/Users/x/code/one"]);
+        Assert.Equal("Jeff Winger", entries["/Users/x/code/one"]);
         Assert.Equal("Liz Lemon", entries["/Users/x/code/two"]);
     }
 
     [Fact]
     public void Setting_a_checkout_again_replaces_only_that_entry()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Jeff Winger");
         RunnerNames.Record.Set(RunnersPath, "/Users/x/code/two", "Liz Lemon");
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Gob Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Troy Barnes");
 
         var entries = RunnerNames.Record.Read(RunnersPath);
-        Assert.Equal("Gob Bluth", entries["/Users/x/code/one"]);
+        Assert.Equal("Troy Barnes", entries["/Users/x/code/one"]);
         Assert.Equal("Liz Lemon", entries["/Users/x/code/two"]);
         Assert.Equal(2, entries.Count);
     }
@@ -159,7 +159,7 @@ public sealed class RunnerNamesTests : IDisposable
     {
         if (OperatingSystem.IsWindows()) return;
 
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
 
         var mode = File.GetUnixFileMode(RunnersPath);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, mode);
@@ -175,7 +175,7 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Reading_the_record_prints_no_allowlist_warning()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
 
         var original = Console.Error;
         var captured = new StringWriter();

@@ -628,6 +628,7 @@ export function BoardPage() {
         open={filing}
         projects={projects}
         candidates={board.issues}
+        defaultProjectKey={filter.project}
         onClose={() => setFiling(false)}
         onCreated={(created) => {
           // A card filed under a type the board is hiding would vanish from the
