@@ -1199,6 +1199,16 @@ public class EfHatchIssueEvent
     public const string Retyped = "retyped";
     public const string StatusChanged = "status_changed";
     public const string ParentChanged = "parent_changed";
+
+    /// <summary>
+    /// The issue moved to another project, carrying the subtree under it
+    /// along with it unless a caller asked otherwise. The payload's
+    /// <c>from</c> and <c>to</c> are display keys, on every issue the move
+    /// touched; the root of the move additionally carries <c>descendants</c>,
+    /// a count of how many other issues moved with it.
+    /// </summary>
+    public const string ProjectChanged = "project_changed";
+
     public const string ReadyChanged = "ready_changed";
     public const string DueChanged = "due_changed";
 

@@ -405,7 +405,7 @@ public class IssueDependenciesControllerTests
         /// <summary>A move by column, which is how anything is shelved.</summary>
         public async Task<IssueDto> MoveAsync(string key, int statusId) =>
             Value(await Issues.PatchIssue(
-                key, new IssuePatchRequest(null, null, null, statusId, null, null, null, null), default));
+                key, new IssuePatchRequest(null, null, null, statusId, null, null, null, null, null, null), default));
 
         /// <summary>What is written on an issue's thread, oldest first.</summary>
         public async Task<IReadOnlyList<CommentDto>> CommentsAsync(string key) =>

@@ -555,6 +555,15 @@ public record IssueCreateRequest(
 /// path or a bare <c>github.com/...</c> is a link that would not open, and the
 /// whole point of the field is that it opens.
 /// </param>
+/// <param name="ProjectId">
+/// Which project the issue should belong to. No "clear" sentinel - an issue
+/// always belongs to some project, so unlike <paramref name="ParentKey"/>
+/// there is no empty-string meaning here.
+/// </param>
+/// <param name="MoveDescendants">
+/// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
+/// default, and <c>false</c> is the one a caller has to ask for.
+/// </param>
 /// <param name="WipOverride">
 /// <c>true</c> to move into a full WIP section anyway - a person's call, and a
 /// key sending it is refused with <c>403</c>, whatever the load. Bulk never
@@ -569,6 +578,8 @@ public record IssuePatchRequest(
     string? ReadyAt,
     string? DueAt,
     string? PullRequestUrl,
+    int? ProjectId,
+    bool? MoveDescendants,
     bool WipOverride = false);
 
 /// <summary>

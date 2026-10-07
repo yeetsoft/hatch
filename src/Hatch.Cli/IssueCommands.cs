@@ -255,7 +255,7 @@ public sealed class IssueCommands(Cli cli)
 
         var patched = await cli.Board.PatchAsync(key, new IssuePatchRequest(
             Title: null, Description: null, Type: null, StatusId: null, ParentKey: null,
-            ReadyAt: null, DueAt: null, PullRequestUrl: url), ct);
+            ReadyAt: null, DueAt: null, PullRequestUrl: url, ProjectId: null, MoveDescendants: null), ct);
 
         cli.Say.Line(patched?.PullRequestUrl is { Length: > 0 } now
             ? now

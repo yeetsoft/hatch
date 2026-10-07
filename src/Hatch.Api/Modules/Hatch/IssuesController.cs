@@ -389,7 +389,8 @@ public class IssuesController(
             return BadRequest($"a bulk edit covers at most {MaxBulkKeys} issues at once - this one named {keys.Count}");
 
         var patch = new IssuePatchRequest(
-            null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null);
+            null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null,
+            null, null);
 
         if (Invalid(null, null, request.Type, required: false) is { } invalid) return BadRequest(invalid);
         if (!ReadEdit(patch, out var edit, out var editError)) return BadRequest(editError);
