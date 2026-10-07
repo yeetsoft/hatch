@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Badge, Button, Card, Field, PageHeader } from '@hatch/ui';
+import { Badge, Button, Card, Field, PageHeader, ProjectMark } from '@hatch/ui';
 import {
   addComment,
   addDependency,
@@ -14,6 +14,7 @@ import {
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
+  getProjects,
   getWorkLog,
   patchIssue,
   patchIssuePlaybook,
@@ -77,6 +78,7 @@ import type {
   IssueEvent,
   IssueRollup,
   IssueType,
+  Project,
   QuestionOption,
   Status,
   Work,
@@ -90,6 +92,7 @@ export function IssuePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +154,15 @@ export function IssuePage() {
       () => null,
     );
 
+    /* And the ninth, on the same terms as the directory: the project list, only
+       for the mark it draws beside ChildComposer's File it. A list that could
+       not be read leaves that mark undrawn rather than putting an error line on
+       a page that is otherwise readable. */
+    const projectsLoad = getProjects().then(
+      (loaded) => loaded,
+      () => [] as Project[],
+    );
+
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents] = await Promise.all([
         getIssue(key),
@@ -168,6 +180,7 @@ export function IssuePage() {
     }
 
     setDirectory(await whom);
+    setProjects(await projectsLoad);
 
     const settled = await rolling;
     setRollup(settled.loaded);
@@ -673,6 +686,7 @@ export function IssuePage() {
           next={next}
           hasChildren={issue.childKeys.length > 0}
           projectId={issue.projectId}
+          project={projects.find((p) => p.key === issue.projectKey) ?? null}
           parentKey={issue.key}
           types={filings}
           onFiled={() => void load()}
@@ -893,6 +907,7 @@ function Progress({
   next,
   hasChildren,
   projectId,
+  project,
   parentKey,
   types,
   onFiled,
@@ -905,6 +920,9 @@ function Progress({
       the rollup, so the card does not change shape when the fifth read lands. */
   hasChildren: boolean;
   projectId: number;
+  /** The issue's own project, for ChildComposer's mark - null while the list is
+      still loading or failed to. */
+  project: Project | null;
   parentKey: string;
   /** What may be filed here. Empty draws no composer - a task takes nothing. */
   types: IssueType[];
@@ -945,7 +963,13 @@ function Progress({
       {/* Last in the card, and not waiting on the rollup: it is drawn from the
           issue, which has already arrived. */}
       {types.length > 0 && (
-        <ChildComposer projectId={projectId} parentKey={parentKey} types={types} onFiled={onFiled} />
+        <ChildComposer
+          projectId={projectId}
+          project={project}
+          parentKey={parentKey}
+          types={types}
+          onFiled={onFiled}
+        />
       )}
     </Card>
   );
@@ -964,11 +988,15 @@ function Progress({
  */
 function ChildComposer({
   projectId,
+  project,
   parentKey,
   types,
   onFiled,
 }: {
   projectId: number;
+  /** The project this child is filed into, for the mark beside File it. Null
+      draws nothing there - the composer still files either way. */
+  project: Project | null;
   parentKey: string;
   types: IssueType[];
   onFiled: () => void;
@@ -1036,6 +1064,13 @@ function ChildComposer({
       <Button variant="primary" loading={saving} disabled={!title.trim()} onClick={() => void submit()}>
         File it
       </Button>
+
+      {project && (
+        <span className="hatch-key-preview">
+          <ProjectMark letters={project.key} color={project.color} icon={project.icon} size="sm" title={project.name} />
+          {project.key}-…
+        </span>
+      )}
 
       {/* Said here, under the box that caused it, in the sentence the server
           wrote - see fetchJson in api/client.ts. */}

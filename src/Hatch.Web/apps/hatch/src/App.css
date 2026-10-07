@@ -1349,6 +1349,20 @@ button.hatch-chip {
   justify-content: flex-end;
 }
 
+.hatch-newissue-actions {
+  justify-content: space-between;
+}
+
+.hatch-newissue-actions__buttons {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.hatch-key-preview {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* align-items: end so the button sits on the controls' baseline rather than
    floating level with their labels. */
 .hatch-inline-form {
@@ -1902,6 +1916,11 @@ input.hatch-inline-title-input {
 .hatch-child-composer .text-danger {
   flex: 1 0 100%;
   margin: 0;
+}
+
+.hatch-key-preview {
+  color: var(--muted);
+  font-size: var(--t-label);
 }
 
 /* ---- What is next under this issue ----
