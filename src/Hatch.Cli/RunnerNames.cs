@@ -19,9 +19,8 @@ public static class RunnerNames
 {
     /// <summary>
     /// Every name in <c>runner-names.txt</c>, in file order - main and
-    /// recurring characters from five shows, plus the one-offs worth having.
-    /// See that file for the cast, and <c>docs/hatch.md</c> for why two names
-    /// (Carl Weathers, Creed Bratton) are missing on purpose.
+    /// recurring characters from three shows, plus the one-offs worth having.
+    /// See that file for the cast.
     /// </summary>
     public static IReadOnlyList<string> All { get; } = Load();
 
@@ -81,7 +80,7 @@ public static class RunnerNames
             if (!taken.Contains(name)) return name;
         }
 
-        // Every one of about a hundred names is somebody else's, on this
+        // Every one of the cast list's names is somebody else's, on this
         // machine or on the board - rare, and worth a numbered suffix on the
         // name this checkout would have had rather than refusing to start.
         var suffix = 2;

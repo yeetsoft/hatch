@@ -35,7 +35,7 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   modelOverride: null,
   effortOverride: null,
   assignee: null,
-  createdBy: 'Pam Beesly',
+  createdBy: 'Britta Perry',
   createdAt: '2026-09-09T12:00:00Z',
   updatedAt: '2026-09-09T12:00:00Z',
   claim: null,
@@ -52,7 +52,7 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
 
 const claim = (over: Partial<IssueClaim> = {}): IssueClaim => ({
   claimedBy: 'hatch',
-  runner: 'Buster Bluth',
+  runner: 'Jeff Winger',
   claimedAt: new Date().toISOString(),
   heartbeatAt: new Date().toISOString(),
   chatter: null,

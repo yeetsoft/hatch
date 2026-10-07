@@ -155,7 +155,7 @@ two-minute timeout.
 ### The runner name
 
 `HATCH_RUNNER` if set, else a character from the cast list in
-`src/Hatch.Cli/runner-names.txt` - main and recurring characters from five TV
+`src/Hatch.Cli/runner-names.txt` - main and recurring characters from three TV
 shows, plus the colorful one-offs. The choice is made once per checkout, the
 first time it is needed: a SHA-256 over the host and the canonical checkout
 path picks a starting slot, and the walk from there skips any name already
