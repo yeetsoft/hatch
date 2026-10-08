@@ -14,7 +14,6 @@ import {
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
-  getProjects,
   getWorkLog,
   patchIssue,
   patchIssuePlaybook,
@@ -60,9 +59,11 @@ import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages
 import { mayRefresh } from '../lib/refresh';
 import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
+import { projectLogoUrl } from '../lib/projectLogo';
 import { openQuestions } from '../lib/questions';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
+import { useProjects } from '../lib/useProjects';
 import { useWipOverride } from '../lib/useWipOverride';
 import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -92,7 +93,7 @@ export function IssuePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { byKey: projectsByKey } = useProjects();
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -154,15 +155,6 @@ export function IssuePage() {
       () => null,
     );
 
-    /* And the ninth, on the same terms as the directory: the project list, only
-       for the mark it draws beside ChildComposer's File it. A list that could
-       not be read leaves that mark undrawn rather than putting an error line on
-       a page that is otherwise readable. */
-    const projectsLoad = getProjects().then(
-      (loaded) => loaded,
-      () => [] as Project[],
-    );
-
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents] = await Promise.all([
         getIssue(key),
@@ -180,7 +172,6 @@ export function IssuePage() {
     }
 
     setDirectory(await whom);
-    setProjects(await projectsLoad);
 
     const settled = await rolling;
     setRollup(settled.loaded);
@@ -411,6 +402,8 @@ export function IssuePage() {
   if (error && !issue) return <p className="text-danger">{error}</p>;
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
+  const project = projectsByKey.get(issue.projectKey) ?? null;
+
   // The legal parents: same project, a type this issue may hang under, and
   // never itself - see lib/parents.ts. The server decides too - this only keeps
   // the picker from offering something it will refuse.
@@ -467,6 +460,14 @@ export function IssuePage() {
         title={<InlineTitle issue={issue} onSave={(title) => void save({ title })} />}
         description={
           <span className="hatch-issue-meta">
+            <ProjectMark
+              size="sm"
+              letters={project?.key ?? issue.projectKey}
+              color={project?.color ?? null}
+              icon={project?.icon ?? null}
+              logoUrl={project ? projectLogoUrl(project) : null}
+              title={project?.name ?? issue.projectKey}
+            />
             <span className="hatch-issue-key">{issue.key}</span>
             <TypeBadge type={issue.type} />
             {issue.parentKey && <Link to={`/issues/${issue.parentKey}`}>↳ {issue.parentKey}</Link>}
@@ -531,6 +532,24 @@ export function IssuePage() {
                 </option>
               ))}
             </select>
+          </Field>
+
+          {/* `as="div"` for the reason the fields below it are - `ProjectMark`'s
+              own `role="img" aria-label=...` would otherwise be folded into a
+              <label>'s accessible name. No picker and no `onChange` here -
+              moving a ticket between projects is HA-236's. */}
+          <Field label="Project" as="div">
+            <span className="hatch-issue-project">
+              <ProjectMark
+                size="sm"
+                letters={project?.key ?? issue.projectKey}
+                color={project?.color ?? null}
+                icon={project?.icon ?? null}
+                logoUrl={project ? projectLogoUrl(project) : null}
+                title={project?.name ?? issue.projectKey}
+              />
+              {project?.name ?? issue.projectKey}
+            </span>
           </Field>
 
           {/* `as="div"`: Field wraps its children in a <label> for implicit
@@ -686,7 +705,7 @@ export function IssuePage() {
           next={next}
           hasChildren={issue.childKeys.length > 0}
           projectId={issue.projectId}
-          project={projects.find((p) => p.key === issue.projectKey) ?? null}
+          project={project}
           parentKey={issue.key}
           types={filings}
           onFiled={() => void load()}
