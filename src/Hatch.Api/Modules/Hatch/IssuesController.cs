@@ -340,6 +340,7 @@ public class IssuesController(
         if (issue is null) return NotFound();
 
         if (await OverrideRefusal(request.WipOverride, ct) is { } notAPerson) return notAPerson;
+        if (await ProjectMoveRefusal(request.ProjectId, ct) is { } notAPersonMove) return notAPersonMove;
 
         if (Invalid(request.Title?.Trim(), request.Description, request.Type, required: false) is { } invalid)
             return BadRequest(invalid);
@@ -349,9 +350,10 @@ public class IssuesController(
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
         var gate = new WipGate(db, claims, now);
-        var (changed, error, full) = await StageEditAsync(
+        var (changed, error, conflict, full) = await StageEditAsync(
             issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
         if (full is not null) return Conflict(full);
+        if (conflict is not null) return Conflict(conflict);
         if (error is not null) return BadRequest(error);
 
         if (changed) await db.SaveChangesAsync(ct);
@@ -420,8 +422,9 @@ public class IssuesController(
                 continue;
             }
 
-            var (moved, error, full) = await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
+            var (moved, error, conflict, full) = await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
             if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
+            else if (conflict is not null) failures.Add(new IssueBulkFailureDto(key, conflict));
             else if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
             else if (moved) changed.Add(await KeyOfAsync(issue, ct));
             else unchanged.Add(await KeyOfAsync(issue, ct));
@@ -444,28 +447,69 @@ public class IssuesController(
     /// </summary>
     /// <returns>
     /// Whether anything changed, the sentence to refuse with if it could not be
-    /// applied, and - separately, because it is a <c>409</c> and carries
-    /// numbers rather than a sentence alone - the WIP refusal if that is why.
+    /// applied, a second sentence for the one refusal that is a plain
+    /// <c>409</c> rather than a <c>400</c> - a live claim somewhere in a moving
+    /// set - and lastly the WIP refusal, separate because it carries numbers
+    /// rather than a sentence alone.
     /// </returns>
-    private async Task<(bool Changed, string? Error, WipRefusalDto? Full)> StageEditAsync(
+    private async Task<(bool Changed, string? Error, string? Conflict, WipRefusalDto? Full)> StageEditAsync(
         EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms,
         WipGate gate, bool wipOverride, CancellationToken ct)
     {
         // ---- What could be refused ----
 
+        // Resolved first, ahead of the parent lookup below, which needs to
+        // know the target project before it runs. Naming the issue's own
+        // project is read as no opinion at all - the same no-op a bulk edit
+        // re-sending a value already held falls through as.
+        EfHatchProject? targetProject = null;
+        if (edit.ProjectId is { } targetProjectId)
+        {
+            var found = await db.Projects.FirstOrDefaultAsync(p => p.Id == targetProjectId, ct);
+            if (found is null) return (false, $"there is no project {targetProjectId}", null, null);
+            if (found.Id != issue.ProjectId) targetProject = found;
+        }
+
+        if (targetProject is not null)
+        {
+            List<long> movingIds = (edit.MoveDescendants ?? true)
+                ? [issue.Id, ..await Rollup.DescendantIdsAsync(db, issue.Id, ct)]
+                : [issue.Id];
+
+            var holders = await db.Issues
+                .Where(i => movingIds.Contains(i.Id))
+                .Select(i => new
+                {
+                    i.Id,
+                    Claim = new ClaimSnapshot(
+                        i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                        i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                })
+                .ToListAsync(ct);
+
+            var held = holders.Where(h => claims.IsLive(h.Claim, now)).ToList();
+            if (held.Count > 0)
+            {
+                var names = new List<string>(held.Count);
+                foreach (var h in held) names.Add((await KeyOfAsync(h.Id, ct))!);
+                return (false, null, $"{string.Join(", ", names)} - nothing moved", null);
+            }
+        }
+
         EfHatchStatus? status = null;
         if (edit.StatusId is { } statusId && statusId != issue.StatusId)
         {
             status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
-            if (status is null) return (false, $"there is no column {statusId}", null);
+            if (status is null) return (false, $"there is no column {statusId}", null, null);
         }
 
         // Present-but-empty is the clear; absent is no opinion. See IssuePatchRequest.
         (EfHatchIssue? Issue, string? Error) parent = (null, null);
         if (edit.ParentKey is not null)
         {
-            parent = await ResolveParentAsync(edit.ParentKey, issue.ProjectId, edit.Type ?? issue.Type, issue.Id, ct);
-            if (parent.Error is { } parentError) return (false, parentError, null);
+            var parentProjectId = targetProject?.Id ?? issue.ProjectId;
+            parent = await ResolveParentAsync(edit.ParentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
+            if (parent.Error is { } parentError) return (false, parentError, null, null);
         }
 
         // Asked last, and only when the column is actually changing, so a
@@ -479,7 +523,7 @@ public class IssuesController(
             // rule the type is already judged by just above.
             var parentId = edit.ParentKey is not null ? parent.Issue?.Id : issue.ParentId;
             wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, parentId, wipOverride, ct);
-            if (wip.Kind == WipVerdictKind.Refused) return (false, null, wip.Refusal);
+            if (wip.Kind == WipVerdictKind.Refused) return (false, null, null, wip.Refusal);
         }
 
         // ---- What is written ----
@@ -581,11 +625,11 @@ public class IssuesController(
             issue.ParentId = parent.Issue?.Id;
         }
 
-        if (events.Count == 0) return (false, null, null);
+        if (events.Count == 0) return (false, null, null, null);
 
         foreach (var e in events) issue.Events.Add(e);
         issue.UpdatedAt = now;
-        return (true, null, null);
+        return (true, null, null, null);
     }
 
     /// <summary>
@@ -771,6 +815,22 @@ public class IssuesController(
             }
             : null;
 
+    /// <summary>
+    /// A person, not a key. Moving an issue to another project is the
+    /// operator's call, the same way overriding the WIP limit is - see
+    /// <see cref="OverrideRefusal"/>. Fires on the raw presence of
+    /// <c>projectId</c>, before the target project is even looked up, the
+    /// same way <see cref="OverrideRefusal"/> fires on the raw
+    /// <c>wipOverride: true</c>.
+    /// </summary>
+    private async Task<ObjectResult?> ProjectMoveRefusal(int? projectId, CancellationToken ct) =>
+        projectId is not null && await caller.IsProgramAsync(ct)
+            ? new ObjectResult("moving an issue to another project is a person's call, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
+
     // ---- Mapping ----
 
     /// <summary>
@@ -856,7 +916,9 @@ public class IssuesController(
         bool SetDue,
         IssueMoment? DueAt,
         bool SetPullRequest,
-        string? PullRequestUrl)
+        string? PullRequestUrl,
+        int? ProjectId,
+        bool? MoveDescendants)
     {
         /// <summary>Whether this edit names nothing at all - the request a bulk edit refuses rather than reports as a hundred no-ops.</summary>
         public bool IsEmpty =>
@@ -888,7 +950,9 @@ public class IssuesController(
             request.DueAt is not null,
             dueAt,
             request.PullRequestUrl is not null,
-            pullRequestUrl);
+            pullRequestUrl,
+            request.ProjectId,
+            request.MoveDescendants);
 
         return true;
     }

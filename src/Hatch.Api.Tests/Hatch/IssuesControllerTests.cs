@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -654,6 +655,75 @@ public class IssuesControllerTests
 
         var kinds = (await h.EventsAsync("AER-1")).Select(e => e.Kind).ToList();
         Assert.Equal(3, kinds.Count(k => k != EfHatchIssueEvent.Created));
+    }
+
+    // ---- Moving between projects ----
+
+    [Fact]
+    public async Task AnUnknownTargetProject_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: 99999), default);
+
+        Assert.Contains("99999", Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString());
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task TheIssuesOwnProjectSentExplicitly_IsUnchanged()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        await h.Issues.PatchIssue("AER-1", Patch(projectId: h.ProjectId), default);
+
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task AKeyOrKeylessRunnerMovingAProject_Is403AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving an issue to another project is a person's call, not an agent's", obj.Value);
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task AMovingSetHoldingALiveClaim_Is409NamingItAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("task", "the subtask", parentKey: "AER-1");
+        await h.ClaimAsync("AER-2");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("AER-2", Reason(result.Result));
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+    }
+
+    [Fact]
+    public async Task AParentKeySentWithAMove_ResolvesAgainstTheTargetProject()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("epic", "the candidate parent", projectId: h.OtherProjectId);
+
+        var result = await h.Issues.PatchIssue(
+            "AER-1", Patch(projectId: h.OtherProjectId, parentKey: "OPS-1"), default);
+
+        Assert.DoesNotContain("is in another project", Reason(result.Result));
     }
 
     // ---- Ready and due ----
