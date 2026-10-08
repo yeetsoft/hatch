@@ -775,6 +775,8 @@ export interface Playbook {
   /** An alias, or a pinned `claude-…` name an operator typed by hand. */
   model: string;
   effort: string;
+  /** Millions of tokens, or null for no cap. */
+  budget: number | null;
   updatedAt: string;
 }
 
@@ -785,6 +787,7 @@ export interface PlaybookCreateRequest {
   prompt: string;
   model?: string;
   effort?: string;
+  budget?: string;
   shape?: PlaybookShape;
 }
 
@@ -796,6 +799,7 @@ export interface PlaybookPatchRequest {
   prompt?: string;
   model?: string;
   effort?: string;
+  budget?: string;
   shape?: PlaybookShape;
 }
 
