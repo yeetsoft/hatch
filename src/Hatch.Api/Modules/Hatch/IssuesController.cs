@@ -349,16 +349,62 @@ public class IssuesController(
 
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
-        var gate = new WipGate(db, claims, now);
-        var (changed, error, conflict, full) = await StageEditAsync(
-            issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
-        if (full is not null) return Conflict(full);
-        if (conflict is not null) return Conflict(conflict);
-        if (error is not null) return BadRequest(error);
 
-        if (changed) await db.SaveChangesAsync(ct);
+        // Decided once, against the issue as LoadAsync first returned it.
+        // StageEditAsync still re-validates the target on every re-entry, so
+        // an unknown target refuses on attempt one with no retry wasted on
+        // it - this flag only chooses which of the two paths below wraps the
+        // call.
+        var movingRequested = edit.ProjectId is { } targetId && targetId != issue.ProjectId;
 
-        return await ToDtoAsync(issue, ct);
+        if (!movingRequested)
+        {
+            var gate = new WipGate(db, claims, now);
+            var (changed, error, conflict, full) = await StageEditAsync(
+                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (full is not null) return Conflict(full);
+            if (conflict is not null) return Conflict(conflict);
+            if (error is not null) return BadRequest(error);
+
+            if (changed) await db.SaveChangesAsync(ct);
+
+            return await ToDtoAsync(issue, ct);
+        }
+
+        // A real move mints a new number in the target project, which can
+        // race the same way CreateIssueAsync's mint can - so it gets the same
+        // retry, copied from CreateIssueAsync (:257-323) exactly.
+        // ChangeTracker.Clear() drops every tracked entity, including the
+        // issue already loaded above, so the reload and the staging are
+        // inside the loop, not just the save.
+        for (var attempt = 1; ; attempt++)
+        {
+            issue = await LoadAsync(key, ct);
+            if (issue is null) return NotFound();
+
+            var gate = new WipGate(db, claims, now);
+            var (changed, error, conflict, full) = await StageEditAsync(
+                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (full is not null) return Conflict(full);
+            if (conflict is not null) return Conflict(conflict);
+            if (error is not null) return BadRequest(error);
+
+            try
+            {
+                if (changed) await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException) when (attempt < MintAttempts)
+            {
+                db.ChangeTracker.Clear();
+                continue;
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict("could not mint an issue number - try again");
+            }
+
+            return await ToDtoAsync(issue, ct);
+        }
     }
 
     /// <summary>
@@ -470,9 +516,10 @@ public class IssuesController(
             if (found.Id != issue.ProjectId) targetProject = found;
         }
 
+        List<long>? movingIds = null;
         if (targetProject is not null)
         {
-            List<long> movingIds = (edit.MoveDescendants ?? true)
+            movingIds = (edit.MoveDescendants ?? true)
                 ? [issue.Id, ..await Rollup.DescendantIdsAsync(db, issue.Id, ct)]
                 : [issue.Id];
 
@@ -503,12 +550,17 @@ public class IssuesController(
             if (status is null) return (false, $"there is no column {statusId}", null, null);
         }
 
-        // Present-but-empty is the clear; absent is no opinion. See IssuePatchRequest.
+        // Present-but-empty is the clear; absent is no opinion. See
+        // IssuePatchRequest. A real move defaults that "no opinion" to the
+        // clear - an ancestor can never be in the moving set, so the issue's
+        // own parent is always left behind unless this same request also
+        // names one.
+        var parentKey = edit.ParentKey ?? (targetProject is not null ? "" : null);
         (EfHatchIssue? Issue, string? Error) parent = (null, null);
-        if (edit.ParentKey is not null)
+        if (parentKey is not null)
         {
             var parentProjectId = targetProject?.Id ?? issue.ProjectId;
-            parent = await ResolveParentAsync(edit.ParentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
+            parent = await ResolveParentAsync(parentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
             if (parent.Error is { } parentError) return (false, parentError, null, null);
         }
 
@@ -617,7 +669,7 @@ public class IssuesController(
             issue.PullRequestUrl = edit.PullRequestUrl;
         }
 
-        if (edit.ParentKey is not null && parent.Issue?.Id != issue.ParentId)
+        if (parentKey is not null && parent.Issue?.Id != issue.ParentId)
         {
             var from = issue.ParentId is null ? null : await KeyOfAsync(issue.ParentId.Value, ct);
             var to = parent.Issue is null ? null : await KeyOfAsync(parent.Issue, ct);
@@ -625,7 +677,65 @@ public class IssuesController(
             issue.ParentId = parent.Issue?.Id;
         }
 
-        if (events.Count == 0) return (false, null, null, null);
+        if (targetProject is not null)
+        {
+            var target = targetProject;
+
+            // Rank-then-id - the same "board order" convention
+            // IssueClaims.LineageAsync, Rollup's NodesAsync and Dispatch
+            // already use. The identity map hands back the same tracked
+            // instance for issue.Id that LoadAsync already attached, so the
+            // root is not double-tracked.
+            var moving = await db.Issues
+                .Where(i => movingIds!.Contains(i.Id))
+                .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+                .ToListAsync(ct);
+
+            // Every member shares one project before the move - captured
+            // from the root now, since re-deriving a moving issue's old key
+            // after its own fields change below would read the new project
+            // instead.
+            var oldProjectKey = issue.Project!.Key;
+            var oldKeys = moving.ToDictionary(m => m.Id, m => IssueKey.Format(oldProjectKey, m.Number));
+
+            foreach (var m in moving)
+            {
+                m.Number = target.NextIssueNumber++;
+                m.ProjectId = target.Id;
+
+                // EF does not refresh an already-loaded reference navigation
+                // just because the FK scalar changed - IssueProjection's
+                // ToDtosAsync fallback would otherwise hand back the old
+                // project's key in the response DTO despite ProjectId
+                // already being correct underneath.
+                m.Project = target;
+                m.UpdatedAt = now;
+
+                object payload = m.Id == issue.Id
+                    ? new { from = oldKeys[m.Id], to = IssueKey.Format(target.Key, m.Number), descendants = moving.Count - 1 }
+                    : new { from = oldKeys[m.Id], to = IssueKey.Format(target.Key, m.Number) };
+                m.Events.Add(Event(actor, EfHatchIssueEvent.ProjectChanged, payload, now));
+            }
+
+            // Left behind rather than carried with the root, only when the
+            // request asked for that split - DeleteIssue's own outdent
+            // writes no event for the same shape of change, but there the
+            // parent disappears; here it survives elsewhere, so the child's
+            // own trail is the only place that says why it lost it.
+            if (!(edit.MoveDescendants ?? true))
+            {
+                var children = await db.Issues.Where(i => i.ParentId == issue.Id).ToListAsync(ct);
+                foreach (var child in children)
+                {
+                    child.ParentId = null;
+                    child.UpdatedAt = now;
+                    child.Events.Add(Event(
+                        actor, EfHatchIssueEvent.ParentChanged, new { from = oldKeys[issue.Id], to = (string?)null }, now));
+                }
+            }
+        }
+
+        if (events.Count == 0 && targetProject is null) return (false, null, null, null);
 
         foreach (var e in events) issue.Events.Add(e);
         issue.UpdatedAt = now;
