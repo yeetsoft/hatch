@@ -4878,7 +4878,7 @@ public class WorkControllerTests
 
         var refused = Assert.IsType<BadRequestObjectResult>(
             (await h.Playbooks.CreatePlaybook(
-                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", "orphan"), default))
+                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", Shape: "orphan"), default))
             .Result);
 
         Assert.Equal("a shape is one of any, leaf, parent - not \"orphan\"", refused.Value);
@@ -4889,11 +4889,11 @@ public class WorkControllerTests
     {
         var h = await NewAsync();
         await h.Playbooks.CreatePlaybook(
-            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", "leaf"), default);
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", Shape: "leaf"), default);
 
         var refused = Assert.IsType<BadRequestObjectResult>(
             (await h.Playbooks.CreatePlaybook(
-                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it again", "sonnet", "high", "leaf"), default))
+                new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it again", "sonnet", "high", Shape: "leaf"), default))
             .Result);
 
         Assert.Equal("there is already a playbook for that transition, those types and that shape", refused.Value);
@@ -4904,10 +4904,10 @@ public class WorkControllerTests
     {
         var h = await NewAsync();
         await h.Playbooks.CreatePlaybook(
-            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "leaf work", "sonnet", "high", "leaf"), default);
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "leaf work", "sonnet", "high", Shape: "leaf"), default);
 
         var created = await h.Playbooks.CreatePlaybook(
-            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "parent work", "sonnet", "high", "parent"), default);
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "parent work", "sonnet", "high", Shape: "parent"), default);
 
         Assert.IsType<CreatedAtActionResult>(created.Result);
     }
