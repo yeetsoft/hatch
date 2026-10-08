@@ -1517,6 +1517,12 @@ public class EfHatchPlaybook
     [MaxLength(MaxEffortLength)]
     public required string Effort { get; set; }
 
+    /// <summary>
+    /// The thinking budget, in millions of tokens - blank unless a person has
+    /// set one, and read by a key but never written by one.
+    /// </summary>
+    public int? Budget { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
