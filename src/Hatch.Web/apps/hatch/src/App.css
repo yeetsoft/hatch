@@ -1624,6 +1624,12 @@ button.hatch-chip {
   font-family: var(--mono);
 }
 
+.hatch-issue-project {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+}
+
 /* ---- The status band ----
 
    The issue page's loudest element, and deliberately so: "where is this" is the
