@@ -43,6 +43,20 @@ public sealed class ReadoutTests
         Assert.Contains("quiet 0m14s — Bash  make test-api", rows[1], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheAliveRow_DrawsTokensAgainstABudgetWhenTheSessionHasOne()
+    {
+        var started = Now.AddMinutes(-12);
+        var lastActivity = Now.AddSeconds(-14);
+        var inc = new IncrementSnapshot(
+            "HA-1", "T", "W", null, started, 84_000_000, lastActivity, "Bash  make test-api", 100_000_000);
+        var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
+
+        var rows = Readout.Draw(snapshot, Now, 200, color: false);
+
+        Assert.Contains("84M / 100M tokens", rows[1], StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(60, false)] // under 2 minutes: no colour
     [InlineData(150, true)] // past 2 minutes: warn
