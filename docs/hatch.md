@@ -3431,11 +3431,6 @@ sentence saying which one it failed is what `work/queue` reports:
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
 
-    Classifying a fold is the dispatcher's own business and never reaches
-    `QueueEntryDto`, the CLI or the web: the sentence already names the row
-    and its level, which is everything a reader needs. See
-    [the dispatcher](#the-dispatcher).
-
 Eleven of them — 1, 2, 3, 8, 9, 10, 11, 12, 13, 14 and 15 — are facts about the
 issue, and `work/{key}` asks them too. The sixteenth is as well, and
 `work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The

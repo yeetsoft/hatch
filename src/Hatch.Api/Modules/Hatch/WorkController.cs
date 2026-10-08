@@ -365,7 +365,7 @@ public class WorkController(
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct));
 
-        if (blocked is not null) return Conflict(blocked.Value.Why);
+        if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
 
         var target = to!;
@@ -573,7 +573,6 @@ public class WorkController(
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses, wip, epics);
         var hopped = hop && blocked is null;
-        var blockedSentence = blocked?.Why;
 
         return new WorkDto(
             issueDto,
@@ -599,7 +598,7 @@ public class WorkController(
             childCards,
             repositories,
             questions,
-            blockedSentence,
+            blocked,
             IssueUrl(issueDto.Key),
             Dispatch.KindOf(issue, from, to, merged, built),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),

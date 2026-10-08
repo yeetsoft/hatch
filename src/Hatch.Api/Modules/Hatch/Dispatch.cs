@@ -195,7 +195,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
 
-                    var sentence = blocked?.Why;
+                    var sentence = blocked;
 
                     // Nothing at a lower tier is picked up while a strictly
                     // higher one still has clear work - a hop is exempt from
@@ -561,7 +561,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// whichever parent ids the candidates hold, once per named dispatch over
     /// this issue's own.
     /// </param>
-    public static Fold? Blocked(
+    public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
         EfHatchStatus? to,
@@ -582,10 +582,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics)
     {
-        // Waiting on a person below: nothing the board does clears any of
-        // these, so none of them parks a lower tier - see Fold.
         if (from.IsTerminal)
-            return new Fold($"\"{from.Name}\" is where work ends - there is nothing after it", false);
+            return $"\"{from.Name}\" is where work ends - there is nothing after it";
 
         // Said before the column-after test, which would otherwise refuse this
         // with "there is nowhere for this to go" - true, and no use to somebody
@@ -593,29 +591,27 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // moving. Nothing comes off the shelf on a pass's say-so: a deferred
         // ticket is waiting on a person deciding it is work again.
         if (from.IsDeferred)
-            return new Fold($"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass", false);
+            return $"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass";
 
         if (to is null)
-            return new Fold($"there is no column after \"{from.Name}\", so there is nowhere for this to go", false);
+            return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
 
         if (to.IsTerminal)
-            return new Fold($"the next column is \"{to.Name}\", and only the operator moves work there", false);
+            return $"the next column is \"{to.Name}\", and only the operator moves work there";
 
-        // Held by the board below: it clears when the board changes, with
-        // nobody asked, so it parks every tier below it.
         if (claimed.Held(issue) is { } holder)
-            return new Fold(holder, true);
+            return holder;
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
             return pausedFrom is null
-                ? new Fold("paused - a person set it aside, and nothing picks it up until they set it back", false)
-                : new Fold($"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", false);
+                ? "paused - a person set it aside, and nothing picks it up until they set it back"
+                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back";
 
         if (loop is not null)
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
-                return new Fold($"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}", true);
+                return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
 
             // Loop policy, not a fact about the issue - a hop is exempt, the
             // same way it is exempt from needing a playbook, and a named
@@ -624,10 +620,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // reading. Both windows reset on their own, so both are the
             // board's to clear.
             if (!hop && pausedLevel == PriorityLevels.Economy && pace?.Economy.Fold is { } economyFold)
-                return new Fold(economyFold, true);
+                return economyFold;
 
             if (!hop && pausedLevel == PriorityLevels.Low && pace?.Low.Fold is { } lowFold)
-                return new Fold(lowFold, true);
+                return lowFold;
 
             if (loop.Mine)
             {
@@ -640,8 +636,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     (assignee is { Kind: ActorKind.Key } && assignee.Id == loop.CallerKeyId);
                 if (!isMine)
                     return assignee is null
-                        ? new Fold("assigned to nobody - a --mine pass takes only your own", false)
-                        : new Fold($"assigned to {assignee.Name}, not to you", false);
+                        ? "assigned to nobody - a --mine pass takes only your own"
+                        : $"assigned to {assignee.Name}, not to you";
             }
             else if (assignee?.Kind == ActorKind.Person)
             {
@@ -650,12 +646,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 // thing an agent should pick up, and one whose assignee no
                 // longer resolves is not assigned at all - the liveness rule
                 // reaching the dispatcher without a line of its own.
-                return new Fold($"assigned to {assignee.Name} - an unattended pass leaves a person's work alone", false);
+                return $"assigned to {assignee.Name} - an unattended pass leaves a person's work alone";
             }
         }
 
         if (waiting > 0)
-            return new Fold($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", false);
+            return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
 
         // A repository matters wherever a session is spawned, because every
         // session runs in the primary repository's checkout: every move but a
@@ -667,14 +663,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (!hop || to.Id == implementation?.Id)
         {
-            // Never clears for this caller at all - parking on it would park
-            // forever, so it reads as waiting on a person, not the board.
-            if (RepositoryFold(issue, repos) is { } repoBlock) return new Fold(repoBlock, false);
+            if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
         }
 
         if (to.Id == implementation?.Id)
         {
-            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return new Fold(WaitingOn(waitingOn), true);
+            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
         }
 
         // The mirror of the dependency fold above: that one gates the move in,
@@ -685,7 +679,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
         if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
-            return new Fold("its children are the work, and some are still open", true);
+            return "its children are the work, and some are still open";
 
         // An epic is verified by its own stories, not merely cleared off one
         // column: it is held wherever it stands in the WIP section, not only
@@ -693,9 +687,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // against it the way OpenChildren does for everything else above -
         // the operator shelving a story is not a gap in the epic (HA-114,
         // Taken here). Never on the move to itself: an epic in review is
-        // folded by a conflict or a failing build, not by this. EpicFold
-        // classifies itself - a childless epic is the operator's to file
-        // something under, and an epic with open children clears on its own.
+        // folded by a conflict or a failing build, not by this.
         if (issue.Type == "epic" && !conflicts && from.IsWip && family.EpicFold(issue.Id, statuses) is { } epicBlock)
             return epicBlock;
 
@@ -703,16 +695,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // leave, so it is said after a dependency, which needs other work to
         // land, and before a missing playbook, which needs the operator - see
         // Wip.LoadAsync.
-        if (WipFold(wip, issue, from, to, epics) is { } full) return new Fold(full, true);
+        if (WipFold(wip, issue, from, to, epics) is { } full) return full;
 
         // Last before the playbook, and after the repository: a question needs a
         // person, a repository needs a clone, and a clean branch with a build
         // that is passing, running or unread needs nothing at all - so it is the
         // least useful thing to say about an issue that is folded for a reason
-        // somebody can act on. Judge classifies itself - most of what it says
-        // waits on the operator to merge, and the rest clears on its own.
-        if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock } judgement)
-            return new Fold(reviewBlock, judgement.BoardHeld);
+        // somebody can act on.
+        if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
+            return reviewBlock;
 
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
@@ -732,28 +723,27 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is null)
-                return new Fold("a top-level epic is moved in by a person - its own column is the signal for everything under it", false);
+                return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
 
             if (epicParent is not { Type: "epic" } || !wip.Inside(epicParent.StatusId))
-                return new Fold("its parent epic is not running, so nothing pulls it in", true);
+                return "its parent epic is not running, so nothing pulls it in";
 
-            return new Fold(FamilyGate.NothingUnder, false);
+            return FamilyGate.NothingUnder;
         }
 
         // A column that pulls its children is never "no playbook covers
         // this" - it is one of these two, naming which of FamilyGate.Pulls's
         // two conditions is unmet. A childless issue in such a column (e.g.
         // plain Backlog) has nothing to pull, so it falls through unchanged.
-        // Both clear on their own - a sibling finishing, or the parent moving.
         if (from.ParentPulls && issue.ParentId is { } parentId)
         {
             return family.ParentStarted(parentId, statuses)
-                ? new Fold("a sibling is already in flight, so only one child is pulled through at a time", true)
-                : new Fold("its parent has not reached the implementation column, so nothing pulls it forward yet", true);
+                ? "a sibling is already in flight, so only one child is pulled through at a time"
+                : "its parent has not reached the implementation column, so nothing pulls it forward yet";
         }
 
         return playbook is null
-            ? new Fold($"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page", false)
+            ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
             : null;
     }
 
@@ -870,21 +860,6 @@ public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null);
-
-/// <summary>
-/// Why <see cref="Dispatch.Blocked"/> would not dispatch this issue, and which
-/// of the two kinds the fold is - the one thing <c>Blocked is null</c> alone
-/// cannot say. <see cref="BoardHeld"/> is true when the fold clears on its own
-/// as the board changes, with nobody asked - a live claim, a running build, an
-/// unmet dependency, a full WIP section, a ready date that arrives - and false
-/// when nothing the board does clears it - an unanswered question, a person's
-/// name on it, a repository this runner has no checkout of. The walk in
-/// <see cref="Dispatch.ScanAsync"/> parks a lower tier on the first of either
-/// kind; nothing downstream of it - <c>ScanRow.Blocked</c>, <c>QueueEntryDto</c>,
-/// the CLI, the web - needs the kind, only the walk comparing tiers does, so
-/// this never leaves <see cref="Dispatch"/>.
-/// </summary>
-public readonly record struct Fold(string Why, bool BoardHeld);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
@@ -1238,19 +1213,10 @@ public sealed class FamilyGate
     /// fold. Null where every counted child is terminal, including where
     /// every child is deferred and none are counted at all.
     /// </summary>
-    /// <remarks>
-    /// Classifies itself rather than leaving it to its one call site, because
-    /// the two branches are different kinds: a childless epic is identical in
-    /// meaning to <see cref="NothingUnder"/>'s direct return elsewhere in
-    /// <see cref="Dispatch.Blocked"/> - nobody files a story because the board
-    /// changed on its own, so it waits on a person - while an epic with open
-    /// children clears the moment one of them closes, which the board does on
-    /// its own.
-    /// </remarks>
-    public Fold? EpicFold(long issueId, List<EfHatchStatus> statuses)
+    public string? EpicFold(long issueId, List<EfHatchStatus> statuses)
     {
         var children = Children(issueId);
-        if (children.Count == 0) return new Fold(NothingUnder, false);
+        if (children.Count == 0) return NothingUnder;
 
         var counted = 0;
         var open = 0;
@@ -1266,11 +1232,9 @@ public sealed class FamilyGate
 
         if (open == 0) return null;
 
-        return new Fold(
-            counted == 1
-                ? "its only child is not done - an epic is verified once its stories are"
-                : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are",
-            true);
+        return counted == 1
+            ? "its only child is not done - an epic is verified once its stories are"
+            : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
     }
 
     /// <summary>Whether the parent's own column is Columns.Implementation.</summary>
