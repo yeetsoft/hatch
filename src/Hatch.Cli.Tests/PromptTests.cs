@@ -288,4 +288,21 @@ public sealed class PromptTests
             live.Replace(", while you were working:", ":", StringComparison.Ordinal),
             carried.Replace(", after the last session on it ended:", ":", StringComparison.Ordinal));
     }
+
+    // ---- HA-222: the clamp tells a session to wrap up, not to ask ----
+
+    [Fact]
+    public void WrapUp_says_commit_push_file_comment_and_stop_but_never_to_ask()
+    {
+        var text = Prompt.WrapUp("AER-12");
+
+        Assert.Contains("Commit", text, StringComparison.Ordinal);
+        Assert.Contains("Push", text, StringComparison.Ordinal);
+        Assert.Contains("File whatever is left as tasks", text, StringComparison.Ordinal);
+        Assert.Contains("Comment", text, StringComparison.Ordinal);
+        Assert.Contains("stop", text, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("question", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
+    }
 }

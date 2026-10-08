@@ -111,6 +111,81 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-222: the clamp ----
+
+    [Fact]
+    public async Task Crossing_the_playbooks_budget_writes_the_clamp_file_once()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 1) };
+        string? clamp = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+
+            // 600,000 + 500,000 = 1,100,000 tokens, past the one-million budget.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 600_000, output: 500_000));
+            Assert.True(File.Exists(clamp));
+            var fact = System.Text.Json.JsonDocument.Parse(File.ReadAllText(clamp)).RootElement;
+            Assert.Equal(1_100_000, fact.GetProperty("tokens").GetInt64());
+            Assert.Equal(1, fact.GetProperty("requests").GetInt64());
+
+            // A further line past the cross does not write it again.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 10, output: 10));
+            Assert.Equal(1_100_000, System.Text.Json.JsonDocument.Parse(File.ReadAllText(clamp)).RootElement.GetProperty("tokens").GetInt64());
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(clamp);
+        await claim.ReleaseAsync();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(10)]
+    public async Task A_run_that_never_reaches_its_budget_or_has_none_never_writes_the_clamp_file(int? budget)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: budget) };
+        string? clamp = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20));
+            Assert.False(File.Exists(clamp));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(clamp);
+        Assert.False(File.Exists(clamp));
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_quiet_run_posts_null_requests_and_peak_context_but_a_known_prompt_length()
     {
@@ -842,10 +917,14 @@ public sealed class IncrementTests
         Assert.Equal(10, stepHook.GetProperty("timeout").GetInt32());
         Assert.Contains("inbox \"AER-1\" --hook post-tool-use --stamp ", stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
         Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "inbox.stamp"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "clamp.json"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         var stop = hooks.GetProperty("Stop")[0].GetProperty("hooks")[0];
         Assert.Equal(10, stop.GetProperty("timeout").GetInt32());
-        Assert.EndsWith("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.EndsWith(
+            $"--clamp \"{Path.Combine(Path.GetDirectoryName(path)!, "clamp.json")}\"",
+            stop.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }

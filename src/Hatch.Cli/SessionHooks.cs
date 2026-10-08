@@ -39,6 +39,20 @@ public sealed class SessionHooks : IDisposable
     public string Stamp => Path.Combine(Directory, "inbox.stamp");
 
     /// <summary>
+    /// The fact record written once this session's tokens cross its playbook's
+    /// budget - whichever hook call notices first writes it, and it is never
+    /// deleted until the whole directory goes with the rest of <see cref="Dispose"/>.
+    /// </summary>
+    public string Clamp => Path.Combine(Directory, "clamp.json");
+
+    /// <summary>
+    /// Touched the first time <see cref="InboxCommand"/> folds the wrap-up text
+    /// into a hook's output, and never reset - so a session is told once, not
+    /// on every call for the rest of its life.
+    /// </summary>
+    public string ClampDelivered => Path.ChangeExtension(Clamp, ".delivered");
+
+    /// <summary>
     /// Makes the directory and writes the file, or answers null where it cannot.
     /// A session without hooks still works its ticket; it is a message sent
     /// mid-run that waits for the next session instead.
@@ -61,8 +75,8 @@ public sealed class SessionHooks : IDisposable
 
             var run = $"{Quote(hatch)} inbox {Quote(key)} --hook";
             File.WriteAllText(hooks.Settings, Json(
-                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)}",
-                $"{run} stop"));
+                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)} --clamp {Quote(hooks.Clamp)}",
+                $"{run} stop --clamp {Quote(hooks.Clamp)}"));
             return hooks;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -126,3 +140,6 @@ public sealed class SessionHooks : IDisposable
         }
     }
 }
+
+/// <summary>What is written to <see cref="SessionHooks.Clamp"/>: the tally at the moment the budget was crossed.</summary>
+public sealed record ClampFact(long Tokens, long Requests);

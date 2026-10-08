@@ -156,6 +156,23 @@ public static class Prompt
     }
 
     /// <summary>
+    /// What a session is told, once, the first time its tokens cross its
+    /// playbook's budget - delivered the same way <see cref="Message"/> is, by
+    /// the hook that noticed. Says to wrap up, not to ask: an open question is a
+    /// full stop on the next dispatch, and crossing a budget is not a decision
+    /// for somebody else to make.
+    /// </summary>
+    public static string WrapUp(string key) =>
+        string.Join('\n',
+            $"This session has crossed its playbook's budget on {key}. Wrap up rather than",
+            "start anything new:",
+            "",
+            "Finish the edit already in hand. Commit what is green at the nearest seam. Push",
+            "it to the issue's branch. File whatever is left as tasks under the ticket - set",
+            "their parentKey to it, the shape docs/hatch-planning.md describes. Comment on the",
+            "ticket what landed and what did not. Then stop.");
+
+    /// <summary>
     /// One message to the agent, in the words both ways of delivering it use:
     /// the hook that puts it in front of a running session, and the prompt that
     /// carries it into the next. One method, so the two cannot come to say
