@@ -3,7 +3,8 @@ namespace Hatch.Cli;
 /// <summary>What the readout's first two rows say about the increment in progress, or null between them.</summary>
 public sealed record IncrementSnapshot(
     string Key, string Title, string What, string? IssueUrl,
-    DateTimeOffset StartedAt, long TokensSoFar, DateTimeOffset LastActivityAt, string? LastTool);
+    DateTimeOffset StartedAt, long TokensSoFar, DateTimeOffset LastActivityAt, string? LastTool,
+    long? BudgetTokens = null);
 
 /// <summary>What the readout says between increments, or null while one is running.</summary>
 public sealed record IdleSnapshot(string Line, DateTimeOffset? NextLookAt);
@@ -52,11 +53,11 @@ public sealed class ReadoutState
     private DateTimeOffset? _usageReadAt;
 
     /// <summary>A session is about to be spawned. Clears whatever idle line was showing.</summary>
-    public void BeginIncrement(string key, string title, string what, string? issueUrl, DateTimeOffset startedAt)
+    public void BeginIncrement(string key, string title, string what, string? issueUrl, DateTimeOffset startedAt, long? budgetTokens = null)
     {
         lock (_gate)
         {
-            _increment = new IncrementSnapshot(key, title, what, issueUrl, startedAt, 0, startedAt, null);
+            _increment = new IncrementSnapshot(key, title, what, issueUrl, startedAt, 0, startedAt, null, budgetTokens);
             _idle = null;
         }
     }
@@ -167,7 +168,9 @@ public static class Readout
     private static string AliveRow(IncrementSnapshot inc, DateTimeOffset now, int width, bool color)
     {
         var elapsed = Format.Duration((long)Math.Max(0, (now - inc.StartedAt).TotalSeconds));
-        var tokens = Format.Compact(inc.TokensSoFar);
+        var tokens = inc.BudgetTokens is { } b
+            ? $"{Format.Compact(inc.TokensSoFar)} / {Format.Compact(b)}"
+            : Format.Compact(inc.TokensSoFar);
         var quietFor = now - inc.LastActivityAt;
         var quiet = "quiet " + Format.Duration((long)Math.Max(0, quietFor.TotalSeconds))
             + (inc.LastTool is { Length: > 0 } tool ? $" — {tool}" : "");
