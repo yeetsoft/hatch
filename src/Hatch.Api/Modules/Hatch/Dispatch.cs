@@ -160,21 +160,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
             pace = await PaceReadingsAsync(ct);
 
-        // Set only after a tier's own loop below has finished, so two live rows
-        // in the same tier never park each other - only a strictly higher
-        // tier's live row, remembered here on a previous iteration, can. Never
-        // reassigned once set: the first live row in the whole (top-down) walk
-        // is also the only one the park sentence ever needs to name. Live is
-        // clear, or folded by a board-held fold - a row waiting on a person can
-        // stand for weeks, and parking on it would park the tier below forever.
+        // Set only after a tier's own loop below has finished, so two clear rows in
+        // the same tier never park each other - only a strictly higher tier's clear
+        // row, remembered here on a previous iteration, can. Never reassigned once
+        // set: the first clear row in the whole (top-down) walk is also the only one
+        // the park sentence ever needs to name. A row that is folded parks nothing,
+        // whatever folds it: most folds stand for days, and a tier parked behind one
+        // is a tier that never runs (HA-312).
         string? parkedByKey = null;
         string? parkedByLevel = null;
-        bool parkedByBoardHeld = false;
 
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
-            string? firstLiveThisTierKey = null;
-            bool firstLiveThisTierBoardHeld = false;
+            string? firstClearThisTier = null;
 
             foreach (var status in Enumerable.Reverse(statuses))
             {
@@ -200,34 +198,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var sentence = blocked?.Why;
 
                     // Nothing at a lower tier is picked up while a strictly
-                    // higher one still has live work - a hop is exempt from
+                    // higher one still has clear work - a hop is exempt from
                     // being parked itself, but still becomes the row that
                     // parks the tiers below it.
                     if (blocked is null && !hop && parkedByKey is not null)
-                        sentence = parkedByBoardHeld
-                            ? $"{parkedByKey} ranks {parkedByLevel} and is held by the board - " +
-                              $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is still live"
-                            : $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
-                              $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+                        sentence = $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
+                                   $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
 
-                    // The first live row of this tier - clear, or folded by a
-                    // board-held fold - whichever this row turns out to be.
-                    // Independent of the park sentence above: a row already
-                    // parked was clear before the park replaced its sentence,
-                    // and still counts as live for the tier below it.
-                    if (firstLiveThisTierKey is null)
-                    {
-                        if (blocked is null)
-                        {
-                            firstLiveThisTierKey = IssueKey.Format(issue.Project!.Key, issue.Number);
-                            firstLiveThisTierBoardHeld = false;
-                        }
-                        else if (blocked.Value.BoardHeld)
-                        {
-                            firstLiveThisTierKey = IssueKey.Format(issue.Project!.Key, issue.Number);
-                            firstLiveThisTierBoardHeld = true;
-                        }
-                    }
+                    // The first clear row of this tier. Independent of the park
+                    // above: a row already parked was clear before the park
+                    // replaced its sentence, and still counts as clear for the
+                    // tier below it.
+                    if (firstClearThisTier is null && blocked is null)
+                        firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
 
                     rows.Add(new ScanRow(
                         issue, status, to, sentence,
@@ -245,11 +228,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 }
             }
 
-            if (parkedByKey is null && firstLiveThisTierKey is not null)
+            if (parkedByKey is null && firstClearThisTier is not null)
             {
-                parkedByKey = firstLiveThisTierKey;
+                parkedByKey = firstClearThisTier;
                 parkedByLevel = PriorityLevels.Name(level);
-                parkedByBoardHeld = firstLiveThisTierBoardHeld;
             }
         }
 
