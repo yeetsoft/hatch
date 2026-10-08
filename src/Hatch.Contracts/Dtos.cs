@@ -1032,8 +1032,15 @@ public record PlaybookDto(
     string Prompt,
     string Model,
     string Effort,
+    int? Budget,
     DateTimeOffset UpdatedAt);
 
+/// <summary>
+/// How many millions of tokens this row budgets. Null means no budget (on
+/// create) or leaves it alone (on patch); <c>""</c> or whitespace clears it;
+/// a parsed positive integer sets it - the same three states
+/// <see cref="IssueWipLimitRequest.Limit"/> carries.
+/// </summary>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1041,6 +1048,7 @@ public record PlaybookCreateRequest(
     string Prompt,
     string? Model,
     string? Effort,
+    string? Budget = null,
     string? Shape = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
@@ -1051,6 +1059,7 @@ public record PlaybookPatchRequest(
     string? Prompt,
     string? Model,
     string? Effort,
+    string? Budget = null,
     string? Shape = null);
 
 /// <summary>

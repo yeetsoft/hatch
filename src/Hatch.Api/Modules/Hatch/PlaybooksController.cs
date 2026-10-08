@@ -1,3 +1,4 @@
+using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Microsoft.AspNetCore.Mvc;
@@ -63,6 +64,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var effort = request.Effort?.Trim() ?? EfHatchPlaybook.DefaultEffort;
         if (InvalidDispatch(model, effort) is { } dispatchError) return BadRequest(dispatchError);
 
+        int? budget = null;
+        if (request.Budget is not null)
+        {
+            var (value, budgetError) = ParseBudget(request.Budget);
+            if (budgetError is not null) return BadRequest(budgetError);
+            budget = value;
+        }
+
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
         {
@@ -73,6 +82,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Prompt = prompt,
             Model = model,
             Effort = effort,
+            Budget = budget,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -109,12 +119,21 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var effort = request.Effort?.Trim() ?? playbook.Effort;
         if (InvalidDispatch(model, effort) is { } dispatchError) return BadRequest(dispatchError);
 
+        var budget = playbook.Budget;
+        if (request.Budget is not null)
+        {
+            var (value, budgetError) = ParseBudget(request.Budget);
+            if (budgetError is not null) return BadRequest(budgetError);
+            budget = value;
+        }
+
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
         playbook.Types = types;
         playbook.Shape = shape;
         playbook.Model = model;
         playbook.Effort = effort;
+        playbook.Budget = budget;
         playbook.UpdatedAt = time.GetUtcNow();
 
         await db.SaveChangesAsync(ct);
@@ -211,6 +230,23 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             ? null
             : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
 
+    /// <summary>
+    /// A non-null budget to either a cleared (blank) or set value, or the
+    /// sentence saying why neither. Called only once the caller already knows
+    /// <paramref name="budget"/> is not null - null means something different
+    /// on create and on patch, so that distinction is made by the caller.
+    /// </summary>
+    private static (int? Value, string? Error) ParseBudget(string budget)
+    {
+        var trimmed = budget.Trim();
+        if (trimmed.Length == 0) return (null, null);
+
+        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
+            return (parsed, null);
+
+        return (null, $"a budget is a whole number of one or more, in millions of tokens - not \"{trimmed}\"");
+    }
+
     // ---- Reading back ----
 
     private async Task<PlaybookDto> LoadDtoAsync(int id, CancellationToken ct)
@@ -234,5 +270,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.Prompt,
         p.Model,
         p.Effort,
+        p.Budget,
         p.UpdatedAt);
 }
