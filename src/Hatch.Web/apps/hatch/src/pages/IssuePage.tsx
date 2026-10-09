@@ -677,15 +677,6 @@ export function IssuePage() {
         </div>
       </Card>
 
-      <Dependencies
-        issue={issue}
-        board={board}
-        onAdd={(dependsOnKey) => saveDependency(() => addDependency(key, { dependsOnKey }))}
-        onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
-      />
-
-      <Description issue={issue} onSave={(description) => save({ description })} />
-
       {/* Drawn where something may be filed under this issue, and where
           something already is. The second arm is not redundant: a retype does
           not re-check what already hangs below (StageEditAsync), so an epic
@@ -697,7 +688,11 @@ export function IssuePage() {
           settled on the first paint instead of rearranging itself under the
           reader a moment later. A task's meter, and an epic nobody has put
           anything under, could read 0% or 100% and nothing else - which says
-          less than the status band already above it. */}
+          less than the status band already above it.
+
+          It sits above the dependency chain and the description: an issue's
+          children are the work, so "what is this made of" is read before
+          "what is it waiting on". */}
       {(filings.length > 0 || issue.childKeys.length > 0) && (
         <Progress
           rollup={rollup}
@@ -712,6 +707,15 @@ export function IssuePage() {
           onFiled={() => void load()}
         />
       )}
+
+      <Dependencies
+        issue={issue}
+        board={board}
+        onAdd={(dependsOnKey) => saveDependency(() => addDependency(key, { dependsOnKey }))}
+        onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
+      />
+
+      <Description issue={issue} onSave={(description) => save({ description })} />
 
       <Comments
         issueKey={key}
