@@ -39,6 +39,17 @@ export const boardColumns = (statuses: Status[]): Status[] => statuses.filter((s
 export const isSettled = (status: Status | undefined): boolean =>
   status ? status.isTerminal || status.isDeferred : false;
 
+/**
+ * Whether a question on this issue has stopped being something a person
+ * owes an answer to: true once the issue has shipped, in a terminal
+ * column.
+ *
+ * Deliberately narrower than isSettled - a deferred issue is parked, not
+ * done, and a question on it still asks.
+ */
+export const isObviated = (status: Status | undefined): boolean =>
+  status ? status.isTerminal : false;
+
 /** The board's columns, and the shelf beside them - the two-part list every
     status bar and status picker draws: the lanes in board order, then the
     deferred columns set apart. */

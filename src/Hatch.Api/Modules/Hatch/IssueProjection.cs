@@ -168,7 +168,10 @@ public static class IssueProjection
                 PriorityLevels.Name(effective),
                 PriorityLevels.Name(issue.Priority),
                 effectiveFrom,
-                issue.WipLimit);
+                issue.WipLimit,
+                issue.StalledAt,
+                issue.StalledWhy,
+                issue.Held);
         });
     }
 

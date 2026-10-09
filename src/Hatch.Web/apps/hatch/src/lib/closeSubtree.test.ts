@@ -34,6 +34,9 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   priorityOwn: 'normal',
   priorityFrom: null,
   express: false,
+  stalledAt: null,
+  stalledWhy: null,
+  held: false,
 });
 
 const keys = (cards: IssueCard[]) => cards.map((c) => c.key);

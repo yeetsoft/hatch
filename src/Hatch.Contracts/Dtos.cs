@@ -267,7 +267,10 @@ public record IssueCardDto(
     bool Express = false,
     string Priority = PriorityLevels.NormalName,
     string PriorityOwn = PriorityLevels.NormalName,
-    string? PriorityFrom = null);
+    string? PriorityFrom = null,
+    DateTimeOffset? StalledAt = null,
+    string? StalledWhy = null,
+    bool Held = false);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -404,7 +407,10 @@ public record IssueDto(
     string Priority = PriorityLevels.NormalName,
     string PriorityOwn = PriorityLevels.NormalName,
     string? PriorityFrom = null,
-    int? WipLimit = null);
+    int? WipLimit = null,
+    DateTimeOffset? StalledAt = null,
+    string? StalledWhy = null,
+    bool Held = false);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
