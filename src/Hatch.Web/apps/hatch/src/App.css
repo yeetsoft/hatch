@@ -1173,6 +1173,27 @@
   }
 }
 
+/* ---- Moving a ticket between projects ----
+
+   The descendant-choice fieldset in MoveProjectDialog - two radio rows
+   sharing one name, each already a full sentence, so no legend repeats what
+   the rows already say. */
+
+.hatch-move-descendants {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-move-descendants label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
 /* ---- Dates ----
 
    The two chips a card can carry: `Ready`, drawn only while an issue is still
@@ -1633,6 +1654,23 @@ button.hatch-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1-5);
+}
+
+/* Quieter than a primary button and louder than a link, the same reasoning
+   AssigneeField's own hatch-assignee-mine follows - moving projects is a
+   deliberate press, not an accident. */
+.hatch-issue-move-project {
+  padding: var(--sp-1) var(--sp-2-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+
+.hatch-issue-move-project:hover {
+  border-color: var(--line-strong);
 }
 
 /* ---- The status band ----
