@@ -10,6 +10,7 @@ import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
 import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
+import { askToDelete } from '../lib/deletion';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
 import { projectLogoUrl } from '../lib/projectLogo';
@@ -37,6 +38,9 @@ interface Asked {
       until it answers. */
   moving?: boolean;
   moveError?: string;
+  /** A delete is out for this card: its button is busy until it answers. */
+  deleting?: boolean;
+  deleteError?: string;
   /** The same, for express. */
   express?: boolean;
   expressError?: string;
@@ -79,7 +83,9 @@ interface Asked {
  * `StatusSteps`). A move goes through `onMove` rather than growing its own
  * request here, so it is the board's one move path - the same one a drag
  * takes - that earns the drop's Undo chicklet and its offer to close what is
- * under a card sent into a terminal column or onto the shelf.
+ * under a card sent into a terminal column or onto the shelf. The delete goes
+ * up through `onDelete` for the same reason: the board owns closing the peek
+ * and repainting, so the dialog only asks, and shows a refusal.
  */
 export function IssuePeek({
   card,
@@ -89,6 +95,7 @@ export function IssuePeek({
   project,
   onExpedited,
   onMove,
+  onDelete,
   onClose,
 }: {
   card: IssueCard | null;
@@ -111,6 +118,9 @@ export function IssuePeek({
   /** Move the card to another column, the same path a drag takes. Rejects with
       the server's own sentence on a refusal. */
   onMove: (key: string, statusId: number) => Promise<void>;
+  /** Delete the card. The board closes the peek and reloads on success; rejects
+      with the server's own sentence on a refusal. */
+  onDelete: (key: string) => Promise<void>;
   onClose: () => void;
 }) {
   const key = card?.key ?? null;
@@ -217,6 +227,17 @@ export function IssuePeek({
     [key, apply, onMove],
   );
 
+  /* Asks first, with the same native confirm and the same sentence as the
+     issue page. On success the board has already closed the peek, so there is
+     nothing to apply; `apply` is key-guarded in any case. */
+  const remove = useCallback(async () => {
+    if (!key) return;
+    apply(key, { deleting: true, deleteError: undefined });
+    const done = await askToDelete(key, (q) => confirm(q), onDelete);
+    if (done.outcome === 'cancelled') apply(key, { deleting: false });
+    else if (done.outcome === 'refused') apply(key, { deleting: false, deleteError: done.error });
+  }, [key, apply, onDelete]);
+
   /* Carried past a column marked Express skips, with no session, or no
      longer. Its own endpoint - the write is closed to an API key - and
      otherwise exactly `expedite`. */
@@ -269,6 +290,10 @@ export function IssuePeek({
       }
       footer={
         <div className="hatch-form-actions">
+          {/* Leftmost, away from the primary "Open the issue". */}
+          <Button variant="danger" loading={asked.deleting ?? false} onClick={() => void remove()}>
+            Delete
+          </Button>
           <Button onClick={onClose}>Close</Button>
           {/* An anchor rather than a <Link>: target="_blank" opens a second
               document, which React Router does not route. appHref is what keeps
@@ -309,6 +334,7 @@ export function IssuePeek({
               tab, and the card is meant to still be here when they come back. */}
           <PullRequestLink url={asked.pullRequestUrl ?? null} />
           {asked.moveError && <span className="text-danger">{asked.moveError}</span>}
+          {asked.deleteError && <span className="text-danger">{asked.deleteError}</span>}
         </div>
 
         <p className="hatch-peek-title">{card.title}</p>

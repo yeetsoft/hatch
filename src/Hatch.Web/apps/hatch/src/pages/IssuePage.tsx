@@ -32,6 +32,7 @@ import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
+import { IssueFacts } from '../components/IssueFacts';
 import { IssuePicker } from '../components/IssuePicker';
 import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
@@ -50,6 +51,7 @@ import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
+import { deleteQuestion } from '../lib/deletion';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
@@ -110,6 +112,10 @@ export function IssuePage() {
   const [priorityBusy, setPriorityBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
+  /* Whether the primary-info card shows its form or its read mode - deliberately
+     not persisted (HA-334 §6.7: a speed bump that only works on the first page
+     load is not a speed bump), so every fresh load opens read-only. */
+  const [editingPrimary, setEditingPrimary] = useState(false);
 
   const load = useCallback(async () => {
     /* The fifth read, sent with the other four and awaited apart from them.
@@ -442,7 +448,7 @@ export function IssuePage() {
   };
 
   async function remove() {
-    if (!confirm(`Delete ${key}? Its comments and its history go with it.`)) return;
+    if (!confirm(deleteQuestion(key))) return;
     try {
       await deleteIssue(key);
       void navigate('/');
@@ -498,6 +504,16 @@ export function IssuePage() {
       />
 
       <Card>
+        <div className="hatch-section-head">
+          <h2 className="hatch-section-title">Details</h2>
+          <div className="hatch-section-actions">
+            <Button onClick={() => setEditingPrimary(!editingPrimary)}>{editingPrimary ? 'Done' : 'Edit'}</Button>
+          </div>
+        </div>
+
+        {!editingPrimary && <IssueFacts issue={issue} project={project} stopped={stopped} />}
+
+        {editingPrimary && (
         <div className="hatch-issue-controls">
           <Field label="Type">
             <select value={issue.type} onChange={(e) => void save({ type: e.target.value as IssueType })}>
@@ -649,16 +665,8 @@ export function IssuePage() {
             <WipLimitField limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
           )}
         </div>
+        )}
       </Card>
-
-      <Dependencies
-        issue={issue}
-        board={board}
-        onAdd={(dependsOnKey) => saveDependency(() => addDependency(key, { dependsOnKey }))}
-        onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
-      />
-
-      <Description issue={issue} onSave={(description) => save({ description })} />
 
       {/* Drawn where something may be filed under this issue, and where
           something already is. The second arm is not redundant: a retype does
@@ -671,7 +679,11 @@ export function IssuePage() {
           settled on the first paint instead of rearranging itself under the
           reader a moment later. A task's meter, and an epic nobody has put
           anything under, could read 0% or 100% and nothing else - which says
-          less than the status band already above it. */}
+          less than the status band already above it.
+
+          It sits above the dependency chain and the description: an issue's
+          children are the work, so "what is this made of" is read before
+          "what is it waiting on". */}
       {(filings.length > 0 || issue.childKeys.length > 0) && (
         <Progress
           rollup={rollup}
@@ -686,6 +698,15 @@ export function IssuePage() {
           onFiled={() => void load()}
         />
       )}
+
+      <Dependencies
+        issue={issue}
+        board={board}
+        onAdd={(dependsOnKey) => saveDependency(() => addDependency(key, { dependsOnKey }))}
+        onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
+      />
+
+      <Description issue={issue} onSave={(description) => save({ description })} />
 
       <Comments
         issueKey={key}

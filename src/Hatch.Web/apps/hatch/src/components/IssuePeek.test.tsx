@@ -62,6 +62,7 @@ const render = () =>
         directory={null}
         onExpedited={noop}
         onMove={() => Promise.resolve()}
+        onDelete={() => Promise.resolve()}
         onClose={noop}
       />
     </MemoryRouter>,
@@ -79,6 +80,19 @@ describe('IssuePeek', () => {
 
     expect(html).toContain('New tab');
     expect(html).toContain('Open the issue');
+  });
+
+  it('draws a danger Delete button in the footer', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render();
+
+    expect(html).toContain('hatch-btn--danger');
+    expect(html).toContain('>Delete<');
   });
 
   it('drops "New tab" and keeps "Open the issue" when standalone', () => {
