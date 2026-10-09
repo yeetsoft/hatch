@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { landingFocus, statusChoices } from './columns';
+import { isObviated, landingFocus, statusChoices } from './columns';
 import type { Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -57,5 +57,19 @@ describe('landingFocus', () => {
 
   it('has nowhere to land on a board with one lane', () => {
     expect(landingFocus([INBOX], INBOX.id)).toBeNull();
+  });
+});
+
+describe('isObviated', () => {
+  it('is true in a terminal column', () => {
+    expect(isObviated(DONE)).toBe(true);
+  });
+
+  it('is false in a deferred column', () => {
+    expect(isObviated(SHELVED)).toBe(false);
+  });
+
+  it('is false in an ordinary column', () => {
+    expect(isObviated(TODO)).toBe(false);
   });
 });

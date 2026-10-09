@@ -52,7 +52,7 @@ import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
-import { isSettled } from '../lib/columns';
+import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { deleteQuestion } from '../lib/deletion';
 import { describe } from '../lib/events';
@@ -429,6 +429,12 @@ export function IssuePage() {
   // somebody is still waiting on the thing.
   const stopped = isSettled(board.statuses.find((s) => s.id === issue.statusId));
 
+  // Whether an open question on this issue is a record rather than a request:
+  // true once the ticket has shipped, in a terminal column. Narrower than
+  // `stopped` on purpose - a deferred ticket is parked, not done, and a
+  // question on it still holds the ticket up.
+  const obviated = isObviated(board.statuses.find((s) => s.id === issue.statusId));
+
   /* A const rather than a declaration, so it is written after the guards above
      and `issue` and `board` are the narrowed ones. */
   const moveStatus = async (statusId: number) => {
@@ -483,7 +489,7 @@ export function IssuePage() {
           until this card is empty the ticket does not move. And deliberately
           not an IssueSection: collapsing this would let a reader hide the
           thing that's stopping the ticket. */}
-      <Waiting issueKey={key} comments={comments} onAnswered={() => void load()} onError={setError} />
+      <Waiting issueKey={key} comments={comments} obviated={obviated} onAnswered={() => void load()} onError={setError} />
 
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing
@@ -1323,11 +1329,13 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
 function Waiting({
   issueKey,
   comments,
+  obviated,
   onAnswered,
   onError,
 }: {
   issueKey: string;
   comments: Comment[];
+  obviated: boolean;
   onAnswered: () => void;
   onError: (message: string) => void;
 }) {
@@ -1335,12 +1343,14 @@ function Waiting({
   if (open.length === 0) return null;
 
   return (
-    <Card as="section" className="hatch-waiting">
+    <Card as="section" className={obviated ? undefined : 'hatch-waiting'}>
       <h2 className="hatch-section-title">
-        Waiting on you ({open.length})
+        {obviated ? `Asked (${open.length})` : `Waiting on you (${open.length})`}
       </h2>
       <p className="text-muted">
-        {issueKey} will not be picked up again until these are answered.
+        {obviated
+          ? `${issueKey} shipped with these open. An answer is welcome, not needed.`
+          : `${issueKey} will not be picked up again until these are answered.`}
       </p>
 
       <ul className="hatch-question-list">
