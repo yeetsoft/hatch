@@ -28,6 +28,7 @@ import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
 import { navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
+import { usePullToRefresh } from './lib/usePullToRefresh';
 
 export function App() {
   return (
@@ -42,6 +43,7 @@ export function App() {
 function AppShell() {
   const { me, isAdmin } = useMe();
   const isPhone = usePhone();
+  usePullToRefresh();
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
