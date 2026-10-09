@@ -307,6 +307,138 @@ public sealed class LifecycleTests
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// HA-337: the mirror of <see cref="A_usage_limit_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one"/> -
+    /// a hard limit takes the same push-then-one-comment path, with one
+    /// addition: a continuation task is filed under the ticket before the
+    /// comment is written, and the comment names it.
+    /// </summary>
+    [Fact]
+    public async Task A_hard_limit_pushes_the_branch_files_a_continuation_task_and_writes_one_comment()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", issue: Fixtures.Issue("AER-1", type: "story"))
+            with
+            { Playbook = Fixtures.Playbook(budget: 5) });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Workspace.DiffStatFor[h.Root] = "file.cs | 2 ++";
+        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            // 7,000,000 + 500,000 = 7,500,000 tokens, past the hard limit a
+            // 5M-token budget carries (budget * 3 / 2) - the session is killed
+            // on the spot, with no result event of its own.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        // Pushed before Leave finds the tree, so what Leave sees is already
+        // clean; the diff that goes into the continuation task is read last,
+        // once the branch pushed is known.
+        Assert.Equal(
+            [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}", $"diff {h.Root}"],
+            h.Workspace.Calls);
+
+        var filed = Assert.Single(h.Wire.To("POST", "/api/hatch/issues")).Read<IssueCreateRequest>();
+        Assert.Equal("task", filed.Type);
+        Assert.Equal("AER-1", filed.ParentKey);
+        Assert.Equal("Continue: A ticket", filed.Title);
+        Assert.Contains("aer-1-thing", filed.Description, StringComparison.Ordinal);
+        Assert.Contains("abc1234", filed.Description, StringComparison.Ordinal);
+        Assert.Contains("file.cs | 2 ++", filed.Description, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", filed.Description, StringComparison.Ordinal);
+
+        // The run also crosses the ordinary (1x) budget on its way to the hard
+        // limit, so the soft clamp's own comment lands too - untouched by this
+        // task, and not the one under test here.
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
+        Assert.Contains("7.5M tokens", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("Filed AER-2 to continue: Continue: A ticket", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-337's mirror of <see cref="A_usage_limit_with_nothing_to_push_still_writes_the_one_comment"/>.</summary>
+    [Fact]
+    public async Task A_hard_limit_with_nothing_to_push_still_writes_the_one_comment()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", issue: Fixtures.Issue("AER-1", type: "story"))
+            with
+            { Playbook = Fixtures.Playbook(budget: 5) });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
+        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
+        Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("Filed AER-2 to continue", comment.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>A task's parent is never a task - HA-337 files the continuation under the task's own parent.</summary>
+    [Fact]
+    public async Task A_hard_limited_task_files_its_continuation_under_its_own_parent()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", issue: Fixtures.Issue("AER-1", type: "task", parentKey: "AER-0"))
+            with
+            { Playbook = Fixtures.Playbook(budget: 5) });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-0"));
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var filed = Assert.Single(h.Wire.To("POST", "/api/hatch/issues")).Read<IssueCreateRequest>();
+        Assert.Equal("AER-0", filed.ParentKey);
+    }
+
+    /// <summary>A hard-limited ticket with no parent to file under names that on the ticket instead of filing anything.</summary>
+    [Fact]
+    public async Task A_hard_limited_task_with_no_parent_files_nothing_and_says_so()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review", issue: Fixtures.Issue("AER-1", type: "task", parentKey: null))
+            with
+            { Playbook = Fixtures.Playbook(budget: 5) });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues"));
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
+        Assert.Contains("could not be filed", comment.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_recorded_pull_request_is_synced_and_none_is_not()
     {

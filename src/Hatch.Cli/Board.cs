@@ -220,6 +220,10 @@ public sealed class Board(HatchClient client)
     public Task<CommentDto?> CommentAsync(string key, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>($"/api/hatch/issues/{key}/comments", new CommentCreateRequest(body), ct);
 
+    /// <summary>A new issue - the runner's own filer, for the one case nothing short of it covers: a hard-limited session that is gone before it can file anything itself.</summary>
+    public Task<IssueDto?> CreateIssueAsync(IssueCreateRequest request, CancellationToken ct) =>
+        Client.PostAsync<IssueDto>("/api/hatch/issues", request, ct);
+
     public Task<CommentDto?> AskAsync(
         string key, string body, IReadOnlyList<QuestionOptionDto> options, CancellationToken ct) =>
         Client.PostAsync<CommentDto>(

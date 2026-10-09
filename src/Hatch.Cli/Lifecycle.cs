@@ -14,10 +14,23 @@ public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, str
 /// </summary>
 public sealed record PreemptionInfo(string EmergencyKey, string EmergencyTitle, string? SessionId);
 
+/// <summary>
+/// What a streamed session said on its way out, when it ended because it
+/// crossed the runner's own hard limit - everything
+/// <see cref="Lifecycle.LeaveAsync"/> needs to push what it left, file the
+/// continuation task, and write the one comment about both.
+/// </summary>
+public sealed record HardLimitInfo(long Tokens, int? Requests, string? SessionId);
+
 /// <summary>What <see cref="Lifecycle.LeaveAsync"/> learned on its way out.</summary>
 /// <param name="HasPullRequest">Whether a pull request is recorded on the issue.</param>
 /// <param name="BranchOnOrigin">Whether any checkout found a branch on origin for the issue.</param>
-public sealed record LeaveOutcome(bool HasPullRequest, bool BranchOnOrigin);
+/// <param name="FiledKey">
+/// The continuation task's key, when a hard limit filed one - <see cref="GoToWork"/>
+/// splices it into the report's own <c>Filed</c> list, since nothing re-reads the
+/// board afterward to pick it up on its own.
+/// </param>
+public sealed record LeaveOutcome(bool HasPullRequest, bool BranchOnOrigin, string? FiledKey = null);
 
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
@@ -120,9 +133,15 @@ public sealed class Lifecycle(Runtime runtime)
     /// takes, for the same reason: the session did not get to say whether what
     /// it left is fit to publish, so the runner does not either.
     /// </param>
+    /// <param name="hardLimit">
+    /// The session was stopped for crossing the runner's own hard limit - the
+    /// same push-then-one-comment path a usage limit and a preemption take, with
+    /// one addition: a continuation task is filed under the ticket first, and the
+    /// comment names it.
+    /// </param>
     public async Task<LeaveOutcome> LeaveAsync(
         WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct,
-        UsageLimitInfo? limit = null, PreemptionInfo? preempted = null)
+        UsageLimitInfo? limit = null, PreemptionInfo? preempted = null, HardLimitInfo? hardLimit = null)
     {
         var key = work.Issue.Key;
         var lines = new List<string>();
@@ -136,7 +155,7 @@ public sealed class Lifecycle(Runtime runtime)
             }
 
             var pushed = new List<(string Path, LimitPushed Result)>();
-            if (limit is not null || preempted is not null)
+            if (limit is not null || preempted is not null || hardLimit is not null)
                 foreach (var (path, baseBranch) in chosen.Resets)
                     pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(key, work.Issue.Title)));
 
@@ -166,6 +185,13 @@ public sealed class Lifecycle(Runtime runtime)
             {
                 await runtime.Board.CommentAsync(key, PreemptedBody(preempted, chosen, pushed, lines), ct);
                 return new LeaveOutcome(pullRequest, false);
+            }
+
+            if (hardLimit is not null)
+            {
+                var filed = await FileContinuationAsync(key, work, chosen, pushed, hardLimit, ct);
+                await runtime.Board.CommentAsync(key, HardLimitBody(hardLimit, chosen, pushed, lines, filed), ct);
+                return new LeaveOutcome(pullRequest, false, filed?.Key);
             }
 
             if (lines.Count == 0) return new LeaveOutcome(pullRequest, branchOnOrigin);
@@ -215,6 +241,94 @@ public sealed class Lifecycle(Runtime runtime)
         var body = $"This runner was preempted by [{preempted.EmergencyKey}]({origin}/apps/hatch/issues/{preempted.EmergencyKey}) - {preempted.EmergencyTitle}.";
 
         return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, preempted.SessionId);
+    }
+
+    /// <summary>
+    /// The task the next session picks up from, filed under the ticket's own
+    /// parent when the ticket is itself a task - a task's parent is never a
+    /// task, per <c>docs/hatch.md</c>'s own rule - and under the ticket
+    /// otherwise. Null when there is no parent to file under, or when the
+    /// board refused the issue: either way the branch and sha the comment
+    /// names are still where to pick this up by hand.
+    /// </summary>
+    private async Task<IssueDto?> FileContinuationAsync(
+        string key, WorkDto work, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed,
+        HardLimitInfo hardLimit, CancellationToken ct)
+    {
+        var parentKey = work.Issue.Type == "task" ? work.Issue.ParentKey : key;
+        if (parentKey is null)
+        {
+            runtime.Say.Complain($"hatch: {key} - has no parent to file its continuation under; nothing was filed");
+            return null;
+        }
+
+        var body = ContinuationBody(key, chosen, pushed, hardLimit);
+
+        try
+        {
+            return await runtime.Board.CreateIssueAsync(
+                new IssueCreateRequest(work.Issue.ProjectId, "task", $"Continue: {work.Issue.Title}", body, parentKey, null, null), ct);
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            runtime.Say.Complain($"hatch: {key} - its continuation task could not be filed - {e.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The continuation task's own body: the branch and sha the hard-limited
+    /// session's work was pushed to, what it changes against the trunk, and
+    /// the session to rejoin.
+    /// </summary>
+    private string ContinuationBody(
+        string key, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, HardLimitInfo hardLimit)
+    {
+        var origin = runtime.Board.Client.Origin;
+        var body = $"Continuing [{key}]({origin}/apps/hatch/issues/{key}) past the runner's hard limit, at {Format.Compact(hardLimit.Tokens)} tokens.";
+
+        foreach (var (path, result) in pushed)
+        {
+            if (result.Branch is not { Length: > 0 } branch) continue;
+
+            var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
+            var baseBranch = chosen.Resets.FirstOrDefault(r => r.Path == path).BaseBranch;
+            var stat = runtime.Workspace(path, baseBranch).DiffStat(branch);
+
+            body += $"\n\nBranch: `{where}{branch}`" + (result.Sha is { Length: > 0 } sha ? $" at `{sha}`" : "");
+            body += "\n\n    " + (stat is { Length: > 0 } ? stat.Replace("\n", "\n    ") : "nothing to diff");
+        }
+
+        body += hardLimit.SessionId is { Length: > 0 } session
+            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
+            : "\n\nThere is no session to resume: the run ended before it said what its id was.";
+
+        return body;
+    }
+
+    /// <summary>
+    /// The one comment a hard limit writes: that it fired, at how many tokens
+    /// and requests, the branch and sha that were pushed (or why not, per
+    /// checkout), and the task just filed to continue (or that it could not
+    /// be). Modelled on <see cref="UsageLimitBody"/>/<see cref="PreemptedBody"/>
+    /// almost line for line, for the same reason those two share: the session
+    /// did not get to say whether what it left is fit to publish, so the
+    /// runner does not either.
+    /// </summary>
+    private static string HardLimitBody(
+        HardLimitInfo hardLimit, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed,
+        IReadOnlyList<string> tidyLines, IssueDto? filed)
+    {
+        var body = $"This runner hit its hard limit, at {Format.Compact(hardLimit.Tokens)} tokens"
+            + (hardLimit.Requests is { } requests ? $", {requests} requests" : "") + ".";
+
+        body += PushedTidyAndResumeBody(chosen, pushed, tidyLines, hardLimit.SessionId);
+
+        body += filed is not null
+            ? $"\n\nFiled {filed.Key} to continue: {filed.Title}"
+            : "\n\nIts continuation could not be filed - the branch and sha above are where to pick this up by hand.";
+
+        return body;
     }
 
     /// <summary>
