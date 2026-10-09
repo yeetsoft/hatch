@@ -55,6 +55,381 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// HA-245: <see cref="IncrementReport.EndedInReview"/> is the board's own
+    /// read of whether the ticket is sitting in the review column right now,
+    /// taken in the same call <see cref="IncrementReport.Ended"/> is - not the
+    /// playbook's stale target.
+    /// </summary>
+    [Fact]
+    public async Task EndedInReview_is_set_from_the_boards_own_read_after_the_session()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", inReview: true));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.EndedInReview);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_posted_row_carries_requests_peak_context_and_prompt_chars()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1");
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20, cacheCreate: 5, cacheRead: 5));
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 100, output: 1, cacheCreate: 50, cacheRead: 50));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(2, billed.Requests);
+        Assert.Equal(200, billed.PeakContextTokens);
+        Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
+
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-222: the clamp ----
+
+    [Fact]
+    public async Task Crossing_the_playbooks_budget_writes_the_clamp_file_once()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 1) };
+        string? clamp = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+
+            // 600,000 + 500,000 = 1,100,000 tokens, past the one-million budget.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 600_000, output: 500_000));
+            Assert.True(File.Exists(clamp));
+            var fact = System.Text.Json.JsonDocument.Parse(File.ReadAllText(clamp)).RootElement;
+            Assert.Equal(1_100_000, fact.GetProperty("tokens").GetInt64());
+            Assert.Equal(1, fact.GetProperty("requests").GetInt64());
+
+            // A further line past the cross does not write it again.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 10, output: 10));
+            Assert.Equal(1_100_000, System.Text.Json.JsonDocument.Parse(File.ReadAllText(clamp)).RootElement.GetProperty("tokens").GetInt64());
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(clamp);
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-223: the budget file, for a --quiet session's own hook to read ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_playbook_with_a_budget_gets_the_budget_file_before_the_quiet_streamed_split(bool quiet)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 2) };
+        string? budgetPath = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            budgetPath = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "budget");
+            Assert.True(File.Exists(budgetPath));
+            Assert.Equal("2000000", File.ReadAllText(budgetPath));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet, claim, default);
+
+        Assert.NotNull(budgetPath);
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_playbook_with_no_budget_never_gets_a_budget_file()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: null) };
+        string? budgetPath = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            budgetPath = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "budget");
+            Assert.False(File.Exists(budgetPath));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(budgetPath);
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-222: the clamp ----
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(10)]
+    public async Task A_run_that_never_reaches_its_budget_or_has_none_never_writes_the_clamp_file(int? budget)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: budget) };
+        string? clamp = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20));
+            Assert.False(File.Exists(clamp));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(clamp);
+        Assert.False(File.Exists(clamp));
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-335: the hard limit ----
+
+    [Fact]
+    public async Task Crossing_the_hard_limit_stops_the_streamed_session_and_reports_it()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 5) };
+        CancellationToken ct = default;
+
+        h.Sessions.Behaviour = (_, onLine, sessionCt) =>
+        {
+            ct = sessionCt;
+
+            // 7,000,000 + 500,000 = 7,500,000 tokens, exactly the hard limit a
+            // 5M-token budget carries (budget * 3 / 2).
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            Assert.True(ct.IsCancellationRequested);
+            Assert.Contains(h.Say.Said, l => l.Contains("the hard limit was hit at 7.5M tokens; stopping the session", StringComparison.Ordinal));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.HardLimited);
+        Assert.Equal(7_500_000, report.HardLimitedAtTokens);
+        Assert.Equal(1, report.HardLimitedAtRequests);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_hard_stop_fires_once_not_on_every_further_line_past_the_cross()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 5) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            Assert.Equal(1, h.Say.Said.Count(l => l.Contains("the hard limit was hit", StringComparison.Ordinal)));
+
+            // A further line past the cross neither fires the line again nor
+            // moves the recorded fact.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 10, output: 10));
+            Assert.Equal(1, h.Say.Said.Count(l => l.Contains("the hard limit was hit", StringComparison.Ordinal)));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Equal(7_500_000, report.HardLimitedAtTokens);
+        await claim.ReleaseAsync();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(10)]
+    public async Task A_run_that_never_reaches_15x_its_budget_or_has_none_never_sets_HardLimited(int? budget)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: budget) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.HardLimited);
+        Assert.Null(report.HardLimitedAtTokens);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public void HardLimited_reads_as_its_own_sentence_whether_or_not_anything_was_filed()
+    {
+        var withoutFiling = new IncrementReport { Key = "AER-1", From = "In Progress", To = "In Review", HardLimitedAtTokens = 7_500_000 };
+        Assert.Equal("the hard limit was hit at 7.5M tokens, its continuation could not be filed", withoutFiling.Outcome);
+
+        var withFiling = new IncrementReport
+        {
+            Key = "AER-1", From = "In Progress", To = "In Review", HardLimitedAtTokens = 7_500_000, Filed = ["AER-2"],
+        };
+        Assert.Equal("the hard limit was hit at 7.5M tokens, filed 1 under it", withFiling.Outcome);
+    }
+
+    [Fact]
+    public async Task A_hard_limited_report_does_not_enter_the_stall_flagging_path_even_on_a_second_stall_in_a_row()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        var work = Fixtures.Work("AER-1", letGo: 1) with { Playbook = Fixtures.Playbook(budget: 5) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, children: []));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Stalled);
+        Assert.True(report.HardLimited);
+
+        // The clamp's own comment still goes up - this task leaves that alone -
+        // but the stall-flagging path that a second stall in a row would
+        // otherwise take does not: no question, and no comment about the
+        // ticket being left where it was found.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/questions"));
+        Assert.DoesNotContain(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"),
+            c => c.Body.Contains("in a row to leave this ticket here", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_quiet_run_posts_null_requests_and_peak_context_but_a_known_prompt_length()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1");
+
+        h.Sessions.Behaviour = (_, _, _) =>
+            Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: true, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Null(billed.Requests);
+        Assert.Null(billed.PeakContextTokens);
+        Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-116: a minute of Hatch not answering costs nothing. Two blips on the
     /// post-session read - a 503 and a 502 - are ridden out inside
     /// <see cref="HatchClient.Send"/> itself, so the increment never even sees
@@ -207,6 +582,81 @@ public sealed class IncrementTests
 
         // Neither a stall comment nor a question - filing is progress, and
         // nothing here needs a person's eye.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-224: a session that writes <see cref="SessionHooks.Clamp"/> - whichever
+    /// hook or callback did it - is read back onto the report once the session
+    /// ends, the ticket is told about it in one comment, and the outcome reads
+    /// as clamped rather than a plain "filed N under it".
+    /// </summary>
+    [Fact]
+    public async Task A_clamped_session_that_filed_work_but_did_not_move_reports_clamped_and_comments_once()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            var clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+            File.WriteAllText(clamp, """{"tokens":820000,"requests":37}""");
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Clamped);
+        Assert.Equal(820_000, report.ClampedAtTokens);
+        Assert.Equal(37, report.ClampedAtRequests);
+        Assert.Equal(["AER-2", "AER-3"], report.Filed);
+        Assert.Equal("clamped at 820k tokens, filed 2 under it", report.Outcome);
+        Assert.False(report.Stalled);
+
+        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
+        Assert.Single(written);
+        var body = written[0].Read<CommentCreateRequest>().Body;
+        Assert.Contains("820k", body, StringComparison.Ordinal);
+        Assert.Contains("37", body, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-224, HA-127's own regression anchor: filed work with no clamp still
+    /// reads exactly as it did before the clamp existed.
+    /// </summary>
+    [Fact]
+    public async Task A_ticket_that_filed_work_without_a_clamp_reads_as_it_always_did()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.Clamped);
+        Assert.Equal(["AER-2", "AER-3"], report.Filed);
+        Assert.Equal("filed 2 under it", report.Outcome);
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
@@ -759,10 +1209,15 @@ public sealed class IncrementTests
         Assert.Equal(10, stepHook.GetProperty("timeout").GetInt32());
         Assert.Contains("inbox \"AER-1\" --hook post-tool-use --stamp ", stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
         Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "inbox.stamp"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "clamp.json"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "budget"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         var stop = hooks.GetProperty("Stop")[0].GetProperty("hooks")[0];
         Assert.Equal(10, stop.GetProperty("timeout").GetInt32());
-        Assert.EndsWith("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.EndsWith(
+            $"--clamp \"{Path.Combine(Path.GetDirectoryName(path)!, "clamp.json")}\" --budget \"{Path.Combine(Path.GetDirectoryName(path)!, "budget")}\"",
+            stop.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
@@ -1016,5 +1471,66 @@ public sealed class IncrementTests
         Assert.Equal("/opt/hatch/hatch", SessionHooks.Binary("/opt/hatch/hatch"));
         Assert.Equal("hatch", SessionHooks.Binary("/usr/share/dotnet/dotnet"));
         Assert.Equal("hatch", SessionHooks.Binary(null));
+    }
+
+    [Fact]
+    public void The_session_settings_carry_rtks_bash_hook_where_rtk_is_on_path()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hatch-rtk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var temp = Path.Combine(dir, "temp");
+        try
+        {
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            var rtk = SessionHooks.Rtk(null, dir);
+            Assert.Equal(Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk"), rtk);
+
+            using var hooks = SessionHooks.Write(temp, "AR-8", "hatch", rtk);
+            Assert.NotNull(hooks);
+
+            using var settings = System.Text.Json.JsonDocument.Parse(File.ReadAllText(hooks.Settings));
+            var pre = settings.RootElement.GetProperty("hooks").GetProperty("PreToolUse")[0];
+            Assert.Equal("Bash", pre.GetProperty("matcher").GetString());
+            Assert.Equal($"\"{rtk}\" hook claude", pre.GetProperty("hooks")[0].GetProperty("command").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_session_settings_are_unchanged_where_rtk_is_absent_or_off()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hatch-rtk-{Guid.NewGuid():N}");
+        var empty = Path.Combine(dir, "empty");
+        Directory.CreateDirectory(empty);
+        try
+        {
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            Assert.Null(SessionHooks.Rtk("off", dir));
+            Assert.Null(SessionHooks.Rtk(" OFF ", dir));
+            Assert.Null(SessionHooks.Rtk(null, empty));
+
+            using var without = SessionHooks.Write(dir, "AR-8", "hatch", rtk: null);
+            using var bare = SessionHooks.Write(dir, "AR-8", "hatch");
+            Assert.NotNull(without);
+            Assert.NotNull(bare);
+
+            var a = File.ReadAllText(without.Settings).Replace(without.Directory.Replace("\\", "\\\\"), "<dir>");
+            var b = File.ReadAllText(bare.Settings).Replace(bare.Directory.Replace("\\", "\\\\"), "<dir>");
+            Assert.DoesNotContain("PreToolUse", a);
+            Assert.Equal(a, b);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

@@ -1,0 +1,76 @@
+/* The three sizes are the fixed dimensions of an ornament - a 20px, 32px and
+   48px circle - and stay literal at their use site, the same license
+   tokens.css gives a 40px avatar. --t-meta (15px) is the one register
+   tokens.css names for this exact job ("set slightly above body where it
+   must read inside a fixed ornament - avatar initials"), so the middle size
+   is drawn from it rather than from its own literal; the other two scale
+   around it, also literal, for the same reason the box is.
+
+   The ground is the project's own colour (--mark-color, set inline by
+   ProjectMark.tsx) or --muted for a project that has not chosen one; the ink
+   on it is --mark-ink, computed the same way a status pill's is, or
+   --on-accent - the one token that is already white in light and dark in
+   dark, which is what reading against --muted in both themes happens to
+   need. */
+
+.hatch-project-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+}
+
+.hatch-project-mark--sm {
+  width: 20px;
+  height: 20px;
+}
+
+.hatch-project-mark--md {
+  width: 32px;
+  height: 32px;
+}
+
+.hatch-project-mark--lg {
+  width: 48px;
+  height: 48px;
+}
+
+.hatch-project-mark-letters {
+  overflow: hidden;
+  max-width: 100%;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hatch-project-mark--sm .hatch-project-mark-letters {
+  font-size: 8px;
+}
+
+.hatch-project-mark--md .hatch-project-mark-letters {
+  font-size: var(--t-meta);
+}
+
+.hatch-project-mark--lg .hatch-project-mark-letters {
+  font-size: 20px;
+}
+
+.hatch-project-mark-icon {
+  width: 55%;
+  height: 55%;
+}
+
+/* A logo is a photo, not a glyph: it covers the circle rather than being
+   padded to fit inside it, and it carries no ink of its own - the ring
+   around it is the only part that still answers to the project's colour. */
+.hatch-project-mark-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 2px var(--mark-color, var(--muted));
+}

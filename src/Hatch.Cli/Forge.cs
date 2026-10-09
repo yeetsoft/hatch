@@ -22,6 +22,14 @@ public sealed record BuildRead(string Verdict, IReadOnlyList<FailingCheck> Faili
 public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 
 /// <summary>
+/// What a forge answered about a pull request: the state, or why it could not
+/// say. The forge does not complain itself - the caller's dedupe does.
+/// </summary>
+/// <param name="State">One of <see cref="PullRequestStates"/>.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="State"/> was read.</param>
+public sealed record PullRequestAnswer(string? State, string? Why);
+
+/// <summary>
 /// Where a runner reads the build on a branch's tip from. A seam so a test can
 /// say what the build came to without a forge to ask.
 /// </summary>
@@ -35,6 +43,12 @@ public interface IForge
     /// where there is no log to give. See <see cref="GhForge.Excerpt"/>.
     /// </summary>
     Task<string?> LogAsync(FailingCheck check, CancellationToken ct);
+
+    /// <summary>
+    /// The pull request's own state - merged, open, or closed without merging.
+    /// The only read that tells a merge from a close: see <see cref="PullRequestStates"/>.
+    /// </summary>
+    Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct);
 }
 
 /// <summary>
@@ -110,6 +124,39 @@ public sealed class GhForge(
             return new ForgeAnswer(null, "gh answered with something that is not a build");
         }
     }
+
+    public async Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new PullRequestAnswer(null, "its repository is a local path, so there is no forge to read a pull request from");
+
+        // The url names the host, the owner and the number, so gh resolves the
+        // repository from it without --hostname - unlike gh api, which ignores
+        // the host in GH_REPO and always needs it.
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state"], ct);
+        if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
+
+        try
+        {
+            using var doc = JsonDocument.Parse(ran.Out);
+            var state = Text(doc.RootElement, "state");
+            return new PullRequestAnswer(ClassifyState(state), null);
+        }
+        catch (JsonException)
+        {
+            return new PullRequestAnswer(null, "gh answered with something that is not a pull request");
+        }
+    }
+
+    /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
+    public static string ClassifyState(string? state) => state?.ToUpperInvariant() switch
+    {
+        "MERGED" => PullRequestStates.Merged,
+        "OPEN" => PullRequestStates.Open,
+        "CLOSED" => PullRequestStates.Closed,
+        _ => PullRequestStates.Unknown,
+    };
 
     public async Task<string?> LogAsync(FailingCheck check, CancellationToken ct)
     {

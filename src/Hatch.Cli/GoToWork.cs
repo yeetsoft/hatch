@@ -11,6 +11,7 @@ public sealed class Tally
 {
     private readonly TimeProvider _clock;
     private readonly List<string> _moved;
+    private readonly List<string> _clamped;
     private readonly List<string> _stalled;
     private readonly List<string> _letGo;
     private readonly List<string> _interrupted;
@@ -28,6 +29,7 @@ public sealed class Tally
     {
         _clock = clock;
         _moved = [.. carried?.Moved ?? []];
+        _clamped = [.. carried?.Clamped ?? []];
         _stalled = [.. carried?.Stalled ?? []];
         _letGo = [.. carried?.LetGo ?? []];
         _interrupted = [.. carried?.Interrupted ?? []];
@@ -201,7 +203,8 @@ public sealed class Tally
         // done, though the ticket did not move, and so is a fix pushed to a
         // failing build - and so is work filed under the ticket, though it
         // stayed put.
-        if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
+        if (report.Clamped && report.Filed.Count > 0 && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
+        else if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
         else if (report.LetGo) _letGo.Add($"hatch:   let go   {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
@@ -250,6 +253,7 @@ public sealed class Tally
         Restarts = Restarts + 1,
         UntilAt = UntilAt,
         Moved = _moved,
+        Clamped = _clamped,
         Stalled = _stalled,
         LetGo = _letGo,
         Interrupted = _interrupted,
@@ -281,6 +285,7 @@ public sealed class Tally
         if (StopWhy is { Length: > 0 } why) say.Line($"hatch: {why}");
         say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{restarts}");
         say.Lines(_moved);
+        say.Lines(_clamped);
         say.Lines(_stalled);
         say.Lines(_letGo);
         say.Lines(_interrupted);
@@ -1421,7 +1426,19 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var preempted = report.Preempted
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
+                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
+
+                // Something happened - the ticket moved into review, or a
+                // conflict resolved, or a build fix pushed, on a branch judged
+                // by origin rather than the column - and nobody can find a
+                // pull request for it. Never also a stall: the two guards'
+                // conditions are mutually exclusive by construction.
+                if ((report.Moved || report.Resolved || report.FixPushed)
+                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                {
+                    releaseOutcome = await Unpublished.RefuseAsync(
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, ct);
+                }
             }
             finally
             {

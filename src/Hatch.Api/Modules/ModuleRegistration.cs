@@ -6,6 +6,7 @@ using Hatch.Api.Modules.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules;
 
@@ -23,7 +24,10 @@ public static class ModuleRegistration
     public static IServiceCollection AddAppModules(this IServiceCollection services, IConfiguration configuration)
     {
         // Platform config every app in the family shell can read - see AppsController.
-        services.Configure<AppsOptions>(configuration.GetSection(AppsOptions.SectionName));
+        services.AddOptions<AppsOptions>()
+            .Bind(configuration.GetSection(AppsOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AppsOptions>, AssetLinksValidation>();
 
         // One line per module - each module's own extension registers its context
         // and its services, so this list stays a table of contents.

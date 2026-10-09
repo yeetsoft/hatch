@@ -62,10 +62,12 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(MergeCheckRequest))]
 [JsonSerializable(typeof(BuildCheckRequest))]
 [JsonSerializable(typeof(TrunkBuildRequest))]
+[JsonSerializable(typeof(PullRequestMergedRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 
 // What a hook prints for the session that ran it.
 [JsonSerializable(typeof(PostToolUseOutput))]
 [JsonSerializable(typeof(StopBlock))]
+[JsonSerializable(typeof(ClampFact))]
 internal sealed partial class HatchJson : JsonSerializerContext;

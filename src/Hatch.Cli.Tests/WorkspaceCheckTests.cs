@@ -344,16 +344,19 @@ public sealed class WorkspaceCheckTests : RepoFixture
     }
 
     [Fact]
-    public void Leaving_reports_nothing_where_it_did_not_fetch()
+    public void Leaving_reports_whatever_the_local_remote_tracking_refs_say_fetched_or_not()
     {
         Publish("ha-31-thing", "x.txt", "x");
         var ws = Ws();
         ws.Prepare();
 
-        // No pull request, so no sync, so nothing here is known to be current.
-        Assert.Null(ws.Leave("HA-31", syncPullRequest: false).Found);
+        // No pull request, so no sync - but Check reads this tree's own
+        // remote-tracking refs, which Prepare's fetch already left current.
+        Assert.Equal(MergeVerdicts.Clean, ws.Leave("HA-31", syncPullRequest: false).Found!.Kind);
 
+        // A fetch that cannot reach origin leaves those refs exactly as they
+        // were - stale, perhaps, but still what this tree knows, not nothing.
         G(_work, "remote", "set-url", "origin", Path.Combine(_temp, "nowhere.git"));
-        Assert.Null(ws.Leave("HA-31", syncPullRequest: true).Found);
+        Assert.Equal(MergeVerdicts.Clean, ws.Leave("HA-31", syncPullRequest: true).Found!.Kind);
     }
 }

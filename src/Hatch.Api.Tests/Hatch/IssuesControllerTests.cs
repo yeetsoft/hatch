@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -654,6 +655,205 @@ public class IssuesControllerTests
 
         var kinds = (await h.EventsAsync("AER-1")).Select(e => e.Kind).ToList();
         Assert.Equal(3, kinds.Count(k => k != EfHatchIssueEvent.Created));
+    }
+
+    // ---- Moving between projects ----
+
+    [Fact]
+    public async Task AnUnknownTargetProject_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: 99999), default);
+
+        Assert.Contains("99999", Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString());
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task TheIssuesOwnProjectSentExplicitly_IsUnchanged()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        await h.Issues.PatchIssue("AER-1", Patch(projectId: h.ProjectId), default);
+
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task AKeyOrKeylessRunnerMovingAProject_Is403AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving an issue to another project is a person's call, not an agent's", obj.Value);
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task AMovingSetHoldingALiveClaim_Is409NamingItAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("task", "the subtask", parentKey: "AER-1");
+        await h.ClaimAsync("AER-2");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("AER-2", Reason(result.Result));
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+    }
+
+    [Fact]
+    public async Task AParentKeySentWithAMove_ResolvesAgainstTheTargetProject()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("epic", "the candidate parent", projectId: h.OtherProjectId);
+
+        var result = await h.Issues.PatchIssue(
+            "AER-1", Patch(projectId: h.OtherProjectId, parentKey: "OPS-1"), default);
+
+        Assert.DoesNotContain("is in another project", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task ALeafIssueMoved_GetsANewKeyInTheTargetAndTheOldKey404s()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.IsType<NotFoundResult>((await h.Issues.GetIssue("AER-1", default)).Result);
+
+        var events = await h.EventsAsync("OPS-1");
+        var projectChanged = Assert.Single(events.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        var payload = projectChanged.Payload!.Value;
+        Assert.Equal("AER-1", payload.GetProperty("from").GetString());
+        Assert.Equal("OPS-1", payload.GetProperty("to").GetString());
+        Assert.Equal(0, payload.GetProperty("descendants").GetInt32());
+    }
+
+    [Fact]
+    public async Task AStoryMovedWithDescendants_ReKeysEveryTaskAndDetachesFromItsOldEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the old epic");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        await h.CreateAsync("task", "task one", parentKey: "AER-2");
+        await h.CreateAsync("task", "task two", parentKey: "AER-2");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.Null(moved.ParentKey);
+
+        var taskOne = Value(await h.Issues.GetIssue("OPS-2", default));
+        var taskTwo = Value(await h.Issues.GetIssue("OPS-3", default));
+        Assert.Equal("OPS-1", taskOne.ParentKey);
+        Assert.Equal("OPS-1", taskTwo.ParentKey);
+
+        var storyEvents = await h.EventsAsync("OPS-1");
+        var projectChanged = Assert.Single(storyEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        Assert.Equal(2, projectChanged.Payload!.Value.GetProperty("descendants").GetInt32());
+    }
+
+    [Fact]
+    public async Task AStoryMovedWithoutDescendants_OnlyReKeysTheStoryAndDetachesItsTasks()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the old epic");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        await h.CreateAsync("task", "the task", parentKey: "AER-2");
+
+        var moved = Value(await h.Issues.PatchIssue(
+            "AER-2", Patch(projectId: h.OtherProjectId, moveDescendants: false), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+
+        var task = Value(await h.Issues.GetIssue("AER-3", default));
+        Assert.Equal(h.ProjectId, task.ProjectId);
+        Assert.Null(task.ParentKey);
+
+        var taskEvents = await h.EventsAsync("AER-3");
+        var parentChanged = Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+        var payload = parentChanged.Payload!.Value;
+        Assert.Equal("AER-2", payload.GetProperty("from").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("to").ValueKind);
+    }
+
+    /// <summary>
+    /// The one case that would still pass without the explicit
+    /// <c>.Project = target</c> fixup if a test only checked the database row
+    /// and not the response DTO - EF does not refresh an already-loaded
+    /// reference navigation just because the FK scalar underneath it changed.
+    /// </summary>
+    [Fact]
+    public async Task AMovedIssuesResponseDto_ReflectsTheTargetProjectEvenWhenItsNavigationWasAlreadyLoaded()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        // Loaded into the same context PatchIssue uses, so Project is already
+        // a tracked, loaded reference before the move runs.
+        await h.Db.Issues.Include(i => i.Project).FirstAsync(i => i.Number == 1);
+
+        var moved = Value(await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS", moved.ProjectKey);
+        Assert.Equal("OPS-1", moved.Key);
+    }
+
+    /// <summary>
+    /// A second context creating an issue in the target project between the
+    /// move's read and its write - the same race <c>CreateIssueAsync</c>
+    /// already survives, now exercised against the retry loop a move needs
+    /// too.
+    /// </summary>
+    [Fact]
+    public async Task AMoveRacingANewIssueInTheTarget_StillMintsADistinctNumber()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        // Read through the harness's own context first, so its tracked copy
+        // of the target project's NextIssueNumber is stale once the second
+        // context below advances the real row underneath it.
+        await h.Db.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+
+        await using var racing = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(h.DbName).Options);
+        var racingProject = await racing.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+        racing.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = racingProject.Id,
+            Number = racingProject.NextIssueNumber,
+            Type = "task",
+            Title = "raced in first",
+            StatusId = h.Inbox,
+            Rank = 1000,
+            CreatedBy = "someone else",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        racingProject.NextIssueNumber++;
+        await racing.SaveChangesAsync();
+
+        var moved = Value(await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS-2", moved.Key);
+        Assert.Equal("raced in first", Value(await h.Issues.GetIssue("OPS-1", default)).Title);
     }
 
     // ---- Ready and due ----
@@ -2697,6 +2897,206 @@ public class IssuesControllerTests
         Assert.Contains("at most 500", Reason(result.Result));
     }
 
+    // ---- Moving between projects, in bulk ----
+
+    [Fact]
+    public async Task ABulkMove_ReKeysTheLeafAndTheOldKey404s()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.IsType<NotFoundResult>((await h.Issues.GetIssue("AER-1", default)).Result);
+
+        var events = await h.EventsAsync("OPS-1");
+        var projectChanged = Assert.Single(events.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        var payload = projectChanged.Payload!.Value;
+        Assert.Equal("AER-1", payload.GetProperty("from").GetString());
+        Assert.Equal("OPS-1", payload.GetProperty("to").GetString());
+        Assert.Equal(0, payload.GetProperty("descendants").GetInt32());
+    }
+
+    [Fact]
+    public async Task ABulkEditNamingOnlyAProject_IsAcceptedRatherThanRefusedAsEmpty()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+    }
+
+    [Fact]
+    public async Task ABulkMoveWithAClaimedIssueAmongFreeOnes_FailsOnlyTheClaimedOne()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+        await h.ClaimAsync("AER-2");
+
+        var result = Value(await h.Issues.BulkEdit(
+            Bulk(["AER-1", "AER-2", "AER-3"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal("AER-2", result.Failures.Single().Key);
+        Assert.Equal(["OPS-1", "OPS-2"], result.Changed);
+    }
+
+    [Fact]
+    public async Task ABulkMoveRunAgainNamingTheNowDeadOldKey_ReportsItAsNotThere()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal("AER-1", result.Failures.Single().Key);
+        Assert.Contains("there is no AER-1", result.Failures.Single().Reason);
+    }
+
+    [Fact]
+    public async Task ABulkKeyOrKeylessRunnerMovingAProject_Is403AndWritesNothingForAny()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2", "AER-3"], projectId: h.OtherProjectId), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving an issue to another project is a person's call, not an agent's", obj.Value);
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Single(await h.EventsAsync("AER-3"));
+    }
+
+    [Fact]
+    public async Task ABulkUnknownTargetProject_Is400ForTheWholeRequestAndWritesNothingForAny()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2", "AER-3"], projectId: 99999), default);
+
+        Assert.Contains("99999", Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString());
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Single(await h.EventsAsync("AER-3"));
+    }
+
+    [Fact]
+    public async Task ABulkMoveNamingATaskBeforeItsOwnStory_DoesNotDoubleMoveTheTask()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "the task", parentKey: "AER-1");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-2", "AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.Equal(["OPS-2"], result.Unchanged);
+
+        var task = Value(await h.Issues.GetIssue("OPS-2", default));
+        Assert.Equal("OPS-1", task.ParentKey);
+
+        var taskEvents = await h.EventsAsync("OPS-2");
+        Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+
+        Assert.Equal(2, result.Rekeyed.Count);
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-1" && r.To == "OPS-1");
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-2" && r.To == "OPS-2");
+    }
+
+    [Fact]
+    public async Task ABulkMoveNamingAStoryBeforeItsOwnTask_AlsoDoesNotDoubleMoveTheTask()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "the task", parentKey: "AER-1");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.Equal(["OPS-2"], result.Unchanged);
+
+        var task = Value(await h.Issues.GetIssue("OPS-2", default));
+        Assert.Equal("OPS-1", task.ParentKey);
+
+        var taskEvents = await h.EventsAsync("OPS-2");
+        Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+
+        Assert.Equal(2, result.Rekeyed.Count);
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-1" && r.To == "OPS-1");
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-2" && r.To == "OPS-2");
+    }
+
+    [Fact]
+    public async Task ABulkMoveOfIndependentLeaves_ReportsChangedInTheRequestsOwnOrder()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-3", "AER-1", "AER-2"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1", "OPS-2", "OPS-3"], result.Changed);
+        Assert.Equal(
+            [("AER-3", "OPS-1"), ("AER-1", "OPS-2"), ("AER-2", "OPS-3")],
+            result.Rekeyed.Select(r => (r.From, r.To)));
+    }
+
+    /// <summary>
+    /// A second context creating an issue in the target project between a
+    /// bulk move's read and its write - the same race
+    /// <see cref="AMoveRacingANewIssueInTheTarget_StillMintsADistinctNumber"/>
+    /// already survives for a single <c>PATCH</c>, now exercised against
+    /// <c>BulkEdit</c>'s own retry.
+    /// </summary>
+    [Fact]
+    public async Task ABulkMoveRacingANewIssueInTheTarget_StillMintsADistinctNumber()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        // Read through the harness's own context first, so its tracked copy
+        // of the target project's NextIssueNumber is stale once the second
+        // context below advances the real row underneath it.
+        await h.Db.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+
+        await using var racing = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(h.DbName).Options);
+        var racingProject = await racing.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+        racing.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = racingProject.Id,
+            Number = racingProject.NextIssueNumber,
+            Type = "task",
+            Title = "raced in first",
+            StatusId = h.Inbox,
+            Rank = 1000,
+            CreatedBy = "someone else",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        racingProject.NextIssueNumber++;
+        await racing.SaveChangesAsync();
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-2"], result.Changed);
+        Assert.Equal("raced in first", Value(await h.Issues.GetIssue("OPS-1", default)).Title);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -2768,6 +3168,9 @@ public class IssuesControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+
+        /// <summary>The in-memory database's own name, for a test that needs a second <see cref="HatchContext"/> against the same store - see the racing-create tests under "Moving between projects".</summary>
+        public required string DbName { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required StubCallerIdentity Caller { get; init; }
 
@@ -2895,8 +3298,9 @@ public class IssuesControllerTests
 
     private static async Task<Harness> NewAsync()
     {
+        var dbName = Guid.NewGuid().ToString();
         var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(dbName).Options);
 
         var hatch = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var ops = new EfHatchProject { Key = "OPS", Name = "Operations", CreatedAt = Now };
@@ -2914,6 +3318,7 @@ public class IssuesControllerTests
         return new Harness
         {
             Db = db,
+            DbName = dbName,
             Time = time,
             Caller = caller,
             Actors = actors,
@@ -2967,8 +3372,10 @@ public class IssuesControllerTests
         string? parentKey = null,
         string? readyAt = null,
         string? dueAt = null,
-        string? pullRequestUrl = null) =>
-        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl);
+        string? pullRequestUrl = null,
+        int? projectId = null,
+        bool? moveDescendants = null) =>
+        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl, projectId, moveDescendants);
 
     private static IssueBulkEditRequest Bulk(
         IReadOnlyList<string> keys,
@@ -2976,8 +3383,10 @@ public class IssuesControllerTests
         int? statusId = null,
         string? parentKey = null,
         string? readyAt = null,
-        string? dueAt = null) =>
-        new(keys, type, statusId, parentKey, readyAt, dueAt);
+        string? dueAt = null,
+        int? projectId = null,
+        bool? moveDescendants = null) =>
+        new(keys, type, statusId, parentKey, readyAt, dueAt, projectId, moveDescendants);
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");

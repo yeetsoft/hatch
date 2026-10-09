@@ -8,10 +8,19 @@ namespace Hatch.Contracts;
 /// What the delete guard will look at, so the Projects page can grey the button
 /// rather than offer a 409.
 /// </param>
+/// <param name="Color">
+/// <c>#rrggbb</c>, lower case, or null if nobody has chosen one yet - see
+/// <see cref="EfHatchProject.Color"/>.
+/// </param>
+/// <param name="Icon">A slug naming one of a closed set of stock icons, or null if nobody has chosen one yet - see <see cref="EfHatchProject.Icon"/>.</param>
 /// <param name="Repositories">The remotes this project is bound to, in order - the first is the primary.</param>
+/// <param name="LogoUpdatedAt">When the project's logo was last written, or null if it has none.</param>
 public record ProjectDto(
-    int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt,
-    IReadOnlyList<ProjectRepositoryDto> Repositories);
+    int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
+    IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt);
+
+/// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
+public record ImageDto(Guid Id);
 
 /// <summary>
 /// A new project. <paramref name="Key"/> is checked against
@@ -19,7 +28,9 @@ public record ProjectDto(
 /// can be changed later, at a price the operator is shown first - see
 /// <see cref="EfHatchProject.Key"/>.
 /// </summary>
-public record ProjectCreateRequest(string Key, string Name);
+/// <param name="Color"><c>#rrggbb</c>, or absent to leave it unset.</param>
+/// <param name="Icon">A slug naming one of a closed set of stock icons, or absent to leave it unset.</param>
+public record ProjectCreateRequest(string Key, string Name, string? Color = null, string? Icon = null);
 
 /// <summary>
 /// A rename. <paramref name="Name"/> is what usually moves;
@@ -27,7 +38,9 @@ public record ProjectCreateRequest(string Key, string Name);
 /// every request - see <see cref="EfHatchProject.Key"/> for what a rekey breaks
 /// and what it does not.
 /// </summary>
-public record ProjectPatchRequest(string? Name, string? Key = null);
+/// <param name="Color">Null leaves it alone; <c>""</c> clears it; a hex value like <c>#6b7280</c> sets it.</param>
+/// <param name="Icon">Null leaves it alone; <c>""</c> clears it; a slug sets it.</param>
+public record ProjectPatchRequest(string? Name, string? Key = null, string? Color = null, string? Icon = null);
 
 /// <summary>
 /// One git remote bound to a project, as every client reads it back.
@@ -213,11 +226,11 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// </param>
 /// <param name="Priority">
 /// The effective level's name - see <see cref="PriorityLevels"/> -
-/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
-/// read, to the nearest ancestor - including this issue itself - that is not
-/// Normal; never stored or copied. Trailing and defaulted for the reason
-/// <paramref name="OpenQuestions"/> is, though every list that draws a card
-/// fills it.
+/// <c>"economy"</c>, <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>.
+/// Walked live, at read, to the nearest ancestor - including this issue itself
+/// - that is not Normal; never stored or copied. Trailing and defaulted for
+/// the reason <paramref name="OpenQuestions"/> is, though every list that
+/// draws a card fills it.
 /// </param>
 /// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
 /// <param name="PriorityFrom">
@@ -331,9 +344,9 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="Priority">
 /// The effective level's name - see <see cref="PriorityLevels"/> -
-/// <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>. Walked live, at
-/// read, to the nearest ancestor - including this issue itself - that is not
-/// Normal; never stored or copied.
+/// <c>"economy"</c>, <c>"normal"</c>, <c>"expedited"</c> or <c>"emergency"</c>.
+/// Walked live, at read, to the nearest ancestor - including this issue itself
+/// - that is not Normal; never stored or copied.
 /// </param>
 /// <param name="PriorityOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.Priority"/>.</param>
 /// <param name="PriorityFrom">
@@ -455,15 +468,21 @@ public static class ClaimOutcomes
 }
 
 /// <summary>
-/// The three levels an issue's priority can sit at, ordered - see
+/// The six levels an issue's priority can sit at, ordered - see
 /// <see cref="EfHatchIssue.Priority"/>.
 /// </summary>
 public static class PriorityLevels
 {
+    public const int Paused = -3;
+    public const int Economy = -2;
+    public const int Low = -1;
     public const int Normal = 0;
     public const int Expedited = 1;
     public const int Emergency = 2;
 
+    public const string PausedName = "paused";
+    public const string EconomyName = "economy";
+    public const string LowName = "low";
     public const string NormalName = "normal";
     public const string ExpeditedName = "expedited";
     public const string EmergencyName = "emergency";
@@ -473,17 +492,23 @@ public static class PriorityLevels
     {
         Emergency => EmergencyName,
         Expedited => ExpeditedName,
+        Low => LowName,
+        Economy => EconomyName,
+        Paused => PausedName,
         _ => NormalName,
     };
 
-    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the six.</summary>
     public static bool TryParse(string? name, out int level)
     {
         (level, var ok) = name switch
         {
             EmergencyName => (Emergency, true),
             ExpeditedName => (Expedited, true),
+            LowName => (Low, true),
+            EconomyName => (Economy, true),
             NormalName => (Normal, true),
+            PausedName => (Paused, true),
             _ => (Normal, false),
         };
         return ok;
@@ -533,6 +558,15 @@ public record IssueCreateRequest(
 /// path or a bare <c>github.com/...</c> is a link that would not open, and the
 /// whole point of the field is that it opens.
 /// </param>
+/// <param name="ProjectId">
+/// Which project the issue should belong to. No "clear" sentinel - an issue
+/// always belongs to some project, so unlike <paramref name="ParentKey"/>
+/// there is no empty-string meaning here.
+/// </param>
+/// <param name="MoveDescendants">
+/// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
+/// default, and <c>false</c> is the one a caller has to ask for.
+/// </param>
 /// <param name="WipOverride">
 /// <c>true</c> to move into a full WIP section anyway - a person's call, and a
 /// key sending it is refused with <c>403</c>, whatever the load. Bulk never
@@ -547,6 +581,8 @@ public record IssuePatchRequest(
     string? ReadyAt,
     string? DueAt,
     string? PullRequestUrl,
+    int? ProjectId,
+    bool? MoveDescendants,
     bool WipOverride = false);
 
 /// <summary>
@@ -579,12 +615,20 @@ public record IssueMoveRequest(
 /// <param name="Changed">The keys that actually moved. An issue already holding every named value is not one of them.</param>
 /// <param name="Unchanged">Keys that matched the request but had nothing to change - re-applying a bulk edit is not an edit.</param>
 /// <param name="Failures">Keys the edit was refused for, each with its reason.</param>
+/// <param name="Rekeyed">
+/// The <c>{from, to}</c> pair for every issue a project move actually moved -
+/// the named issue and, when the move carried descendants, every one of
+/// those too, named in the request or not. Empty when no project was named.
+/// </param>
 public record IssueBulkResultDto(
     IReadOnlyList<string> Changed,
     IReadOnlyList<string> Unchanged,
-    IReadOnlyList<IssueBulkFailureDto> Failures);
+    IReadOnlyList<IssueBulkFailureDto> Failures,
+    IReadOnlyList<IssueBulkRekeyedDto> Rekeyed);
 
 public record IssueBulkFailureDto(string Key, string Reason);
+
+public record IssueBulkRekeyedDto(string From, string To);
 
 /// <summary>
 /// The <c>409</c> body a move or a patch is refused with when the WIP section
@@ -611,13 +655,24 @@ public record WipRefusalDto(string Error, int Load, int Limit);
 /// act on a row that arrived between the operator reading the list and pressing
 /// the button, which is the one thing a bulk edit must never do.
 /// </param>
+/// <param name="ProjectId">
+/// Which project the issue should belong to. No "clear" sentinel - an issue
+/// always belongs to some project, so unlike <paramref name="ParentKey"/>
+/// there is no empty-string meaning here.
+/// </param>
+/// <param name="MoveDescendants">
+/// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
+/// default, and <c>false</c> is the one a caller has to ask for.
+/// </param>
 public record IssueBulkEditRequest(
     IReadOnlyList<string> Keys,
     string? Type = null,
     int? StatusId = null,
     string? ParentKey = null,
     string? ReadyAt = null,
-    string? DueAt = null);
+    string? DueAt = null,
+    int? ProjectId = null,
+    bool? MoveDescendants = null);
 
 // ---- Comments and events ----
 
@@ -999,8 +1054,15 @@ public record PlaybookDto(
     string Prompt,
     string Model,
     string Effort,
+    int? Budget,
     DateTimeOffset UpdatedAt);
 
+/// <summary>
+/// How many millions of tokens this row budgets. Null means no budget (on
+/// create) or leaves it alone (on patch); <c>""</c> or whitespace clears it;
+/// a parsed positive integer sets it - the same three states
+/// <see cref="IssueWipLimitRequest.Limit"/> carries.
+/// </summary>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1008,6 +1070,7 @@ public record PlaybookCreateRequest(
     string Prompt,
     string? Model,
     string? Effort,
+    string? Budget = null,
     string? Shape = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
@@ -1018,6 +1081,7 @@ public record PlaybookPatchRequest(
     string? Prompt,
     string? Model,
     string? Effort,
+    string? Budget = null,
     string? Shape = null);
 
 /// <summary>
@@ -1079,8 +1143,9 @@ public record AssigneeRequest(string? Kind, Guid? Id);
 public record ExpediteRequest(bool Expedited);
 
 /// <summary>
-/// The level to set, by name - <c>"normal"</c>, <c>"expedited"</c> or
-/// <c>"emergency"</c> - see <see cref="PriorityLevels"/>. One required string
+/// The level to set, by name - <c>"economy"</c>, <c>"normal"</c>,
+/// <c>"expedited"</c> or <c>"emergency"</c> - see <see cref="PriorityLevels"/>.
+/// One required string
 /// rather than a boolean, for the same reason <see cref="ExpediteRequest"/> is
 /// one required boolean: the same route both marks and unmarks, and the
 /// caller says which it meant.
@@ -1191,6 +1256,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// written by a lapse, are skipped rather than counted or stopped at. Zero on
 /// a client too old to read it.
 /// </param>
+/// <param name="InReview">
+/// Whether <paramref name="FromStatus"/> is, right now, the board's review
+/// column - computed the same way <c>AttentionController</c> counts a ticket
+/// as waiting on a pull request, off <c>Columns.AwaitingReview</c> and never
+/// off a column's name. False on a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1206,7 +1277,8 @@ public record WorkDto(
     bool Hop = false,
     string? HopKind = null,
     string? HopUnder = null,
-    int LetGo = 0);
+    int LetGo = 0,
+    bool InReview = false);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only
@@ -1325,11 +1397,13 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
 /// <param name="BuildChecks">Every build verdict the board holds for the issue, one per repository. Absent from a board that predates them.</param>
+/// <param name="PullRequestUrl">The pull request recorded on the issue, or null where none is. Absent from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<MergeCheckDto> MergeChecks,
-    IReadOnlyList<BuildCheckDto>? BuildChecks = null);
+    IReadOnlyList<BuildCheckDto>? BuildChecks = null,
+    string? PullRequestUrl = null);
 
 // ---- Rollups ----
 
@@ -1466,7 +1540,10 @@ public record WorkLogEntryRequest(
     bool IsError,
     int Turns,
     decimal CostUsd,
-    IReadOnlyList<WorkLogModelUseDto>? Models);
+    IReadOnlyList<WorkLogModelUseDto>? Models,
+    int? Requests = null,
+    long? PeakContextTokens = null,
+    int? PromptChars = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -1497,7 +1574,10 @@ public record WorkLogEntryDto(
     long CacheCreationTokens,
     long CacheReadTokens,
     long TotalTokens,
-    IReadOnlyList<WorkLogModelUseDto> Models);
+    IReadOnlyList<WorkLogModelUseDto> Models,
+    int? Requests,
+    long? PeakContextTokens,
+    int? PromptChars);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
@@ -1611,7 +1691,10 @@ public record WorkLogSessionDto(
     long OutputTokens,
     long CacheCreationTokens,
     long CacheReadTokens,
-    long TotalTokens);
+    long TotalTokens,
+    int? Requests,
+    long? PeakContextTokens,
+    int? PromptChars);
 
 /// <summary>
 /// The sessions in a range, ranked - and what that whole range cost, whether or
@@ -1715,6 +1798,13 @@ public record MergeCheckRequest(
     string Runner,
     bool? HoldsTrunk = null);
 
+/// <summary>
+/// A runner reporting that the pull request recorded on an issue has merged.
+/// </summary>
+/// <param name="Url">The pull request the runner read as merged, compared against the one recorded on the issue.</param>
+/// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record PullRequestMergedRequest(string Url, string Runner);
+
 /// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
 /// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>
@@ -1765,6 +1855,30 @@ public static class BuildVerdicts
     public const string None = "none";
 
     public static readonly IReadOnlyList<string> All = [Passed, Failed, Pending, None];
+}
+
+/// <summary>
+/// What a forge says a pull request's own state is - the only place that tells
+/// a merged one from one closed without merging. Neither git nor the absence
+/// of a branch can: a squash merge puts none of the branch's commits in the
+/// trunk, and a branch only disappears where the repository is set to delete
+/// it on merge.
+/// </summary>
+public static class PullRequestStates
+{
+    /// <summary>The pull request was merged. The forge reports this and never <see cref="Closed"/> for one that was.</summary>
+    public const string Merged = "merged";
+
+    /// <summary>The pull request is still open.</summary>
+    public const string Open = "open";
+
+    /// <summary>The pull request was closed without merging.</summary>
+    public const string Closed = "closed";
+
+    /// <summary>The forge named a state this does not know. Not the same as a read that failed.</summary>
+    public const string Unknown = "unknown";
+
+    public static readonly IReadOnlyList<string> All = [Merged, Open, Closed, Unknown];
 }
 
 /// <summary>The three states of a review row's build icon - see <see cref="ReviewDto.BuildState"/>.</summary>

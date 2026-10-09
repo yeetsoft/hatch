@@ -156,6 +156,23 @@ public static class Prompt
     }
 
     /// <summary>
+    /// What a session is told, once, the first time its tokens cross its
+    /// playbook's budget - delivered the same way <see cref="Message"/> is, by
+    /// the hook that noticed. Says to wrap up, not to ask: an open question is a
+    /// full stop on the next dispatch, and crossing a budget is not a decision
+    /// for somebody else to make.
+    /// </summary>
+    public static string WrapUp(string key) =>
+        string.Join('\n',
+            $"This session has crossed its playbook's budget on {key}. Wrap up rather than",
+            "start anything new:",
+            "",
+            "Finish the edit already in hand. Commit what is green at the nearest seam. Push",
+            "it to the issue's branch. File whatever is left as tasks under the ticket - set",
+            "their parentKey to it, the shape docs/hatch-planning.md describes. Comment on the",
+            "ticket what landed and what did not. Then stop.");
+
+    /// <summary>
     /// One message to the agent, in the words both ways of delivering it use:
     /// the hook that puts it in front of a running session, and the prompt that
     /// carries it into the next. One method, so the two cannot come to say
@@ -328,6 +345,7 @@ public static class Prompt
 
                 case BranchKind.None:
                     yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
+                    yield return "  Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review.";
                     break;
 
                 case BranchKind.AlreadyMerged:
@@ -534,10 +552,12 @@ public static class Prompt
 
         return
         [
-            "## If you open a pull request",
+            "## Opening a pull request",
             "",
-            "Only if this increment opens one. Name the ticket in two places, so the",
-            "reviewer can tell where it came from and reach the brief in one click.",
+            "Open one before this increment ends, if it pushes any commit meant for a person to",
+            "review - the branch section above says which kind of increment this is. Name the",
+            "ticket in two places, so the reviewer can tell where it came from and reach the",
+            "brief in one click.",
             "",
             $"- **Title:** `{key} ` and then the subject in the usual house style, `Area: what",
             $"  changed, as a sentence`. No brackets and no second colon: `{key} Auth: the first",

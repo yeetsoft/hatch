@@ -82,6 +82,34 @@ public class EfHatchProject
 
     public static bool IsValidKey(string? key) =>
         key is not null && Regex.IsMatch(key, KeyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    public const int MaxColorLength = 7;
+    public const int MaxIconLength = 40;
+
+    /// <summary>
+    /// The project's colour, as <c>#rrggbb</c>, or null if nobody has chosen one
+    /// yet. Nullable with no default - unlike <see cref="EfHatchStatus.Color"/> -
+    /// because "no colour chosen yet" is a fact worth keeping, not a
+    /// <c>--muted</c> the browser can paint instead. See HA-216's "Decisions"
+    /// table.
+    /// </summary>
+    [MaxLength(MaxColorLength)]
+    public string? Color { get; set; }
+
+    /// <summary>
+    /// A slug naming one of a closed set of stock icons the browser owns; the
+    /// server stores the slug and does not know the set. See HA-216.
+    /// </summary>
+    [MaxLength(MaxIconLength)]
+    public string? Icon { get; set; }
+
+    public static bool IsValidColor(string? color) => HexColor.IsValid(color);
+    public static string NormalizeColor(string color) => HexColor.Normalize(color);
+
+    public const string IconPattern = "^[a-z0-9-]{1,40}$";
+
+    public static bool IsValidIcon(string? icon) =>
+        icon is not null && Regex.IsMatch(icon, IconPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
 }
 
 /// <summary>
@@ -132,6 +160,76 @@ public class EfHatchProjectRepository
 }
 
 /// <summary>
+/// One project's logo, stored as bytes in Postgres rather than as a path into a
+/// volume.
+///
+/// The size argument that usually rules this out does not apply: these are
+/// small images, one per project, in a household. What does apply is that a
+/// row and a file on a PVC can disagree - a restored database pointing at a
+/// logo that is not there is a failure mode with no obvious symptom - whereas
+/// bytes in the row ride the existing backup and the disaster-recovery path
+/// unchanged. No new volume, no new backup story.
+///
+/// Its own table, keyed by ProjectId, so that listing projects never drags the
+/// blobs along: EF has no way to project a column out of an entity that is
+/// always loaded, and the Projects page reads every row.
+/// </summary>
+[Table("ProjectLogos")]
+public class EfHatchProjectLogo
+{
+    /// <summary>Both the primary key and the foreign key - one logo per project, enforced by the schema rather than by the code that writes it.</summary>
+    [Key]
+    public int ProjectId { get; set; }
+
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served, so there is no second format to reason about.</summary>
+    public required byte[] Bytes { get; set; }
+
+    /// <summary>
+    /// Sniffed from the bytes, never taken from the request's Content-Type. A
+    /// client that says PNG and sends HTML is describing an attack, not a
+    /// picture.
+    /// </summary>
+    [MaxLength(64)]
+    public required string ContentType { get; set; }
+
+    /// <summary>
+    /// When these bytes were stored. Serves as the logo's ETag, which is what
+    /// lets the admin app point an &lt;img&gt; at a stable URL and still see a
+    /// new upload immediately.
+    /// </summary>
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One image pasted into a description or a comment, stored as bytes in
+/// Postgres for the same reason <see cref="EfHatchProjectLogo"/> is: bytes in
+/// the row ride the existing backup and the disaster-recovery path unchanged,
+/// and a row cannot disagree with a file on a volume.
+///
+/// Belongs to no issue. The New issue dialog accepts a paste before the issue
+/// has a key, so an image gets an id of its own and the markdown that shows it
+/// is the only thing that points here. Nothing collects an image whose draft
+/// was discarded.
+/// </summary>
+[Table("Images")]
+public class EfHatchImage
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
+    public required byte[] Bytes { get; set; }
+
+    /// <summary>Sniffed from the bytes, never taken from the request's Content-Type - see <see cref="EfHatchProjectLogo.ContentType"/>.</summary>
+    [MaxLength(64)]
+    public required string ContentType { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// One column on the board. Global rather than per-project - the board shows
 /// every project at once, so a per-project status set would have no column to
 /// put a foreign issue in.
@@ -139,6 +237,16 @@ public class EfHatchProjectRepository
 /// Rows rather than an enum because the operator reorders and renames them from
 /// the Statuses page, and an enum would make "add a review column" a deploy.
 /// </summary>
+internal static class HexColor
+{
+    private static readonly Regex Shape =
+        new("^#[0-9a-f]{6}$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    public static bool IsValid(string? color) => color is not null && Shape.IsMatch(color);
+
+    public static string Normalize(string color) => color.Trim().ToLowerInvariant();
+}
+
 [Table("Statuses")]
 [Index(nameof(Name), IsUnique = true)]
 public class EfHatchStatus
@@ -265,9 +373,6 @@ public class EfHatchStatus
     [MaxLength(MaxColorLength)]
     public string Color { get; set; } = DefaultColor;
 
-    private static readonly Regex ColorShape =
-        new("^#[0-9a-f]{6}$", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
-
     /// <summary>
     /// Whether a string is a colour this will store. Six digits and a hash,
     /// deliberately narrow: three-digit shorthands, <c>rgb()</c> and named
@@ -275,11 +380,10 @@ public class EfHatchStatus
     /// a contrast calculation could read them, and one shape stored is one
     /// shape to reason about.
     /// </summary>
-    public static bool IsValidColor(string? color) =>
-        color is not null && ColorShape.IsMatch(color);
+    public static bool IsValidColor(string? color) => HexColor.IsValid(color);
 
     /// <summary>The stored form of a colour a client sent: lower case, so two spellings of one colour compare equal.</summary>
-    public static string NormalizeColor(string color) => color.Trim().ToLowerInvariant();
+    public static string NormalizeColor(string color) => HexColor.Normalize(color);
 }
 
 /// <summary>
@@ -493,7 +597,7 @@ public class EfHatchIssue
     /// Hatch: the board floats the card to the top of its column, and the
     /// dispatcher considers every issue at a higher level before anything at a
     /// lower one - see <see cref="Hatch.Contracts.PriorityLevels"/> for the
-    /// three levels and their order.
+    /// six levels and their order.
     /// </summary>
     /// <remarks>
     /// <para>A sort key, not a gate. Every fold still applies exactly as it
@@ -1122,6 +1226,16 @@ public class EfHatchIssueEvent
     public const string Retyped = "retyped";
     public const string StatusChanged = "status_changed";
     public const string ParentChanged = "parent_changed";
+
+    /// <summary>
+    /// The issue moved to another project, carrying the subtree under it
+    /// along with it unless a caller asked otherwise. The payload's
+    /// <c>from</c> and <c>to</c> are display keys, on every issue the move
+    /// touched; the root of the move additionally carries <c>descendants</c>,
+    /// a count of how many other issues moved with it.
+    /// </summary>
+    public const string ProjectChanged = "project_changed";
+
     public const string ReadyChanged = "ready_changed";
     public const string DueChanged = "due_changed";
 
@@ -1430,6 +1544,12 @@ public class EfHatchPlaybook
     [MaxLength(MaxEffortLength)]
     public required string Effort { get; set; }
 
+    /// <summary>
+    /// The thinking budget, in millions of tokens - blank unless a person has
+    /// set one, and read by a key but never written by one.
+    /// </summary>
+    public int? Budget { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
@@ -1658,6 +1778,19 @@ public class EfHatchWorkLogEntry
 
     /// <summary>The session's <c>num_turns</c>.</summary>
     public int Turns { get; set; }
+
+    /// <summary>
+    /// One request per distinct assistant message id the stream carried. Null
+    /// on a row posted by an older runner, or by a <c>--quiet</c> run - neither
+    /// ever sees the per-message stream this is counted from.
+    /// </summary>
+    public int? Requests { get; set; }
+
+    /// <summary>The largest <c>input + cache creation + cache read</c> carried by any one request. Null for the same reason <see cref="Requests"/> can be.</summary>
+    public long? PeakContextTokens { get; set; }
+
+    /// <summary>How long the prompt the session was handed was, in characters. Known regardless of <c>--quiet</c>.</summary>
+    public int? PromptChars { get; set; }
 
     /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight

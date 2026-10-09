@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { Chicklet, ConfirmationStack } from './Confirmations';
 import { raise, raiseMove, settle } from '../lib/confirmations';
 import type { Confirmation } from '../lib/confirmations';
@@ -9,8 +10,16 @@ import type { Confirmation } from '../lib/confirmations';
    confirmationsCss.test.ts's, and the rest is the operator's browser. */
 const noop = () => undefined;
 
-// The key link is built against the address the document was served at.
-beforeEach(() => vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } }));
+// The key link is built against the address the document was served at, and
+// matchMedia/navigator answer "not standalone" so existing tests keep their
+// anchor-with-target shape.
+beforeEach(() =>
+  vi.stubGlobal('window', {
+    location: { pathname: '/apps/hatch/' },
+    matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+    navigator: {},
+  }),
+);
 afterEach(() => vi.unstubAllGlobals());
 
 const filing = raise([], { key: 'AER-1', title: 'A filing' }, 1, 15_000);
@@ -30,7 +39,9 @@ const settled = settle(move, 2, 'undone', 'moved back to Backlog');
 
 const li = (stack: Confirmation[]) => {
   const html = renderToStaticMarkup(
-    <ConfirmationStack stack={stack} onUndo={noop} onDismiss={noop} onDismissAll={noop} />,
+    <MemoryRouter>
+      <ConfirmationStack stack={stack} onUndo={noop} onDismiss={noop} onDismissAll={noop} />
+    </MemoryRouter>,
   );
   return [...html.matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/g)].map((m) => m[0]);
 };
@@ -68,6 +79,28 @@ describe('Chicklet', () => {
     );
 
     expect(html).toMatch(/hatch-confirmation-title[\s\S]*a new kind of body<\/span><\/span><button/);
+  });
+
+  const key = (html: string) => /<a[^>]*class="hatch-confirmation-key"[^>]*>[\s\S]*?<\/a>/.exec(html)![0];
+
+  it('opens the key in a new tab, marked with ↗, when not standalone', () => {
+    const html = key(li(filing)[0]);
+
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('↗');
+  });
+
+  it('routes the key in place, with no new tab and no ↗, when standalone', () => {
+    vi.stubGlobal('window', {
+      location: { pathname: '/apps/hatch/' },
+      matchMedia: () => ({ matches: true, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+    });
+
+    const html = key(li(filing)[0]);
+
+    expect(html).not.toContain('target="_blank"');
+    expect(html).not.toContain('↗');
   });
 });
 

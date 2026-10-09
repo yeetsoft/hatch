@@ -19,12 +19,20 @@ export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   bug: ['epic', 'story'],
 };
 
+/** A stored image: `/api/hatch/images/{id}` serves it. */
+export interface HatchImage {
+  id: string;
+}
+
 export interface Project {
   id: number;
   key: string;
   name: string;
   issueCount: number;
   createdAt: string;
+  color: string | null;
+  icon: string | null;
+  logoUpdatedAt: string | null;
   repositories: ProjectRepository[];
 }
 
@@ -160,19 +168,21 @@ export interface IssueCard {
   claim: IssueClaim | null;
   /** *This one first.* The server serves an expedited card above every
       non-expedited one in its column, so nothing here sorts - see
-      IssueCardDto.Expedited. Derived from `priority` - `priority !== 'normal'` -
-      and kept alongside it rather than replaced by it, so a reader that only
-      cares whether this one goes first does not have to know there are three
+      IssueCardDto.Expedited. Derived from the effective level - true at
+      expedited and emergency, false at normal, economy and paused - and kept
+      alongside it rather than replaced by it, so a reader that only cares
+      whether this one goes first does not have to know there are six
       levels. */
   expedited: boolean;
-  /** The level's name - `'normal'`, `'expedited'` or `'emergency'` - see
-      IssueCardDto.Priority and PriorityLevels. The raw level, for the one place
-      that needs to tell expedited apart from emergency rather than collapse
-      them: the optimistic float in lib/place.ts. */
-  priority: 'normal' | 'expedited' | 'emergency';
+  /** The level's name - `'paused'`, `'economy'`, `'low'`, `'normal'`,
+      `'expedited'` or `'emergency'` - see IssueCardDto.Priority and
+      PriorityLevels. The raw level, for the one place that needs to tell
+      expedited apart from emergency rather than collapse them: the
+      optimistic float in lib/place.ts. */
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCardDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCardDto.PriorityFrom. */
   priorityFrom: string | null;
@@ -342,10 +352,10 @@ export interface Issue {
       IssueExpediteController. Derived from `priority` - see IssueCard.expedited. */
   expedited: boolean;
   /** The level's name - see IssueCard.priority and IssueDto.Priority. */
-  priority: 'normal' | 'expedited' | 'emergency';
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The level this issue's own row carries, regardless of what it inherits.
       See IssueCard.priorityOwn and IssueDto.PriorityOwn. */
-  priorityOwn: 'normal' | 'expedited' | 'emergency';
+  priorityOwn: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   /** The ancestor `priority` was inherited from, or null when the effective
       level is this issue's own, or Normal. See IssueCard.priorityFrom and
       IssueDto.PriorityFrom. */
@@ -425,6 +435,7 @@ export type IssueEventKind =
   | 'retyped'
   | 'status_changed'
   | 'parent_changed'
+  | 'project_changed'
   | 'ready_changed'
   | 'due_changed'
   | 'pull_request_changed'
@@ -576,6 +587,8 @@ export interface ImportResult {
 export interface ProjectCreateRequest {
   key: string;
   name: string;
+  color?: string | null;
+  icon?: string | null;
 }
 
 /** Both optional, and `key` is the expensive one: it rekeys every issue in the
@@ -584,6 +597,8 @@ export interface ProjectCreateRequest {
 export interface ProjectPatchRequest {
   name?: string | null;
   key?: string | null;
+  color?: string | null;
+  icon?: string | null;
 }
 
 export interface StatusCreateRequest {
@@ -627,6 +642,8 @@ export interface IssuePatchRequest {
       Anything else is refused with a sentence - the field's only job is to be
       clicked. */
   pullRequestUrl?: string | null;
+  projectId?: number | null;
+  moveDescendants?: boolean | null;
   /** `true` to move into a full WIP section anyway - a person's call, and a
       key sending it is refused with `403`, whatever the load. */
   wipOverride?: boolean;
@@ -682,11 +699,18 @@ export interface IssueBulkEditRequest {
   parentKey?: string | null;
   readyAt?: string | null;
   dueAt?: string | null;
+  projectId?: number | null;
+  moveDescendants?: boolean | null;
 }
 
 export interface IssueBulkFailure {
   key: string;
   reason: string;
+}
+
+export interface IssueBulkRekeyed {
+  from: string;
+  to: string;
 }
 
 export interface IssueBulkResult {
@@ -695,6 +719,7 @@ export interface IssueBulkResult {
   /** Keys that matched but already held every named value - re-applying an edit is not an edit. */
   unchanged: string[];
   failures: IssueBulkFailure[];
+  rekeyed: IssueBulkRekeyed[];
 }
 
 export interface IssueMoveRequest {
@@ -763,6 +788,8 @@ export interface Playbook {
   /** An alias, or a pinned `claude-…` name an operator typed by hand. */
   model: string;
   effort: string;
+  /** Millions of tokens, or null for no cap. */
+  budget: number | null;
   updatedAt: string;
 }
 
@@ -773,6 +800,7 @@ export interface PlaybookCreateRequest {
   prompt: string;
   model?: string;
   effort?: string;
+  budget?: string;
   shape?: PlaybookShape;
 }
 
@@ -784,6 +812,7 @@ export interface PlaybookPatchRequest {
   prompt?: string;
   model?: string;
   effort?: string;
+  budget?: string;
   shape?: PlaybookShape;
 }
 
@@ -1151,6 +1180,16 @@ export interface WorkLogEntry {
   /** The per-model breakdown the four counts are the sum of. Empty on a run
       that ended before the accounting arrived. */
   models: WorkLogModelUse[];
+  /** One request per distinct assistant message id. Null on a row posted by an
+      older runner, or by a `--quiet` run - neither ever sees the per-message
+      stream this is counted from. */
+  requests: number | null;
+  /** The largest `input + cache creation + cache read` carried by any one
+      request. Null for the same reason `requests` can be. */
+  peakContextTokens: number | null;
+  /** How long the prompt the session was handed was, in characters. Known
+      regardless of `--quiet`. */
+  promptChars: number | null;
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */
@@ -1184,7 +1223,7 @@ export interface WorkLog {
 /** How a read of the sessions is ranked. Every one of them is descending -
     a leaderboard of the cheapest sessions is a page nobody asked for. Mirrors
     WorkLogSort. */
-export type SessionSort = 'tokens' | 'cost' | 'ended';
+export type SessionSort = 'tokens' | 'cost' | 'ended' | 'requests' | 'peakContext';
 
 /** One agent session as the leaderboard reads it. Mirrors WorkLogSessionDto.
 
@@ -1216,6 +1255,15 @@ export interface WorkLogSession {
   cacheReadTokens: number;
   /** The four, added up on the server so the headline has one definition. */
   totalTokens: number;
+  /** One request per distinct assistant message id. Null on a row posted by an
+      older runner, or by a `--quiet` run. */
+  requests: number | null;
+  /** The largest `input + cache creation + cache read` carried by any one
+      request. Null for the same reason `requests` can be. */
+  peakContextTokens: number | null;
+  /** How long the prompt the session was handed was, in characters. Known
+      regardless of `--quiet`. */
+  promptChars: number | null;
 }
 
 /** The sessions in a range, ranked. Mirrors WorkLogSessionsDto. */
@@ -1425,4 +1473,36 @@ export interface ApiKeyCreateRequest {
   name: string;
   scopes: string[];
   ownerPersonId?: string;
+}
+
+// ---- Revision ----
+
+/** The four answers a drift comparison can give, mirroring RevisionDrift in
+    HatchRevisionInfo.cs - the enum's own member names, PascalCase, because
+    Program.cs registers a bare JsonStringEnumConverter with no naming policy
+    (see PlanState above for the same rule). `Ahead` must never earn a notice
+    the way `Behind` does: during a rolling deploy a page loaded from a new
+    replica can have its next request answered by an old one, and a client
+    that acts on any difference thrashes between the two until the rollout
+    finishes. */
+export type RevisionDrift = 'Unknown' | 'Current' | 'Behind' | 'Ahead';
+
+/** Where a calling client's build sits relative to this replica's. Mirrors
+    ClientRevisionVerdict in HatchRevisionInfo.cs. */
+export interface ClientRevisionVerdict {
+  revision: string;
+  sequence: number;
+  drift: RevisionDrift;
+}
+
+/** What commit this replica is running, and how the caller's own build
+    compares when it identified itself. Mirrors HatchRevisionInfo.cs.
+    `cluster` is typed `unknown` rather than mirrored - see
+    ClusterRevisions.cs for the three-level tree, which nothing here draws. */
+export interface Revision {
+  revision: string;
+  sequence: number;
+  builtAt: string | null;
+  client: ClientRevisionVerdict | null;
+  cluster: unknown;
 }

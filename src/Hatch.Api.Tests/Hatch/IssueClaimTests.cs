@@ -302,6 +302,25 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AHeartbeatOnAnIssuePausedMidIncrement_StillRefreshesTheLease()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        await h.PauseAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl - 1));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        // A pause takes effect between increments, not mid-one: the heartbeat
+        // answers exactly as it would for an issue nobody touched, and the
+        // runner is never told to stand down.
+        var row = await h.RowAsync(issue);
+        Assert.Equal(Now.AddSeconds(TestClaims.Ttl - 1), row.ClaimHeartbeatAt);
+    }
+
+    [SkippableFact]
     public async Task AHeartbeatWithSomebodyElsesToken_IsRefused()
     {
         await using var h = await NewAsync();
@@ -961,6 +980,92 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AnEconomyClaim_IsPreemptedBeforeANormalOne()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var normal = await h.FileAsync();
+        var economy = await h.FileAsync(priority: PriorityLevels.Economy);
+        var normalToken = await h.TakeAsync(normal, "somewhere:/checkouts/one");
+        var economyToken = await h.TakeAsync(economy, "elsewhere:/checkouts/two");
+
+        // Economy sits last in the dispatcher's own walk - after normal, not
+        // merely below emergency - so it is the one told, with zero lines
+        // changed in Preemption.cs.
+        var told = Value(await h.Claims.Heartbeat(economy, new ClaimHeartbeatRequest(economyToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(normal, new ClaimHeartbeatRequest(normalToken, null), default)).Result);
+    }
+
+    // ---- Express protects nothing, and marks nothing (HA-241) ----
+    //
+    // Rule 2 reads effective level alone - Express is not read anywhere in
+    // Preemption.cs - so a held issue below emergency is exactly as exposed
+    // with the flag set as without it, and does not jump the board's own
+    // order by carrying it.
+
+    [SkippableFact]
+    public async Task AnExpressHeldIssue_IsPreemptedExactlyAsANonExpressOneWouldBe()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync(express: true);
+        var token = await h.TakeAsync(victim);
+
+        // Last in board order and held below emergency: told, the flag giving
+        // it no immunity rule 2 does not already grant emergency work itself.
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task AnExpressHeldIssue_NotLastInBoardOrder_IsNotToldAheadOfItsTurn()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var earlier = await h.FileAsync(express: true);
+        var later = await h.FileAsync();
+        var earlierToken = await h.TakeAsync(earlier, "somewhere:/checkouts/one");
+        var laterToken = await h.TakeAsync(later, "elsewhere:/checkouts/two");
+
+        // Express does not mark its own row as the one to preempt: the later,
+        // non-express claim is still last in board order and is the one told.
+        var told = Value(await h.Claims.Heartbeat(later, new ClaimHeartbeatRequest(laterToken, null), default));
+        Assert.Equal(emergency, told.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(earlier, new ClaimHeartbeatRequest(earlierToken, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task WithNormalLowAndEconomyClaims_TheEconomyOneIsToldFirstAndTheLowOneSecond()
+    {
+        await using var h = await NewAsync();
+        var emergencyA = await h.FileAsync(priority: PriorityLevels.Emergency);
+        await h.FileAsync(priority: PriorityLevels.Emergency);
+        var normal = await h.FileAsync();
+        var low = await h.FileAsync(priority: PriorityLevels.Low);
+        var economy = await h.FileAsync(priority: PriorityLevels.Economy);
+        var normalToken = await h.TakeAsync(normal, "somewhere:/checkouts/one");
+        var lowToken = await h.TakeAsync(low, "elsewhere:/checkouts/two");
+        var economyToken = await h.TakeAsync(economy, "anywhere:/checkouts/three");
+
+        // Economy sits last in the walk, low second-to-last - so economy is
+        // told first and low second, with two unclaimed emergency issues
+        // giving two runners a turn to be told before normal's.
+        var toldEconomy = Value(await h.Claims.Heartbeat(economy, new ClaimHeartbeatRequest(economyToken, null), default));
+        Assert.Equal(emergencyA, toldEconomy.Key);
+
+        var toldLow = Value(await h.Claims.Heartbeat(low, new ClaimHeartbeatRequest(lowToken, null), default));
+        Assert.Equal(emergencyA, toldLow.Key);
+
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(normal, new ClaimHeartbeatRequest(normalToken, null), default)).Result);
+    }
+
+    [SkippableFact]
     public async Task FewerRunnersToldThanEmergencyIssues_TellsExactlyThatMany()
     {
         await using var h = await NewAsync();
@@ -1153,7 +1258,8 @@ public class IssueClaimTests
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<string> FileAsync(
-            string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do")
+            string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do",
+            bool express = false)
         {
             var number = next++;
             var db = Connect();
@@ -1175,6 +1281,7 @@ public class IssueClaimTests
                 ParentId = parentId,
                 Rank = 1024 * number,
                 Priority = priority,
+                Express = express,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
@@ -1217,6 +1324,21 @@ public class IssueClaimTests
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one") =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner), default)).Token;
+
+        /// <summary>
+        /// Paused, written straight to the row - a person setting a ticket
+        /// aside takes effect between increments, not mid-one, so these tests
+        /// are about what a live heartbeat does once the level changes under
+        /// it, not about the route that sets it (<see cref="IssueExpediteControllerTests"/>).
+        /// </summary>
+        public async Task PauseAsync(string key)
+        {
+            var db = Connect();
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.Priority = PriorityLevels.Paused;
+            await db.SaveChangesAsync();
+        }
 
         /// <summary>
         /// The row as the database has it, read past the change tracker -

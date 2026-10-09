@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
 import { UNASSIGNED, assigneeToken } from '../lib/assignee';
-import { DEFAULT_FILTER, isDefault, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
+import { DEFAULT_FILTER, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
 import { TypesFacet } from './TypesFacet';
+import { hasMultipleProjects } from '../lib/useProjects';
 
 /**
  * What the board is showing: a search box, a project, the types, a switch and
@@ -19,10 +20,10 @@ import { TypesFacet } from './TypesFacet';
  * would drop the drag in progress and would make typing into the box a
  * conversation with the server.
  *
- * A browser's first visit opens the board on epics, stories and bugs
- * (DEFAULT_FILTER); after that it opens on the types last chosen there, and
- * Reset returns to the default. The last type drawn cannot be switched off, so
- * the board never goes blank from a checkbox.
+ * A browser's first visit opens the board on every type (DEFAULT_FILTER); after
+ * that it opens on the types last chosen there, and Reset returns to the
+ * default. The last type drawn cannot be switched off, so the board never goes
+ * blank from a checkbox.
  */
 export function BoardFilters({
   filter,
@@ -63,17 +64,17 @@ export function BoardFilters({
           same option text, as the picker on the Plan page. One project makes
           this a control with a single option, and Hatch ships to operators
           who will have several. */}
-      {projects.length > 1 && (
-        <Facet label="Project" lit={filter.project !== ''}>
-          <select value={filter.project} onChange={(e) => onChange({ ...filter, project: e.target.value })}>
-            <option value="">All projects</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.key}>
-                {project.key} — {project.name}
-              </option>
-            ))}
-          </select>
-        </Facet>
+      {hasMultipleProjects(projects) && (
+        <Facet
+          label="Project"
+          lit={filter.project !== ''}
+          value={filter.project}
+          options={[
+            { value: '', text: 'All projects' },
+            ...projects.map((project) => ({ value: project.key, text: `${project.key} — ${project.name}` })),
+          ]}
+          onChange={(project) => onChange({ ...filter, project })}
+        />
       )}
 
       <TypesFacet filter={filter} counts={typeCounts(cards)} onChange={onChange} />
@@ -99,24 +100,24 @@ export function BoardFilters({
           "Unassigned" is its own row above the identities rather than derived
           from the cards, because it is the one choice that is a fact about
           absence - assigneeFacets can only report who is there. */}
-      <Facet label="Assignee" lit={filter.assignee !== ''}>
-        <select value={filter.assignee} onChange={(e) => onChange({ ...filter, assignee: e.target.value })}>
-          <option value="">— anyone —</option>
-          <option value={UNASSIGNED}>Unassigned</option>
-          {assignees.map((assignee) => (
-            <option key={assigneeToken(assignee)} value={assigneeToken(assignee)}>
-              {assignee.name}
-            </option>
-          ))}
-        </select>
-      </Facet>
+      <Facet
+        label="Assignee"
+        lit={filter.assignee !== ''}
+        value={filter.assignee}
+        options={[
+          { value: '', text: '— anyone —' },
+          { value: UNASSIGNED, text: 'Unassigned' },
+          ...assignees.map((assignee) => ({ value: assigneeToken(assignee), text: assignee.name })),
+        ]}
+        onChange={(assignee) => onChange({ ...filter, assignee })}
+      />
 
       {filtering && (
         <span className="hatch-filter-count">
           {showing} of {total}
         </span>
       )}
-      {!isDefault(filter) && (
+      {filtering && (
         <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
           Reset
         </button>

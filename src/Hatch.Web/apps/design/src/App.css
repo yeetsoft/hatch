@@ -652,6 +652,39 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Project mark: the whole stock icon set, as a grid of slug and glyph - the
+   picker's own reference, so a slug this page cannot show is a slug the
+   picker cannot offer either. */
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--sp-4);
+}
+
+.icon-grid-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+  background: var(--card);
+}
+
+.icon-grid-glyph {
+  width: 24px;
+  height: 24px;
+  color: var(--ink);
+}
+
+.icon-grid-title {
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+/* ---------------------------------------------------------------------------
    The crash note. Deliberately plain - it renders when the tree that would
    have styled anything is gone. */
 

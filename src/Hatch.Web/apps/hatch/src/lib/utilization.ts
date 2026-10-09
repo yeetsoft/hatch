@@ -16,7 +16,7 @@
      of that story and `readAt` is how old, so the wording never guesses at
      staleness from a timestamp. */
 
-import { channels, luminance } from './color';
+import { channels, luminance } from '@hatch/ui';
 import type { Utilization, UtilizationLimit } from '../types';
 
 /** The window the ring runs down, in milliseconds. The session limit's own,

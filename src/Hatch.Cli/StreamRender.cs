@@ -35,6 +35,18 @@ public sealed class RunFacts
     /// event arrived at all - the one place a limit hit mid-stream shows up.
     /// </summary>
     public string? LastAssistantText { get; set; }
+
+    /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed, read back from <see cref="SessionHooks.Clamp"/>.</summary>
+    public long? ClampedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its playbook's budget was crossed.</summary>
+    public int? ClampedAtRequests { get; set; }
+
+    /// <summary>The cumulative tokens the session had spent when its hard limit was crossed, read back in <see cref="Increment.SpawnAsync"/>.</summary>
+    public long? HardLimitedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its hard limit was crossed.</summary>
+    public int? HardLimitedAtRequests { get; set; }
 }
 
 /// <summary>
@@ -60,6 +72,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     private long _thinking;
     private long _said;
     private readonly HashSet<string> _counted = [];
+    private long _peakContext;
 
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
@@ -67,6 +80,16 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     /// answers with, read by the readout while the session is still running.
     /// </summary>
     public long TokensSoFar { get; private set; }
+
+    /// <summary>One request per distinct assistant message id seen so far.</summary>
+    public int Requests => _counted.Count;
+
+    /// <summary>
+    /// The largest <c>input + cache creation + cache read</c> carried by any one
+    /// message so far - output tokens excluded, since they do not weigh on the
+    /// next turn's context the way the other three do.
+    /// </summary>
+    public long PeakContextTokens => _peakContext;
 
     /// <summary>
     /// The account's usage windows, out of the session's own stream - the
@@ -224,6 +247,10 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
         TokensSoFar += Long(usage, "input_tokens") + Long(usage, "output_tokens")
             + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
+
+        var context = Long(usage, "input_tokens") + Long(usage, "cache_creation_input_tokens")
+            + Long(usage, "cache_read_input_tokens");
+        if (context > _peakContext) _peakContext = context;
     }
 
     /// <summary>

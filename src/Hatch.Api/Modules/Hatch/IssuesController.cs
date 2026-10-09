@@ -340,6 +340,7 @@ public class IssuesController(
         if (issue is null) return NotFound();
 
         if (await OverrideRefusal(request.WipOverride, ct) is { } notAPerson) return notAPerson;
+        if (await ProjectMoveRefusal(request.ProjectId, ct) is { } notAPersonMove) return notAPersonMove;
 
         if (Invalid(request.Title?.Trim(), request.Description, request.Type, required: false) is { } invalid)
             return BadRequest(invalid);
@@ -348,15 +349,62 @@ public class IssuesController(
 
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
-        var gate = new WipGate(db, claims, now);
-        var (changed, error, full) = await StageEditAsync(
-            issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
-        if (full is not null) return Conflict(full);
-        if (error is not null) return BadRequest(error);
 
-        if (changed) await db.SaveChangesAsync(ct);
+        // Decided once, against the issue as LoadAsync first returned it.
+        // StageEditAsync still re-validates the target on every re-entry, so
+        // an unknown target refuses on attempt one with no retry wasted on
+        // it - this flag only chooses which of the two paths below wraps the
+        // call.
+        var movingRequested = edit.ProjectId is { } targetId && targetId != issue.ProjectId;
 
-        return await ToDtoAsync(issue, ct);
+        if (!movingRequested)
+        {
+            var gate = new WipGate(db, claims, now);
+            var (changed, error, conflict, full, _) = await StageEditAsync(
+                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (full is not null) return Conflict(full);
+            if (conflict is not null) return Conflict(conflict);
+            if (error is not null) return BadRequest(error);
+
+            if (changed) await db.SaveChangesAsync(ct);
+
+            return await ToDtoAsync(issue, ct);
+        }
+
+        // A real move mints a new number in the target project, which can
+        // race the same way CreateIssueAsync's mint can - so it gets the same
+        // retry, copied from CreateIssueAsync (:257-323) exactly.
+        // ChangeTracker.Clear() drops every tracked entity, including the
+        // issue already loaded above, so the reload and the staging are
+        // inside the loop, not just the save.
+        for (var attempt = 1; ; attempt++)
+        {
+            issue = await LoadAsync(key, ct);
+            if (issue is null) return NotFound();
+
+            var gate = new WipGate(db, claims, now);
+            var (changed, error, conflict, full, _) = await StageEditAsync(
+                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (full is not null) return Conflict(full);
+            if (conflict is not null) return Conflict(conflict);
+            if (error is not null) return BadRequest(error);
+
+            try
+            {
+                if (changed) await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException) when (attempt < MintAttempts)
+            {
+                db.ChangeTracker.Clear();
+                continue;
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict("could not mint an issue number - try again");
+            }
+
+            return await ToDtoAsync(issue, ct);
+        }
     }
 
     /// <summary>
@@ -380,6 +428,10 @@ public class IssuesController(
     [HttpPost("bulk")]
     public async Task<ActionResult<IssueBulkResultDto>> BulkEdit(IssueBulkEditRequest request, CancellationToken ct)
     {
+        if (await ProjectMoveRefusal(request.ProjectId, ct) is { } notAPersonMove) return notAPersonMove;
+        if (request.ProjectId is { } targetId && !await db.Projects.AnyAsync(p => p.Id == targetId, ct))
+            return BadRequest($"there is no project {targetId}");
+
         // Deduplicated rather than refused: a client that sent AER-1 twice meant
         // it once, and reporting the second as a failure would be a refusal
         // about nothing.
@@ -389,7 +441,8 @@ public class IssuesController(
             return BadRequest($"a bulk edit covers at most {MaxBulkKeys} issues at once - this one named {keys.Count}");
 
         var patch = new IssuePatchRequest(
-            null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null);
+            null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null,
+            request.ProjectId, request.MoveDescendants);
 
         if (Invalid(null, null, request.Type, required: false) is { } invalid) return BadRequest(invalid);
         if (!ReadEdit(patch, out var edit, out var editError)) return BadRequest(editError);
@@ -406,29 +459,113 @@ public class IssuesController(
         // at one free slot must not both be admitted. Bulk takes no override.
         var gate = new WipGate(db, claims, now);
 
-        var changed = new List<string>();
-        var unchanged = new List<string>();
-        var failures = new List<IssueBulkFailureDto>();
-
-        foreach (var key in keys)
+        // Resolves every named key, orders a move's named ancestors ahead of
+        // their own named descendants, then stages each through
+        // StageEditAsync - fresh lists every call, so a retried attempt below
+        // never sees a prior attempt's results.
+        async Task<(List<string> Changed, List<string> Unchanged, List<IssueBulkFailureDto> Failures, List<(string From, string To)> Rekeyed)> ResolveAndStageAsync()
         {
-            var issue = await LoadAsync(key, ct);
-            if (issue is null)
+            var changed = new List<string>();
+            var unchanged = new List<string>();
+            var failures = new List<IssueBulkFailureDto>();
+            var rekeyedPairs = new List<(string From, string To)>();
+
+            var resolved = new List<(string Key, EfHatchIssue Issue)>();
+            foreach (var key in keys)
             {
-                failures.Add(new IssueBulkFailureDto(key, $"there is no {key}"));
-                continue;
+                var issue = await LoadAsync(key, ct);
+                if (issue is null) failures.Add(new IssueBulkFailureDto(key, $"there is no {key}"));
+                else resolved.Add((key, issue));
             }
 
-            var (moved, error, full) = await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
-            if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
-            else if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
-            else if (moved) changed.Add(await KeyOfAsync(issue, ct));
-            else unchanged.Add(await KeyOfAsync(issue, ct));
+            // A move can rekey a named descendant before the loop reaches that
+            // descendant's own turn - EF's identity map then hands StageEditAsync
+            // back the same, already-moved, already-tracked instance, which mints
+            // it a second, bogus re-key. Staging every named ancestor ahead of any
+            // named descendant it actually carries avoids that: by the
+            // descendant's turn it is already in the target project, and
+            // StageEditAsync's own "already there" check no-ops it. Skipped for an
+            // ordinary bulk edit, so nothing about today's cost or ordering
+            // changes for the common case.
+            if (edit.ProjectId is not null)
+            {
+                var parentIds = await db.Issues.AsNoTracking()
+                    .Select(i => new { i.Id, i.ParentId })
+                    .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
+                var resolvedIds = resolved.Select(r => r.Issue.Id).ToHashSet();
+
+                int AncestorCount(long id)
+                {
+                    var count = 0;
+                    for (var at = parentIds.GetValueOrDefault(id); at is { } parentId; at = parentIds.GetValueOrDefault(parentId))
+                    {
+                        if (resolvedIds.Contains(parentId)) count++;
+                    }
+
+                    return count;
+                }
+
+                resolved = resolved.OrderBy(r => AncestorCount(r.Issue.Id)).ToList();
+            }
+
+            foreach (var (key, issue) in resolved)
+            {
+                var (moved, error, conflict, full, rekeyedByThis) =
+                    await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
+                if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
+                else if (conflict is not null) failures.Add(new IssueBulkFailureDto(key, conflict));
+                else if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
+                else if (moved) changed.Add(await KeyOfAsync(issue, ct));
+                else unchanged.Add(await KeyOfAsync(issue, ct));
+
+                rekeyedPairs.AddRange(rekeyedByThis);
+            }
+
+            return (changed, unchanged, failures, rekeyedPairs);
         }
 
-        if (changed.Count > 0) await db.SaveChangesAsync(ct);
+        List<string> changed;
+        List<string> unchanged;
+        List<IssueBulkFailureDto> failures;
+        List<(string From, string To)> rekeyedPairs;
 
-        return new IssueBulkResultDto(changed, unchanged, failures);
+        if (edit.ProjectId is null)
+        {
+            (changed, unchanged, failures, rekeyedPairs) = await ResolveAndStageAsync();
+            if (changed.Count > 0) await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            // A move mints a new number in the target project, which can race
+            // the same way CreateIssueAsync's and PatchIssue's own move can -
+            // so it gets the same retry, at the scale of the whole batch.
+            // ChangeTracker.Clear() drops every tracked entity the aborted
+            // attempt touched, so resolving, ordering and staging are all
+            // redone inside the loop, not just the save - and ResolveAndStageAsync
+            // starts every attempt with fresh lists, so a retried attempt
+            // never double-reports a key the aborted one already counted.
+            for (var attempt = 1; ; attempt++)
+            {
+                (changed, unchanged, failures, rekeyedPairs) = await ResolveAndStageAsync();
+
+                try
+                {
+                    if (changed.Count > 0) await db.SaveChangesAsync(ct);
+                    break;
+                }
+                catch (DbUpdateException) when (attempt < MintAttempts)
+                {
+                    db.ChangeTracker.Clear();
+                }
+                catch (DbUpdateException)
+                {
+                    return Conflict("could not mint an issue number - try again");
+                }
+            }
+        }
+
+        return new IssueBulkResultDto(
+            changed, unchanged, failures, rekeyedPairs.Select(p => new IssueBulkRekeyedDto(p.From, p.To)).ToList());
     }
 
     /// <summary>
@@ -443,28 +580,79 @@ public class IssuesController(
     /// </summary>
     /// <returns>
     /// Whether anything changed, the sentence to refuse with if it could not be
-    /// applied, and - separately, because it is a <c>409</c> and carries
-    /// numbers rather than a sentence alone - the WIP refusal if that is why.
+    /// applied, a second sentence for the one refusal that is a plain
+    /// <c>409</c> rather than a <c>400</c> - a live claim somewhere in a moving
+    /// set - the WIP refusal, separate because it carries numbers rather than a
+    /// sentence alone, and lastly the <c>{from, to}</c> pairs for every issue a
+    /// project move actually moved - the root and every descendant carried with
+    /// it, named by the caller or not. Empty unless a move happened.
     /// </returns>
-    private async Task<(bool Changed, string? Error, WipRefusalDto? Full)> StageEditAsync(
+    private async Task<(bool Changed, string? Error, string? Conflict, WipRefusalDto? Full, IReadOnlyList<(string From, string To)> Rekeyed)> StageEditAsync(
         EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms,
         WipGate gate, bool wipOverride, CancellationToken ct)
     {
+        List<(string From, string To)> rekeyed = [];
+
         // ---- What could be refused ----
+
+        // Resolved first, ahead of the parent lookup below, which needs to
+        // know the target project before it runs. Naming the issue's own
+        // project is read as no opinion at all - the same no-op a bulk edit
+        // re-sending a value already held falls through as.
+        EfHatchProject? targetProject = null;
+        if (edit.ProjectId is { } targetProjectId)
+        {
+            var found = await db.Projects.FirstOrDefaultAsync(p => p.Id == targetProjectId, ct);
+            if (found is null) return (false, $"there is no project {targetProjectId}", null, null, []);
+            if (found.Id != issue.ProjectId) targetProject = found;
+        }
+
+        List<long>? movingIds = null;
+        if (targetProject is not null)
+        {
+            movingIds = (edit.MoveDescendants ?? true)
+                ? [issue.Id, ..await Rollup.DescendantIdsAsync(db, issue.Id, ct)]
+                : [issue.Id];
+
+            var holders = await db.Issues
+                .Where(i => movingIds.Contains(i.Id))
+                .Select(i => new
+                {
+                    i.Id,
+                    Claim = new ClaimSnapshot(
+                        i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                        i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                })
+                .ToListAsync(ct);
+
+            var held = holders.Where(h => claims.IsLive(h.Claim, now)).ToList();
+            if (held.Count > 0)
+            {
+                var names = new List<string>(held.Count);
+                foreach (var h in held) names.Add((await KeyOfAsync(h.Id, ct))!);
+                return (false, null, $"{string.Join(", ", names)} - nothing moved", null, []);
+            }
+        }
 
         EfHatchStatus? status = null;
         if (edit.StatusId is { } statusId && statusId != issue.StatusId)
         {
             status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
-            if (status is null) return (false, $"there is no column {statusId}", null);
+            if (status is null) return (false, $"there is no column {statusId}", null, null, []);
         }
 
-        // Present-but-empty is the clear; absent is no opinion. See IssuePatchRequest.
+        // Present-but-empty is the clear; absent is no opinion. See
+        // IssuePatchRequest. A real move defaults that "no opinion" to the
+        // clear - an ancestor can never be in the moving set, so the issue's
+        // own parent is always left behind unless this same request also
+        // names one.
+        var parentKey = edit.ParentKey ?? (targetProject is not null ? "" : null);
         (EfHatchIssue? Issue, string? Error) parent = (null, null);
-        if (edit.ParentKey is not null)
+        if (parentKey is not null)
         {
-            parent = await ResolveParentAsync(edit.ParentKey, issue.ProjectId, edit.Type ?? issue.Type, issue.Id, ct);
-            if (parent.Error is { } parentError) return (false, parentError, null);
+            var parentProjectId = targetProject?.Id ?? issue.ProjectId;
+            parent = await ResolveParentAsync(parentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
+            if (parent.Error is { } parentError) return (false, parentError, null, null, []);
         }
 
         // Asked last, and only when the column is actually changing, so a
@@ -478,7 +666,7 @@ public class IssuesController(
             // rule the type is already judged by just above.
             var parentId = edit.ParentKey is not null ? parent.Issue?.Id : issue.ParentId;
             wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, parentId, wipOverride, ct);
-            if (wip.Kind == WipVerdictKind.Refused) return (false, null, wip.Refusal);
+            if (wip.Kind == WipVerdictKind.Refused) return (false, null, null, wip.Refusal, []);
         }
 
         // ---- What is written ----
@@ -572,7 +760,7 @@ public class IssuesController(
             issue.PullRequestUrl = edit.PullRequestUrl;
         }
 
-        if (edit.ParentKey is not null && parent.Issue?.Id != issue.ParentId)
+        if (parentKey is not null && parent.Issue?.Id != issue.ParentId)
         {
             var from = issue.ParentId is null ? null : await KeyOfAsync(issue.ParentId.Value, ct);
             var to = parent.Issue is null ? null : await KeyOfAsync(parent.Issue, ct);
@@ -580,11 +768,71 @@ public class IssuesController(
             issue.ParentId = parent.Issue?.Id;
         }
 
-        if (events.Count == 0) return (false, null, null);
+        if (targetProject is not null)
+        {
+            var target = targetProject;
+
+            // Rank-then-id - the same "board order" convention
+            // IssueClaims.LineageAsync, Rollup's NodesAsync and Dispatch
+            // already use. The identity map hands back the same tracked
+            // instance for issue.Id that LoadAsync already attached, so the
+            // root is not double-tracked.
+            var moving = await db.Issues
+                .Where(i => movingIds!.Contains(i.Id))
+                .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+                .ToListAsync(ct);
+
+            // Every member shares one project before the move - captured
+            // from the root now, since re-deriving a moving issue's old key
+            // after its own fields change below would read the new project
+            // instead.
+            var oldProjectKey = issue.Project!.Key;
+            var oldKeys = moving.ToDictionary(m => m.Id, m => IssueKey.Format(oldProjectKey, m.Number));
+
+            foreach (var m in moving)
+            {
+                m.Number = target.NextIssueNumber++;
+                m.ProjectId = target.Id;
+
+                // EF does not refresh an already-loaded reference navigation
+                // just because the FK scalar changed - IssueProjection's
+                // ToDtosAsync fallback would otherwise hand back the old
+                // project's key in the response DTO despite ProjectId
+                // already being correct underneath.
+                m.Project = target;
+                m.UpdatedAt = now;
+
+                var newKey = IssueKey.Format(target.Key, m.Number);
+                object payload = m.Id == issue.Id
+                    ? new { from = oldKeys[m.Id], to = newKey, descendants = moving.Count - 1 }
+                    : new { from = oldKeys[m.Id], to = newKey };
+                m.Events.Add(Event(actor, EfHatchIssueEvent.ProjectChanged, payload, now));
+                rekeyed.Add((oldKeys[m.Id], newKey));
+            }
+
+            // Left behind rather than carried with the root, only when the
+            // request asked for that split - DeleteIssue's own outdent
+            // writes no event for the same shape of change, but there the
+            // parent disappears; here it survives elsewhere, so the child's
+            // own trail is the only place that says why it lost it.
+            if (!(edit.MoveDescendants ?? true))
+            {
+                var children = await db.Issues.Where(i => i.ParentId == issue.Id).ToListAsync(ct);
+                foreach (var child in children)
+                {
+                    child.ParentId = null;
+                    child.UpdatedAt = now;
+                    child.Events.Add(Event(
+                        actor, EfHatchIssueEvent.ParentChanged, new { from = oldKeys[issue.Id], to = (string?)null }, now));
+                }
+            }
+        }
+
+        if (events.Count == 0 && targetProject is null) return (false, null, null, null, rekeyed);
 
         foreach (var e in events) issue.Events.Add(e);
         issue.UpdatedAt = now;
-        return (true, null, null);
+        return (true, null, null, null, rekeyed);
     }
 
     /// <summary>
@@ -770,6 +1018,22 @@ public class IssuesController(
             }
             : null;
 
+    /// <summary>
+    /// A person, not a key. Moving an issue to another project is the
+    /// operator's call, the same way overriding the WIP limit is - see
+    /// <see cref="OverrideRefusal"/>. Fires on the raw presence of
+    /// <c>projectId</c>, before the target project is even looked up, the
+    /// same way <see cref="OverrideRefusal"/> fires on the raw
+    /// <c>wipOverride: true</c>.
+    /// </summary>
+    private async Task<ObjectResult?> ProjectMoveRefusal(int? projectId, CancellationToken ct) =>
+        projectId is not null && await caller.IsProgramAsync(ct)
+            ? new ObjectResult("moving an issue to another project is a person's call, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
+
     // ---- Mapping ----
 
     /// <summary>
@@ -855,12 +1119,14 @@ public class IssuesController(
         bool SetDue,
         IssueMoment? DueAt,
         bool SetPullRequest,
-        string? PullRequestUrl)
+        string? PullRequestUrl,
+        int? ProjectId,
+        bool? MoveDescendants)
     {
         /// <summary>Whether this edit names nothing at all - the request a bulk edit refuses rather than reports as a hundred no-ops.</summary>
         public bool IsEmpty =>
             Title is null && Description is null && Type is null && StatusId is null
-            && ParentKey is null && !SetReady && !SetDue && !SetPullRequest;
+            && ParentKey is null && !SetReady && !SetDue && !SetPullRequest && ProjectId is null;
     }
 
     /// <summary>
@@ -887,7 +1153,9 @@ public class IssuesController(
             request.DueAt is not null,
             dueAt,
             request.PullRequestUrl is not null,
-            pullRequestUrl);
+            pullRequestUrl,
+            request.ProjectId,
+            request.MoveDescendants);
 
         return true;
     }

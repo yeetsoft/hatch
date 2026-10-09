@@ -44,6 +44,20 @@ describe('describe', () => {
     ).toBe('Backlog → To Do, under HA-86');
   });
 
+  it('names a project move that carried its descendants with it', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'project_changed', payload: { from: 'HA-12', to: 'OTHER-4', descendants: 3 } }),
+      ),
+    ).toBe('HA-12 → OTHER-4, 3 more moved with it');
+  });
+
+  it('leaves a project move with no descendants unchanged', () => {
+    expect(
+      describeEvent(event({ kind: 'project_changed', payload: { from: 'HA-12', to: 'OTHER-4' } })),
+    ).toBe('HA-12 → OTHER-4');
+  });
+
   it('marks an issue filed under an express parent, naming the parent', () => {
     expect(
       describeEvent(
@@ -94,10 +108,10 @@ describe('describe', () => {
       describeEvent(
         event({
           kind: 'claim_lapsed',
-          payload: { from: 'Buster Bluth on here:/checkouts/one', heardAt: '2026-09-28T00:00:00Z' },
+          payload: { from: 'Jeff Winger on here:/checkouts/one', heardAt: '2026-09-28T00:00:00Z' },
         }),
       ),
-    ).toBe('Buster Bluth on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
+    ).toBe('Jeff Winger on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
   });
 });
 

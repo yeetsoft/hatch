@@ -13,8 +13,7 @@ import {
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, EmptyState } from '@hatch/ui';
-import { getAssignees, getBoard, getProjects, moveIssue } from '../api/client';
-import { AttentionHuman } from '../components/AttentionHuman';
+import { deleteIssue, getAssignees, getBoard, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -50,11 +49,10 @@ import type { Placement } from '../lib/place';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
-import { useAttentionContext } from '../lib/useAttentionContext';
-import { useAttentionNow } from '../lib/useAttentionNow';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
+import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -94,7 +92,6 @@ const TOUCH_LIFT_TOLERANCE_PX = 8;
 
 export function BoardPage() {
   const isPhone = usePhone();
-  const { attention, reload: reloadAttention } = useAttentionContext();
 
   // The chosen layout at phone width, seeded from storage and written on
   // every press of the toggle - off the phone this is always 'full' (AC7),
@@ -102,7 +99,6 @@ export function BoardPage() {
   const [view, setView] = useState<BoardView>(readBoardView);
   const layout = resolveBoardLayout(isPhone, view);
   const stacked = layout === 'stacked';
-  const now = useAttentionNow(stacked);
 
   // The card under the cursor and the column it is over, kept only for the
   // duration of a drag: one paints the overlay, the other lights up the column
@@ -122,7 +118,8 @@ export function BoardPage() {
     setError,
     reload,
   } = useLoaded<Board>(getBoard, { everyMs: POLL_MS, paused: dragging !== null || moving > 0 });
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { projects, byKey: projectsByKey } = useProjects();
+  const showProjectMark = hasMultipleProjects(projects);
   /* Who is signed in, read once for the whole board rather than once per card
      opened. The summary needs it to know whether to offer the expedite press -
      the write is a person's - and a dialog that fetched its own copy would ask
@@ -220,29 +217,23 @@ export function BoardPage() {
   const wip = useWipOverride(reload);
 
   useEffect(() => {
-    getProjects()
-      .then((ps) => {
-        setProjects(ps);
-        // A key in the URL that names no project reads as all projects, and
-        // the param is dropped - the picker has nothing to show it as chosen.
-        setFilter((prev) => {
-          if (prev.project === '' || ps.some((p) => p.key === prev.project)) return prev;
-          const nextParams = new URLSearchParams(params);
-          nextParams.delete(PROJECT);
-          setParams(nextParams, { replace: true });
-          return { ...prev, project: '' };
-        });
-      })
-      .catch(() => {
-        // The board is readable without the project list; only the New issue
-        // dialog needs it, and it says so itself when there is nothing to pick.
-      });
-
     getAssignees().then(setDirectory).catch(() => {
       // And without the directory: every card still draws, and the summary
       // says whether an issue is expedited without offering to change it.
     });
   }, []);
+
+  useEffect(() => {
+    // A key in the URL that names no project reads as all projects, and
+    // the param is dropped - the picker has nothing to show it as chosen.
+    setFilter((prev) => {
+      if (prev.project === '' || projects.some((p) => p.key === prev.project)) return prev;
+      const nextParams = new URLSearchParams(params);
+      nextParams.delete(PROJECT);
+      setParams(nextParams, { replace: true });
+      return { ...prev, project: '' };
+    });
+  }, [projects]);
 
   // A few pixels before a mouse drag begins, so the same element can be a link
   // and a card - tapping one opens the issue, dragging one moves it. A touch
@@ -432,6 +423,17 @@ export function BoardPage() {
     [board, commit, reload],
   );
 
+  /** The peek's Delete, once it has been confirmed there. A refusal propagates
+      to the dialog untouched, and nothing is reloaded because nothing changed. */
+  const remove = useCallback(
+    async (key: string) => {
+      await deleteIssue(key);
+      closePeek();
+      await reload();
+    },
+    [closePeek, reload],
+  );
+
   // Undo on the board's own account: this listener is mounted only while the
   // board is the page on screen, so a keystroke made anywhere else cannot
   // rearrange it. Each condition below leaves the key to whoever else wants it -
@@ -540,17 +542,6 @@ export function BoardPage() {
           visible title the operator asked to lose. */}
       <h1 className="hatch-visually-hidden">Board</h1>
 
-      {/* The phone's own chrome (AC1), drawn whenever the viewport is phone
-          width in either view - only the columns area below switches on
-          `stacked`. Full board is a toggle on the grid, not a trip back to
-          the desk's whole page. */}
-      {isPhone && (
-        <section className="hatch-board-waiting">
-          <h2 className="hatch-board-waiting-heading">Waiting on you</h2>
-          <AttentionHuman attention={attention} now={now} reload={reloadAttention} />
-        </section>
-      )}
-
       {isPhone && (
         <Button variant="primary" className="hatch-board-filing" onClick={() => setFiling(true)}>
           New issue
@@ -613,12 +604,20 @@ export function BoardPage() {
                 filtering={isFiltering(filter)}
                 found={found}
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
+                projectsByKey={projectsByKey}
+                showProjectMark={showProjectMark}
               />
             ))}
           </div>
 
           <DragOverlay dropAnimation={null}>
-            {dragging && <CardPreview card={dragging} terminal={terminalOf(board.statuses, dragging.statusId)} />}
+            {dragging && (
+              <CardPreview
+                card={dragging}
+                terminal={terminalOf(board.statuses, dragging.statusId)}
+                project={showProjectMark ? (projectsByKey.get(dragging.projectKey) ?? null) : null}
+              />
+            )}
           </DragOverlay>
         </DndContext>
       ) : (
@@ -644,6 +643,8 @@ export function BoardPage() {
                 tint={zoneIds.has(status.id) ? tint : null}
                 found={found}
                 onPeek={peek}
+                projectsByKey={projectsByKey}
+                showProjectMark={showProjectMark}
               />
             ))}
           </div>
@@ -652,7 +653,13 @@ export function BoardPage() {
               original in place and dims it, which by itself reads as a board
               that did not notice the drag - this is the half that moves. */}
           <DragOverlay dropAnimation={null}>
-            {dragging && <CardPreview card={dragging} terminal={terminalOf(board.statuses, dragging.statusId)} />}
+            {dragging && (
+              <CardPreview
+                card={dragging}
+                terminal={terminalOf(board.statuses, dragging.statusId)}
+                project={showProjectMark ? (projectsByKey.get(dragging.projectKey) ?? null) : null}
+              />
+            )}
           </DragOverlay>
         </DndContext>
       )}
@@ -676,8 +683,10 @@ export function BoardPage() {
         status={peeked ? board.statuses.find((s) => s.id === peeked.statusId) : undefined}
         statuses={board.statuses}
         directory={directory}
+        project={peeked && showProjectMark ? (projectsByKey.get(peeked.projectKey) ?? null) : null}
         onExpedited={() => void reload()}
         onMove={send}
+        onDelete={remove}
         onClose={closePeek}
       />
 
@@ -736,6 +745,8 @@ function Column({
   tint,
   found,
   onPeek,
+  projectsByKey,
+  showProjectMark,
 }: {
   status: Status;
   cards: IssueCard[];
@@ -754,6 +765,8 @@ function Column({
   /** The key of the card the console found, on any column. */
   found: string | null;
   onPeek: (card: IssueCard) => void;
+  projectsByKey: Map<string, Project>;
+  showProjectMark: boolean;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -808,16 +821,20 @@ function Column({
         {/* Only the cards actually drawn: dnd-kit sorts the ids it is given, and
             an id with nothing on screen behind it is a gap a drag falls into. */}
         <SortableContext items={shown.map((c) => c.key)} strategy={verticalListSortingStrategy}>
-          {shown.map((card) => (
-            <BoardCard
-              key={card.key}
-              card={card}
-              waiting={waiting.includes(card)}
-              terminal={status.isTerminal}
-              found={found === card.key}
-              onPeek={onPeek}
-            />
-          ))}
+          {shown.map((card) => {
+            const project = showProjectMark ? (projectsByKey.get(card.projectKey) ?? null) : null;
+            return (
+              <BoardCard
+                key={card.key}
+                card={card}
+                waiting={waiting.includes(card)}
+                terminal={status.isTerminal}
+                found={found === card.key}
+                onPeek={onPeek}
+                project={project}
+              />
+            );
+          })}
         </SortableContext>
 
         {waiting.length > 0 && (
@@ -859,6 +876,8 @@ function PhoneColumn({
   filtering,
   found,
   wip,
+  projectsByKey,
+  showProjectMark,
 }: {
   status: Status;
   cards: IssueCard[];
@@ -870,6 +889,8 @@ function PhoneColumn({
   /** This column's share of the WIP section's own sentence, or null where it
       is not in one - AC5: no band here, the header says it instead. */
   wip: { text: string; tint: Tightness } | null;
+  projectsByKey: Map<string, Project>;
+  showProjectMark: boolean;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
   const [open, setOpen] = useState(() => !startsCollapsed(status));
@@ -906,9 +927,19 @@ function PhoneColumn({
 
       <div className="hatch-column-cards">
         <SortableContext items={shown.map((c) => c.key)} strategy={verticalListSortingStrategy}>
-          {shown.map((card) => (
-            <BoardCard key={card.key} card={card} waiting={waiting.includes(card)} terminal={status.isTerminal} found={found === card.key} />
-          ))}
+          {shown.map((card) => {
+            const project = showProjectMark ? (projectsByKey.get(card.projectKey) ?? null) : null;
+            return (
+              <BoardCard
+                key={card.key}
+                card={card}
+                waiting={waiting.includes(card)}
+                terminal={status.isTerminal}
+                found={found === card.key}
+                project={project}
+              />
+            );
+          })}
         </SortableContext>
 
         {waiting.length > 0 && (

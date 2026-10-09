@@ -278,7 +278,7 @@ public sealed class SettingsTests : IDisposable
     [Fact]
     public void A_runners_record_line_is_not_shaped_like_a_config_line()
     {
-        var runners = Write("runners", "/Users/x/code/hatch=Buster Bluth");
+        var runners = Write("runners", "/Users/x/code/hatch=Jeff Winger");
 
         var values = Settings.ReadFile(runners);
 

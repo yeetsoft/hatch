@@ -119,6 +119,26 @@ key can `curl` the API on the same origin the browser uses. The bundle reads its
 basename off the URL (`lib/basename.ts`) rather than assuming a prefix, which is
 what lets it serve unchanged wherever `/apps/hatch/` ends up mounted.
 
+**The installed app.** `manifest.webmanifest`
+(`src/Hatch.Web/apps/hatch/public/manifest.webmanifest`) scopes itself to the
+whole origin, `/`, rather than `/apps/hatch/`, because sign-in lives outside
+that prefix (`/apps/auth/`) and because a deployment that serves Hatch at a
+host's own root has ticket links with no prefix at all — either one, inside
+a narrower scope, would open behind a browser bar instead of staying in the
+installed app's own window. There is no service worker: Hatch's deploy story
+depends on the browser revalidating `index.html` on every load, and a
+service worker's cache is exactly the layer that turns a deploy into a stale
+app until somebody clears it by hand. The manifest's own `<link>`, in
+`index.html`, carries `crossorigin="use-credentials"` because the wall
+answers a cookieless fetch with a 401, and a 401 on the manifest is an app
+that silently never offers to install. `GET /.well-known/assetlinks.json`
+(`AssetLinksController`, [below](#the-wall-the-roles-and-api-keys)) answers
+Android's own link-ownership check with the operator's package name and
+certificate fingerprint — supplied as deploy-time config
+(`Apps__AssetLinks__0__PackageName`/`…Sha256CertFingerprints__0`,
+`compose.yaml`), never a value this repository could know on an operator's
+behalf.
+
 **Read [`hatch-at-home.md`](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md)**
 for the operator-facing version of the above — the one line, the runner, and
 the block to paste into a friend's own `CLAUDE.md`. It ships inside the Hatch
@@ -135,7 +155,10 @@ having in one place.
 ### Project
 
 `EfHatchProject` — `Key` (unique, `^[A-Z][A-Z0-9]{1,5}$`), `Name`,
-`NextIssueNumber`, `CreatedAt`.
+`NextIssueNumber`, `CreatedAt`, `Color` (`#rrggbb`, nullable - no default and no
+backfill, so the browser paints `--muted` when none is set), `Icon` (a slug
+into a closed set the browser owns, not the server, nullable the same way). A
+project may also carry an uploaded logo, in its own table — see [Logo](#logo).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -148,6 +171,33 @@ because those are references this database has never seen and cannot rewrite.
 What survives is the part that matters — parentage is a foreign key and the
 number is the issue's own column, so a rekeyed project keeps every story under
 its epic.
+
+That is a project renaming its own key, in place. An issue changing which
+project it belongs to is a different rekey, paid by that issue alone — see
+[Moving between projects](#moving-between-projects).
+
+### Logo
+
+`EfHatchProjectLogo` — `ProjectId` (PK, cascading FK), `Bytes`, `ContentType`,
+`UpdatedAt`. The shape of `EfPersonPhoto` (see `Ef/People.cs`), moved into the
+Hatch module: bytes in the row ride the existing backup, so there is no volume
+and no second backup story.
+
+The type is sniffed from the bytes by `PersonPhoto.TryDetectContentType`
+(PNG, JPEG, GIF, WebP), never taken from the request's declared Content-Type —
+a client that says PNG and sends HTML is describing an attack, not a logo. SVG
+is refused for the reason `PersonPhoto.cs` states: it is a document that can
+carry script, and an image format that executes is the one thing serving
+uploads from the install's own origin must not do.
+
+**Reading is open to a key; writing is a person's alone** — the same cut as a
+[repository](#repository): `[RequireRole(User)]` with no scope on the `PUT`
+and the `DELETE`, checked again in the action.
+
+`ProjectDto.LogoUpdatedAt` is what lets the browser point an `<img>` at a
+stable `/api/hatch/projects/{id}/logo?v={ticks}` URL and still see a new
+upload the moment it lands — the same role `PersonDto.PhotoUpdatedAt` plays for
+a person's photo. Deleting a project takes its logo with it.
 
 ### Repository
 
@@ -277,7 +327,9 @@ every issue leftmost, whoever files it, exactly as it always has.
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
-from its luminance (`lib/color.ts`), because CSS still cannot ask that question.
+from its luminance (`@hatch/ui`'s `color.ts`, shared with `<ProjectMark>` — see
+[`docs/design-system-architecture.md`](design-system-architecture.md)), because
+CSS still cannot ask that question.
 
 Every install starts with the same seven columns, and with the same flow
 through them. `In Review` is the operator's except for two things: a pull request
@@ -467,55 +519,109 @@ an API key; see [The one edge that is deliberately cut](#the-one-edge-that-is-de
 
 #### Expedite
 
-**An issue sits at one of three levels, and emergency is the third.**
-`Priority` is an int on the issue — normal, expedited or emergency, in that
-order — set by a person, and honoured by both halves of Hatch: the board
-floats the card to the top of its column, and the dispatcher considers every
-emergency candidate before every expedited candidate before anything else.
-`PUT /api/hatch/issues/{key}/priority` sets the level by name; the older
+**An issue sits at one of six levels, and emergency is the highest, paused
+the lowest.** `Priority` is an int on the issue — paused, economy, low,
+normal, expedited or emergency, in that order — set by a person, and honoured
+by both halves of Hatch: the board floats an expedited or emergency card to
+the top of its column and sinks a paused one to the bottom, and the dispatcher
+considers every emergency candidate before every expedited candidate before
+anything else, considers a low candidate only after every normal one,
+considers an economy candidate only when an unattended pass finds the
+account it would spend has a reserve of usage to spare, and never considers a
+paused one at all. `PUT
+/api/hatch/issues/{key}/priority` sets the level by name; the older
 `PUT .../expedite` stays as a two-level alias (`{ expedited: true }` sets
 expedited, `false` sets normal), so a script or a browser tab written against
-the two-level flag does not break.
+the two-level flag does not break. A person sets it from a picker: a pill on
+the issue page and on the board's peek that opens onto every level in a band,
+the issue's own level marked, and a press sets exactly that one — the same
+shape the status picker offers for a column, pressed rather than dragged.
 
 Two things it deliberately is not.
 
-**It is a sort key, not a gate.** Every existing fold still applies. An open
-question, an unmet dependency, a ready date in the future, a live claim, a
-missing playbook, a person's name on the ticket and a terminal column fold an
-expedited or emergency issue exactly as they fold any other, with exactly the
-same sentence. Priority changes the order candidates are *considered* in, and
-nothing else — so an emergency issue that is blocked is still blocked, and the
-pass carries on past it.
+**It is a sort key, not a gate — for the level an issue sets on itself.** Every
+existing fold still applies. An open question, an unmet dependency, a ready
+date in the future, a live claim, a missing playbook, a person's name on the
+ticket and a terminal column fold an expedited or emergency issue exactly as
+they fold any other, with exactly the same sentence. Priority changes the
+order candidates are *considered* in, and nothing else — so an emergency issue
+that is blocked is still blocked, and the pass carries on past it. It is no
+longer the whole truth about a tier *below* one with clear work, which [the
+park](#what-makes-an-issue-actionable) turns into a soft gate of its own: a
+tier is reached at all only once every tier above it has no clear candidate.
 
-**It marks the issue it is set on, not the subtree under it.** Every type in a
-walkable column is dispatchable — an epic in a breakdown column is broken down
-by the loop the same as a story is implemented — so a level on one issue means
-something wherever it is set. "Point tonight at this epic" is already
-`work --under`, and a second subtree mechanism beside `ancestorKey` would be two
-answers to one question.
+**Paused, economy and low are the three levels that are also gates —
+differently.** Every other level only reorders what is already dispatchable.
+Paused takes the issue out of dispatch entirely, folded by `Dispatch.Blocked`
+with its own sentence — *a person set it aside, and nothing picks it up until
+they set it back* — for `work/next`, `work/queue`, `work/{key}` and a hop
+alike, right after a live claim and before anything else
+(`Dispatch.cs:555-559`) — nothing about who is asking changes it. Economy and
+low each take the issue out of dispatch only for an unattended pass —
+`work/next` and `work/queue` — when the account the dispatch would spend is
+not projected to reset with usage unspent; a person naming the issue by hand
+with `work/{key}`, or a hop that would otherwise carry it, gets it regardless,
+for either level alike (`Dispatch.cs`, right after the ready date and before
+the assignee fold). The two gates read the same account, judged twice: economy
+reads every window Hatch knows the length of and holds ten points in reserve,
+while low reads the session window alone and holds nothing back — strictly
+laxer, so every reading that clears economy's gate clears low's too. Nothing
+else about any of the three levels changes: its assignee, its claim, its
+questions and its dependencies stand exactly where they were.
 
-**It is taken from the parent at filing, and at no other time — but only from
-an emergency parent.** An issue created under an emergency parent is born
-emergency, whoever files it and however, the same as [express](#express) is
-taken from an express parent; its `created` event names the parent it took the
-level from (`emergencyFrom`). Expedited never inherits this way, and never has
-— filing under an expedited-but-not-emergency parent is not itself expedited.
-**Reparenting never touches it**: moving an issue under an emergency parent
-does not mark it, and moving it away does not unmark it — the level is a fact
-about how an issue came to exist, not one that follows a parent around.
+**It is inherited, live, from the nearest ancestor that sets one.** An issue
+is at the first level other than normal found on itself or on its ancestors,
+nearest first; normal is not a stop on the way up, so a story under a paused
+epic is paused unless the story sets its own level, and a task under that
+story set to expedited keeps its own regardless of what the epic or the story
+say above it. This reverses what this section used to argue — that a level
+means something only on the issue it is set on, because every type in a
+walkable column is dispatchable and a second subtree mechanism beside
+`ancestorKey` would be two answers to one question. The dispatchability
+argument still holds, but a level that reached nothing under it could not
+actually pause or expedite a subtree: an epic marked paused with its stories
+still running is not paused in any sense a person watching the board would
+recognize. Inheritance answers that without a second mechanism — setting a
+level on an epic is the one write, and every descendant that does not set its
+own reads it from there.
+
+**It is computed at read, never stored or copied.** `PriorityTree.Effective`
+and `DependencyGate.Effective` (`Dispatch.cs`) walk the (id, parent, own
+level) map up from the issue to the first ancestor whose own level is not
+normal, and that walk is what the board, the dispatcher and `hatch show` read
+as the issue's priority; the level actually stored on the row is a separate
+field, and the ancestor it was read from — or nothing, when the level is the
+issue's own — travels alongside it. This reverses emergency's original rule
+— taken from the parent at filing, and at no other time, with the `created`
+event naming the parent it was copied from — because a copied level is an
+override the parent could never take back: setting an epic to emergency after
+a child already exists would reach nothing already filed, and moving a child
+out from under an emergency parent would leave it emergency forever, with no
+write left to undo. Reading the level from the tree on every request instead
+of copying it onto the row at birth is what lets reparenting change the
+effective level at once, both ways, and what lets a person raise or lower an
+epic's level and have every descendant that hasn't set its own answer
+differently from the next read — not the next time it happens to be refiled.
 
 On the board it is `(StatusId, Priority desc, Rank, Id)`, served that way
 rather than sorted in the browser, so the board, the plan and the queue cannot
-disagree about where a card sits — and a card dropped above an emergency or
-expedited one comes to rest below it, because the float wins over the rank. In
-the dispatcher it is [three walks of the columns](#the-dispatcher) rather than
-a sort of the finished rows.
+disagree about where a card sits — a card dropped above an emergency or
+expedited one comes to rest below it, and a card dropped below a paused one
+comes to rest above it, because the float and the sink both win over the
+rank. In the dispatcher it is [six walks of the columns](#the-dispatcher)
+rather than a sort of the finished rows — low walked fourth, economy walked
+fifth and paused walked last. Paused is always folded there, so it never
+changes which issue `next` or a hop picks, only that `queue` can report it;
+low and economy are each gated rather than always folded, so unlike every
+other walk, a row reached on either pass can still be skipped by its own pace
+check for `next` and `queue` alike — a hop is exempt from both gates, the same
+way it is exempt from needing a playbook.
 
 Setting it is closed to an API key; see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). It follows that there is no
 `hatch expedite` or `hatch priority` verb — the CLI authenticates with a key,
 so the terminal shows the level (`board`'s counts, `next`'s and `show`'s
-suffix, and `queue`'s `!!`/`! ` marker) and sets it nowhere.
+suffix, and `queue`'s `!!`/`! `/`||` marker) and sets it nowhere.
 
 `CreatedBy` is a **name**, not a foreign key to `People`. The audit trail has to
 read the same after a person row is deleted, and an API key's name goes in this
@@ -537,6 +643,15 @@ unanswered question, a missing repository or an unmet dependency all hold an
 express issue exactly as they hold any other. Express answers one question
 only — does this column still need a session — and changes nothing about
 order, on the board or in `hatch queue`.
+
+**It is in no tier either.** Preemption nominates and spares by effective
+level alone (see [Preemption](#preemption)) — an express row below
+emergency is neither protected from being preempted nor made eligible to
+preempt anything, exactly as a non-express row at the same level would be. The
+one place an express-carried hop meets the pace scale — an economy hop
+skipping the pace gate, above — is a rule about having hopped at all, not
+about Express: the exemption is keyed on `hop`, and three of the four
+`HopKinds` have nothing to do with the flag.
 
 **It is taken from the parent at filing, and at no other time.** An issue
 created under an express parent is born express, whoever files it — a person
@@ -619,6 +734,38 @@ violations) and retries up to five times. The unique index on
 `(ProjectId, Number)` is the backstop underneath, so the worst case is a refused
 request rather than two issues wearing the same key. No raw SQL, and testable
 in memory.
+
+#### Moving between projects
+
+An issue's project can change too — `PATCH /api/hatch/issues/{key}` takes a
+`projectId` alongside the fields above. The move mints the issue a number in
+the target project through the exact mint just described, with the same
+retry on a lost race; its old key goes dead, the same cost a project's own
+key rename pays (see [Project](#project)), just paid by one issue instead of
+every issue under it.
+
+A parent and its child always share a project — `ResolveParentAsync` refuses
+otherwise, on every write — so a move has to settle the tree. An ancestor
+never moves *with* its descendant, only a descendant moves down, so the
+moved issue's own parent is always left behind unless the same request also
+re-parents it: `parentKey`, resolved against the *target* project rather
+than the old one. `moveDescendants: true` — the default when the field is
+absent — carries everything below the moved issue along with it, so the
+subtree's own parentage survives inside it; `moveDescendants: false`
+detaches its direct children instead, and they stay in the old project with
+their own subtrees under them intact.
+
+What refuses, before anything is written: an unknown target project (`400`);
+the issue's own project, read as no opinion at all rather than a move
+(nothing staged); a caller that is a key or a keyless runner (`403` — an
+issue's project decides which repository it is dispatched to, the same
+routing-power argument that keeps [binding a remote](#repository) closed to
+a key); any issue in the moving set holding a live [claim](#claim) (`409`,
+naming it).
+
+Every issue that moves, the one named and each descendant carried with it,
+gets a `project_changed` event, `{ from, to }` as display keys; the named
+issue's also carries `descendants`, the count of what moved alongside it.
 
 #### Ordering
 
@@ -919,6 +1066,13 @@ live [claim](#claim) whose next column is itself a WIP column. Which columns
 count is exactly what `IsWip` says — see [Status](#status) — narrowed the same
 way: a deferred or terminal column never counts, whatever it is flagged.
 
+An effectively [paused](#expedite) issue — its own level or inherited — is
+never part of a slice's load, nor of an epic's own count under it
+(`Wip.LoadAsync`, `PriorityTree.Effective`). A pause frees the slot it held,
+and an un-pause can momentarily read a section over its limit until something
+next leaves — the same *over* tint the band already draws for any other
+overfull slice.
+
 A line of the tree costs the section one slot, not one per counted issue on
 it: where an ancestor and a descendant are both counted, the nearer one's
 presence is what lets the other cross into a section that already holds it,
@@ -1139,8 +1293,8 @@ claim.
 in its head row, green while the holder is being heard from and amber once it
 has gone quiet, with who is working it and how long since a word on the hover.
 The issue page draws a **Claim** section saying the same things at length,
-leading with the runner rather than who it runs for — "Buster Bluth is working
-AER-12", with ", for Nathan" appended only when the two differ — plus when it
+leading with the runner rather than who it runs for — "Jeff Winger is working
+AER-12", with ", for Britta" appended only when the two differ — plus when it
 was taken, when it was last heard from, and the last line the runner printed
 with how long ago it printed it. *Quiet* is half the lease without a word — a
 fraction rather than a count of minutes, so changing `Hatch:ClaimTtlSeconds`
@@ -1816,6 +1970,14 @@ is refused while a question is open, and the dispatch is a command the operator
 types. A second scope minted for agents would close it properly, and is not
 worth a column until somebody wants one.
 
+One route sits outside the wall entirely rather than riding the exempt-paths
+list for a reason worth stating: `/.well-known/assetlinks.json`
+(`AssetLinksController`) answers Android's own Digital Asset Links verifier,
+which holds no cookie and never will. That is safe to leave open because the
+answer is public by design - it is a list of which Android package may open
+this install's links without the user granting it by hand, nothing more, and
+it grants nothing to anyone who merely reads it.
+
 ## API surface
 
 Everything under `/api/hatch`, every route `[RequireRole(PersonRole.User,
@@ -1823,10 +1985,13 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 
 | Route | Verbs | Notes |
 |---|---|---|
-| `/projects` | GET, POST | POST validates key format and uniqueness |
-| `/projects/{id}` | PATCH, DELETE | PATCH name and key; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
+| `/projects` | GET, POST | POST validates key format and uniqueness, and carries `color`/`icon` |
+| `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
+| `/projects/{id}/logo` | GET | The bytes, sniffed type and an ETag from `UpdatedAt` — see [Logo](#logo). 404 with none uploaded |
+| `/projects/{id}/logo` | PUT | **Person only** — plain `[RequireRole(User)]`. The body is the image itself, not multipart; refused with a sentence on an unsupported format, an empty body, or one over `PersonPhoto.MaxBytes` |
+| `/projects/{id}/logo` | DELETE | **Person only** — plain `[RequireRole(User)]`. 404 with none uploaded |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
@@ -1837,7 +2002,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures` |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key or a keyless runner, `409` naming any issue in the moving set holding a live claim |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
@@ -1847,7 +2012,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it back to the default; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
-| `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"normal"`, `"expedited"` or `"emergency"`, floated on the board and taken first by the dispatcher, most severe first. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
@@ -1860,6 +2025,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the one path past the terminal guard](#the-one-path-past-the-terminal-guard) |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
@@ -1921,6 +2087,21 @@ battery — applied to the nav: it costs a number that only moves while a
 session runs, and it needs no credential pasted anywhere. What it buys is a
 battery that works on a fresh install, for anybody with a runner of their own,
 including a friend on `do-my-work` spending their own account.
+
+**A second reader, since HA-209: [economy's own gate](#expedite).** The
+dispatcher asks the same freshest-whole-reading this widget draws, through the
+same `IActorDirectory.PrincipalAsync` resolution, to judge whether the account
+an unattended pass would spend has a reserve left on every window before it
+will touch an economy issue. Nothing about the endpoint or its shape changes
+for this — `GET /api/hatch/utilization` answers exactly as it always has; the
+dispatcher is simply a second caller of the same `Utilization.Of`.
+
+**A third reader, since HA-226: [low's own gate](#expedite).** The same one
+reading, resolved once per pass whether a candidate sits at economy or low or
+both, is judged a second way — the session window alone, nothing held in
+reserve — before an unattended pass will touch a low issue. Nothing new about
+the endpoint here either: `Utilization.Of` still has exactly one caller
+outside this widget, read once and judged twice.
 
 **Between sessions, HA-173 asks a second source.** A session's own stream is
 silent while the loop is idle, so the reading would otherwise sit frozen from
@@ -2068,7 +2249,10 @@ then pull requests to review, then questions to answer — and **Agent** —
 branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
-the group naming what is holding it back, rather than sitting in both.
+the group naming what is holding it back, rather than sitting in both. A
+merged pull request leaves the review half on its own: advancing the issue
+takes it out of `/api/hatch/work/review` and out of `/api/hatch/attention`
+both, so there is nothing left here for a person to look at either.
 
 Each row under *Pull requests to review* also carries two small icons, after
 the title, with no behaviour of their own — a click anywhere on the row,
@@ -2388,16 +2572,33 @@ everything and finishes nothing; one worked right to left pushes whatever is
 furthest along over the line before it opens anything new. The second is what a
 person does when they mean to ship.
 
-**Except for what somebody marked above normal**, which is considered first
-wherever it sits. The scan walks the columns three times — every
+**Except for what somebody marked off normal**, which is considered first or
+last wherever it sits. The scan walks the columns six times — every
 [emergency](#expedite) candidate right to left, then every
 [expedited](#expedite) candidate right to left, then everything else right to
-left — so an emergency bug in the leftmost column is reached before an
-expedited story in the rightmost one, which is reached before a normal one in
-the rightmost one, and inside each third the order is the board's own. Three
-passes rather than a sort of the finished rows, because the [published
-scan](#what-a-pass-skipped) is the explanation of what `next` picked, and a
-comparator applied afterwards would be a second opinion about the order.
+left, then every [low](#expedite) candidate right to left, then every
+[economy](#expedite) candidate right to left, then every
+[paused](#expedite) candidate right to left — so an emergency bug in the
+leftmost column is reached before an expedited story in the rightmost one,
+which is reached before a normal one in the rightmost one, which is reached
+before a low one wherever it sits, which is reached before an economy one
+wherever it sits, and inside each tier the order is the
+board's own. The level that puts a candidate in the first, second, fourth,
+fifth or sixth walk may be its own or inherited from an ancestor — the walk
+does not care which. The paused walk is always last and always folded, so it
+never changes which issue `next` or a hop picks — only that `queue` can report
+it. The low and economy walks, unlike every other, are each gated rather than
+always folded: a row reached on either can still be folded by [its own pace
+check](#expedite), so unlike emergency, expedited or normal, reaching one of
+those two walks does not guarantee the row is clear. Since HA-239, every tier
+below the first one with a clear candidate is parked instead: the first clear
+row seen, top down, names itself on every clear row in a strictly lower tier,
+and `queue` reports the park rather than reporting the lower tier as available
+when it is not. Six passes rather
+than a sort of the finished rows, because the
+[published scan](#what-a-pass-skipped) is the explanation of what `next`
+picked, and a comparator applied afterwards would be a second opinion about
+the order.
 
 `?ancestorKey=AER-1` asks the same question of one epic's subtree instead of the
 whole board — the same rule, narrower candidates, nothing else changed. It
@@ -2422,7 +2623,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Eleven refusals**, and two of them are rules of the whole loop rather than
+**Twelve refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -2443,9 +2644,14 @@ missing configuration:
    descendant folds it too, in the same sentence with the relative's key and
    *above this* or *below this* in place of *this*. Its own claim is named
    first; a relative's only when it has none live.
-6. The issue holds an unanswered question — *it is waiting on a person, not on
+6. The issue is [paused](#expedite), or inherits a paused level from the
+   nearest ancestor that sets one — *a person set it aside, and nothing picks
+   it up until they set it back*, naming the ancestor when the level is not
+   the issue's own. A fact about the issue, so `work/{key}` is refused by it
+   too, the same as the claim above it.
+7. The issue holds an unanswered question — *it is waiting on a person, not on
    an agent*.
-7. The project's *primary* [repository](#repository) — the first — matches none
+8. The project's *primary* [repository](#repository) — the first — matches none
    of the remotes the caller declared, on every move a session is spawned for:
    everything but a [hop](#the-hop), which runs no session and needs no
    checkout (a hop into the column where the code gets written is still
@@ -2457,21 +2663,21 @@ missing configuration:
    worked from the caller's standing checkout exactly as before; one bound to
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
-8. Something it [depends on](#dependency) is unfinished, and the move is into
+9. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written. Only that move: a pull request that
    already exists is not held back by what its ticket once waited on.
-9. The move is into the [WIP section](#wip), and the section has no room for
-   it: the load — not counting this issue — is already at or over the limit.
-   Said after the dependency, which needs other work to land, and before the
-   verdict below, which needs nothing at all once a branch is clean — a full
-   section needs other work to leave. The load is always the board's own,
-   whatever `ancestorKey` narrows the candidates to.
-10. The move is into the WIP section, the issue's parent is an epic, and that
+10. The move is into the [WIP section](#wip), and the section has no room for
+    it: the load — not counting this issue — is already at or over the limit.
+    Said after the dependency, which needs other work to land, and before the
+    verdict below, which needs nothing at all once a branch is clean — a full
+    section needs other work to leave. The load is always the board's own,
+    whatever `ancestorKey` narrows the candidates to.
+11. The move is into the WIP section, the issue's parent is an epic, and that
     epic is at its own [limit](#an-epics-own-limit) — the load under it, not
     counting this issue, is already at or over its `WipLimit`. Said right
     after the section-wide check above, for the same reason: it too needs
     other work to leave before anything more of this epic is pulled in.
-11. It is in review and there is nothing for an agent to do on its branch: it
+12. It is in review and there is nothing for an agent to do on its branch: it
     neither conflicts with the trunk nor has a build that failed on its current
     tip — because it merges cleanly and its build passes, is still running, was
     not read on that tip or has no checks, because it has no branch on origin
@@ -2499,11 +2705,15 @@ has not reached the implementation column, so nothing pulls it forward yet",
 or "a sibling is already in flight, so only one child is pulled through at a
 time". Every refusal above this one still applies to every kind of hop
 exactly as it applies to any other issue: a hop answers only "does this
-column still need a session", and nothing about a live claim, a ready date,
-an assignee, a question, a repository or a dependency is any different for
-it. Only where none of those folds it either, and it is not a hop, does the
-pass fall through to the ordinary refusal: no playbook covers this transition
-for this type.
+column still need a session", and nothing about a live claim, a pause, a
+ready date, an assignee, a question, a repository or a dependency is any
+different for it. [Economy's own gate](#expedite) is a second exception,
+beside needing a playbook: both are loop policy rather than a fact about the
+issue, so a hop is exempt from each — an express economy issue in a column
+marked `ExpressSkips` is carried across whatever the account's pace reads.
+Only where none of those earlier folds it either, and it is not a hop, does
+the pass fall through to the ordinary refusal: no playbook covers this
+transition for this type.
 
 The claim is fifth rather than last because it is the only one of these that
 says work is happening *now*; everything under it is about whether the issue
@@ -2530,9 +2740,13 @@ order:
    marked [`ExpressSkips`](#status), with no unanswered question.
 2. **epic** — an epic standing in a column outside the [WIP](#wip) section
    whose next column is inside it, with something filed under it — any direct
-   child, of any type, in any column. An epic with nothing filed under it is
-   never a hop: it is folded instead, with *"nothing is filed under it — an
-   epic runs its stories, and it has none"*.
+   child, of any type, in any column — and whose own direct parent is itself
+   an epic standing inside the WIP section. A top-level epic — one with no
+   parent, or a parent that is not a running epic — is never carried this way:
+   its own column is the whole signal, and only a person moves it in
+   (HA-202). An epic that clears the parent test but has nothing filed under
+   it is never a hop either: it is folded instead, with *"nothing is filed
+   under it — an epic runs its stories, and it has none"*.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
    whose parent is an epic standing inside the WIP section — in [To
    Do](#status), in [In Progress](#status), in review, wherever the section
@@ -2565,10 +2779,11 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 - The issue is blocked by some other fold — a claim, a ready date, an
   assignee, a question, a repository, a dependency, a full [WIP](#wip)
   section, [an epic at its own limit](#an-epics-own-limit), a terminal next
-  column, an epic with nothing filed under it, or (for a child of a
-  `ParentPulls` column) a parent that has not reached the implementation
-  column, or a sibling already in flight. The sentence is exactly the one
-  `Blocked` already gives for that fold.
+  column, a top-level epic (its own column is the signal, not a pass), an
+  epic whose parent epic is not running, an epic with nothing filed under it,
+  or (for a child of a `ParentPulls` column) a parent that has not reached the
+  implementation column, or a sibling already in flight. The sentence is
+  exactly the one `Blocked` already gives for that fold.
 - The issue is clear, but is not a hop — none of the four kinds above applies,
   or the move is a review self-move. A session moves this issue, and a hop
   does not.
@@ -2598,14 +2813,23 @@ can spawn a session for a hop by accident.
 
 ### Running an epic
 
-**The pull.** An operator drags an epic into the column before the WIP
-section and walks away. The next pass carries it in with no session — [the
-`epic` hop](#the-hop) — as long as something is filed under it and the epic
-slice has room; an epic with nothing filed under it is folded instead, not
-silently skipped. While it stands inside the section — including in the
-review column — a story or bug under it, standing itself in a column ticked
-`ExpressSkips`, is carried across the same way, one card a pass, rightmost
-first: [the `under` hop](#the-hop). The per-epic limit ([HA-112](#an-epics-own-limit))
+**The pull is for a sub-epic, never a top-level one.** An operator drags a
+*top-level* epic into the column before the WIP section and walks away — that
+column, on its own, is the whole signal that its sub-tree should run, and only
+a person sets it. No pass ever carries a top-level epic across on its own say-so
+(HA-202): one with no parent, or whose parent is not itself a running epic,
+is folded — *"a top-level epic is moved in by a person - its own column is the
+signal for everything under it"*, or, where it has a parent epic that simply
+is not running, *"its parent epic is not running, so nothing pulls it in"*.
+
+Once a person has moved a top-level epic into the section, an epic **filed
+under it** is carried in by the next pass with no session — [the `epic`
+hop](#the-hop) — as long as something is filed under that sub-epic and the
+epic slice has room; a sub-epic with nothing filed under it is folded instead,
+not silently skipped. While an epic stands inside the section — including in
+the review column — a story or bug under it, standing itself in a column
+ticked `ExpressSkips`, is carried across the same way, one card a pass,
+rightmost first: [the `under` hop](#the-hop). The per-epic limit ([HA-112](#an-epics-own-limit))
 still holds the move into the implementation column, same as it always has.
 Ticking `ExpressSkips` on the column before the section — typically *Draft* —
 starts the flow there too: the tick now serves an express issue and a running
@@ -2656,7 +2880,12 @@ All five of these hold, or the heartbeating runner is told nothing:
    below emergency level that has not already been told. Ties break on issue
    key, so two heartbeats can never both believe they lost — though in
    practice there is no tie left to break, since the dispatcher's own order is
-   already the tie-break.
+   already the tie-break. A live claim on an [economy](#expedite) issue is
+   preempted before one on a low, normal or expedited issue, and a live claim
+   on a low issue is preempted before one on a normal or expedited issue — and
+   both are preempted after one on a paused issue, if a paused issue is ever
+   still carrying a live claim — economy sits second-to-last in the walk, low
+   third-to-last; paused does.
 4. Fewer runners have already been told than there are unclaimed actionable
    emergency issues.
 5. No live runner is free — a live row in `Runners`, holding no live claim. A
@@ -2740,8 +2969,8 @@ Where the project binds repositories only a verdict for one it still binds
 counts, for a merge check and a build alike, and an issue conflicts, or has a
 failing build, if any one of its counted verdicts says so. Every other fold still
 applies to an issue in review, outranks both verdicts, and keeps its order: a
-claim, a ready date, a person assignee, an open question, a repository this
-runner has no checkout of. The verdicts come after the repository — a question
+claim, a pause, a ready date, a person assignee, an open question, a
+repository this runner has no checkout of. The verdicts come after the repository — a question
 needs a person, a repository needs a clone, and a passing branch needs nothing
 at all — and a missing review playbook is still the last fold. Nothing is ever
 dispatched into a terminal column.
@@ -2771,6 +3000,24 @@ rest. There is no setting for keeping branches current, and a pull request that
 merges and builds cleanly is never touched. Re-running a failed check is not
 here either: a flaky check is a failure, and an increment that only re-runs one
 leaves the tip where it was, which is a stall.
+
+### The one path past the terminal guard
+
+Nothing above ever lands an issue in a terminal column — that is what
+`Columns.Target` is for, dispatching review to itself rather than past it, and
+what `Dispatch.Blocked` refuses in every other case with *"the next column is
+\<name\>, and only the operator moves work there"*. `POST
+/work/{key}/merged` is the one exception, and it is an exception on purpose: a
+merged pull request **is** the operator's decision to ship, made on the forge
+and reported back rather than pressed on the board. So this route calls
+`Columns.Advance` — the next column, terminal or not — and carries its own
+refusals rather than `Dispatch.Blocked`'s: the issue must be standing in
+whichever column is measured as review right now, it must carry a recorded
+pull request url, the url the caller names must match it exactly (trimmed,
+ordinal), there must be a column after review to advance into, and the issue
+must not be claimed. No ready date, no assignee, no WIP section and no
+dependency gate it — those all gate an agent picking up work, and nothing here
+is an agent picking up work.
 
 ### One more, on `next` alone
 
@@ -2859,8 +3106,9 @@ the order of the board is precisely the bug this endpoint exists to expose.
 
 Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
-terminal, a live [claim](#claim), a ready date, an assignee, an unanswered
-question, a repository this runner lacks, an unmet dependency, an open child, a
+terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
+assignee, an unanswered question, a repository this runner lacks, an unmet
+dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -3046,15 +3294,16 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Thirteen conditions, the last one a way out of the twelfth rather than one more
-gate. An issue is the loop's to pick up when it meets every one before it, and
-the sentence saying which one it failed is what `work/queue` reports:
+Seventeen conditions, the sixteenth a way out of the fifteenth rather than one
+more gate, and the seventeenth a fact about the walk rather than the issue. An
+issue is the loop's to pick up when it meets every one before it, and the
+sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
    transition, and the step into a terminal column is the operator's — *only the
    operator decides that something shipped*. The review column is dispatched to
-   itself instead (see the eleventh condition), and never into the column after it.
+   itself instead (see the twelfth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -3064,53 +3313,78 @@ the sentence saying which one it failed is what `work/queue` reports:
    The claim may be a relative's — an ancestor's or a descendant's, at any
    depth — and that folds too; a token of one's own frees the relatives it
    holds as well as the issue.
-3. **Its ready date has arrived**, read against the caller's calendar day. A
+3. **It is not paused, on its own row or on an ancestor's.** The nearest level
+   other than normal, found the same walk the board and `hatch show` read — a
+   person set it aside, and nothing picks it up until they set it back, named
+   with the ancestor when the level is inherited. A fact about the issue like
+   the claim before it, so `work/{key}` asks it too — unlike the ready date,
+   [economy's and low's own gates](#expedite) and the assignee after them,
+   which are the loop's own policy and are not.
+4. **Its ready date has arrived**, read against the caller's calendar day. A
    card folded off the board is not one to spend an increment on tonight.
-4. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
+5. **It is not [economy](#expedite) level on an account with no reserve to
+   spare**, asked only of an unattended pass. The account the dispatch would
+   spend — the calling key's owner, resolved the same way a `?mine=true` pass
+   resolves its own — is projected to reset with at least `Utilization.Reserve`
+   points of every window Hatch knows the length of still unspent; where it is
+   not, the issue is folded with the sentence naming the window and the
+   numbers, and where no reading exists for the account at all, or the key
+   belongs to nobody, with that sentence instead. `work/{key}` is not asked
+   this at all, and neither is a hop — see the sixteenth condition.
+6. **It is not [low](#expedite) level on an account whose session window is
+   behind pace**, asked only of an unattended pass, reading the same account
+   the fifth condition reads. The account's session window alone is projected
+   to reset with its own pace matched or beaten — no reserve held back, so
+   every reading that clears the fifth condition clears this one too; where it
+   does not, the issue is folded with the sentence naming the window and the
+   numbers, and where no reading exists for the account at all, or the key
+   belongs to nobody, with that sentence instead. `work/{key}` is not asked
+   this at all, and neither is a hop — see the sixteenth condition.
+7. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
    to an API key, or to nobody, is picked up exactly as it always was. A
    `?mine=true` pass inverts this condition rather than skipping it: it takes
    only a ticket assigned to the caller's own person or key, and folds every
    other one — see [one more, on `next` alone](#one-more-on-next-alone).
-5. **It holds no unanswered question.** It is waiting on a person, and another
+8. **It holds no unanswered question.** It is waiting on a person, and another
    agent sent at it would ask the same thing again or guess at the answer. A
    lapsed stall question does not count here - see [Comment, question and
    answer](#comment-question-and-answer).
-6. **The project's primary [repository](#repository) matches a remote the caller
+9. **The project's primary [repository](#repository) matches a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-7. **Nothing it depends on is unfinished** — and only when the move is into the
+10. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-8. **None of its children are still open**, when the move is out of the column
-   where the code gets written. An issue standing there with at least one
-   child not in a terminal column is not itself the work — its children are —
-   so it is folded rather than carried into review. A deferred child counts as
-   open, the same rule [Dependency](#dependency) already holds for a blocker.
-   A childless issue is unaffected. An epic reads this differently: it is held
-   wherever it stands in the WIP section, not only the column where the code
-   gets written, and a deferred child does not count against it at all — see
-   [Running an epic](#running-an-epic) for why. The sentence names how many of
-   its counted children are still open, that its only child is not done, or
-   that nothing is filed under it at all.
-9. **The [WIP section](#wip) has room for it**, when the move is into it: the
-   load, not counting this issue, is below the limit, nor counting any
-   ancestor of this issue already standing in it — a family crosses together,
-   at the cost of the one slot its nearest counted member already spent. Said
-   after the dependency above, which needs other work to land, and before the
-   epic's own limit and the verdict below, neither of which need anything at
-   all once a branch is clean and nothing more of an epic is pulled in — a
-   full section needs other work to leave. The load is always the board's own,
-   whatever `ancestorKey` narrows the candidates to, and the limit is a fact
-   about the board rather than the loop's policy: `work/{key}` is refused by
-   it too, and overriding it
-   is done on the board, by moving the card in.
-10. **An epic above it has room too**, when the move is into the WIP section
+11. **None of its children are still open**, when the move is out of the column
+    where the code gets written. An issue standing there with at least one
+    child not in a terminal column is not itself the work — its children are —
+    so it is folded rather than carried into review. A deferred child counts as
+    open, the same rule [Dependency](#dependency) already holds for a blocker.
+    A childless issue is unaffected. An epic reads this differently: it is held
+    wherever it stands in the WIP section, not only the column where the code
+    gets written, and a deferred child does not count against it at all — see
+    [Running an epic](#running-an-epic) for why. The sentence names how many of
+    its counted children are still open, that its only child is not done, or
+    that nothing is filed under it at all.
+12. **The [WIP section](#wip) has room for it**, when the move is into it: the
+    load, not counting this issue, is below the limit, nor counting any
+    ancestor of this issue already standing in it — a family crosses together,
+    at the cost of the one slot its nearest counted member already spent. Said
+    after the dependency above, which needs other work to land, and before the
+    epic's own limit and the verdict below, neither of which need anything at
+    all once a branch is clean and nothing more of an epic is pulled in — a
+    full section needs other work to leave. The load is always the board's own,
+    whatever `ancestorKey` narrows the candidates to, and the limit is a fact
+    about the board rather than the loop's policy: `work/{key}` is refused by
+    it too, and overriding it
+    is done on the board, by moving the card in.
+13. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
     counting this issue, is below its own `WipLimit` (null reading as one) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
@@ -3119,7 +3393,7 @@ the sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-11. **In review, its branch conflicts with the trunk or its build failed.** An
+14. **In review, its branch conflicts with the trunk or its build failed.** An
     issue in the review column is the loop's only when a [merge check](#merge-check)
     says `conflicted`, or — on a branch that merges cleanly — when the
     [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -3128,26 +3402,31 @@ the sentence saying which one it failed is what `work/queue` reports:
     on this tip, no checks, no branch, more than one branch and an unchecked one
     are what `hatch queue` prints. A clean branch that has merely fallen behind
     the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-12. **A playbook covers that transition for that type — or it does not need
+15. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-13. **Unless it does not need a session at all.** An issue that is
+16. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the twelfth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the fifteenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
-    one still has to hold — a hop is not an escape from a live claim, a ready
-    date, an assignee, a question, a repository, a dependency, an open child, a
-    full section or an epic at its own limit, only from needing a playbook.
+    one still has to hold — a hop is not an escape from a live claim, a pause,
+    a ready date, an assignee, a question, a repository, a dependency, an open
+    child, a full section or an epic at its own limit, only from needing a
+    playbook, from [economy's or low's own gate](#expedite) — the fifth and
+    sixth conditions — or from the park below — the seventeenth. A clear hop
+    is still carried across either way, parked or not; being carried across is
+    not an escape from being the first clear row the walk saw, so a clear hop
+    in a higher tier still parks the tiers below it.
 
     An epic standing in a column outside the WIP section whose next column is
     inside it is a second kind of hop: something is filed under it, of any
     type. Where nothing is, the refinement is its own fold rather than a
-    fall-through to the twelfth condition: "nothing is filed under it — an
+    fall-through to the fifteenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic standing inside the
     WIP section, is a third kind: the epic's own pull reaching the work filed
@@ -3160,16 +3439,45 @@ the sentence saying which one it failed is what `work/queue` reports:
     along, in board order, than the column this issue would be pulled into.
     Where the column is so marked but one of those two is not yet true, the
     refinement is its own two-sentence fold rather than a fall-through to the
-    twelfth condition's "no playbook covers this": "its parent has not
+    fifteenth condition's "no playbook covers this": "its parent has not
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
+17. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+    six levels are walked top down, once each, across every row the walk
+    reaches; the first *clear* row the walk sees is remembered, and every row
+    in a tier strictly below that one that would otherwise be clear is folded
+    instead, with a sentence naming that row and its level — so `work/queue`
+    reports the park rather than listing a lower tier as available when it is
+    not. Two clear rows in the same tier never park each other, only a
+    strictly higher one does, and the row remembered is never replaced once
+    set: it is the first clear row in the whole walk, which is also the only
+    one the sentence ever needs to name.
 
-Ten of them — 1, 2, 5, 6, 7, 8, 9, 10, 11 and 12 — are facts about the issue,
-and `work/{key}` asks them too. The thirteenth is as well, and `work/{key}`
-answers it the same way `work/queue` does: `WorkDto.Hop`. The other two are
-the loop's policy and are asked only when the pass is asking; see [one more,
-on `next` alone](#one-more-on-next-alone).
+    ```
+    HA-216 ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available
+    ```
+
+    **A folded row parks nothing, whatever folds it** — a live claim, a
+    running or unread build, an unmet dependency, open children that are the
+    work, an epic's open children, a full WIP section, a ready date in the
+    future, a sibling in flight, an unanswered question, a person's name on
+    the ticket, anything at all. Most of these stand for days, not minutes,
+    and a tier parked behind one would be a tier that never runs for as long
+    as it stands — so a fold is never live for this rule's purposes, and the
+    only thing that parks a lower tier is a row with no fold at all.
+
+Eleven of them — 1, 2, 3, 8, 9, 10, 11, 12, 13, 14 and 15 — are facts about the
+issue, and `work/{key}` asks them too. The sixteenth is as well, and
+`work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The
+other four — 4, 5, 6 and 7 — are the loop's policy and are asked only when the
+pass is asking;
+see [one more, on `next` alone](#one-more-on-next-alone). The seventeenth is
+neither: not a fact about one issue, since it depends on every other row the
+same walk reaches, and not the loop's policy, since it folds `work/queue`
+exactly as it folds `work/next`. It is a fact about the walk itself, asked only
+by `Dispatch.ScanAsync` — so `work/{key}`, which never walks, never asks it,
+and a person naming a ticket by hand is never told it is parked.
 
 **The board is worked right to left**, for the reason the dispatcher gives, and
 overnight it is the difference between a shape and a mess: a loop working left
@@ -3644,6 +3952,33 @@ checkout against it by the remote it spells until the board's canonical form
 for that pair is known. The terminal hears about a change the same way —
 `hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
 an issue.
+
+**The pull request half, asked of `gh` and keyed on the issue.** The three
+halves above are keyed on `(path, baseBranch)`, because a merge verdict and a
+build verdict are per repository. A pull request is not: `PullRequestUrl` is
+one field on one issue however many repositories its project binds, so this
+half iterates the `/api/hatch/work/review` answer itself rather than the
+per-checkout targets the others build, and reads each issue's pull request
+once regardless of how many repositories its project names — the checkout is
+only somewhere for `gh` to run, taken as the first one a project's
+repositories resolve to. It asks `gh pr view <url> --json state`, because
+`git` and the merge verdict both lie about this: a squash merge leaves no
+ancestry for `merge-tree` to find, and `MergeVerdicts.None` already means
+three different things — a merge, a close, and a branch never pushed — none of
+which `gh` confuses. On `merged` it calls the route that advances the issue
+out of review, with the url it read; a `409` is the row having moved under it
+between the read and the write, the same as [the hop](#the-hop) - a line at
+most, and the poll walks on to the next issue. On `open`, `closed` or
+`unknown` it does nothing - a closed-without-merging pull request is a real
+stuck state and is not this half's to surface. **There is no stored verdict
+and no window logic like `NoneWindow`**: an open pull request is asked about
+every interval, by design, since noticing the merge promptly is the point, and
+a merged one advances the issue out of review - so `/api/hatch/work/review`
+stops returning it and nothing asks again. The terminal hears about a change
+only - `hatch: HA-12 pull request merged -> Done` - and a quiet interval says
+nothing. A `gh` that cannot answer is one line per checkout, the same as the
+build half, and a board that predates the route answers `404`, which is asked
+again next interval.
 
 ### When an increment does nothing
 
@@ -4133,7 +4468,7 @@ reach. The cost is honest and is stated on the page: a press takes effect at the
 top of the next pass, *after* whatever increment is in flight has finished.
 
 **The runner is named as its claim names it** — a character off the cast list
-in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from five
+in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from three
 TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
 string every [claim](#claim) already carries. A runner has one identity and
 this is it; the table is keyed on it. The choice is made once per checkout —

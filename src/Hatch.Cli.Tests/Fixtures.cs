@@ -52,8 +52,8 @@ public static class Fixtures
     public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
         new(key, "AER", type, title, 3, 1000, null, null, null);
 
-    public static PlaybookDto Playbook(string model = "opus", string effort = "high") =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, DateTimeOffset.UnixEpoch);
+    public static PlaybookDto Playbook(string model = "opus", string effort = "high", int? budget = null) =>
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, DateTimeOffset.UnixEpoch);
 
     public static WorkDto Work(
         string key,
@@ -71,7 +71,8 @@ public static class Fixtures
         bool hop = false,
         string? hopKind = null,
         string? hopUnder = null,
-        int letGo = 0) =>
+        int letGo = 0,
+        bool inReview = false) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -87,7 +88,8 @@ public static class Fixtures
             Hop: hop,
             HopKind: hop ? hopKind ?? HopKinds.Express : null,
             HopUnder: hop ? hopUnder : null,
-            LetGo: letGo);
+            LetGo: letGo,
+            InReview: inReview);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
@@ -167,14 +169,15 @@ public static class Fixtures
 
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
-        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, params MergeCheckDto[] checks) =>
-        new(key, repositories ?? [], checks);
+        string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, string? pullRequestUrl = null,
+        params MergeCheckDto[] checks) =>
+        new(key, repositories ?? [], checks, null, pullRequestUrl);
 
     /// <summary>The same, with the build verdicts the board holds as well.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto> repositories, IReadOnlyList<MergeCheckDto> checks,
-        IReadOnlyList<BuildCheckDto> builds) =>
-        new(key, repositories, checks, builds);
+        IReadOnlyList<BuildCheckDto> builds, string? pullRequestUrl = null) =>
+        new(key, repositories, checks, builds, pullRequestUrl);
 
     /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
     public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>
@@ -199,12 +202,15 @@ public static class Fixtures
                 ? [new CommentDto(id + 100, "Nathan", "That way.", "answer", id, null, DateTimeOffset.UnixEpoch)]
                 : []);
 
-    public static WorkLogEntryDto WorkLogRow(decimal cost = 1.5m, long tokens = 12_345, long durationMs = 65_000) =>
+    public static WorkLogEntryDto WorkLogRow(
+        decimal cost = 1.5m, long tokens = 12_345, long durationMs = 65_000,
+        int? requests = null, long? peakContextTokens = null) =>
         new(
             Id: 1, SessionId: "s-1", StartedAt: DateTimeOffset.UnixEpoch, EndedAt: DateTimeOffset.UnixEpoch,
             DurationMs: durationMs, Title: "Did a thing", Summary: "In detail.", Described: true, IsError: false,
             Turns: 12, CostUsd: cost, InputTokens: tokens, OutputTokens: 0, CacheCreationTokens: 0,
-            CacheReadTokens: 0, TotalTokens: tokens, Models: []);
+            CacheReadTokens: 0, TotalTokens: tokens, Models: [],
+            Requests: requests, PeakContextTokens: peakContextTokens, PromptChars: null);
 
     public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
         JsonSerializer.Serialize(

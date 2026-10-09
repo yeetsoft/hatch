@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 
@@ -17,6 +18,8 @@ public sealed class InboxCommandTests : IDisposable
     private readonly string _dir = Directory.CreateTempSubdirectory("hatch-inbox-test-").FullName;
 
     private string Stamp => Path.Combine(_dir, "inbox.stamp");
+    private string Clamp => Path.Combine(_dir, "clamp.json");
+    private string Budget => Path.Combine(_dir, "budget");
 
     public void Dispose()
     {
@@ -24,8 +27,8 @@ public sealed class InboxCommandTests : IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private InboxCommand Command(TimeSpan? limit = null) =>
-        new(_h.Board, _h.Say, new StringReader("{\"tool_name\":\"Bash\"}"), new FrozenClock(Now))
+    private InboxCommand Command(TimeSpan? limit = null, string? stdin = null) =>
+        new(_h.Board, _h.Say, new StringReader(stdin ?? "{\"tool_name\":\"Bash\"}"), new FrozenClock(Now))
         {
             Limit = limit ?? TimeSpan.FromSeconds(InboxCommand.CallSeconds),
         };
@@ -33,7 +36,13 @@ public sealed class InboxCommandTests : IDisposable
     private Task<int> Step(params string[] more) =>
         Command().RunAsync(["AER-1", "--hook", "post-tool-use", "--stamp", Stamp, .. more], default);
 
+    private Task<int> StepClamped() =>
+        Step("--clamp", Clamp);
+
     private Task<int> Stop() => Command().RunAsync(["AER-1", "--hook", "stop"], default);
+
+    private Task<int> StopClamped() =>
+        Command().RunAsync(["AER-1", "--hook", "stop", "--clamp", Clamp], default);
 
     private void Waiting(params CommentDto[] messages) => _h.Wire.Json("POST", Deliver, messages);
 
@@ -42,6 +51,20 @@ public sealed class InboxCommandTests : IDisposable
         File.WriteAllBytes(Stamp, []);
         File.SetLastWriteTimeUtc(Stamp, Now.UtcDateTime - ago);
     }
+
+    private void Crossed() => File.WriteAllText(Clamp, "{\"tokens\":1200000,\"requests\":42}");
+
+    private void BudgetIs(long tokens) => File.WriteAllText(Budget, tokens.ToString(CultureInfo.InvariantCulture));
+
+    private string Transcript(params string[] lines)
+    {
+        var path = Path.Combine(_dir, "transcript.jsonl");
+        File.WriteAllLines(path, lines);
+        return path;
+    }
+
+    private static string StdinWithTranscript(string path) =>
+        JsonSerializer.Serialize(new { transcript_path = path });
 
     // ---- The throttle ----
 
@@ -111,6 +134,194 @@ public sealed class InboxCommandTests : IDisposable
         await Stop();
 
         Assert.Equal(2, _h.Wire.Count("POST", Deliver));
+    }
+
+    // ---- HA-222: the clamp ----
+
+    [Fact]
+    public async Task A_crossed_clamp_is_delivered_at_the_next_step_even_with_a_fresh_stamp()
+    {
+        Crossed();
+        Touched(TimeSpan.FromSeconds(3));
+        Waiting();
+
+        Assert.Equal(0, await StepClamped());
+
+        var text = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), text, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_crossed_clamp_is_delivered_on_stop_too()
+    {
+        Crossed();
+        Waiting();
+
+        Assert.Equal(0, await StopClamped());
+
+        var reason = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement.GetProperty("reason").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), reason, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_clamp_already_delivered_prints_nothing_new_for_it()
+    {
+        Crossed();
+        File.WriteAllBytes(Path.ChangeExtension(Clamp, ".delivered"), []);
+        Waiting();
+
+        Assert.Equal(0, await StepClamped());
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_second_call_after_delivery_carries_only_an_ordinary_message_not_the_clamp_again()
+    {
+        Crossed();
+        Waiting();
+
+        await StepClamped();
+        var first = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains("crossed its playbook's budget", first, StringComparison.Ordinal);
+
+        _h.Wire.Replace("POST", Deliver, HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { Fixtures.Message(7, body: "second message") }, Fixtures.Json));
+        Touched(TimeSpan.FromSeconds(InboxCommand.ThrottleSeconds + 1));
+
+        await StepClamped();
+
+        Assert.Equal(2, _h.Say.Said.Count);
+        var second = JsonDocument.Parse(_h.Say.Said[1]).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.DoesNotContain("crossed its playbook's budget", second, StringComparison.Ordinal);
+        Assert.Contains("second message", second, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task No_clamp_file_behaves_exactly_as_without_the_flag()
+    {
+        Waiting(Fixtures.Message(7));
+        Touched(TimeSpan.FromSeconds(InboxCommand.ThrottleSeconds + 1));
+
+        Assert.Equal(0, await StepClamped());
+
+        Assert.Single(_h.Say.Said);
+        Assert.False(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    // ---- HA-223: a --quiet session's own clamp, read off its transcript ----
+
+    [Theory]
+    [InlineData("post-tool-use")]
+    [InlineData("stop")]
+    public async Task A_transcripts_tokens_crossing_the_budget_clamps_and_delivers(string hook)
+    {
+        BudgetIs(1_000_000);
+        var transcript = Transcript(
+            Fixtures.AssistantUsage("msg_1", input: 600_000, output: 100_000),
+            Fixtures.AssistantUsage("msg_2", input: 300_000, output: 50_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", hook, "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(Clamp));
+        var fact = JsonDocument.Parse(File.ReadAllText(Clamp)).RootElement;
+        Assert.Equal(1_050_000, fact.GetProperty("tokens").GetInt64());
+        Assert.Equal(2, fact.GetProperty("requests").GetInt64());
+
+        var output = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement;
+        var text = hook == "stop"
+            ? output.GetProperty("reason").GetString()!
+            : output.GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), text, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_transcript_under_budget_clamps_nothing()
+    {
+        BudgetIs(2_000_000);
+        var transcript = Transcript(
+            Fixtures.AssistantUsage("msg_1", input: 600_000, output: 100_000),
+            Fixtures.AssistantUsage("msg_2", input: 300_000, output: 50_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_clamp_already_written_is_not_re_derived_from_the_transcript()
+    {
+        Crossed();
+        BudgetIs(1);
+        // Pointed at a transcript that does not exist: if this were read, the
+        // call would still succeed (nothing crosses a missing file), so what
+        // this actually proves is that Clamp's own contents survive unchanged
+        // rather than being recomputed.
+        var transcript = Path.Combine(_dir, "does-not-exist.jsonl");
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "post-tool-use", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("{\"tokens\":1200000,\"requests\":42}", File.ReadAllText(Clamp));
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task No_budget_file_means_no_transcript_read_even_with_a_transcript_path()
+    {
+        var transcript = Transcript(Fixtures.AssistantUsage("msg_1", input: 5_000_000, output: 1_000_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_missing_transcript_file_fails_nothing()
+    {
+        BudgetIs(1);
+        var transcript = Path.Combine(_dir, "does-not-exist.jsonl");
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_transcript_line_that_is_not_json_fails_nothing()
+    {
+        BudgetIs(1);
+        var transcript = Transcript("not json at all", Fixtures.AssistantUsage("msg_1", input: 10));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Complained);
     }
 
     // ---- What it prints ----
@@ -253,7 +464,7 @@ public sealed class InboxCommandTests : IDisposable
     // ---- The arguments ----
 
     [Fact]
-    public async Task It_reads_and_discards_what_the_hook_was_given()
+    public async Task It_reads_and_parses_what_the_hook_was_given()
     {
         var stdin = new StringReader("{\"anything\":true}");
         Waiting();

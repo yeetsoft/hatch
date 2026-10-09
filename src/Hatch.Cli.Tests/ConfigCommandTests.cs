@@ -221,9 +221,9 @@ public sealed class ConfigCommandTests : IDisposable
         var input = new Replies("https://hatch.example", "", "", "");
 
         Assert.Equal(
-            0, await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default));
+            0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
 
-        Assert.Contains("What should the board call this runner? [Buster Bluth]:", input.Asked[3]);
+        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[3]);
         Assert.Empty(RunnerNames.Record.Read(RunnersPath));
     }
 
@@ -234,7 +234,7 @@ public sealed class ConfigCommandTests : IDisposable
         var input = new Replies("https://hatch.example", "", "", "Liz Lemon");
 
         Assert.Equal(
-            0, await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default));
+            0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
 
         Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
     }
@@ -245,7 +245,7 @@ public sealed class ConfigCommandTests : IDisposable
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
         var input = new Replies("https://hatch.example", "", "", new string(' ', 3));
 
-        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
         Assert.Equal(1, code);
         Assert.Contains("a name is required", Complained);
@@ -257,9 +257,9 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_that_is_not_plain_ASCII_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "Tobias Fünke");
+        var input = new Replies("https://hatch.example", "", "", "Jeff Wïnger");
 
-        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
         Assert.Equal(1, code);
         Assert.Contains("a name is plain ASCII", Complained);
@@ -272,7 +272,7 @@ public sealed class ConfigCommandTests : IDisposable
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
         var input = new Replies("https://hatch.example", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
 
-        var code = await Command(input, root: root, runnerName: "Buster Bluth").RunAsync([], default);
+        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
         Assert.Equal(1, code);
         Assert.Contains($"a name is at most {ClaimRequest.MaxRunnerLength} characters", Complained);
@@ -286,7 +286,7 @@ public sealed class ConfigCommandTests : IDisposable
         var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "Liz Lemon");
 
         var code = await Command(
-                input, root: root, runnerName: "Buster Bluth",
+                input, root: root, runnerName: "Jeff Winger",
                 liveRunners: (_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>(
                 [
                     new RunnerDto(
@@ -565,18 +565,18 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Show_in_a_checkout_prints_the_recorded_name_and_the_runners_file()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Jeff Winger");
 
         await Command(new Replies(), root: root).RunAsync(["--show"], default);
 
-        Assert.Contains($"runner:           Buster Bluth  ({RunnersPath})", Said);
+        Assert.Contains($"runner:           Jeff Winger  ({RunnersPath})", Said);
     }
 
     [Fact]
     public async Task Show_says_HATCH_RUNNER_wins_when_it_is_set()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Buster Bluth");
+        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Jeff Winger");
 
         await Command(
                 new Replies(),

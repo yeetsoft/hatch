@@ -150,6 +150,68 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
+    public async Task Show_says_when_the_issue_is_low()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.LowName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains(
+            "priority:  low - reached after everything normal, and only while the session window is on pace",
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_when_the_issue_is_economy()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.EconomyName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("priority:  economy - worked only with usage that would otherwise go spare", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_when_the_issue_is_paused()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.PausedName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("priority:  paused - set aside; the loop leaves it where it stands", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_ancestor_a_paused_level_came_from()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { Priority = PriorityLevels.PausedName, PriorityFrom = "HA-12" });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("priority:  paused - set aside; the loop leaves it where it stands (inherited from HA-12)", h.Said);
+    }
+
+    [Fact]
     public async Task Show_says_when_the_issue_is_express()
     {
         using var h = new CliHarness();

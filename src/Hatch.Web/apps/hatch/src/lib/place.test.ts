@@ -9,7 +9,7 @@ const card = (
   key: string,
   statusId: number,
   rank: number,
-  priority: 'normal' | 'expedited' | 'emergency' = 'normal',
+  priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' = 'normal',
 ): IssueCard => ({
   key,
   projectKey: 'AER',
@@ -23,7 +23,7 @@ const card = (
   openQuestions: 0,
   assignee: null,
   claim: null,
-  expedited: priority !== 'normal',
+  expedited: priority === 'expedited' || priority === 'emergency',
   priority,
   priorityOwn: priority,
   priorityFrom: null,
@@ -248,6 +248,91 @@ describe('place, with an emergency card above an expedited one', () => {
     expect(placed.afterKey).toBe('AER-7');
     expect(placed.beforeKey).toBeNull();
     expect(keysIn(placed.issues, TODO)).toEqual(['AER-9', 'AER-7']);
+  });
+});
+
+/* The float's other end: economy sinks below normal rather than floating
+   above it. The regression this guards is place.ts#reorder dropping an
+   economy card from the column entirely, because its three filters used to
+   be exhaustive. */
+describe('place, with an economy card below everything', () => {
+  const thrifty = [
+    card('AER-9', INBOX, 256, 'economy'),
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('is not dropped from the reordered column, and sorts below the normal cards', () => {
+    const placed = place(thrifty, thrifty, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9']);
+  });
+});
+
+/* Low sinks below normal and above economy - the sixth group in reorder(),
+   proved the same way the economy test above proves its own group: dropped
+   from the reordered column rather than sorted into it would be the same
+   exhaustive-filter regression one tier up. */
+describe('place, with a low card below normal and above economy', () => {
+  const unhurried = [
+    card('AER-9', INBOX, 256, 'low'),
+    card('AER-5', INBOX, 384, 'economy'),
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('is not dropped from the reordered column, and sorts between normal and economy', () => {
+    const placed = place(unhurried, unhurried, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9', 'AER-5']);
+  });
+});
+
+/* The sink, the mirror image of the float above: a paused card drops to the
+   bottom of its column regardless of rank, and a card dropped below it still
+   comes to rest above it - the fifth group in reorder() is always last.
+   AER-7 holds the lowest rank of the three despite sitting at the bottom on
+   screen, on purpose: that is what "regardless of rank" means to prove. */
+describe('place, with a paused card in the column', () => {
+  const setAside = [
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+    card('AER-7', INBOX, 512, 'paused'),
+  ];
+
+  it('sinks the paused card below every other card regardless of rank', () => {
+    const placed = place(setAside, setAside, 'AER-2', 'AER-1')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-7']);
+  });
+
+  it('rests a card dropped below the paused one above it, never below', () => {
+    // Dropped directly onto AER-7 from above: the raw geometry asks for a
+    // slot after it, same as it would for any other card - and the float
+    // still carries the drop above it in what actually gets painted.
+    const placed = place(setAside, setAside, 'AER-1', 'AER-7')!;
+
+    expect(placed.afterKey).toBe('AER-7');
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-1', 'AER-2', 'AER-7']);
+  });
+});
+
+/* Express is routing, not a sort key (docs/hatch.md, "Express") - reorder()
+   groups by priority alone and never reads it. AER-9 carries the flag and the
+   highest rank in the column on purpose: a float keyed on express would carry
+   it to the top regardless of rank, the same bug a float keyed on priority
+   would produce, and this is the test that would catch it. */
+describe('place, with an express card', () => {
+  const carried = [
+    { ...card('AER-9', INBOX, 4096), express: true },
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('sorts by rank like any other normal card - express floats nothing', () => {
+    const placed = place(carried, carried, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-2', 'AER-1', 'AER-9']);
   });
 });
 

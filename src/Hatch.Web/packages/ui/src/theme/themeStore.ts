@@ -13,6 +13,7 @@
 
    So the mechanism lives here and both callers use it. The React file below
    holds only what is genuinely React: state, an effect, a context. */
+import tokensCss from '../tokens.css?raw';
 
 /** What the operator chose. `auto` defers to the OS preference. */
 export type ThemeChoice = 'auto' | 'light' | 'dark';
@@ -84,6 +85,49 @@ export function applyChoice(choice: ThemeChoice): void {
   } else {
     root.setAttribute('data-theme', choice);
   }
+  applyThemeColor(choice === 'auto' ? null : choice);
+}
+
+// --chrome, read off tokens.css rather than restated as a third literal
+// pair. The dark value comes from the `[data-theme='dark']` block (not the
+// `prefers-color-scheme` media block) because that is the selector active
+// when applyChoice sets the attribute above - the two blocks are identical,
+// tokens.test.ts already enforces this.
+function chromeIn(selector: RegExp): string {
+  const body = selector.exec(tokensCss)?.[1] ?? '';
+  const match = /--chrome:\s*([^;]+);/.exec(body);
+  if (!match) throw new Error(`tokens.css: no --chrome in ${selector}`);
+  return match[1].trim();
+}
+const CHROME: Record<ResolvedTheme, string> = {
+  light: chromeIn(/:root\s*\{([^}]*)\}/),
+  dark: chromeIn(/:root\[data-theme=['"]dark['"]\]\s*\{([^}]*)\}/),
+};
+
+/** The colour the status bar should carry when Hatch has resolved to `resolved`. */
+export function themeColorFor(resolved: ResolvedTheme): string {
+  return CHROME[resolved];
+}
+
+const OVERRIDE_ATTR = 'data-theme-color-override';
+
+/** Writes or removes the one theme-color meta this file owns. `null` removes
+ * it, handing the OS-keyed pair in index.html back control - the same
+ * handoff `applyChoice`'s own `data-theme` branch makes for `auto`. */
+export function applyThemeColor(resolved: ResolvedTheme | null): void {
+  if (typeof document === 'undefined') return;
+  const existing = document.head.querySelector<HTMLMetaElement>(`meta[${OVERRIDE_ATTR}]`);
+  if (resolved === null) {
+    existing?.remove();
+    return;
+  }
+  const meta = existing ?? document.createElement('meta');
+  if (!existing) {
+    meta.setAttribute('name', 'theme-color');
+    meta.setAttribute(OVERRIDE_ATTR, '');
+    document.head.prepend(meta);
+  }
+  meta.setAttribute('content', themeColorFor(resolved));
 }
 
 /** Calls back when the OS preference flips. Returns the unsubscribe. */

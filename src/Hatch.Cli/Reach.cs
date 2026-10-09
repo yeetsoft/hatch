@@ -21,6 +21,43 @@ namespace Hatch.Cli;
 public static class Reach
 {
     /// <summary>
+    /// The first file called <paramref name="name"/> in a directory of
+    /// <paramref name="path"/> that could be run, as an absolute path, or null.
+    /// On Windows <c>.exe</c> and <c>.cmd</c> are tried before the bare name; on
+    /// Unix a file with no execute bit is passed over, as a shell would.
+    /// </summary>
+    /// <remarks>
+    /// Absolute because a hook runs from the session's root and not from here,
+    /// so a relative <c>PATH</c> entry that resolved now would not then.
+    /// </remarks>
+    /// <param name="path"><see cref="Environment"/>'s <c>PATH</c> in a real run; a parameter so a test can name directories of its own.</param>
+    public static string? Find(string name, string? path)
+    {
+        foreach (var dir in (path ?? "").Split(Path.PathSeparator))
+        {
+            if (dir.Length == 0) continue;
+
+            foreach (var candidateName in OperatingSystem.IsWindows() ? (string[])[$"{name}.exe", $"{name}.cmd", name] : [name])
+            {
+                var candidate = Path.Combine(dir, candidateName);
+                if (File.Exists(candidate) && CanRun(candidate)) return Path.GetFullPath(candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private static bool CanRun(string file)
+    {
+        if (OperatingSystem.IsWindows()) return true;
+
+        const UnixFileMode execute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+        try { return (File.GetUnixFileMode(file) & execute) != 0; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>
     /// The directory holding this program, if this program is a binary called
     /// <c>hatch</c>. Null for every other way of being started.
     /// </summary>

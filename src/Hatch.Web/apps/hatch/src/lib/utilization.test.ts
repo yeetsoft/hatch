@@ -18,7 +18,7 @@ import {
   usageVars,
   worstRow,
 } from './utilization';
-import { luminance } from './color';
+import { luminance } from '@hatch/ui';
 import type { Utilization, UtilizationLimit } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');

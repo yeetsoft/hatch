@@ -32,16 +32,23 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<IReadOnlyList<ProjectDto>>> GetProjects(CancellationToken ct)
     {
-        var projects = await db.Projects.AsNoTracking()
-            .OrderBy(p => p.Key)
-            .Select(p => new ProjectDto(
-                p.Id, p.Key, p.Name, p.Issues.Count, p.CreatedAt,
-                p.Repositories.OrderBy(r => r.SortOrder)
-                    .Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch))
-                    .ToList()))
-            .ToListAsync(ct);
+        var projects = await db.Projects.AsNoTracking().OrderBy(p => p.Key).ToListAsync(ct);
 
-        return projects;
+        var counts = await db.Issues.GroupBy(i => i.ProjectId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+
+        var reposByProject = (await db.ProjectRepositories.AsNoTracking().OrderBy(r => r.SortOrder).ToListAsync(ct))
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<ProjectRepositoryDto>)g.Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch)).ToList());
+
+        var logosByProject = await db.ProjectLogos.AsNoTracking()
+            .Select(l => new { l.ProjectId, l.UpdatedAt })
+            .ToDictionaryAsync(l => l.ProjectId, l => (DateTimeOffset?)l.UpdatedAt, ct);
+
+        return projects.Select(p => ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []), logosByProject.GetValueOrDefault(p.Id))).ToList();
     }
 
     [HttpPost]
@@ -64,11 +71,20 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
         if (await db.Projects.AnyAsync(p => p.Key == key, ct))
             return Conflict($"{key} is already taken");
 
-        var project = new EfHatchProject { Key = key!, Name = name, CreatedAt = time.GetUtcNow() };
+        var color = request.Color?.Trim();
+        if (string.IsNullOrEmpty(color)) color = null;
+        else if (!EfHatchProject.IsValidColor(color)) return BadRequest($"a project colour is a hex value like #6b7280 - not \"{request.Color}\"");
+        else color = EfHatchProject.NormalizeColor(color);
+
+        var icon = request.Icon?.Trim();
+        if (string.IsNullOrEmpty(icon)) icon = null;
+        else if (!EfHatchProject.IsValidIcon(icon)) return BadRequest($"a project icon is 1-40 lower-case letters, digits or hyphens - not \"{request.Icon}\"");
+
+        var project = new EfHatchProject { Key = key!, Name = name, Color = color, Icon = icon, CreatedAt = time.GetUtcNow() };
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(GetProjects), new ProjectDto(project.Id, project.Key, project.Name, 0, project.CreatedAt, []));
+        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null));
     }
 
     /// <summary>
@@ -123,11 +139,36 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
             }
         }
 
+        if (request.Color is not null)
+        {
+            var color = request.Color.Trim();
+            if (color.Length == 0) project.Color = null;
+            else
+            {
+                if (!EfHatchProject.IsValidColor(color))
+                    return BadRequest($"a project colour is a hex value like #6b7280 - not \"{request.Color}\"");
+                project.Color = EfHatchProject.NormalizeColor(color);
+            }
+        }
+
+        if (request.Icon is not null)
+        {
+            var icon = request.Icon.Trim();
+            if (icon.Length == 0) project.Icon = null;
+            else
+            {
+                if (!EfHatchProject.IsValidIcon(icon))
+                    return BadRequest($"a project icon is 1-40 lower-case letters, digits or hyphens - not \"{request.Icon}\"");
+                project.Icon = icon;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
 
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         var repositories = await RepositoriesAsync(id, ct);
-        return new ProjectDto(project.Id, project.Key, project.Name, count, project.CreatedAt, repositories);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt);
     }
 
     /// <summary>
@@ -252,12 +293,85 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
         return await RepositoriesAsync(id, ct);
     }
 
+    // ---- Logo ----
+
+    [HttpGet("{id:int}/logo")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    public async Task<IActionResult> GetLogo(int id, CancellationToken ct)
+    {
+        var logo = await db.ProjectLogos.AsNoTracking().FirstOrDefaultAsync(l => l.ProjectId == id, ct);
+        if (logo is null) return NotFound();
+
+        Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
+
+        var etag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{logo.UpdatedAt.UtcTicks:x}\"");
+        return File(logo.Bytes, logo.ContentType, lastModified: logo.UpdatedAt, entityTag: etag);
+    }
+
+    [HttpPut("{id:int}/logo")]
+    [RequireRole(PersonRole.User)]
+    [RequestSizeLimit(PersonPhoto.MaxBytes + 1024)]
+    public async Task<ActionResult<ProjectDto>> PutLogo(int id, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        using var buffer = new MemoryStream();
+        await Request.Body.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+
+        if (!PersonPhoto.TryDetectContentType(bytes, out var contentType, out var error)) return BadRequest(error);
+
+        var now = time.GetUtcNow();
+        var logo = await db.ProjectLogos.FirstOrDefaultAsync(l => l.ProjectId == id, ct);
+        if (logo is null)
+            db.ProjectLogos.Add(new EfHatchProjectLogo { ProjectId = id, Bytes = bytes, ContentType = contentType, UpdatedAt = now });
+        else
+        {
+            logo.Bytes = bytes;
+            logo.ContentType = contentType;
+            logo.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), now);
+    }
+
+    [HttpDelete("{id:int}/logo")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> DeleteLogo(int id, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        var logo = await db.ProjectLogos.FirstOrDefaultAsync(l => l.ProjectId == id, ct);
+        if (logo is null) return NotFound();
+
+        db.ProjectLogos.Remove(logo);
+        await db.SaveChangesAsync(ct);
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), null);
+    }
+
+    private static ProjectDto ToDto(EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt) =>
+        new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt);
+
     private async Task<List<ProjectRepositoryDto>> RepositoriesAsync(int projectId, CancellationToken ct) =>
         await db.ProjectRepositories.AsNoTracking()
             .Where(r => r.ProjectId == projectId)
             .OrderBy(r => r.SortOrder)
             .Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch))
             .ToListAsync(ct);
+
+    private Task<DateTimeOffset?> LogoUpdatedAtAsync(int projectId, CancellationToken ct) =>
+        db.ProjectLogos.AsNoTracking().Where(l => l.ProjectId == projectId)
+            .Select(l => (DateTimeOffset?)l.UpdatedAt).FirstOrDefaultAsync(ct);
 
     // ---- The one narrowing ----
 

@@ -185,6 +185,15 @@ The two are deliberately not conflated: an iPad has a coarse pointer and a
 desk-width screen, and either query trying to do both jobs would misclassify
 it.
 
+Display mode is a third axis, beside width (`PHONE_QUERY`) and pointer
+(`(pointer: coarse)`): read from `(display-mode: standalone)` - plus the
+iOS-only `navigator.standalone` flag, since Safari never implements the media
+query - via `useStandalone()`, also in `viewport.ts`. It governs one thing:
+whether a second document may ever be asked for at all, which is what gates
+`IssuePeek`'s "New tab" button and the confirmation chicklet's key link before
+either opens a `target="_blank"` anchor instead of a routed `<Link>`. Nothing
+else keys off it today.
+
 Below `40rem`, the document itself is the scroller — not a fixed-height shell
 with a nested element scrolling inside it. That is what lets an on-screen
 keyboard resize the visual viewport without leaving a nested scroller stranded,
@@ -279,11 +288,23 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 | Frame | `<PageHeader>`, `<Card>`, `<Grid>`, `<Table>`, `<Modal>` |
 | Controls | `<Field>`, `<Button>` |
 | Text | `<Badge>`, `<Text>` |
+| Identity | `<ProjectMark>` |
 | The exception | `<EmptyState>` |
 
-The nine primitives after the chrome are extracted from CSS conventions that
-already existed and repeated across the house's apps, rather than invented.
-That is why the set is small and why it is the right small set.
+The ten primitives after the chrome are extracted from CSS conventions that
+already existed and repeated across the house's apps, rather than invented -
+`<ProjectMark>` is the one exception to "extracted rather than invented": a
+project never had a mark before HA-216, so this one was designed, not lifted.
+That is why the rest of the set is small and why it is the right small set.
+
+`<ProjectMark>` draws a project's own uploaded logo if it has one, else an
+icon from a curated, closed stock set vendored into `packages/ui/src/icons`
+(licence text beside the glyphs), else the letters of its key on a ground of
+its own colour. The colour arithmetic — is this a valid colour, and which ink
+reads on it — is `@hatch/ui`'s `color.ts`: it used to live only in
+`apps/hatch/src/lib/color.ts` for status columns, and moved here so a
+project's mark and a status pill compute their ink the same way; `apps/hatch`
+keeps just the status-specific default and `statusVars`.
 
 Four conventions run through them:
 
@@ -322,10 +343,10 @@ board it introduces would misalign every column against it — and carries its
 primary nav in `leading` and the battery-and-attention cluster in `trailing`.
 Below `40rem` the hatch app changes what those slots hold rather than
 `<TopBar>`'s own markup: `leading` goes empty (the primary nav's pages move
-into the gear's panel instead, flattened with their group labels), the
-battery moves into that same panel as a row, and only the attention control -
-the one thing a phone user must always see - stays in `trailing` beside the
-gear.
+into the gear's panel instead, flattened with their group labels), and
+`trailing` keeps the same battery-and-attention cluster it carries on the
+desk, beside the gear - the attention control alone narrows, to make room in
+a row that no longer has the desk's width to spend.
 
 `<Modal>` has one slot worth naming. Its panel caps at the viewport and scrolls,
 which is right until the dialog holds a row that has to stay reachable — its

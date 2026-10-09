@@ -23,3 +23,14 @@ export const isReviewPlaybook = (p: Pick<Playbook, 'fromStatusId' | 'toStatusId'
 export function transitionLabel(p: Pick<Playbook, 'fromStatusId' | 'toStatusId' | 'fromStatusName' | 'toStatusName'>): string {
   return isReviewPlaybook(p) ? `${p.fromStatusName} review` : `${p.fromStatusName} to ${p.toStatusName}`;
 }
+
+/** What the budget field shows: blank for no cap, the number otherwise.
+    Mirrors wipLimitDraft - see lib/wip.ts. */
+export function budgetDraft(budget: number | null): string {
+  return budget === null ? '' : String(budget);
+}
+
+/** The field, trimmed, as the wire's `budget` - blank clears it. */
+export function budgetRequest(draft: string): string {
+  return draft.trim();
+}

@@ -11,7 +11,7 @@ import { Choice } from '../components/Choice';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
-import { isReviewPlaybook, transitionLabel } from '../lib/playbooks';
+import { budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from '../lib/playbooks';
 import { normalizeEol } from '../lib/text';
 import { useLoaded } from '../lib/useLoaded';
 import {
@@ -78,6 +78,7 @@ export function PlaybooksPage() {
                 <th>Shape</th>
                 <th>Model</th>
                 <th>Effort</th>
+                <th>Budget (M tokens)</th>
                 <th />
               </tr>
             </thead>
@@ -117,6 +118,7 @@ function Row({
     prompt?: string;
     model?: string;
     effort?: string;
+    budget?: string;
   }) => void;
   onDelete: () => void;
 }) {
@@ -162,6 +164,9 @@ function Row({
             options={PLAYBOOK_EFFORTS}
             onChange={(effort) => onPatch({ effort })}
           />
+        </td>
+        <td>
+          <BudgetCell budget={playbook.budget} onPatch={(budget) => onPatch({ budget })} />
         </td>
         <td>
           <div className="hatch-reorder">
@@ -238,6 +243,34 @@ function TypesCell({ types, onChange }: { types: IssueType[]; onChange: (types: 
 }
 
 /**
+ * The thinking budget, in millions of tokens - blur-commit, re-sync when the
+ * row's own value changes underneath, the way WipLimitField is (see
+ * IssuePage.tsx). A budget is typed digit by digit, and a PATCH per digit is
+ * wrong the same reason it would be for any other field here.
+ */
+function BudgetCell({ budget, onPatch }: { budget: number | null; onPatch: (budget: string) => void }) {
+  const [draft, setDraft] = useState(budgetDraft(budget));
+  const [known, setKnown] = useState(budget);
+
+  if (budget !== known) {
+    setKnown(budget);
+    setDraft(budgetDraft(budget));
+  }
+
+  return (
+    <input
+      inputMode="numeric"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = budgetRequest(draft);
+        if (next !== budgetDraft(budget)) onPatch(next);
+      }}
+    />
+  );
+}
+
+/**
  * A new row. The transition is chosen from the board's own columns, so a
  * playbook can only ever name a column that exists - and an install that
  * renamed "todo" gets its own names here without this page knowing any.
@@ -266,6 +299,7 @@ function NewPlaybook({
   const [model, setModel] = useState<string>(PLAYBOOK_MODEL_DEFAULT);
   const [effort, setEffort] = useState<string>(PLAYBOOK_EFFORT_DEFAULT);
   const [shape, setShape] = useState<PlaybookShape>(PLAYBOOK_SHAPE_DEFAULT);
+  const [budget, setBudget] = useState('');
 
   return (
     <Card>
@@ -304,6 +338,9 @@ function NewPlaybook({
         <Field label="Effort" hint="How much thought it may spend on the move.">
           <Choice value={effort} options={PLAYBOOK_EFFORTS} onChange={setEffort} />
         </Field>
+        <Field label="Budget (M tokens)" hint="Leave blank for no cap.">
+          <input inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} />
+        </Field>
       </div>
       <Field label="Prompt" as="div" hint="What the agent is told before it is shown the ticket.">
         <MarkdownEditor
@@ -323,7 +360,7 @@ function NewPlaybook({
              that says nothing about why. */
           disabled={!prompt.trim()}
           onClick={() => {
-            onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort, shape });
+            onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort, budget: budget || undefined, shape });
             setPrompt('');
             setTypes([]);
           }}

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Hatch.Cli;
 
@@ -22,6 +24,14 @@ public sealed class IncrementReport
 
     /// <summary>Whether those last two differ.</summary>
     public bool Moved { get; set; }
+
+    /// <summary>
+    /// The board's own read, taken in the same call as <see cref="Ended"/>, of
+    /// whether the ticket is sitting in the review column right now - not
+    /// <see cref="To"/>, which is the target computed before the session ran
+    /// and can be stale by the time it is over.
+    /// </summary>
+    public bool EndedInReview { get; set; }
 
     /// <summary>The board says it ended where it started: an increment that did nothing.</summary>
     public bool Stalled { get; set; }
@@ -84,6 +94,24 @@ public sealed class IncrementReport
 
     /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
     public bool UsageLimited => UsageLimitResetAt is not null;
+
+    /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed.</summary>
+    public long? ClampedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its playbook's budget was crossed.</summary>
+    public int? ClampedAtRequests { get; set; }
+
+    /// <summary>Whether the session was told, mid-run, to wrap up because it crossed its budget.</summary>
+    public bool Clamped => ClampedAtTokens is not null;
+
+    /// <summary>The cumulative tokens the session had spent when its hard limit was crossed.</summary>
+    public long? HardLimitedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its hard limit was crossed.</summary>
+    public int? HardLimitedAtRequests { get; set; }
+
+    /// <summary>Whether the session was stopped outright for crossing its hard limit.</summary>
+    public bool HardLimited => HardLimitedAtTokens is not null;
 
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
@@ -158,18 +186,26 @@ public sealed class IncrementReport
     /// </summary>
     public long? TotalTokens { get; set; }
 
+    /// <summary>Requests, out of the stream - one per distinct assistant message id. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
+    public int? Requests { get; set; }
+
+    /// <summary>The largest context any one request carried. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
+    public long? PeakContextTokens { get; set; }
+
     /// <summary>Turns, out of the result event. Null for the same reason <see cref="TotalTokens"/> can be.</summary>
     public int? Turns { get; set; }
 
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
-        Moved ? $"{From} -> {Ended}"
+        Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Skipped ? "skipped from the keyboard"
-        : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved"
-        : FixPushed ? "fix pushed, build pending"
-        : Filed.Count > 0 ? $"filed {Filed.Count} under it"
+        : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : HardLimited ? $"the hard limit was hit at {Format.Compact(HardLimitedAtTokens!.Value)} tokens"
+            + (Filed.Count > 0 ? $", filed {Filed.Count} under it" : ", its continuation could not be filed")
+        : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
@@ -292,7 +328,7 @@ public sealed class Increment(
                 stopping.Cancel();
             };
 
-            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found, build?.Found);
+            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found);
             report.ExitCode = result.ExitCode;
             report.SessionId = facts.SessionId;
             report.Cost = facts.CostUsd;
@@ -302,7 +338,14 @@ public sealed class Increment(
                 report.Turns = summary.Turns;
                 report.TotalTokens = summary.Models?.Sum(m =>
                     m.InputTokens + m.OutputTokens + m.CacheCreationTokens + m.CacheReadTokens);
+                report.Requests = summary.Requests;
+                report.PeakContextTokens = summary.PeakContextTokens;
             }
+
+            report.ClampedAtTokens = facts.ClampedAtTokens;
+            report.ClampedAtRequests = facts.ClampedAtRequests;
+            report.HardLimitedAtTokens = facts.HardLimitedAtTokens;
+            report.HardLimitedAtRequests = facts.HardLimitedAtRequests;
 
             // Before anything is written anywhere. A lease that went means this
             // runner no longer holds the ticket, and everything below except the
@@ -314,6 +357,9 @@ public sealed class Increment(
                 say.Complain($"hatch: {report.Key} - {gone}");
                 say.Complain("hatch:   the session was stopped; nothing further was written there");
             }
+
+            if (report.Clamped && claim.Lost is null)
+                await Clamp.CommentAsync(board, say, report.Key, report.ClampedAtTokens!.Value, report.ClampedAtRequests, ct);
 
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and
@@ -371,6 +417,7 @@ public sealed class Increment(
                 {
                     var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
                     report.Ended = later?.FromStatus.Name ?? report.From;
+                    report.EndedInReview = later?.InReview ?? false;
                     report.Filed = later?.Children.Select(c => c.Key).Except(work.Children.Select(c => c.Key)).ToList() ?? [];
 
                     // A conflict or a build increment is judged by the branch,
@@ -446,7 +493,7 @@ public sealed class Increment(
                 // the ticket to a new column while still leaving that branch
                 // unresolved. This guard runs regardless, so the branch is still
                 // said - but see below for who wins the claim's own verdict.
-                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted)
+                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                 {
                     if (report.Asked > 0)
                     {
@@ -631,21 +678,69 @@ public sealed class Increment(
 
     // ---- The session ----
 
+    /// <summary>
+    /// The hard limit sits this far above the playbook's own budget: a 5M-token
+    /// budget's hard limit is <c>5_000_000 * HardLimitMultiplierNumerator /
+    /// HardLimitMultiplierDenominator</c>, computed in whole tokens so a budget
+    /// never drifts through <c>decimal</c> or a floating multiply.
+    /// </summary>
+    private const long HardLimitMultiplierNumerator = 3;
+    private const long HardLimitMultiplierDenominator = 2;
+
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
-        RunFacts facts, Claim claim, CancellationToken ct,
+        RunFacts facts, Claim claim, CancellationTokenSource stopping,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build)
     {
+        var ct = stopping.Token;
+
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
-        using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath));
+        using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath),
+            SessionHooks.Rtk(Environment.GetEnvironmentVariable("HATCH_RTK"), Environment.GetEnvironmentVariable("PATH")));
         if (hooks is null)
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
-        var request = new SessionRequest(
-            root, model, effort, Prompt.Compose(work, repositories, branches, conflict, build), quiet, addDirs, hooks?.Settings);
+        var budget = work.Playbook?.Budget is { } m ? m * 1_000_000L : (long?)null;
+        if (budget is { } limitTokens && hooks is not null)
+        {
+            try
+            {
+                File.WriteAllText(hooks.Budget, limitTokens.ToString(CultureInfo.InvariantCulture));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A budget that cannot be written must not fail the increment -
+                // a --quiet session's hook simply has nothing to clamp against.
+            }
+        }
+
+        var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
+        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
+
+        // Whichever side wrote hooks.Clamp - the streamed callback below, or a
+        // --quiet session's own transcript-reading hook - this is the one place
+        // that reads it back onto the facts the increment reports from.
+        void ReadClamp()
+        {
+            if (hooks is null || !File.Exists(hooks.Clamp)) return;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(hooks.Clamp));
+                facts.ClampedAtTokens = doc.RootElement.GetProperty("tokens").GetInt64();
+                if (doc.RootElement.TryGetProperty("requests", out var requests))
+                    facts.ClampedAtRequests = requests.GetInt32();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // Best-effort, the same as every other read of a hook file in
+                // this area: a clamp that cannot be read is not reported, but
+                // must not fail the increment.
+            }
+        }
 
         await MarkSaidAsync(work, ct);
 
@@ -682,12 +777,15 @@ public sealed class Increment(
                 say.Line(output);
             }
 
+            if (facts.Result is { } quietEntry) facts.Result = quietEntry with { PromptChars = prompt.Length };
+
+            ReadClamp();
             return quietly;
         }
 
         using var pulse = new Pulse(settings.HeartbeatSeconds, say);
 
-        return await sessions.RunAsync(request, raw =>
+        var streamed = await sessions.RunAsync(request, raw =>
         {
             foreach (var line in render.Read(raw))
             {
@@ -707,7 +805,52 @@ public sealed class Increment(
             // carried one - but Read already updated Usage by the time it
             // returned.
             if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt);
+
+            // Same reason the usage read above is out here and not in the loop:
+            // a usage-only assistant message draws no line either, yet still
+            // moves TokensSoFar. The first crossing, and only the first - once
+            // hooks.Clamp exists nothing here writes it again, so the session is
+            // told to wrap up once for the rest of its life and not on every
+            // line after.
+            if (budget is { } limit && hooks is not null && render.TokensSoFar >= limit && !File.Exists(hooks.Clamp))
+            {
+                try
+                {
+                    File.WriteAllText(hooks.Clamp, JsonSerializer.Serialize(
+                        new ClampFact(render.TokensSoFar, render.Requests), HatchJson.Default.ClampFact));
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // A clamp that cannot be written must not fail the
+                    // increment; the session runs on undirected.
+                }
+            }
+
+            // Past the soft clamp above by half again, the session is stopped
+            // outright rather than asked to wrap up - cancelling the same
+            // source a lost lease already cancels. Guarded on the fact rather
+            // than a file: this runs in-process and can cancel directly, so
+            // there is no hook file for it to wait on.
+            if (budget is { } hardBudget && render.TokensSoFar >= hardBudget * HardLimitMultiplierNumerator / HardLimitMultiplierDenominator && facts.HardLimitedAtTokens is null)
+            {
+                facts.HardLimitedAtTokens = render.TokensSoFar;
+                facts.HardLimitedAtRequests = render.Requests;
+                say.Line("");
+                say.Line($"hatch: {work.Issue.Key} - the hard limit was hit at {Format.Compact(render.TokensSoFar)} tokens; stopping the session");
+                stopping.Cancel();
+            }
         }, ct);
+
+        if (facts.Result is { } streamedEntry)
+            facts.Result = streamedEntry with
+            {
+                Requests = render.Requests,
+                PeakContextTokens = render.PeakContextTokens,
+                PromptChars = prompt.Length,
+            };
+
+        ReadClamp();
+        return streamed;
     }
 
     /// <summary>
@@ -772,11 +915,18 @@ public sealed class Increment(
             say.Line(written is null
                 ? $"hatch: work log: written to {key}"
                 : $"hatch: work log: {Format.Compact(written.TotalTokens)} tokens, "
-                  + $"{Format.Spent(written.CostUsd)}, {StreamRender.Clock(written.DurationMs / 1000)}");
+                  + $"{Format.Spent(written.CostUsd)}, {StreamRender.Clock(written.DurationMs / 1000)}"
+                  + $", {(written.Requests is { } r ? $"{r} requests" : "requests not reported")}"
+                  + $", {(written.PeakContextTokens is { } p ? $"{Format.Compact(p)} peak context" : "peak context not reported")}");
 
             // The server's own figure, when it wrote one - so the closing
             // banner and the issue page never disagree about the headline.
-            if (written is not null) report.TotalTokens = written.TotalTokens;
+            if (written is not null)
+            {
+                report.TotalTokens = written.TotalTokens;
+                report.Requests = written.Requests;
+                report.PeakContextTokens = written.PeakContextTokens;
+            }
         }
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {
@@ -908,7 +1058,7 @@ public sealed class Increment(
     /// plain numeral suffixed past that: nobody needs "twelfth" read out, but
     /// "12th" says exactly the same thing in fewer words.
     /// </summary>
-    private static string Ordinal(int n)
+    internal static string Ordinal(int n)
     {
         string[] named = ["zeroth", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
         if (n >= 0 && n < named.Length) return named[n];

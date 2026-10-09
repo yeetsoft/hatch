@@ -25,6 +25,7 @@ import {
 import { useLoaded } from '../lib/useLoaded';
 import {
   compactTokens,
+  compactTokensOrDash,
   durationPhrase,
   entryMark,
   entryTitle,
@@ -43,9 +44,13 @@ interface LeaderboardView {
   history: WorkLogHistory;
 }
 
-/** The three sortable columns, in the order they are drawn. */
+/** The sortable columns, in the order they are drawn. Requests and peak
+    context sit between tokens and cost: they are the two factors tokens is
+    the product of, so they read as the headline's own breakdown. */
 const COLUMNS: { key: SessionSort; label: string }[] = [
   { key: 'tokens', label: 'Tokens' },
+  { key: 'requests', label: 'Requests' },
+  { key: 'peakContext', label: 'Peak context' },
   { key: 'cost', label: 'Notional USD' },
   { key: 'ended', label: 'Ran' },
 ];
@@ -313,6 +318,8 @@ function Row({ session }: { session: WorkLogSession }) {
         <Link to={`/issues/${session.issueKey}`}>{session.issueKey}</Link>
       </td>
       <td>{compactTokens(session.totalTokens)}</td>
+      <td>{session.requests ?? '—'}</td>
+      <td>{compactTokensOrDash(session.peakContextTokens)}</td>
       <td>{moneyPhrase(session.costUsd)}</td>
       <td>{new Date(session.endedAt).toLocaleString()}</td>
       <td>{durationPhrase(session.durationMs)}</td>

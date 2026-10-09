@@ -155,7 +155,7 @@ two-minute timeout.
 ### The runner name
 
 `HATCH_RUNNER` if set, else a character from the cast list in
-`src/Hatch.Cli/runner-names.txt` - main and recurring characters from five TV
+`src/Hatch.Cli/runner-names.txt` - main and recurring characters from three TV
 shows, plus the colorful one-offs. The choice is made once per checkout, the
 first time it is needed: a SHA-256 over the host and the canonical checkout
 path picks a starting slot, and the walk from there skips any name already
@@ -211,7 +211,7 @@ usage: hatch config [--show | --origin <origin>]
 ### `hatch board`
 
 Takes nothing. `GET /api/hatch/board`, then one line per column, non-deferred
-columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)]`.
+columns first: `<Name>[ (terminal)| (deferred)]: <count>[  (n emergency)][  (n expedited)][  (n low)][  (n economy)][  (n paused)]`.
 
 ### `hatch next [<column>]`
 
@@ -221,7 +221,7 @@ one column. Unknown: `hatch: no column called "<x>" - there is <names>`.
 The board arrives already ordered `(status, priority desc, rank, id)` and
 nothing is re-sorted client-side. The first card whose ready date has arrived
 on the caller's calendar day is printed as
-`<Key>  [<type>]  <Title>[  (emergency)|  (expedited)][  (due <date>)]`. Nothing workable:
+`<Key>  [<type>]  <Title>[  (emergency)|  (expedited)|  (low)|  (economy)][  (due <date>)]`. Nothing workable:
 `hatch: nothing workable in "<column>"` on stderr, exit 2.
 
 ### `hatch queue [<ancestor key>]`
@@ -229,17 +229,26 @@ on the caller's calendar day is printed as
 `GET /api/hatch/work/queue?offsetMinutes=<utc offset>[&ancestorKey=<key>]`.
 Every issue a dispatch pass would look at, in the order it looks, each with
 the reason it would be folded past or `-> <next column>`. A row marked `!!`
-is emergency and one marked `! ` is expedited; the column only appears when
-some row is above normal. An empty answer is a
+is emergency and one marked `! ` is expedited, one marked `- ` is low —
+considered only after every normal row — one marked `~ ` is economy —
+considered last of every level but paused — and one marked `||` is
+paused; the column only appears when some row is not normal. An empty answer is a
 sentence, not a blank line: `hatch: nothing on the board is on the
 dispatcher's path`, or the same `under <key>`. Exit 0.
 
 ### `hatch show AER-12`
 
 Three reads: the issue, the statuses, the comments. Prints the header
-`<Key>  [<type>]  <Title>`, `status:`, then only when non-normal
-`priority:  emergency - top of the walk, before anything else` or
-`priority:  expedited - this one goes first`, `parent:`, `children:`,
+`<Key>  [<type>]  <Title>`, `status:`, then only when the effective level is
+non-normal `priority:  emergency - top of the walk, before anything else`,
+`priority:  expedited - this one goes first`,
+`priority:  low - reached after everything normal, and only while the session
+window is on pace`,
+`priority:  economy - worked only with usage that would otherwise go spare` or
+`priority:  paused - set aside; the loop leaves it where it stands`, with an
+`(inherited from <key>)` suffix when the level came from an ancestor rather
+than the issue itself — `priority:  expedited - this one goes first
+(inherited from HA-12)` — then `parent:`, `children:`,
 `depends:`, `blocks:`, `ready:`, `due:`; the description verbatim; then
 `--- N comment(s) ---` with each as
 `[<timestamp>] <author>:` and its body. A missing issue: `hatch: <key> -

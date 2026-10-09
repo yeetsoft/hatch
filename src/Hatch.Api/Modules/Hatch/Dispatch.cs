@@ -128,15 +128,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         var implementation = Columns.Implementation(statuses);
 
-        // The whole walk, three times: every emergency candidate right to
-        // left, then every expedited candidate right to left, then everything
-        // else right to left. So an emergency bug in the leftmost column is
-        // listed above an expedited story in the rightmost one, which is
-        // listed above a normal one in the rightmost one, while inside each
-        // third the order is the board's own - rightmost column first, and
-        // (Rank, Id) within a column.
+        // The whole walk, six times: every emergency candidate right to
+        // left, then every expedited candidate right to left, then every
+        // normal one right to left, then every low one right to left, then
+        // every economy one right to left, then every paused one right to
+        // left. So an emergency bug in the leftmost column is listed above an
+        // expedited story in the rightmost one, which is listed above a
+        // normal one in the rightmost one, which is listed above a low one
+        // wherever it sits, which is listed above an economy one wherever it
+        // sits, which is listed above a paused one wherever it sits, while
+        // inside each tier the order is the board's own - rightmost column
+        // first, and (Rank, Id) within a column.
         //
-        // Three passes over the same columns rather than a sort of the
+        // Six passes over the same columns rather than a sort of the
         // finished rows, because the published scan is the explanation of
         // what `next` picked: a comparator applied afterwards would be a
         // second opinion about the order, and passes that could disagree is
@@ -148,8 +152,28 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
-        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal })
+
+        // Resolved only when some candidate actually reads at economy or low
+        // level - a pass with nothing at either tier has no reason to read an
+        // account's usage at all. One read, judged twice - see PaceReadingsAsync.
+        PaceReadings? pace = null;
+        if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
+            pace = await PaceReadingsAsync(ct);
+
+        // Set only after a tier's own loop below has finished, so two clear rows in
+        // the same tier never park each other - only a strictly higher tier's clear
+        // row, remembered here on a previous iteration, can. Never reassigned once
+        // set: the first clear row in the whole (top-down) walk is also the only one
+        // the park sentence ever needs to name. A row that is folded parks nothing,
+        // whatever folds it: most folds stand for days, and a tier parked behind one
+        // is a tier that never runs (HA-312).
+        string? parkedByKey = null;
+        string? parkedByLevel = null;
+
+        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
+            string? firstClearThisTier = null;
+
             foreach (var status in Enumerable.Reverse(statuses))
             {
                 if (Columns.Target(statuses, status) is not { } to) continue;
@@ -168,22 +192,83 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, gate, family, claimed, implementation,
-                        assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+                        issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
+                        implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+
+                    var sentence = blocked;
+
+                    // Nothing at a lower tier is picked up while a strictly
+                    // higher one still has clear work - a hop is exempt from
+                    // being parked itself, but still becomes the row that
+                    // parks the tiers below it.
+                    if (blocked is null && !hop && parkedByKey is not null)
+                        sentence = $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
+                                   $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+
+                    // The first clear row of this tier. Independent of the park
+                    // above: a row already parked was clear before the park
+                    // replaced its sentence, and still counts as clear for the
+                    // tier below it.
+                    if (firstClearThisTier is null && blocked is null)
+                        firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
+
                     rows.Add(new ScanRow(
-                        issue, status, to, blocked,
+                        issue, status, to, sentence,
                         KindOf(issue, status, to, merged, built),
-                        hop && blocked is null,
-                        blocked is null ? hopKind : null,
-                        blocked is null ? hopUnder : null,
-                        blocked is null && summary.LapsedStall ? ClearNote(claims.StallLapseSeconds) : null,
+                        hop && sentence is null,
+                        sentence is null ? hopKind : null,
+                        sentence is null ? hopUnder : null,
+                        sentence is null && summary.LapsedStall
+                            ? ClearNote(claims.StallLapseSeconds)
+                            : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
+                            : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
+                            : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey));
                 }
             }
+
+            if (parkedByKey is null && firstClearThisTier is not null)
+            {
+                parkedByKey = firstClearThisTier;
+                parkedByLevel = PriorityLevels.Name(level);
+            }
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace);
+    }
+
+    /// <summary>
+    /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
+    /// does - the freshest whole reading across its runners - and judged twice:
+    /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
+    /// <see cref="ScanAsync"/>, only when some candidate actually reads at
+    /// economy or low level, and read once regardless of how many candidates
+    /// are at either.
+    /// </summary>
+    private async Task<PaceReadings> PaceReadingsAsync(CancellationToken ct)
+    {
+        var principal = await actors.PrincipalAsync(ct);
+        if (principal is null)
+        {
+            var noAccount = EconomyPace.Behind("economy - this key belongs to nobody, so there is no account to read usage for");
+            var noAccountLow = EconomyPace.Behind("low - this key belongs to nobody, so there is no account to read usage for");
+            return new PaceReadings(noAccount, noAccountLow);
+        }
+
+        var runners = await db.Runners.AsNoTracking()
+            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
+            .ToListAsync(ct);
+
+        var reading = Utilization.Of(runners, time.GetUtcNow());
+        if (reading is null)
+        {
+            var noReading = EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one");
+            var noReadingLow = EconomyPace.Behind("low - no usage reading for this account yet; a runner's first session gives one");
+            return new PaceReadings(noReading, noReadingLow);
+        }
+
+        return new PaceReadings(Utilization.Pace(reading, time.GetUtcNow()), Utilization.SessionPace(reading, time.GetUtcNow()));
     }
 
     /// <summary>
@@ -483,6 +568,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchPlaybook? playbook,
         int waiting,
         LoopScope? loop,
+        PaceReadings? pace,
         DependencyGate gate,
         FamilyGate family,
         ClaimGate claimed,
@@ -516,10 +602,28 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (claimed.Held(issue) is { } holder)
             return holder;
 
+        var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
+        if (pausedLevel == PriorityLevels.Paused)
+            return pausedFrom is null
+                ? "paused - a person set it aside, and nothing picks it up until they set it back"
+                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back";
+
         if (loop is not null)
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
                 return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
+
+            // Loop policy, not a fact about the issue - a hop is exempt, the
+            // same way it is exempt from needing a playbook, and a named
+            // dispatch (work/{key}) never sees loop at all. Two gates, same
+            // shape, each reading its own level's judgement off the one pace
+            // reading. Both windows reset on their own, so both are the
+            // board's to clear.
+            if (!hop && pausedLevel == PriorityLevels.Economy && pace?.Economy.Fold is { } economyFold)
+                return economyFold;
+
+            if (!hop && pausedLevel == PriorityLevels.Low && pace?.Low.Fold is { } lowFold)
+                return lowFold;
 
             if (loop.Mine)
             {
@@ -598,7 +702,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // that is passing, running or unread needs nothing at all - so it is the
         // least useful thing to say about an issue that is folded for a reason
         // somebody can act on.
-        if (conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is { } reviewBlock) return reviewBlock;
+        if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
+            return reviewBlock;
 
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
@@ -607,12 +712,24 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (hop) return null;
 
         // Reached only when hop is false and an epic is otherwise entering the
-        // WIP section - every other condition HopKind's own epic branch checks
-        // has already held, so the only thing that can have failed is the
-        // children check. An epic with nothing filed under it is not a hop,
-        // and never silently "no playbook covers this" (HA-113).
+        // WIP section - one of HopKind's own epic branch conditions has failed:
+        // its own parent, or its children. Asked in that order - is anything
+        // above it running, then has it anything under it - so a top-level
+        // epic, or one whose parent epic is not running, never reads as merely
+        // childless, and never silently "no playbook covers this" (HA-113,
+        // HA-202).
         if (issue.Type == "epic" && wip is not null && !wip.Inside(from.Id) && to is not null && wip.Inside(to.Id))
+        {
+            var epicParent = family.ParentOf(issue.Id);
+
+            if (epicParent is null)
+                return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
+
+            if (epicParent is not { Type: "epic" } || !wip.Inside(epicParent.StatusId))
+                return "its parent epic is not running, so nothing pulls it in";
+
             return FamilyGate.NothingUnder;
+        }
 
         // A column that pulls its children is never "no playbook covers
         // this" - it is one of these two, naming which of FamilyGate.Pulls's
@@ -639,13 +756,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <remarks>
     /// Asked in order: an express issue in a ticked column; an epic standing
     /// outside the WIP section whose next column is inside it, with something
-    /// filed under it; a story or bug in a ticked column whose parent is a
-    /// running epic; and last, unrelated to the WIP section, a child a
-    /// ParentPulls column pulls (HA-149). The order matters only where a board
-    /// ticks both ExpressSkips and ParentPulls on the same column and an epic
-    /// stands exactly in the implementation column - see HA-113's own
-    /// decision on the overlap. Never on a move that ends where it starts: a
-    /// review self-move is never a hop for the first three, by construction.
+    /// filed under it and its own direct parent a running epic; a story or bug
+    /// in a ticked column whose parent is a running epic; and last, unrelated
+    /// to the WIP section, a child a ParentPulls column pulls (HA-149). A
+    /// top-level epic - one with no parent, or a parent that is not a running
+    /// epic - is never carried by the second arm: only a person moves it in
+    /// (HA-202). The order matters only where a board ticks both ExpressSkips
+    /// and ParentPulls on the same column and an epic stands exactly in the
+    /// implementation column - see HA-113's own decision on the overlap. Never
+    /// on a move that ends where it starts: a review self-move is never a hop
+    /// for the first three, by construction.
     /// </remarks>
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
@@ -658,7 +778,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (crosses && wip is not null)
         {
             if (issue.Type == "epic" && !wip.Inside(from.Id) && wip.Inside(to!.Id)
-                && family.Children(issue.Id).Count > 0)
+                && family.Children(issue.Id).Count > 0
+                && parent is { Type: "epic" } parentEpic && wip.Inside(parentEpic.StatusId))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
@@ -747,7 +868,7 @@ public sealed record ScanRow(
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
-    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure)
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null)
 {
     public static Scan Refused(string why) =>
         new(

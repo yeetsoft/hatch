@@ -341,18 +341,10 @@ public sealed class ClaudeSessionRunner(string? configured = null, Action<string
         }
 
         bin = "claude";
-        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        if (Reach.Find("claude", Environment.GetEnvironmentVariable("PATH")) is { } found)
         {
-            if (dir.Length == 0) continue;
-
-            foreach (var name in OperatingSystem.IsWindows() ? (string[])["claude.exe", "claude.cmd", "claude"] : ["claude"])
-            {
-                var candidate = Path.Combine(dir, name);
-                if (!File.Exists(candidate)) continue;
-
-                bin = candidate;
-                return true;
-            }
+            bin = found;
+            return true;
         }
 
         refusal = string.Join('\n',

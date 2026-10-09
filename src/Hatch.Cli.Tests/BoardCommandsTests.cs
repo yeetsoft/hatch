@@ -429,6 +429,75 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_economy()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, priority: PriorityLevels.EconomyName), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        // Said last of the three, the other end of the scale from emergency.
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 economy)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_low()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, priority: PriorityLevels.LowName), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        // Said between expedited and economy, the way the walk reaches it.
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 low)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_board_says_how_many_of_a_column_are_paused()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+            Card("AER-1", 2, priority: PriorityLevels.PausedName), Card("AER-2", 2), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 2  (1 paused)
+            In Progress: 1
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Next_skipsAColumnWhoseOnlyReadyCardIsPaused()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.PausedName)));
+
+        Assert.Equal(2, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Contains("nothing workable in \"todo\"", h.Complained);
+    }
+
+    [Fact]
     public async Task Next_marks_the_card_it_prints_when_somebody_expedited_it()
     {
         using var h = new CliHarness();
@@ -446,6 +515,16 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (emergency)", h.Said);
+    }
+
+    [Fact]
+    public async Task Next_marks_the_card_it_prints_when_it_is_low()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.LowName)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-1  [task]  AER-1's title  (low)", h.Said);
     }
 
     [Fact]
@@ -490,6 +569,26 @@ public sealed class BoardCommandsTests
             h.Said);
     }
 
+    [Fact]
+    public async Task The_queue_marks_a_paused_row_with_its_own_doubled_marker()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.Row("AER-9", priority: PriorityLevels.PausedName, blocked: "paused - a person set it aside, and nothing picks it up until they set it back"),
+            Fixtures.Row("AER-7", expedited: true),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            ||AER-9  [task]  In Progress  paused - a person set it aside, and nothing picks it up until they set it back
+            ! AER-7  [task]  In Progress  -> In Review
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
     /// <summary>
     /// The marker is a column that appears, not two spaces that are always
     /// there: a board with nothing expedited prints exactly what it printed
@@ -504,6 +603,50 @@ public sealed class BoardCommandsTests
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
         Assert.StartsWith("AER-1", h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_an_economy_row_with_its_own_marker()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
+            Fixtures.Row("AER-5", priority: PriorityLevels.EconomyName),
+            Fixtures.Row("AER-1", blocked: "it waits on AER-9"),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            !!AER-9  [task]  In Progress  -> In Review
+            ~ AER-5  [task]  In Progress  -> In Review
+              AER-1  [task]  In Progress  it waits on AER-9
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_a_low_row_with_its_own_marker()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
+            Fixtures.Row("AER-5", priority: PriorityLevels.LowName),
+            Fixtures.Row("AER-1", blocked: "it waits on AER-9"),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            !!AER-9  [task]  In Progress  -> In Review
+            - AER-5  [task]  In Progress  -> In Review
+              AER-1  [task]  In Progress  it waits on AER-9
+            """.ReplaceLineEndings("\n"),
+            h.Said);
     }
 
     // ---- Express, the hop ----

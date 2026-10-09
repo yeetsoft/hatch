@@ -56,6 +56,60 @@ public class IssueExpediteControllerTests
     }
 
     [Fact]
+    public async Task AnIssue_IsMarkedEconomy()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.EconomyName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.EconomyName, marked.Priority);
+        Assert.Equal(PriorityLevels.Economy, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task AnIssue_IsMarkedLow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.LowName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.LowName, marked.Priority);
+        Assert.Equal(PriorityLevels.Low, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task AnIssue_IsMarkedPaused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var marked = await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+
+        Assert.False(marked.Expedited);
+        Assert.Equal(PriorityLevels.PausedName, marked.Priority);
+        Assert.Equal(PriorityLevels.Paused, (await h.RowAsync(issue.Key)).Priority);
+    }
+
+    [Fact]
+    public async Task APausedIssue_RoundTripsBackToExpeditedAndToNormal()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+        var expedited = await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
+        Assert.Equal(PriorityLevels.ExpeditedName, expedited.Priority);
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.PausedName);
+        var normal = await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
+        Assert.Equal(PriorityLevels.NormalName, normal.Priority);
+    }
+
+    [Fact]
     public async Task TheSameRoute_UnmarksIt()
     {
         var h = await NewAsync();
@@ -77,7 +131,15 @@ public class IssueExpediteControllerTests
 
         var result = await h.Priority.PutIssuePriority(issue.Key, new PriorityRequest("urgent"), default);
 
-        Assert.Contains("not a priority", Reason(result.Result));
+        var reason = Reason(result.Result);
+        Assert.Contains("not a priority", reason);
+        // Names all six, so a refusal is also the list of what it should have said.
+        foreach (var name in new[]
+                 {
+                     PriorityLevels.PausedName, PriorityLevels.EconomyName, PriorityLevels.LowName,
+                     PriorityLevels.NormalName, PriorityLevels.ExpeditedName, PriorityLevels.EmergencyName,
+                 })
+            Assert.Contains(name, reason);
     }
 
     [Fact]
@@ -177,7 +239,7 @@ public class IssueExpediteControllerTests
         // is a claim about every other route rather than about this one.
         await h.PatchAsync(issue.Key, new IssuePatchRequest(
             Title: "renamed", Description: null, Type: null, StatusId: null, ParentKey: epic.Key,
-            ReadyAt: null, DueAt: null, PullRequestUrl: null));
+            ReadyAt: null, DueAt: null, PullRequestUrl: null, ProjectId: null, MoveDescendants: null));
 
         var moved = Value(await h.Issues.MoveIssue(
             issue.Key, new IssueMoveRequest(h.DoneId, null, null), default));

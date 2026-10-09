@@ -39,10 +39,10 @@
 /* ---- The bar at phone width ----
 
    TopBar's own markup never changes (HA-157's AC6): PrimaryNav is absent
-   from `leading` below the breakpoint instead (App.tsx), the battery moves
-   out of `trailing` and into the gear's panel as a row, and the wordmark is
-   hidden here rather than removed, so the brand link keeps its accessible
-   name. */
+   from `leading` below the breakpoint instead (App.tsx), the battery stays in
+   `trailing` beside the attention control - which narrows to make room for
+   it, see .hatch-attention-control below - and the wordmark is hidden here
+   rather than removed, so the brand link keeps its accessible name. */
 
 /* display: none would drop this text from the brand link's accessible-name
    computation entirely, leaving it named by the logo alone - which is
@@ -62,11 +62,11 @@
   }
 }
 
-/* Everything App.tsx prepends to the gear's panel at phone width - the
-   flattened nav rows and the battery row - draws ahead of Theme, Settings,
-   Docs and who's-here without TopBar.tsx's own DOM order (Theme first,
-   asserted by TopBar.test.tsx) ever changing: .hatch-menu__surface is a
-   column flex box, so moving this one wrapper is enough. */
+/* Everything the primary nav shows on the desk, that App.tsx prepends to the
+   gear's panel at phone width - the flattened nav rows - draws ahead of
+   Theme, Settings, Docs and who's-here without TopBar.tsx's own DOM order
+   (Theme first, asserted by TopBar.test.tsx) ever changing: .hatch-menu__surface
+   is a column flex box, so moving this one wrapper is enough. */
 @media (max-width: 40rem) {
   .hatch-phone-menu {
     order: -1;
@@ -80,7 +80,8 @@
 @media (pointer: coarse) {
   .hatch-topbar .hatch-topbar__brand,
   .hatch-topbar .hatch-menu__trigger--accent,
-  .hatch-attention-control {
+  .hatch-attention-control,
+  .hatch-battery {
     min-height: 44px;
   }
 }
@@ -108,6 +109,40 @@
 /* The sentence beside the name on a first run. */
 .hatch-local-person-hint {
   color: var(--muted);
+}
+
+/* The build stamp at the foot of the gear's panel - a quiet statement of fact,
+   the same register as .hatch-local-person, but a stack of muted lines rather
+   than a single row, so it is its own rule rather than that class reused.
+   Horizontal padding matches the rows above it (.hatch-menu__row,
+   .hatch-menu__item in packages/ui/src/components/Menu.css). No display: none
+   at any width - the gear's panel is the same panel on a phone, so this block
+   is in it at both widths by construction. */
+.hatch-build-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-build-stamp__sha {
+  font-family: var(--mono);
+
+  /* Reset for the <button> case; harmless on the <code> case. */
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.hatch-build-stamp__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
 }
 
 .hatch-sign-out {
@@ -265,18 +300,6 @@
   .hatch-board--stacked .hatch-column-cards {
     overflow-y: visible;
     min-height: 0;
-  }
-
-  .hatch-board-waiting {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-  }
-
-  .hatch-board-waiting-heading {
-    margin: 0;
-    font-size: var(--t-section);
-    font-weight: 700;
   }
 
   .hatch-board-filing {
@@ -722,6 +745,13 @@
   color: var(--muted);
 }
 
+.hatch-card-key--tinted {
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--mark-color, transparent);
+  color: var(--mark-ink, var(--muted));
+}
+
 /* Three lines, then an ellipsis. The clamp is what makes cards in a column the
    same height whatever anybody pasted into a title; lib/text.ts cuts the string
    itself, because a clamp only hides what is still in the document. */
@@ -870,6 +900,7 @@
 }
 
 .hatch-facet {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
@@ -900,21 +931,46 @@
   flex: none;
 }
 
-/* The select inside a facet is stripped to its text: the wrapper draws the box.
+/* The select inside a facet is laid over the whole box, transparent: it stays
+   focusable, pressable and the browser's own picker, and a press anywhere in
+   the border reaches it. Facet draws the selected option's text beneath it.
    Whose cards to draw is a native <select> and not IssuePicker - that component
    exists for sixty issue keys sharing a prefix, and a household's worth of
    names is neither long enough nor ambiguous enough to need it. */
 .hatch-facet select {
-  appearance: none;
-  max-width: 12rem;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
-  background: transparent;
-  box-shadow: none;
+  border-radius: inherit;
+  opacity: 0;
+  appearance: none;
   font: inherit;
-  color: inherit;
   cursor: pointer;
+}
+
+/* Every option's text stacked in one cell, only the selected one visible, so
+   the facet is as wide as its widest option whatever is selected. */
+.hatch-facet__value {
+  display: inline-grid;
+  grid-template-columns: minmax(0, max-content);
+  max-width: 12rem;
+}
+
+.hatch-facet__option {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+  visibility: hidden;
+}
+
+.hatch-facet__option--shown {
+  visibility: visible;
 }
 
 .hatch-facet select:focus {
@@ -989,7 +1045,7 @@
 
 .hatch-types-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   border-top: 1px solid var(--line-strong);
 }
@@ -1027,6 +1083,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+
+.hatch-peek-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
 }
 
 .hatch-peek-meta {
@@ -1135,6 +1197,27 @@
   .hatch-cascade-list {
     max-height: 40dvh;
   }
+}
+
+/* ---- Moving a ticket between projects ----
+
+   The descendant-choice fieldset in MoveProjectDialog - two radio rows
+   sharing one name, each already a full sentence, so no legend repeats what
+   the rows already say. */
+
+.hatch-move-descendants {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-move-descendants label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
 }
 
 /* ---- Dates ----
@@ -1326,6 +1409,20 @@ button.hatch-chip {
   justify-content: flex-end;
 }
 
+.hatch-newissue-actions {
+  justify-content: space-between;
+}
+
+.hatch-newissue-actions__buttons {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.hatch-key-preview {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* align-items: end so the button sits on the controls' baseline rather than
    floating level with their labels. */
 .hatch-inline-form {
@@ -1378,6 +1475,140 @@ button.hatch-chip {
   border-radius: var(--r-ctl);
   background: var(--card);
   cursor: pointer;
+}
+
+/* The icon radio group, same shape as @hatch/ui's ThemeSwitch but drawing a
+   ProjectMark beside each hidden input rather than a <span>. */
+.hatch-icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Visually hidden, not display:none - the group still needs a name
+   announced. Clip rather than a zero-size box so it is never read as an
+   empty label. Same rule as .hatch-theme-switch__legend. */
+.hatch-icon-picker__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hatch-icon-picker__option {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The input keeps its focus and keyboard behaviour and gives up only its
+   painting; the mark next to it is what the operator sees and clicks. */
+.hatch-icon-picker__option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+}
+
+.hatch-icon-picker__option input:checked + .hatch-project-mark,
+.hatch-icon-picker__option input:checked + .hatch-icon-picker__none {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.hatch-icon-picker__option input:focus-visible + .hatch-project-mark,
+.hatch-icon-picker__option input:focus-visible + .hatch-icon-picker__none {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Sized to match .hatch-project-mark--md literally - there is no token for
+   "the md mark's exact box" to borrow instead, the same reason ProjectMark's
+   own three sizes stay literal. */
+.hatch-icon-picker__none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--on-accent);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+/* A radio group of project tiles - same hidden-input mechanics as
+   .hatch-theme-switch__option, but the legend here is the control's own
+   visible label (never wrapped in a <Field>) rather than clipped offscreen,
+   and the checked tile fills with the project's own colour rather than a
+   fixed tone. */
+.hatch-project-chooser {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hatch-project-chooser__legend {
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: var(--sp-1);
+}
+
+.hatch-project-chooser__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-project-chooser__tile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1) var(--sp-2-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--muted);
+  font-size: var(--t-label);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.hatch-project-chooser__tile--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The input keeps its focus and keyboard behaviour and gives up only its
+   painting - the same technique ThemeSwitch.css's .hatch-theme-switch__option
+   input uses. */
+.hatch-project-chooser__tile input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.hatch-project-chooser__tile:has(input:checked) {
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+  border-color: transparent;
+}
+
+.hatch-project-chooser__tile:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 /* ---- Bulk edit ---- */
@@ -1434,6 +1665,24 @@ button.hatch-chip {
 
 /* ---- The issue page ---- */
 
+.hatch-issue-subheader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+}
+
+/* The four facts that say what this is: project, key, type, parent. Lifted to
+   --t-subhead and drawn first, so they read before the secondary row below -
+   see HA-328 §5. Wraps rather than squeezing or truncating at phone width. */
+.hatch-issue-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--t-subhead);
+  font-weight: 600;
+}
+
 .hatch-issue-meta {
   display: flex;
   align-items: center;
@@ -1443,6 +1692,29 @@ button.hatch-chip {
 
 .hatch-issue-key {
   font-family: var(--mono);
+}
+
+.hatch-issue-project {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+}
+
+/* Quieter than a primary button and louder than a link, the same reasoning
+   AssigneeField's own hatch-assignee-mine follows - moving projects is a
+   deliberate press, not an accident. */
+.hatch-issue-move-project {
+  padding: var(--sp-1) var(--sp-2-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+
+.hatch-issue-move-project:hover {
+  border-color: var(--line-strong);
 }
 
 /* ---- The status band ----
@@ -1506,6 +1778,24 @@ button.hatch-chip {
 
 .hatch-status-step:hover:not(:disabled) {
   background: color-mix(in srgb, var(--status-color) 18%, transparent);
+}
+
+/* The same 44px floor as the topbar's controls and .hatch-btn, reached here
+   by its own rule because these buttons carry neither class - layout follows
+   width, touch follows pointer, so the desk's row above is untouched. */
+@media (pointer: coarse) {
+  .hatch-status-steps {
+    gap: var(--sp-3);
+  }
+
+  .hatch-status-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--t-body);
+  }
 }
 
 /* The column it is already in. Disabled rather than merely marked - pressing it
@@ -1584,6 +1874,25 @@ input.hatch-inline-title-input {
   font-size: var(--t-body);
   font-weight: 700;
   margin: 0;
+}
+
+/* .hatch-section-title also lands on BoardFilters' own <summary> (Filters)
+   and on IssuePeek's bare <h4> - neither is this component's to change, so
+   the pointer and the touch floor below are keyed off .hatch-issue-section's
+   own <summary> rather than off .hatch-section-title alone. Nothing here
+   suppresses the browser's native <summary> triangle - unlike the stacked
+   board column's ::-webkit-details-marker rule, which hides it only because
+   that column already has its own affordance in its name and count. */
+.hatch-issue-section > summary {
+  cursor: pointer;
+}
+
+/* 44px is Apple's and WCAG's minimum comfortable touch target - the same
+   literal Button.css:77 and App.css:76 already state. */
+@media (pointer: coarse) {
+  .hatch-issue-section > summary {
+    min-height: 44px;
+  }
 }
 
 .hatch-description-editor {
@@ -1750,6 +2059,11 @@ input.hatch-inline-title-input {
 .hatch-child-composer .text-danger {
   flex: 1 0 100%;
   margin: 0;
+}
+
+.hatch-key-preview {
+  color: var(--muted);
+  font-size: var(--t-label);
 }
 
 /* ---- What is next under this issue ----
@@ -2045,10 +2359,6 @@ input.hatch-inline-title-input {
   font-size: var(--t-small);
 }
 
-.hatch-depends-add + .hatch-section-title {
-  margin-top: var(--sp-5);
-}
-
 .hatch-comment {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-3);
@@ -2097,11 +2407,7 @@ input.hatch-inline-title-input {
   }
 }
 
-.hatch-events summary {
-  cursor: pointer;
-}
-
-.hatch-events ul {
+.hatch-events {
   list-style: none;
   margin: var(--sp-3) 0 0;
   padding: 0;
@@ -2509,6 +2815,19 @@ input.hatch-inline-title-input {
   overflow-x: auto;
 }
 
+/* A pasted screenshot is as wide as the screen it came from. */
+.hatch-markdown img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The three-block preview (HA-332) - a coarse pointer only, set up by the
+   caller passing ProseClamp a limit. The fade is the newspaper-paywall look:
+   the last block trails off rather than stopping square. */
+.hatch-prose-clamp--faded {
+  mask-image: linear-gradient(to bottom, black 0%, black 80%, transparent 100%);
+}
+
 /* ---- The Statuses page ----
 
    Four of the table's headers carry their meaning only in `title=` - a mouse
@@ -2703,6 +3022,34 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
 
+/* Low: a grey between normal's plain ink and economy's flat muted - later,
+   not whenever, so it reads as more present than economy's stripe. */
+.hatch-card.low {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+.hatch-card-preview.low {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--muted) 60%, var(--ink)), var(--shadow);
+}
+
+/* The other end of the scale: a quiet grey rather than a new accent colour -
+   economy is deliberately low visual weight, the opposite of "notice this
+   now". */
+.hatch-card.economy {
+  box-shadow: inset 3px 0 0 var(--muted);
+}
+
+.hatch-card-preview.economy {
+  box-shadow: inset 3px 0 0 var(--muted), var(--shadow);
+}
+
+/* Paused: muted rather than striped - a stripe reads as "look here first",
+   the opposite of what a card a person set aside means. */
+.hatch-card.paused,
+.hatch-card-preview.paused {
+  opacity: 0.6;
+}
+
 /* And the badge, for everything the stripe cannot say: what it means, on hover,
    and to a reader who is not going by colour. */
 .hatch-card-expedited {
@@ -2745,11 +3092,35 @@ input.hatch-inline-title-input {
   }
 }
 
-/* The control itself, on the issue page and in the summary: one button that
-   holds its own state, so the thing that says whether an issue is expedited is
-   the thing that changes it. Pressed is a filled pill; unpressed is the quiet
-   outline every other secondary control on these pages wears. */
-.hatch-expedite {
+/* Low's badge: no pulse either, and a shade louder than economy's - the same
+   blended grey the stripe above uses. */
+.hatch-card-expedited.low {
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+/* Economy's badge: no pulse. The story asks only for a glyph, not a beacon -
+   economy is a quiet state, the opposite of "notice this now". */
+.hatch-card-expedited.economy {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--muted);
+}
+
+/* Paused: a muted tint, not a beacon - nothing here is asking to be noticed. */
+.hatch-card-expedited.paused {
+  background: var(--line-strong);
+  color: var(--muted);
+}
+
+/* The pill, on the issue page and in the summary: pixel for pixel what
+   `ExpediteControl`'s button drew at rest, now opening a band instead of
+   cycling - see PriorityControl. Each level owns one class and one face
+   (.expedited, .emergency, .low, .economy, .paused; normal takes the bare
+   rule), so adding a level is a rule here and nothing to branch on. */
+.hatch-priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -2760,55 +3131,241 @@ input.hatch-inline-title-input {
   cursor: pointer;
 }
 
-.hatch-expedite:hover:not(:disabled) {
+.hatch-priority-pill:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
 }
 
-.hatch-expedite:disabled {
+.hatch-priority-pill:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.hatch-expedite.on {
+.hatch-priority-pill.expedited {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--on-accent);
 }
 
-/* The highest level's own face, layered on top of .on the same way
-   .hatch-claim-quiet layers on .hatch-claim (App.css:1929-1937): .on stays
-   applying whenever priority is not normal, and .emergency only overrides
-   the colour. */
-.hatch-expedite.emergency {
+.hatch-priority-pill.emergency {
   border-color: var(--danger);
   background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-pill.low {
+  border-color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+  background: color-mix(in srgb, var(--muted) 60%, var(--ink));
+  color: var(--on-accent);
+}
+
+.hatch-priority-pill.economy {
+  border-color: var(--muted);
+  background: var(--muted);
+  color: var(--on-accent);
+}
+
+.hatch-priority-pill.paused {
+  border-color: var(--line-strong);
+  background: var(--line-strong);
+  color: var(--muted);
+}
+
+/* The pill's button chrome and caret, the same shapes `.hatch-status-pill-press`
+   and `.hatch-status-pill-caret` draw (App.css:517-545) for the status picker,
+   so the two pickers share one visual language. */
+.hatch-priority-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-priority-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-priority-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-priority-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-priority-pill-press[aria-expanded='true'] .hatch-priority-pill-caret {
+  transform: rotate(180deg);
 }
 
 /* What a reader who may not press it sees instead: the state as a word. An
    agent holding this page is refused the write and is still entitled to know
    why its ticket was reached first - see IssueExpediteController. */
-.hatch-expedite-said {
+.hatch-priority-said {
   color: var(--muted);
   font-size: var(--t-label);
 }
 
-.hatch-expedite-said.on {
+.hatch-priority-said.expedited {
   color: var(--primary-ink);
   font-weight: 600;
 }
 
-.hatch-expedite-said.emergency {
+.hatch-priority-said.emergency {
   color: var(--danger-ink);
+  font-weight: 600;
 }
 
-/* In the summary the control sits on its own row under the title, with room for
-   a refusal beside it. */
-.hatch-peek-expedite {
+.hatch-priority-said.low {
+  color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+  font-weight: 600;
+}
+
+.hatch-priority-said.economy {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.hatch-priority-said.paused {
+  color: var(--muted);
+}
+
+/* In the summary the pill sits on its own row under the title, with room for a
+   refusal beside it, and for the band once it opens. */
+.hatch-peek-priority {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
+}
+
+/* The band under the pill: the same wash, leading edge and radius as the
+   status picker's (.hatch-peek-status, App.css:1044) and the issue page's
+   status bar (.hatch-status-bar, App.css:1458), coloured by the effective
+   level's own class rather than a per-instance variable - priority has no
+   arbitrary colour the way a board column does. */
+.hatch-priority-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-priority-band.expedited {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-left-color: var(--primary);
+}
+
+.hatch-priority-band.emergency {
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+  border-left-color: var(--danger);
+}
+
+.hatch-priority-band.low {
+  background: color-mix(in srgb, var(--muted) 18%, var(--card));
+  border-left-color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+.hatch-priority-band.economy {
+  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  border-left-color: var(--muted);
+}
+
+.hatch-priority-band.paused {
+  background: color-mix(in srgb, var(--line-strong) 25%, var(--card));
+  border-left-color: var(--line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-priority-band {
+    animation: none;
+  }
+}
+
+/* One button per level - `.hatch-status-step` in miniature (App.css:1488). */
+.hatch-priority-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-priority-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-priority-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-priority-step.expedited {
+  border-color: var(--primary);
+}
+
+.hatch-priority-step.emergency {
+  border-color: var(--danger);
+}
+
+.hatch-priority-step.low {
+  border-color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+.hatch-priority-step.economy {
+  border-color: var(--muted);
+}
+
+.hatch-priority-step.paused {
+  border-color: var(--line-strong);
+}
+
+/* The level this issue's own row already carries. Disabled rather than merely
+   marked - pressing it would write an event saying priority moved from
+   expedited to expedited. */
+.hatch-priority-step.here {
+  background: var(--line-strong);
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.hatch-priority-step.expedited.here {
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.emergency.here {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.low.here {
+  background: color-mix(in srgb, var(--muted) 60%, var(--ink));
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.economy.here {
+  background: var(--muted);
+  color: var(--on-accent);
+}
+
+.hatch-priority-step.paused.here {
+  background: var(--line-strong);
+  color: var(--muted);
 }
 
 /* Carried past a column marked Express skips, with no session.
@@ -2834,7 +3391,7 @@ input.hatch-inline-title-input {
 }
 
 /* The control itself, on the issue page and in the summary - the same shape
-   as .hatch-expedite, in --success instead of --primary. */
+   as .hatch-priority-pill's rest state, in --success instead of --primary. */
 .hatch-express {
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);
@@ -3328,22 +3885,6 @@ button.hatch-option.chosen {
   line-height: 1;
 }
 
-/* The battery, as a chip inside a row in the gear's panel at phone width
-   (.hatch-phone-menu, App.tsx), rather than a full-width fill - the row sits
-   on the panel's --card surface, and the chip carries the ramp colour inside
-   it the same way the bar's own battery does. No media query needed:
-   .hatch-phone-menu only ever exists in the DOM when the viewport is phone
-   width, so this costs nothing above the breakpoint. */
-.hatch-phone-menu .hatch-battery {
-  width: auto;
-  align-self: flex-start;
-  margin: var(--sp-2) var(--sp-3);
-}
-
-.hatch-phone-menu .hatch-battery:hover {
-  filter: brightness(1.08);
-}
-
 /* The attention control: whether the loop is waiting on a person, at the right
    end of the bar on every route.
 
@@ -3374,7 +3915,9 @@ button.hatch-option.chosen {
      battery measures roughly 68px (2 x --sp-2 padding, 2px of border, a 20px
      glyph, a --sp-1-5 gap and three figures of percentage), so this is that
      doubled. Both states are narrower than it and centre inside it, which is
-     what makes them measure the same. */
+     what makes them measure the same. At phone width this narrows further,
+     by the same reasoning, to an exact floor rather than this estimate - see
+     the block below. */
   min-width: 136px;
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid transparent;
@@ -3395,6 +3938,22 @@ button.hatch-option.chosen {
 .hatch-attention-control:focus-visible {
   outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
+}
+
+/* At phone width the battery sits beside this control (HA-257) rather
+   than in the gear's panel, and the row has no room for the desk's
+   doubled width. Narrowed to exactly what the loudest state needs and no
+   further - a floor, not an estimate: 2 x 1px border + 2 x 8px --sp-2
+   padding = 18, + 20px glyph + 6px --sp-1-5 gap + three 18px pills (each
+   at its own min-width; a single tabular digit is narrower) with two
+   4px --sp-1 gaps between them = 62. 18 + 20 + 6 + 62 = 106. The resting
+   state ("Clear") is well under that, so both states still render at
+   106px - the same reasoning as the doubled width above, just a smaller
+   number. */
+@media (max-width: 40rem) {
+  .hatch-attention-control {
+    min-width: 106px;
+  }
 }
 
 /* Nothing is waiting. Furniture: the same --on-chrome ink the nav wears, so a
@@ -3974,6 +4533,14 @@ button.hatch-option.chosen {
   color: var(--danger);
 }
 
+.hatch-queue-marker.low {
+  color: color-mix(in srgb, var(--muted) 60%, var(--ink));
+}
+
+.hatch-queue-marker.economy {
+  color: var(--muted);
+}
+
 .hatch-queue-words {
   color: var(--ink);
 }
@@ -4098,6 +4665,76 @@ button.hatch-option.chosen {
      empty part of it stays clickable. Each chicklet takes its own clicks back
      below. */
   pointer-events: none;
+}
+
+/* PullToRefresh.tsx's one surface: a pill fixed to the top of the viewport,
+   above <TopBar> in the DOM and drawn over it by position - at the instant a
+   pull can start the bar is at the top of the screen too, and this is where
+   the browser's own indicator would draw (App.tsx, and App.css's
+   .hatch-board--stacked .hatch-column-head comment). Owns no state:
+   PullToRefresh.tsx returns null at rest, and this can never draw while a
+   dialog is open - mayStart (lib/pullToRefresh.ts) refuses while
+   .hatch-modal__overlay is present, so it never competes with Modal's
+   stacking context in practice. */
+.hatch-pull-indicator {
+  position: fixed;
+  top: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: var(--t-label);
+  font-weight: 700;
+  /* Over the page and under Modal's 100, same reasoning as
+     .hatch-confirmations - the two are never open together in practice. */
+  z-index: 90;
+  pointer-events: none;
+}
+
+/* The two phases read differently by colour alone, so the distinction
+   survives prefers-reduced-motion untouched. pullCss.test.ts pins this
+   directly on these two selectors. */
+.hatch-pull-indicator--pulling {
+  color: var(--muted);
+}
+
+.hatch-pull-indicator--ready {
+  color: var(--primary);
+}
+
+.hatch-pull-indicator__icon {
+  display: inline-flex;
+  transform: rotate(0deg);
+}
+
+/* Movement, not just colour: the arrow points up once letting go would
+   reload, instead of down while still pulling. That rotation is a flat rule
+   change, not a `transition`, so it is never something
+   prefers-reduced-motion has to remove - only the attention pulse below is. */
+.hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+  transform: rotate(180deg);
+  animation: hatch-pull-ready-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hatch-pull-ready-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+    animation: none;
+  }
 }
 
 /* Outside the scrolling list, so the way out of a tall stack does not scroll

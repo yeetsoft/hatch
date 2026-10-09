@@ -1,14 +1,11 @@
+/* isHexColor/safeColor/channels/contrastInk now live in @hatch/ui
+   (packages/ui/src/color.ts), shared with <ProjectMark>, but the test stays
+   here: packages/ui has no test runner and make test-web only loops over the
+   apps - the same reason tokens.test.ts lives in this file's own directory
+   rather than beside the tokens it reads. */
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_STATUS_COLOR,
-  INK_ON_DARK,
-  INK_ON_LIGHT,
-  channels,
-  contrastInk,
-  isHexColor,
-  safeColor,
-  statusVars,
-} from './color';
+import { INK_ON_DARK, INK_ON_LIGHT, channels, contrastInk, isHexColor, safeColor } from '@hatch/ui';
+import { DEFAULT_STATUS_COLOR, statusVars } from './color';
 
 describe('isHexColor', () => {
   it('takes the one shape the API stores', () => {

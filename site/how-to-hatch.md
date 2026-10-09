@@ -137,20 +137,41 @@ loop does here.
 Within a column, order is the order you see. Drag a card up and the runner
 reaches it sooner.
 
-**Priority** puts an issue at one of three levels: normal, expedited, or
-emergency, the third and highest. Set it on the issue page and the card
-floats to the top of its column, and the dispatcher considers every emergency
-card before every expedited card before anything else, right to left within
-each. So an emergency bug in Breakdown is reached before an expedited story in
-To Do, which is reached before a normal one in To Do. Two things it is not:
+**Priority** puts an issue at one of six levels: paused the lowest, then
+economy, low, normal, expedited, and emergency the highest. Set it on the issue
+page or the board's peek, from a pill that opens onto every level — press the
+one you want, and the card floats to the top of its column (or, for paused,
+sinks to the bottom), and the dispatcher considers every emergency card before
+every expedited card before anything else, right to left within each. So an
+emergency bug in Breakdown is reached before an expedited story in To Do,
+which is reached before a normal one in To Do, which is reached before a low
+one wherever it sits. Three things it is not:
 
 - It is a sort key, not a gate. An emergency or expedited issue that is
-  blocked is still blocked.
-- It marks one issue, not the subtree under it. To point a night at one epic,
-  scope the runner with `hatch go-to-work --under AER-1` instead.
+  blocked is still blocked. Paused, economy and low are the exceptions: paused
+  *is* a gate, and a paused issue is taken out of dispatch entirely, not
+  merely reordered — the loop leaves it exactly where it stands until a
+  person sets it back. Economy and low are narrower gates, each judged off the
+  same account's usage: an unattended pass leaves an economy issue alone only
+  while the account it would spend has no reserve to spare across every window
+  it reports, and leaves a low issue alone only while its session window alone
+  is behind its own pace — narrower still, since low watches only that one
+  window and holds nothing in reserve. Either way the issue is worked the
+  moment there is room again, with no change on anyone's part. Naming the
+  issue directly, or a hop carrying it, is not held by either gate at all.
+- It is inherited: a level set on an epic reaches everything under it that
+  does not set its own level, both above and below normal. Raising an epic
+  to emergency is enough to put every story and task under it ahead of
+  everything else — nothing has to be set on each one by hand. Pausing an
+  epic sets the whole subtree aside the same way.
+- It changes nothing else about the issue: its assignee, its claim, its
+  questions and its dependencies stand exactly where they were.
 
-A child filed under an emergency parent is born emergency; expedited never
-inherits that way.
+A story under that epic can still set its own level, which wins over whatever
+the epic says above it. To point a night at one epic without changing
+anybody's priority, scope the runner with `hatch go-to-work --under AER-1`
+instead — that narrows which issues a session looks at; priority decides the
+order among them.
 
 Only a person can set it. An agent that could put its own ticket ahead of
 everything you filed, every night, would look fine on the board and be wrong.

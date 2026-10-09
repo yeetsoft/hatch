@@ -46,6 +46,8 @@ public class AuthGateTests
     // yet by definition.
     [InlineData("/auth")]
     [InlineData("/auth/")]
+    // Android's own Digital Asset Links verifier, which holds no cookie at all.
+    [InlineData("/.well-known/assetlinks.json")]
     // Casing is the proxy's to normalize, not ours to depend on.
     [InlineData("/Health/Ready")]
     [InlineData("/Media/track.flac")]
@@ -76,6 +78,10 @@ public class AuthGateTests
     // inherits the exemption.
     [InlineData("/auth/grants")]
     [InlineData("/authors")]
+    // The asset links route is exempt exactly too, so nothing else under
+    // .well-known inherits it.
+    [InlineData("/.well-known/anything-else")]
+    [InlineData("/.well-known/assetlinks.jsonx")]
     // And the ordinary gated surface.
     [InlineData("/api/zones")]
     [InlineData("/apps/admin/devices")]

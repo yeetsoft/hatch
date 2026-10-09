@@ -91,7 +91,11 @@ export function QueueModal({
                 >
                   <span className="hatch-queue-ordinal">{at + 1}</span>
                   {showMarker && (
-                    <span className={`hatch-queue-marker${marker === '!!' ? ' emergency' : ''}`}>{marker}</span>
+                    <span
+                      className={`hatch-queue-marker${marker === '!!' ? ' emergency' : marker === '-' ? ' low' : marker === '~' ? ' economy' : ''}`}
+                    >
+                      {marker}
+                    </span>
                   )}
                   {showClaim && <ClaimBadge claim={entry.issue.claim} />}
                   <span className="hatch-card-key">{entry.issue.key}</span>

@@ -78,7 +78,7 @@ public static class Banner
     private static string Glyph(IncrementReport report) =>
         report.Preempted ? Siren
         : report.ExitCode != 0 || report.Interrupted || report.LostLease || report.Skipped ? Pan
-        : report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 ? Chick
+        : report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Clamped ? Chick
         : Egg;
 
     /// <summary>
@@ -88,14 +88,18 @@ public static class Banner
     /// ("Moved from Breakdown to Backlog").
     /// </summary>
     private static string Outcome(IncrementReport report) =>
-        report.Moved ? $"Moved from {report.From} to {report.Ended}" : report.Outcome;
+        report.Moved
+            ? $"Moved from {report.From} to {report.Ended}{(report.Flag is { Length: > 0 } ? $", {report.Flag}" : "")}"
+            : report.Outcome;
 
     private static string Took(IncrementReport report)
     {
         var elapsed = Format.Duration((long)(report.EndedAt - report.StartedAt).TotalSeconds);
         var tokens = report.TotalTokens is { } t ? $"{Format.Compact(t)} tokens" : "tokens not reported";
+        var requests = report.Requests is { } r ? $"{r} requests" : "requests not reported";
+        var peak = report.PeakContextTokens is { } p ? $"{Format.Compact(p)} peak context" : "peak context not reported";
         var cost = report.Cost is { } c ? Format.Spent(c) : "cost not reported";
         var turns = report.Turns is { } n ? $"{n} turns" : "turns not reported";
-        return $"{elapsed}, {tokens}, {cost}, {turns}";
+        return $"{elapsed}, {tokens}, {requests}, {peak}, {cost}, {turns}";
     }
 }

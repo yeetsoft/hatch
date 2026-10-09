@@ -10,6 +10,7 @@ public sealed class BannerTests
         bool moved = false, bool resolved = false, bool fixPushed = false, bool stalled = false,
         bool lostLease = false, bool interrupted = false, bool preempted = false, int exitCode = 0, string? flag = null,
         long? totalTokens = 1234, decimal? cost = 1.5m, int? turns = 12,
+        int? requests = 7, long? peakContextTokens = 50_000,
         DateTimeOffset? started = null, DateTimeOffset? ended2 = null) => new()
     {
         Key = key,
@@ -28,6 +29,8 @@ public sealed class BannerTests
         ExitCode = exitCode,
         Flag = flag,
         TotalTokens = totalTokens,
+        Requests = requests,
+        PeakContextTokens = peakContextTokens,
         Cost = cost,
         Turns = turns,
         StartedAt = started ?? DateTimeOffset.UnixEpoch,
@@ -98,6 +101,18 @@ public sealed class BannerTests
         Assert.Contains(lines, l => l.Contains("conflicts with main resolved", StringComparison.Ordinal));
     }
 
+    /// <summary>HA-224: a clamp that fired on an unmoved ticket still closes with the success glyph.</summary>
+    [Fact]
+    public void AClampedTicket_ClosesWithAChick()
+    {
+        var report = Report();
+        report.ClampedAtTokens = 820_000;
+
+        var lines = Banner.Closing(report);
+
+        Assert.StartsWith("🐣🐣🐣🐣🐣 STOPPING WORK ON AER-1", lines[0], StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AStall_ClosesWithAnEgg()
     {
@@ -143,18 +158,25 @@ public sealed class BannerTests
     public void TheTookLine_NamesTheWallClockTheTokensTheCostAndTheTurns()
     {
         var lines = Banner.Closing(Report(moved: true, totalTokens: 128_000, cost: 1.5m, turns: 42,
-            started: DateTimeOffset.UnixEpoch, ended2: DateTimeOffset.UnixEpoch.AddSeconds(272)));
+            started: DateTimeOffset.UnixEpoch, ended2: DateTimeOffset.UnixEpoch.AddSeconds(272),
+            requests: 57, peakContextTokens: 183_000));
 
-        Assert.Contains(lines, l => l.Contains("Took 4m32s, 128k tokens, $1.5, 42 turns", StringComparison.Ordinal));
+        Assert.Contains(
+            lines,
+            l => l.Contains(
+                "Took 4m32s, 128k tokens, 57 requests, 183k peak context, $1.5, 42 turns", StringComparison.Ordinal));
     }
 
     [Fact]
     public void AFigureThatNeverArrived_ReadsNotReportedAndNeverZero()
     {
-        var lines = Banner.Closing(Report(moved: true, totalTokens: null, cost: null, turns: null));
+        var lines = Banner.Closing(Report(
+            moved: true, totalTokens: null, cost: null, turns: null, requests: null, peakContextTokens: null));
 
         var took = Assert.Single(lines, l => l.Contains("Took", StringComparison.Ordinal));
         Assert.Contains("tokens not reported", took, StringComparison.Ordinal);
+        Assert.Contains("requests not reported", took, StringComparison.Ordinal);
+        Assert.Contains("peak context not reported", took, StringComparison.Ordinal);
         Assert.Contains("cost not reported", took, StringComparison.Ordinal);
         Assert.Contains("turns not reported", took, StringComparison.Ordinal);
         Assert.DoesNotContain("0 tokens", took, StringComparison.Ordinal);

@@ -17,6 +17,13 @@ namespace Hatch.Cli;
 /// deliver at the session's next step, and <c>Stop</c>, to keep a session that is
 /// finishing going long enough to read what is waiting. Both run <c>hatch
 /// inbox</c>, which is this program.</para>
+///
+/// <para>A third, <c>PreToolUse</c> on <c>Bash</c>, is written when an <c>rtk</c>
+/// binary is on <c>PATH</c> and <c>HATCH_RTK</c> is not <c>off</c>: RTK rewrites
+/// a shell command into a compact proxy of itself, so the output that reaches
+/// the model is a fraction of the size. It lives here because this is the one
+/// settings file every session is handed, whether or not the operator ever ran
+/// <c>rtk init -g</c>. Without RTK the file is what it always was.</para>
 /// </remarks>
 public sealed class SessionHooks : IDisposable
 {
@@ -39,6 +46,29 @@ public sealed class SessionHooks : IDisposable
     public string Stamp => Path.Combine(Directory, "inbox.stamp");
 
     /// <summary>
+    /// The fact record written once this session's tokens cross its playbook's
+    /// budget - whichever hook call notices first writes it, and it is never
+    /// deleted until the whole directory goes with the rest of <see cref="Dispose"/>.
+    /// </summary>
+    public string Clamp => Path.Combine(Directory, "clamp.json");
+
+    /// <summary>
+    /// Touched the first time <see cref="InboxCommand"/> folds the wrap-up text
+    /// into a hook's output, and never reset - so a session is told once, not
+    /// on every call for the rest of its life.
+    /// </summary>
+    public string ClampDelivered => Path.ChangeExtension(Clamp, ".delivered");
+
+    /// <summary>
+    /// The playbook's budget, in tokens, written once before the session's
+    /// quiet/streamed branches split - its mere presence on disk is the signal
+    /// that this session has a budget at all, so a <c>--quiet</c> session's hook
+    /// knows whether to read its own transcript for the count a streamed
+    /// session's in-process loop already has.
+    /// </summary>
+    public string Budget => Path.Combine(Directory, "budget");
+
+    /// <summary>
     /// Makes the directory and writes the file, or answers null where it cannot.
     /// A session without hooks still works its ticket; it is a message sent
     /// mid-run that waits for the next session instead.
@@ -50,7 +80,8 @@ public sealed class SessionHooks : IDisposable
     /// <see cref="Reach"/> uses for the session's <c>PATH</c>, and for the same
     /// reason: the word only resolves where <c>Reach</c> made it.
     /// </param>
-    public static SessionHooks? Write(string temp, string key, string hatch)
+    /// <param name="rtk">The absolute path to <c>rtk</c> from <see cref="Rtk"/>, or null to write no <c>PreToolUse</c> hook.</param>
+    public static SessionHooks? Write(string temp, string key, string hatch, string? rtk = null)
     {
         string? made = null;
         try
@@ -61,8 +92,9 @@ public sealed class SessionHooks : IDisposable
 
             var run = $"{Quote(hatch)} inbox {Quote(key)} --hook";
             File.WriteAllText(hooks.Settings, Json(
-                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)}",
-                $"{run} stop"));
+                rtk is null ? null : $"{Quote(rtk)} hook claude",
+                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)} --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}",
+                $"{run} stop --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}"));
             return hooks;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -76,7 +108,14 @@ public sealed class SessionHooks : IDisposable
     public static string Binary(string? processPath) =>
         Reach.OwnDirectory(processPath) is null ? "hatch" : processPath!;
 
-    private static string Json(string postToolUse, string stop)
+    /// <summary>
+    /// The <c>rtk</c> to hook in, or null when <paramref name="setting"/> (the
+    /// <c>HATCH_RTK</c> value) is <c>off</c> or none is on <paramref name="path"/>.
+    /// </summary>
+    public static string? Rtk(string? setting, string? path) =>
+        string.Equals(setting?.Trim(), "off", StringComparison.OrdinalIgnoreCase) ? null : Reach.Find("rtk", path);
+
+    private static string Json(string? preToolUse, string postToolUse, string stop)
     {
         // Written by hand, because the binary is trimmed and this is a shape
         // known at compile time.
@@ -85,6 +124,7 @@ public sealed class SessionHooks : IDisposable
         {
             json.WriteStartObject();
             json.WriteStartObject("hooks");
+            if (preToolUse is not null) Hook(json, "PreToolUse", preToolUse, matcher: "Bash");
             Hook(json, "PostToolUse", postToolUse, matcher: "*");
             Hook(json, "Stop", stop, matcher: null);
             json.WriteEndObject();
@@ -126,3 +166,6 @@ public sealed class SessionHooks : IDisposable
         }
     }
 }
+
+/// <summary>What is written to <see cref="SessionHooks.Clamp"/>: the tally at the moment the budget was crossed.</summary>
+public sealed record ClampFact(long Tokens, long Requests);

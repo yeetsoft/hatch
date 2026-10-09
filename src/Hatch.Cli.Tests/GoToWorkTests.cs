@@ -1559,4 +1559,191 @@ public sealed class GoToWorkTests
         Assert.Equal(1, snapshot.Runner.NightRuns);
         Assert.Null(snapshot.Increment);
     }
+
+    // ---- HA-245: a branch on origin nobody can find a pull request for ----
+
+    /// <summary>
+    /// The same shape <see cref="A_pass_that_moves_its_ticket_releases_the_claim_worked"/>
+    /// uses - a dispatch that starts in progress and a post-run read that
+    /// lands wherever the test wants - plus the branch and pull request
+    /// HA-245's guard is judged by.
+    /// </summary>
+    private static void UnpublishedBoard(
+        Harness h, string key = "AER-1", string endsIn = "In Review", bool endsInReview = true,
+        bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0)
+    {
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+
+        h.Wire.Once(
+            "GET", $"/api/hatch/work/{key}", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo), Fixtures.Json));
+        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: endsIn, to: endsIn, inReview: endsInReview));
+
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest));
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/merge-check", Fixtures.MergeCheck());
+
+        if (branchOnOrigin)
+            h.Workspace.FoundFor[h.Root] =
+                new Verdict(MergeVerdicts.Clean, "main", new string('a', 40), "aer-1-thing", new string('b', 40), []);
+    }
+
+    private static List<CommentCreateRequest> UnpublishedComments(Harness h, string key = "AER-1") =>
+        h.Wire.To("POST", $"/api/hatch/issues/{key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+
+    [Fact]
+    public async Task A_branch_on_origin_with_no_pull_request_is_noted_once_and_released_dropped()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Single(written);
+        Assert.DoesNotContain(written, c => c.Kind == "question");
+        Assert.Contains("no pull request recorded", written[0].Body, StringComparison.Ordinal);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_second_occurrence_in_a_row_adds_a_question_whose_labels_are_not_the_stall_pair()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, letGo: 1);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Equal(2, written.Count);
+        Assert.Equal("question", written[1].Kind);
+
+        var options = written[1].Options!;
+        Assert.False(StallAnswers.IsStall(options));
+        Assert.Contains(options, o => o.Label == Unpublished.Recorded);
+        Assert.Contains(options, o => o.Label == Unpublished.NotNeeded);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_pull_request_already_recorded_means_the_guard_never_fires()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, pullRequest: "https://forge.example/pulls/1");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>Acceptance criterion 5: a ticket with no branch at all never reaches this guard.</summary>
+    [Fact]
+    public async Task No_branch_on_origin_at_all_means_the_guard_never_fires()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: false);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Moving_somewhere_that_is_not_the_review_column_never_fires_the_guard()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, endsIn: "Backlog", endsInReview: false);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>A conflict increment that resolves is judged by its branch exactly like an ordinary move.</summary>
+    [Fact]
+    public async Task A_resolved_conflict_with_a_branch_on_origin_and_no_pull_request_fires_the_guard_too()
+    {
+        using var h = new Harness();
+        const string key = "AER-1";
+        h.Wire.Json("GET", Queue, new[] { Fixtures.ConflictRow(key) });
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.ConflictWork(key) with { InReview = true });
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key));
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/merge-check", Fixtures.MergeCheck());
+
+        // Conflicted before the session, clean after it - a session that
+        // resolved the merge and pushed, but never opened a pull request.
+        h.Workspace.Verdicts[(h.Root, key)] =
+            new Verdict(MergeVerdicts.Conflicted, "main", new string('a', 40), "aer-1-thing", new string('b', 40), ["a.txt"]);
+        h.Sessions.Behaviour = (_, _, _) =>
+        {
+            h.Workspace.Verdicts[(h.Root, key)] =
+                new Verdict(MergeVerdicts.Clean, "main", new string('c', 40), "aer-1-thing", new string('b', 40), []);
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+        h.Workspace.FoundFor[h.Root] =
+            new Verdict(MergeVerdicts.Clean, "main", new string('c', 40), "aer-1-thing", new string('b', 40), []);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("conflicts with main resolved", StringComparison.Ordinal));
+
+        var written = UnpublishedComments(h, key);
+        Assert.Single(written);
+
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{key}/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An ordinary stall - the ticket left where it found it - must never
+    /// also trip this guard, even with a branch on origin and no pull
+    /// request: the two guards' conditions are mutually exclusive, and the
+    /// existing stall guard owns this case on its own.
+    /// </summary>
+    [Fact]
+    public async Task A_genuine_stall_never_also_trips_the_unpublished_guard()
+    {
+        using var h = new Harness();
+
+        // An ordinary advance that starts and ends in review - the same
+        // column both before and after, which is a stall - with a branch on
+        // origin and no pull request all the same.
+        UnpublishedBoard(h, endsIn: "In Review", endsInReview: true);
+        h.Wire.Replace(
+            "GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review", to: "In Review", inReview: true), Fixtures.Json));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Single(written);
+        Assert.Contains("where it found it and let it go", written[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull request", written[0].Body, StringComparison.Ordinal);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
 }

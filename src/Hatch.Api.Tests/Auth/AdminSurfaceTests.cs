@@ -144,6 +144,10 @@ public class AdminSurfaceTests
         "ProjectsController.PatchProject",
         "ProjectsController.DeleteProject",
         "ProjectsController.GetRepositories",
+        "ProjectsController.GetLogo",
+        // A pasted image: read by a key named in a brief, posted by a person.
+        "ImagesController.GetImage",
+        "ImagesController.PostImage",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -204,6 +208,15 @@ public class AdminSurfaceTests
         // IssueExpressController and StatusesController.PutExpressSkips for
         // the person-only edge that decides whether a hop exists at all.
         "WorkController.HopWork",
+
+        // The one path that may move an issue into a terminal column without
+        // the operator pressing it there themselves - but only because a
+        // merged pull request already is that decision, made on the forge and
+        // reported back. It refuses everything a hop refuses (wrong column, a
+        // claim) plus two of its own (no pull request recorded, or one that
+        // does not match), so a key can carry a ticket no further than the
+        // operator already agreed it may go.
+        "WorkController.MergedWork",
 
         // The same walk as GetNextWork, reported instead of acted on. A read,
         // and one a key already holds every part of: it says nothing about the
@@ -388,6 +401,8 @@ public class AdminSurfaceTests
         // Hatch-scoped - it is exactly what a dispatch needs to know where to
         // check out. See ProjectsController.
         "ProjectsController.PutRepositories",
+        "ProjectsController.PutLogo",
+        "ProjectsController.DeleteLogo",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -500,6 +515,9 @@ public class AdminSurfaceTests
         // able to move for itself.
         "StatusesController.PutAgentFiles",
         "ProjectsController.PutRepositories",
+        "ProjectsController.PutLogo",
+        "ProjectsController.DeleteLogo",
+        "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

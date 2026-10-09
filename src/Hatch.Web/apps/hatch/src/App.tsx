@@ -5,9 +5,11 @@ import './App.css';
 import { AttentionProvider } from './components/AttentionProvider';
 import { ConfirmationsProvider } from './components/Confirmations';
 import { NavAttention } from './components/NavAttention';
+import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavUtilization } from './components/NavUtilization';
 import { PrimaryNav } from './components/PrimaryNav';
+import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
@@ -27,6 +29,7 @@ import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
 import { navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
+import { usePullToRefresh } from './lib/usePullToRefresh';
 
 export function App() {
   return (
@@ -41,6 +44,7 @@ export function App() {
 function AppShell() {
   const { me, isAdmin } = useMe();
   const isPhone = usePhone();
+  const pull = usePullToRefresh();
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
@@ -49,6 +53,7 @@ function AppShell() {
        from either. */
     <ConfirmationsProvider>
       <div className="hatch-app">
+        <PullToRefresh {...pull} />
         <TopBar
           appName="Hatch"
           homeHref={appHref('/')}
@@ -58,33 +63,25 @@ function AppShell() {
              the same pages are reached from the gear's panel instead. */
           leading={isPhone ? undefined : <PrimaryNav tone="accent" />}
           trailing={
-            isPhone ? (
-              /* The one thing a phone user must always see: never narrower or
-                 quieter than it is on a desk. The battery moves into the
-                 gear's panel below instead - see .hatch-phone-menu. */
+            <>
+              {/* What the bar says about this session rather than about the
+                  board. Draws nothing until a runner of mine has reported a
+                  reading - a fresh install, and anybody who has never run
+                  one, are both in that state. */}
+              <NavUtilization />
+              {/* Last, at the right end of the bar: whether the loop is
+                  waiting on a person. Unlike the one above it this always draws
+                  something - "nothing is waiting" is an answer, and it is the
+                  one it gives most of the time. */}
               <NavAttention />
-            ) : (
-              <>
-                {/* What the bar says about this session rather than about the
-                    board. Draws nothing until a runner of mine has reported a
-                    reading - a fresh install, and anybody who has never run
-                    one, are both in that state. */}
-                <NavUtilization />
-                {/* Last, at the right end of the bar: whether the loop is
-                    waiting on a person. Unlike the one above it this always draws
-                    something - "nothing is waiting" is an answer, and it is the
-                    one it gives most of the time. */}
-                <NavAttention />
-              </>
-            )
+            </>
           }
           menu={
             <>
               {isPhone && (
-                /* Everything the primary nav shows on the desk, flattened
-                   with the battery folded in as a row - order: -1 in
-                   App.css draws this ahead of Theme without TopBar.tsx's own
-                   DOM order (Theme first) ever changing. */
+                /* Everything the primary nav shows on the desk, flattened -
+                   order: -1 in App.css draws this ahead of Theme without
+                   TopBar.tsx's own DOM order (Theme first) ever changing. */
                 <div className="hatch-phone-menu">
                   {navRows(isAdmin).map((row, index, rows) => (
                     <Fragment key={row.to}>
@@ -98,10 +95,6 @@ function AppShell() {
                       </Menu.Item>
                     </Fragment>
                   ))}
-                  <hr className="hatch-menu__divider" />
-                  {/* No-ops until a runner of mine has reported a reading -
-                      the same condition that hides it on the desk. */}
-                  <NavUtilization />
                 </div>
               )}
               <Menu.Item as={NavLink} to="/settings">Settings</Menu.Item>
@@ -118,6 +111,7 @@ function AppShell() {
                   </div>
                 </>
               ) : null}
+              <NavBuild />
             </>
           }
         />

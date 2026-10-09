@@ -17,6 +17,7 @@ import { editDraft, isDirty, openDraft, receiveKnown, revert } from '../lib/draf
 import { renderMarkdown } from '../lib/markdown';
 import { useKeyboardInset, usePhone } from '../lib/viewport';
 import { MarkdownEditor } from './MarkdownEditor';
+import { ProseClamp } from './ProseClamp';
 
 export function DescriptionEditor({
   title,
@@ -25,6 +26,7 @@ export function DescriptionEditor({
   error,
   editorClassName,
   previewClassName,
+  clampTo,
   rows = 16,
 }: {
   /** The section's heading, drawn beside the controls. A node rather than a
@@ -47,6 +49,11 @@ export function DescriptionEditor({
       runs long should run long there. A dialog does, because a dialog cannot
       be scrolled past its own actions. */
   previewClassName?: string;
+  /** How many top-level blocks the preview shows before fading and offering
+      More (HA-332) - the issue page's call alone; left off, the preview is
+      the whole text, as it is on the board peek. Never set alongside
+      `previewClassName`: the two call sites need one or the other, not both. */
+  clampTo?: number | null;
   /** The height the box opens at, which differs for the same reason. */
   rows?: number;
 }) {
@@ -114,11 +121,15 @@ export function DescriptionEditor({
       {preview ? (
         // The draft, not the stored text: Preview shows what Save would write.
         draft.text.trim() ? (
-          // Sanitized by renderMarkdown - nothing from the database is trusted markup.
-          <div
-            className={`hatch-markdown${previewClassName ? ` ${previewClassName}` : ''}`}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(draft.text) }}
-          />
+          clampTo !== undefined ? (
+            <ProseClamp source={draft.text} limit={clampTo} />
+          ) : (
+            // Sanitized by renderMarkdown - nothing from the database is trusted markup.
+            <div
+              className={`hatch-markdown${previewClassName ? ` ${previewClassName}` : ''}`}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(draft.text) }}
+            />
+          )
         ) : (
           <p className="text-muted">No description yet.</p>
         )

@@ -139,6 +139,29 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Comments", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Bytes")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Images", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
                 {
                     b.Property<long>("Id")
@@ -412,6 +435,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("Budget")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -469,8 +495,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<string>("Key")
                         .IsRequired()
@@ -492,6 +526,28 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsUnique();
 
                     b.ToTable("Projects", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectLogo", b =>
+                {
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<byte[]>("Bytes")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ProjectId");
+
+                    b.ToTable("ProjectLogos", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectRepository", b =>
@@ -787,6 +843,15 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long>("OutputTokens")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("PeakContextTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("PromptChars")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Requests")
+                        .HasColumnType("integer");
+
                     b.Property<string>("SessionId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -929,6 +994,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("FromStatus");
 
                     b.Navigation("ToStatus");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectLogo", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithOne()
+                        .HasForeignKey("Hatch.Api.Modules.Hatch.EfHatchProjectLogo", "ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectRepository", b =>

@@ -261,7 +261,11 @@ holding the least important ticket to stand down for an emergency one. That
 runner still owns the ticket it was working, so it commits and pushes what it
 has — the same as running out of usage — says so on the ticket, naming the
 emergency issue, and goes straight on to pick that issue up next. No question
-is asked and nothing blocks the next dispatch.
+is asked and nothing blocks the next dispatch. A runner is protected from
+being asked to stand down the same way whether its own ticket is emergency on
+its own row or only by inheritance from an ancestor — the check reads the
+effective level, not the stored one, so a story under an emergency epic is as
+safe as a story marked emergency itself.
 
 ### Bounds, timeouts and stopping
 
@@ -389,9 +393,14 @@ hatch questions AER-12            ...or just this ticket's
 ```
 
 `hatch queue` is the dry run for the loop and the answer to "why did it not
-pick up the ticket I meant". A row marked `!!` is emergency and one marked
-`! ` is expedited. Columns are found by name on the letters and digits alone,
-so `todo` reaches `To Do`.
+pick up the ticket I meant". A row marked `!!` is emergency, one marked `! `
+is expedited, one marked `- ` is low - considered only after every normal
+card, and worked by an unattended pass only once the account's session window
+alone has usage to spare - one marked `~ ` is economy - worked only once the
+account an unattended pass would spend has usage to spare across every window
+it reports - and one marked `||` is paused: a person set it aside, and nothing
+picks it up until they set it back. Columns are found by name on the letters
+and digits alone, so `todo` reaches `To Do`.
 
 ## Driving a ticket by hand
 

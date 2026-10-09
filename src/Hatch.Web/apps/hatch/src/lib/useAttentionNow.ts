@@ -6,9 +6,9 @@ import { useEffect, useState } from 'react';
 export const TICK_MS = 30 * 1000;
 
 /** `now`, ticking every {@link TICK_MS} while `active`, held still otherwise -
-    pulled out of NavAttention.tsx so the board's own "Waiting on you" section
-    can tick its copy of the same wordings for the same reason, without
-    running a second timer while neither is drawn. */
+    pulled out of NavAttention.tsx so the timer runs only while the dropdown
+    `active` gates (`open`) is actually showing its rows, not for as long as
+    the bar itself is mounted. */
 export function useAttentionNow(active: boolean): Date {
   const [now, setNow] = useState(() => new Date());
 

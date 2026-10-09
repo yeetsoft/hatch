@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Modal } from '@hatch/ui';
+import { Button, Modal, ProjectMark } from '@hatch/ui';
 import { getIssue, patchIssue, setPriority, setExpress } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
-import { ExpediteControl } from './ExpediteControl';
+import { PriorityControl } from './PriorityControl';
 import { ExpressControl } from './ExpressControl';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
 import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
+import { askToDelete } from '../lib/deletion';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
-import type { AssigneeDirectory, IssueCard, Status } from '../types';
+import { projectLogoUrl } from '../lib/projectLogo';
+import { useStandalone } from '../lib/viewport';
+import type { AssigneeDirectory, IssueCard, Project, Status } from '../types';
 
 /** What the peek had to ask for, and the card it asked about. `description`
     undefined is "not here yet", which is what the Loading line reads off; so is
@@ -23,9 +26,11 @@ interface Asked {
   pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
-  /** What the server last said about the issue's own level and where the
-      effective one came from, or undefined while the card's own value stands. */
-  priorityOwn?: 'normal' | 'expedited' | 'emergency';
+  /** What the server last said about the level in effect, the issue's own
+      level and where the effective one came from, or undefined while the
+      card's own value stands. */
+  priority?: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
+  priorityOwn?: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
   priorityFrom?: string | null;
   priorityError?: string;
   priorityBusy?: boolean;
@@ -33,6 +38,9 @@ interface Asked {
       until it answers. */
   moving?: boolean;
   moveError?: string;
+  /** A delete is out for this card: its button is busy until it answers. */
+  deleting?: boolean;
+  deleteError?: string;
   /** The same, for express. */
   express?: boolean;
   expressError?: string;
@@ -75,15 +83,19 @@ interface Asked {
  * `StatusSteps`). A move goes through `onMove` rather than growing its own
  * request here, so it is the board's one move path - the same one a drag
  * takes - that earns the drop's Undo chicklet and its offer to close what is
- * under a card sent into a terminal column or onto the shelf.
+ * under a card sent into a terminal column or onto the shelf. The delete goes
+ * up through `onDelete` for the same reason: the board owns closing the peek
+ * and repainting, so the dialog only asks, and shows a refusal.
  */
 export function IssuePeek({
   card,
   status,
   statuses,
   directory,
+  project,
   onExpedited,
   onMove,
+  onDelete,
   onClose,
 }: {
   card: IssueCard | null;
@@ -97,11 +109,18 @@ export function IssuePeek({
       find out whether the reader is a person. Null while it is still loading,
       or where it could not be read. */
   directory: AssigneeDirectory | null;
+  /** The card's own project, resolved by the board - fetched once by the
+      board and handed down, the same convention as `directory`. Null draws no
+      mark, exactly as today. */
+  project?: Project | null;
   /** Something on this card changed on the server: the board reloads. */
   onExpedited: () => void;
   /** Move the card to another column, the same path a drag takes. Rejects with
       the server's own sentence on a refusal. */
   onMove: (key: string, statusId: number) => Promise<void>;
+  /** Delete the card. The board closes the peek and reloads on success; rejects
+      with the server's own sentence on a refusal. */
+  onDelete: (key: string) => Promise<void>;
   onClose: () => void;
 }) {
   const key = card?.key ?? null;
@@ -170,12 +189,17 @@ export function IssuePeek({
      The board behind the dialog is reloaded too, because the float moves the
      card. */
   const changePriority = useCallback(
-    async (next: 'normal' | 'expedited' | 'emergency') => {
+    async (next: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused') => {
       if (!key) return;
       apply(key, { priorityBusy: true, priorityError: undefined });
       try {
         const issue = await setPriority(key, next);
-        apply(key, { priorityOwn: issue.priorityOwn, priorityFrom: issue.priorityFrom, priorityBusy: false });
+        apply(key, {
+          priority: issue.priority,
+          priorityOwn: issue.priorityOwn,
+          priorityFrom: issue.priorityFrom,
+          priorityBusy: false,
+        });
         onExpedited();
       } catch (err) {
         apply(key, { priorityBusy: false, priorityError: message(err) });
@@ -203,6 +227,17 @@ export function IssuePeek({
     [key, apply, onMove],
   );
 
+  /* Asks first, with the same native confirm and the same sentence as the
+     issue page. On success the board has already closed the peek, so there is
+     nothing to apply; `apply` is key-guarded in any case. */
+  const remove = useCallback(async () => {
+    if (!key) return;
+    apply(key, { deleting: true, deleteError: undefined });
+    const done = await askToDelete(key, (q) => confirm(q), onDelete);
+    if (done.outcome === 'cancelled') apply(key, { deleting: false });
+    else if (done.outcome === 'refused') apply(key, { deleting: false, deleteError: done.error });
+  }, [key, apply, onDelete]);
+
   /* Carried past a column marked Express skips, with no session, or no
      longer. Its own endpoint - the write is closed to an API key - and
      otherwise exactly `expedite`. */
@@ -221,6 +256,8 @@ export function IssuePeek({
     [key, apply, onExpedited],
   );
 
+  const standalone = useStandalone();
+
   // Rendered unconditionally so the dialog's own open/closed handling - focus,
   // escape, the scrim - is the one that runs. Its title needs a card, though,
   // so a closed peek has nothing to say. Below every hook: the rules of hooks
@@ -236,16 +273,39 @@ export function IssuePeek({
     <Modal
       open
       onClose={onClose}
-      title={card.key}
+      title={
+        <span className="hatch-peek-key">
+          {project && (
+            <ProjectMark
+              size="sm"
+              letters={project.key}
+              color={project.color}
+              icon={project.icon}
+              logoUrl={projectLogoUrl(project)}
+              title={project.name}
+            />
+          )}
+          {card.key}
+        </span>
+      }
       footer={
         <div className="hatch-form-actions">
+          {/* Leftmost, away from the primary "Open the issue". */}
+          <Button variant="danger" loading={asked.deleting ?? false} onClick={() => void remove()}>
+            Delete
+          </Button>
           <Button onClick={onClose}>Close</Button>
           {/* An anchor rather than a <Link>: target="_blank" opens a second
               document, which React Router does not route. appHref is what keeps
-              that second document on the right prefix - see lib/basename.ts. */}
-          <Button as="a" href={appHref(`/issues/${card.key}`)} target="_blank" rel="noreferrer">
-            New tab ↗
-          </Button>
+              that second document on the right prefix - see lib/basename.ts.
+              Also conditional on useStandalone(): in the installed app there is
+              no second document to open into, and "Open the issue" beside it is
+              the only way out there is. */}
+          {!standalone && (
+            <Button as="a" href={appHref(`/issues/${card.key}`)} target="_blank" rel="noreferrer">
+              New tab ↗
+            </Button>
+          )}
           <Button as={Link} variant="primary" to={`/issues/${card.key}`} onClick={onClose}>
             Open the issue
           </Button>
@@ -274,6 +334,7 @@ export function IssuePeek({
               tab, and the card is meant to still be here when they come back. */}
           <PullRequestLink url={asked.pullRequestUrl ?? null} />
           {asked.moveError && <span className="text-danger">{asked.moveError}</span>}
+          {asked.deleteError && <span className="text-danger">{asked.deleteError}</span>}
         </div>
 
         <p className="hatch-peek-title">{card.title}</p>
@@ -283,10 +344,12 @@ export function IssuePeek({
             said otherwise: the board is reloaded on a press, but the dialog
             stays open over it, and a control that waited for the refetch to
             catch up would read as not having noticed. */}
-        <div className="hatch-peek-expedite">
-          <ExpediteControl
-            priority={asked.priorityOwn ?? card.priorityOwn}
-            inheritedFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
+        <div className="hatch-peek-priority">
+          <PriorityControl
+            issueKey={card.key}
+            priority={asked.priority ?? card.priority}
+            priorityOwn={asked.priorityOwn ?? card.priorityOwn}
+            priorityFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
             directory={directory}
             busy={asked.priorityBusy ?? false}
             onChange={(next) => void changePriority(next)}

@@ -15,9 +15,14 @@ public sealed class IssueCommands(Cli cli)
         "",
         "  An expedited or emergency ticket says so: somebody marked it \"this one",
         "  first\", and the board and the dispatcher both reach for it before",
-        "  anything else, emergency before expedited before the rest. A level an",
-        "  issue only holds because an ancestor carries it names that ancestor:",
+        "  anything else, emergency before expedited before the rest. A low",
+        "  ticket says so too, at the other end: the dispatcher reaches for it",
+        "  only after every normal ticket. An economy ticket says so too,",
+        "  further still: the dispatcher reaches for it last. A level an issue",
+        "  only holds because an ancestor carries it names that ancestor:",
         "  \"expedited - this one goes first (inherited from AER-12)\".",
+        "  A paused ticket says so too: a person set it aside, and nothing picks",
+        "  it up until they set it back.",
         "  An express ticket says so too: standing in a column marked to skip, it",
         "  is carried on with no session. There is no verb here that sets either -",
         "  the CLI holds a key, and both are a person's write.",
@@ -91,6 +96,12 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"priority:  emergency - top of the walk, before anything else{inherited}");
         else if (issue.Priority == PriorityLevels.ExpeditedName)
             cli.Say.Line($"priority:  expedited - this one goes first{inherited}");
+        else if (issue.Priority == PriorityLevels.LowName)
+            cli.Say.Line($"priority:  low - reached after everything normal, and only while the session window is on pace{inherited}");
+        else if (issue.Priority == PriorityLevels.EconomyName)
+            cli.Say.Line($"priority:  economy - worked only with usage that would otherwise go spare{inherited}");
+        else if (issue.Priority == PriorityLevels.PausedName)
+            cli.Say.Line($"priority:  paused - set aside; the loop leaves it where it stands{inherited}");
         if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
         if (issue.Type == "epic")
         {
@@ -244,7 +255,7 @@ public sealed class IssueCommands(Cli cli)
 
         var patched = await cli.Board.PatchAsync(key, new IssuePatchRequest(
             Title: null, Description: null, Type: null, StatusId: null, ParentKey: null,
-            ReadyAt: null, DueAt: null, PullRequestUrl: url), ct);
+            ReadyAt: null, DueAt: null, PullRequestUrl: url, ProjectId: null, MoveDescendants: null), ct);
 
         cli.Say.Line(patched?.PullRequestUrl is { Length: > 0 } now
             ? now
