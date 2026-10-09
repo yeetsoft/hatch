@@ -51,7 +51,7 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
 
     public static readonly string[] InboxUsage =
     [
-        "usage: hatch inbox <key> --hook post-tool-use|stop [--stamp <path>]",
+        "usage: hatch inbox <key> --hook post-tool-use|stop [--stamp <path>] [--clamp <path>]",
         "",
         "  For the hooks a spawned session runs, and nothing else: it prints what was",
         "  said to the session on this ticket, in the shape the hook expects, and marks",
@@ -62,13 +62,14 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
     {
         if (Usage.Wanted(args)) return Usage.Print(say, InboxUsage);
 
-        string? key = null, hook = null, stamp = null;
+        string? key = null, hook = null, stamp = null, clamp = null;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
                 case "--hook" when i + 1 < args.Length: hook = args[++i]; break;
                 case "--stamp" when i + 1 < args.Length: stamp = args[++i]; break;
+                case "--clamp" when i + 1 < args.Length: clamp = args[++i]; break;
                 case var other when !other.StartsWith('-') && key is null: key = other; break;
                 default: return Usage.Refuse(say, $"inbox does not know {args[i]}", InboxUsage);
             }
@@ -88,7 +89,13 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
             // Nothing to discard.
         }
 
-        if (hook == "post-tool-use" && stamp is not null && !Due(stamp)) return 0;
+        var wrapUp = Clamped(clamp, key);
+
+        if (hook == "post-tool-use" && stamp is not null)
+        {
+            var due = Due(stamp);
+            if (wrapUp is null && !due) return 0;
+        }
 
         IReadOnlyList<CommentDto> messages;
         try
@@ -99,18 +106,53 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
         }
         catch (Exception e) when (e is HatchException or OperationCanceledException or HttpRequestException or JsonException)
         {
-            // A Hatch that is down, slow, or has never heard of the route.
-            return 0;
+            // A Hatch that is down, slow, or has never heard of the route - the
+            // wrap-up below, if there is one, is on disk already and does not
+            // depend on this call.
+            messages = [];
         }
 
-        if (messages.Count == 0) return 0;
+        var parts = new List<string>();
+        if (wrapUp is not null) parts.Add(wrapUp);
+        parts.AddRange(messages.Select(m => Prompt.Message(key, m, whileWorking: true)));
 
-        var text = string.Join("\n\n---\n\n", messages.Select(m => Prompt.Message(key, m, whileWorking: true)));
+        if (parts.Count == 0) return 0;
+
+        var text = string.Join("\n\n---\n\n", parts);
         say.Line(hook == "stop"
             ? JsonSerializer.Serialize(new StopBlock("block", text), HatchJson.Default.StopBlock)
             : JsonSerializer.Serialize(
                 new PostToolUseOutput(new PostToolUseContext("PostToolUse", text)), HatchJson.Default.PostToolUseOutput));
         return 0;
+    }
+
+    /// <summary>
+    /// The wrap-up text, the one time it is owed: a <c>--clamp</c> path was
+    /// given, the fact record is there, and nothing has delivered it yet. The
+    /// marker is touched before the text is handed back, so a session that
+    /// crashes between this call and printing its output is not told twice -
+    /// the cost of that race is silence, not repetition.
+    /// </summary>
+    private string? Clamped(string? clamp, string key)
+    {
+        if (clamp is null) return null;
+
+        try
+        {
+            if (!File.Exists(clamp)) return null;
+
+            var delivered = Path.ChangeExtension(clamp, ".delivered");
+            if (File.Exists(delivered)) return null;
+
+            File.WriteAllBytes(delivered, []);
+            return Prompt.WrapUp(key);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A marker that cannot be kept must not become a wrap-up said every
+            // call - nor one never said at all. Skip this one.
+            return null;
+        }
     }
 
     /// <summary>

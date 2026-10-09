@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Hatch.Cli;
 
@@ -663,6 +664,7 @@ public sealed class Increment(
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
+        var budget = work.Playbook?.Budget is { } m ? m * 1_000_000L : (long?)null;
 
         await MarkSaidAsync(work, ct);
 
@@ -726,6 +728,26 @@ public sealed class Increment(
             // carried one - but Read already updated Usage by the time it
             // returned.
             if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt);
+
+            // Same reason the usage read above is out here and not in the loop:
+            // a usage-only assistant message draws no line either, yet still
+            // moves TokensSoFar. The first crossing, and only the first - once
+            // hooks.Clamp exists nothing here writes it again, so the session is
+            // told to wrap up once for the rest of its life and not on every
+            // line after.
+            if (budget is { } limit && hooks is not null && render.TokensSoFar >= limit && !File.Exists(hooks.Clamp))
+            {
+                try
+                {
+                    File.WriteAllText(hooks.Clamp, JsonSerializer.Serialize(
+                        new ClampFact(render.TokensSoFar, render.Requests), HatchJson.Default.ClampFact));
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // A clamp that cannot be written must not fail the
+                    // increment; the session runs on undirected.
+                }
+            }
         }, ct);
 
         if (facts.Result is { } streamedEntry)

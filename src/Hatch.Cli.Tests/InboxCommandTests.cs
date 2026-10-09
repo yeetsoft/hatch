@@ -17,6 +17,7 @@ public sealed class InboxCommandTests : IDisposable
     private readonly string _dir = Directory.CreateTempSubdirectory("hatch-inbox-test-").FullName;
 
     private string Stamp => Path.Combine(_dir, "inbox.stamp");
+    private string Clamp => Path.Combine(_dir, "clamp.json");
 
     public void Dispose()
     {
@@ -33,7 +34,13 @@ public sealed class InboxCommandTests : IDisposable
     private Task<int> Step(params string[] more) =>
         Command().RunAsync(["AER-1", "--hook", "post-tool-use", "--stamp", Stamp, .. more], default);
 
+    private Task<int> StepClamped() =>
+        Step("--clamp", Clamp);
+
     private Task<int> Stop() => Command().RunAsync(["AER-1", "--hook", "stop"], default);
+
+    private Task<int> StopClamped() =>
+        Command().RunAsync(["AER-1", "--hook", "stop", "--clamp", Clamp], default);
 
     private void Waiting(params CommentDto[] messages) => _h.Wire.Json("POST", Deliver, messages);
 
@@ -42,6 +49,8 @@ public sealed class InboxCommandTests : IDisposable
         File.WriteAllBytes(Stamp, []);
         File.SetLastWriteTimeUtc(Stamp, Now.UtcDateTime - ago);
     }
+
+    private void Crossed() => File.WriteAllText(Clamp, "{\"tokens\":1200000,\"requests\":42}");
 
     // ---- The throttle ----
 
@@ -111,6 +120,83 @@ public sealed class InboxCommandTests : IDisposable
         await Stop();
 
         Assert.Equal(2, _h.Wire.Count("POST", Deliver));
+    }
+
+    // ---- HA-222: the clamp ----
+
+    [Fact]
+    public async Task A_crossed_clamp_is_delivered_at_the_next_step_even_with_a_fresh_stamp()
+    {
+        Crossed();
+        Touched(TimeSpan.FromSeconds(3));
+        Waiting();
+
+        Assert.Equal(0, await StepClamped());
+
+        var text = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), text, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_crossed_clamp_is_delivered_on_stop_too()
+    {
+        Crossed();
+        Waiting();
+
+        Assert.Equal(0, await StopClamped());
+
+        var reason = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement.GetProperty("reason").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), reason, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_clamp_already_delivered_prints_nothing_new_for_it()
+    {
+        Crossed();
+        File.WriteAllBytes(Path.ChangeExtension(Clamp, ".delivered"), []);
+        Waiting();
+
+        Assert.Equal(0, await StepClamped());
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_second_call_after_delivery_carries_only_an_ordinary_message_not_the_clamp_again()
+    {
+        Crossed();
+        Waiting();
+
+        await StepClamped();
+        var first = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains("crossed its playbook's budget", first, StringComparison.Ordinal);
+
+        _h.Wire.Replace("POST", Deliver, HttpStatusCode.OK,
+            JsonSerializer.Serialize(new[] { Fixtures.Message(7, body: "second message") }, Fixtures.Json));
+        Touched(TimeSpan.FromSeconds(InboxCommand.ThrottleSeconds + 1));
+
+        await StepClamped();
+
+        Assert.Equal(2, _h.Say.Said.Count);
+        var second = JsonDocument.Parse(_h.Say.Said[1]).RootElement
+            .GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.DoesNotContain("crossed its playbook's budget", second, StringComparison.Ordinal);
+        Assert.Contains("second message", second, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task No_clamp_file_behaves_exactly_as_without_the_flag()
+    {
+        Waiting(Fixtures.Message(7));
+        Touched(TimeSpan.FromSeconds(InboxCommand.ThrottleSeconds + 1));
+
+        Assert.Equal(0, await StepClamped());
+
+        Assert.Single(_h.Say.Said);
+        Assert.False(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
     }
 
     // ---- What it prints ----
