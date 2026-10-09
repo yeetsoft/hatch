@@ -1,5 +1,6 @@
-import { Badge, Card } from '@hatch/ui';
+import { Badge } from '@hatch/ui';
 import { Command } from './Command';
+import { IssueSection } from './IssueSection';
 import {
   compactTokens,
   durationPhrase,
@@ -34,10 +35,9 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
   // to read should not blank because a meter could not be fetched.
   if (error) {
     return (
-      <Card>
-        <h2 className="hatch-section-title">Work log</h2>
+      <IssueSection id="work-log" title="Work log">
         <p className="text-muted">{error}</p>
-      </Card>
+      </IssueSection>
     );
   }
 
@@ -48,9 +48,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
   const errors = errorPhrase(log.totals);
 
   return (
-    <Card>
-      <h2 className="hatch-section-title">Work log</h2>
-
+    <IssueSection id="work-log" title="Work log" count={log.entries.length}>
       {/* Tokens are the headline and the dollars are secondary, because on a
           subscription the dollars are notional list price rather than money
           that left an account. */}
@@ -72,7 +70,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
           ))}
         </ul>
       )}
-    </Card>
+    </IssueSection>
   );
 }
 

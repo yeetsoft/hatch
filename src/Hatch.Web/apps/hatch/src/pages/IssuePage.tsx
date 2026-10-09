@@ -34,6 +34,7 @@ import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssueFacts } from '../components/IssueFacts';
 import { IssuePicker } from '../components/IssuePicker';
+import { IssueSection } from '../components/IssueSection';
 import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MessageState } from '../components/MessageState';
@@ -42,6 +43,7 @@ import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
+import { MoveProjectDialog } from '../components/MoveProjectDialog';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -62,7 +64,8 @@ import { projectLogoUrl } from '../lib/projectLogo';
 import { openQuestions } from '../lib/questions';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { useProjects } from '../lib/useProjects';
+import { useMoveProject } from '../lib/useMoveProject';
+import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useWipOverride } from '../lib/useWipOverride';
 import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -92,7 +95,8 @@ export function IssuePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
-  const { byKey: projectsByKey } = useProjects();
+  const { projects, byKey: projectsByKey } = useProjects();
+  const move = useMoveProject((moved) => void navigate(`/issues/${moved.key}`));
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -399,7 +403,7 @@ export function IssuePage() {
   const closing = useCloseSubtree(load);
 
   // The dialog a status-bar press into a full WIP section raises. No
-  // `onLeave`: `move`'s own catch has already re-read the issue before asking.
+  // `onLeave`: `moveStatus`'s own catch has already re-read the issue before asking.
   const wip = useWipOverride();
 
   if (error && !issue) return <p className="text-danger">{error}</p>;
@@ -425,7 +429,7 @@ export function IssuePage() {
 
   /* A const rather than a declaration, so it is written after the guards above
      and `issue` and `board` are the narrowed ones. */
-  const move = async (statusId: number) => {
+  const moveStatus = async (statusId: number) => {
     // Computed before the patch, so it is the subtree the operator was looking
     // at when they pressed; asked after it, so a refused move asks nothing.
     const offer = closeOffer(board, key, issue.statusId, statusId);
@@ -474,12 +478,16 @@ export function IssuePage() {
       {/* Above everything the page lets you change, because it is the one thing
           on it that something else is waiting for. An issue holding an
           unanswered question is not dispatched at all - see WorkController - so
-          until this card is empty the ticket does not move. */}
+          until this card is empty the ticket does not move. And deliberately
+          not an IssueSection: collapsing this would let a reader hide the
+          thing that's stopping the ticket. */}
       <Waiting issueKey={key} comments={comments} onAnswered={() => void load()} onError={setError} />
 
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing
-          anything below. Draws nothing on the overwhelming majority of pages. */}
+          anything below. Draws nothing on the overwhelming majority of pages.
+          And deliberately not an IssueSection: collapsing this would let a
+          reader hide that somebody is working on it right now. */}
       <ClaimPanel
         issueKey={key}
         claim={issue.claim}
@@ -497,10 +505,13 @@ export function IssuePage() {
         onClose={() => setClearingClaim(false)}
       />
 
+      {/* Not an IssueSection either, the same reason as Waiting and ClaimPanel
+          above it: the column this ticket is in right now is not content to
+          be folded away. */}
       <StatusBar
         statuses={board.statuses}
         statusId={issue.statusId}
-        onMove={(statusId) => void move(statusId)}
+        onMove={(statusId) => void moveStatus(statusId)}
       />
 
       <Card>
@@ -527,8 +538,7 @@ export function IssuePage() {
 
           {/* `as="div"` for the reason the fields below it are - `ProjectMark`'s
               own `role="img" aria-label=...` would otherwise be folded into a
-              <label>'s accessible name. No picker and no `onChange` here -
-              moving a ticket between projects is HA-236's. */}
+              <label>'s accessible name. */}
           <Field label="Project" as="div">
             <span className="hatch-issue-project">
               <ProjectMark
@@ -541,6 +551,11 @@ export function IssuePage() {
               />
               {project?.name ?? issue.projectKey}
             </span>
+            {directory?.me?.kind === 'person' && hasMultipleProjects(projects) && (
+              <button type="button" className="hatch-issue-move-project" onClick={() => move.open(issue)}>
+                Move…
+              </button>
+            )}
           </Field>
 
           {/* `as="div"`: Field wraps its children in a <label> for implicit
@@ -739,6 +754,8 @@ export function IssuePage() {
         onConfirm={wip.confirm}
         onClose={wip.close}
       />
+
+      <MoveProjectDialog move={move} projects={projects} />
     </div>
   );
 }
@@ -804,57 +821,59 @@ function Dependencies({
   const candidates = dependencyCandidates(board.issues, issue.key, issue.dependsOnKeys);
 
   return (
-    <Card>
-      <h2 className="hatch-section-title">Depends on</h2>
-      <p className="hatch-section-hint text-muted">
-        Done before this is implemented. Everything to the left of that still moves.
-      </p>
+    <>
+      <IssueSection id="depends-on" title="Depends on" count={issue.dependsOnKeys.length}>
+        <p className="hatch-section-hint text-muted">
+          Done before this is implemented. Everything to the left of that still moves.
+        </p>
 
-      {issue.dependsOnKeys.length === 0 ? (
-        <p className="text-muted">&mdash;</p>
-      ) : (
-        <ul className="hatch-progress-list">
-          {issue.dependsOnKeys.map((key) => (
-            <DependencyRow key={key} issueKey={key} board={board} onRemove={onRemove} />
-          ))}
-        </ul>
-      )}
+        {issue.dependsOnKeys.length === 0 ? (
+          <p className="text-muted">&mdash;</p>
+        ) : (
+          <ul className="hatch-progress-list">
+            {issue.dependsOnKeys.map((key) => (
+              <DependencyRow key={key} issueKey={key} board={board} onRemove={onRemove} />
+            ))}
+          </ul>
+        )}
 
-      {/* `as="div"` for the reason the Parent field is - see there. `allowNone`
-          off and a placeholder in its place: taking a row here adds an edge
-          rather than replacing the one value a field holds, so there is
-          nothing for a clear row to clear, and removing is the button on the
-          row itself. */}
-      <div className="hatch-depends-add">
-        <Field label="Add a dependency" as="div">
-          <IssuePicker
-            label="Add a dependency"
-            value={null}
-            allowNone={false}
-            placeholder="Add a dependency…"
-            candidates={candidates}
-            emptyMessage="Nothing else on the board can be depended on."
-            onChange={onAdd}
-          />
-        </Field>
-      </div>
+        {/* `as="div"` for the reason the Parent field is - see there. `allowNone`
+            off and a placeholder in its place: taking a row here adds an edge
+            rather than replacing the one value a field holds, so there is
+            nothing for a clear row to clear, and removing is the button on the
+            row itself. */}
+        <div className="hatch-depends-add">
+          <Field label="Add a dependency" as="div">
+            <IssuePicker
+              label="Add a dependency"
+              value={null}
+              allowNone={false}
+              placeholder="Add a dependency…"
+              candidates={candidates}
+              emptyMessage="Nothing else on the board can be depended on."
+              onChange={onAdd}
+            />
+          </Field>
+        </div>
+      </IssueSection>
 
-      <h2 className="hatch-section-title">Blocks</h2>
-      <p className="hatch-section-hint text-muted">
-        Waiting on this one. Taken off from their own pages &mdash; an edge belongs to the issue that
-        waits.
-      </p>
+      <IssueSection id="blocks" title="Blocks" count={issue.dependentKeys.length}>
+        <p className="hatch-section-hint text-muted">
+          Waiting on this one. Taken off from their own pages &mdash; an edge belongs to the issue that
+          waits.
+        </p>
 
-      {issue.dependentKeys.length === 0 ? (
-        <p className="text-muted">&mdash;</p>
-      ) : (
-        <ul className="hatch-progress-list">
-          {issue.dependentKeys.map((key) => (
-            <DependencyRow key={key} issueKey={key} board={board} />
-          ))}
-        </ul>
-      )}
-    </Card>
+        {issue.dependentKeys.length === 0 ? (
+          <p className="text-muted">&mdash;</p>
+        ) : (
+          <ul className="hatch-progress-list">
+            {issue.dependentKeys.map((key) => (
+              <DependencyRow key={key} issueKey={key} board={board} />
+            ))}
+          </ul>
+        )}
+      </IssueSection>
+    </>
   );
 }
 
@@ -944,9 +963,7 @@ function Progress({
   onFiled: () => void;
 }) {
   return (
-    <Card>
-      <h2 className="hatch-section-title">Progress</h2>
-
+    <IssueSection id="progress" title="Progress" count={rollup ? rollup.children.length : undefined}>
       {hasChildren && (
         <>
           {/* Said here, where the thing that failed was going to be. The rest of
@@ -986,7 +1003,7 @@ function Progress({
           onFiled={onFiled}
         />
       )}
-    </Card>
+    </IssueSection>
   );
 }
 
@@ -1267,14 +1284,17 @@ function InlineTitle({ issue, onSave }: { issue: Issue; onSave: (title: string) 
  */
 function Description({ issue, onSave }: { issue: Issue; onSave: (description: string) => Promise<boolean> }) {
   return (
-    <Card>
-      <DescriptionEditor
-        title={<h2 className="hatch-section-title">Description</h2>}
-        value={issue.description}
-        onSave={onSave}
-        editorClassName="hatch-grows"
-      />
-    </Card>
+    <IssueSection id="description" title="Description">
+      {/* `title={null}`: IssueSection already draws the heading in the
+          summary, so DescriptionEditor's own `.hatch-section-head` row holds
+          only the Edit/Preview/Save group - it is `justify-content:
+          space-between`, so they still sit right. A <button> inside a
+          <summary> would toggle the <details> on every press unless the
+          handler stopped propagation, which is a trap rather than a feature;
+          keeping the actions in the body avoids it rather than working around
+          it. */}
+      <DescriptionEditor title={null} value={issue.description} onSave={onSave} editorClassName="hatch-grows" />
+    </IssueSection>
   );
 }
 
@@ -1488,9 +1508,7 @@ function Comments({
   }
 
   return (
-    <Card>
-      <h2 className="hatch-section-title">Comments</h2>
-
+    <IssueSection id="comments" title="Comments" count={comments.length}>
       {comments.length === 0 && <p className="text-muted">Nothing said yet.</p>}
 
       <ul className="hatch-comments">
@@ -1530,7 +1548,7 @@ function Comments({
           Comment
         </Button>
       </div>
-    </Card>
+    </IssueSection>
   );
 }
 
@@ -1604,21 +1622,18 @@ function PullRequestField({ url, onSave }: { url: string | null; onSave: (url: s
 
 function EventTrail({ events }: { events: IssueEvent[] }) {
   return (
-    <Card>
-      <details className="hatch-events">
-        <summary className="hatch-section-title">History ({events.length})</summary>
-        <ul>
-          {events.map((event) => (
-            <li key={event.id} className="hatch-event">
-              <span className="text-muted">{new Date(event.at).toLocaleString()}</span>
-              <Badge>{event.kind.replaceAll('_', ' ')}</Badge>
-              <span>{event.actor}</span>
-              <span className="text-muted">{describe(event)}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </Card>
+    <IssueSection id="history" title="History" count={events.length} defaultOpen={false}>
+      <ul className="hatch-events">
+        {events.map((event) => (
+          <li key={event.id} className="hatch-event">
+            <span className="text-muted">{new Date(event.at).toLocaleString()}</span>
+            <Badge>{event.kind.replaceAll('_', ' ')}</Badge>
+            <span>{event.actor}</span>
+            <span className="text-muted">{describe(event)}</span>
+          </li>
+        ))}
+      </ul>
+    </IssueSection>
   );
 }
 
