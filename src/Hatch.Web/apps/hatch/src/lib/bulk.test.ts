@@ -69,7 +69,7 @@ describe('isEmptyForm', () => {
 
 describe('summarize', () => {
   it('says only what happened', () => {
-    expect(summarize({ changed: ['AER-1'], unchanged: [], failures: [] })).toBe('1 changed');
+    expect(summarize({ changed: ['AER-1'], unchanged: [], failures: [], rekeyed: [] })).toBe('1 changed');
   });
 
   it('says the boring parts too, because they are the answer to "why did nothing happen"', () => {
@@ -78,6 +78,7 @@ describe('summarize', () => {
         changed: [],
         unchanged: ['AER-1', 'AER-2'],
         failures: [{ key: 'AER-3', reason: 'a task hangs under a story' }],
+        rekeyed: [],
       }),
     ).toBe('0 changed, 2 already like that, 1 refused');
   });

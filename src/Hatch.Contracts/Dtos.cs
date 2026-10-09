@@ -615,12 +615,20 @@ public record IssueMoveRequest(
 /// <param name="Changed">The keys that actually moved. An issue already holding every named value is not one of them.</param>
 /// <param name="Unchanged">Keys that matched the request but had nothing to change - re-applying a bulk edit is not an edit.</param>
 /// <param name="Failures">Keys the edit was refused for, each with its reason.</param>
+/// <param name="Rekeyed">
+/// The <c>{from, to}</c> pair for every issue a project move actually moved -
+/// the named issue and, when the move carried descendants, every one of
+/// those too, named in the request or not. Empty when no project was named.
+/// </param>
 public record IssueBulkResultDto(
     IReadOnlyList<string> Changed,
     IReadOnlyList<string> Unchanged,
-    IReadOnlyList<IssueBulkFailureDto> Failures);
+    IReadOnlyList<IssueBulkFailureDto> Failures,
+    IReadOnlyList<IssueBulkRekeyedDto> Rekeyed);
 
 public record IssueBulkFailureDto(string Key, string Reason);
+
+public record IssueBulkRekeyedDto(string From, string To);
 
 /// <summary>
 /// The <c>409</c> body a move or a patch is refused with when the WIP section

@@ -44,6 +44,7 @@ import { StatusSteps } from '../components/StatusSteps';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
 import { MoveProjectDialog } from '../components/MoveProjectDialog';
+import { ProseClamp } from '../components/ProseClamp';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -66,6 +67,7 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useMoveProject } from '../lib/useMoveProject';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
+import { useCoarsePointer } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
 import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -1283,6 +1285,8 @@ function InlineTitle({ issue, onSave }: { issue: Issue; onSave: (title: string) 
  * and edited raw on purpose - what the database holds is what somebody wrote.
  */
 function Description({ issue, onSave }: { issue: Issue; onSave: (description: string) => Promise<boolean> }) {
+  const coarse = useCoarsePointer();
+
   return (
     <IssueSection id="description" title="Description">
       {/* `title={null}`: IssueSection already draws the heading in the
@@ -1293,7 +1297,13 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
           handler stopped propagation, which is a trap rather than a feature;
           keeping the actions in the body avoids it rather than working around
           it. */}
-      <DescriptionEditor title={null} value={issue.description} onSave={onSave} editorClassName="hatch-grows" />
+      <DescriptionEditor
+        title={null}
+        value={issue.description}
+        onSave={onSave}
+        editorClassName="hatch-grows"
+        clampTo={coarse ? 3 : null}
+      />
     </IssueSection>
   );
 }
@@ -1493,6 +1503,7 @@ function Comments({
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
   const now = new Date();
+  const coarse = useCoarsePointer();
 
   async function submit() {
     setSaving(true);
@@ -1525,9 +1536,10 @@ function Comments({
               <span className="text-muted">{new Date(comment.createdAt).toLocaleString()}</span>
               <MessageState status={messageState(comment, claim, issueKey, now)} />
             </div>
-            <div
-              className={`hatch-markdown${comment.kind === 'question' ? ' hatch-question-body' : ''}`}
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.body) }}
+            <ProseClamp
+              source={comment.body}
+              limit={coarse ? 3 : null}
+              className={comment.kind === 'question' ? 'hatch-question-body' : undefined}
             />
             {comment.options && <QuestionOptions options={comment.options} />}
           </li>

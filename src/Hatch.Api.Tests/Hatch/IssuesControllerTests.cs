@@ -3010,6 +3010,10 @@ public class IssuesControllerTests
 
         var taskEvents = await h.EventsAsync("OPS-2");
         Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+
+        Assert.Equal(2, result.Rekeyed.Count);
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-1" && r.To == "OPS-1");
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-2" && r.To == "OPS-2");
     }
 
     [Fact]
@@ -3029,6 +3033,10 @@ public class IssuesControllerTests
 
         var taskEvents = await h.EventsAsync("OPS-2");
         Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+
+        Assert.Equal(2, result.Rekeyed.Count);
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-1" && r.To == "OPS-1");
+        Assert.Contains(result.Rekeyed, r => r.From == "AER-2" && r.To == "OPS-2");
     }
 
     [Fact]
@@ -3042,6 +3050,51 @@ public class IssuesControllerTests
         var result = Value(await h.Issues.BulkEdit(Bulk(["AER-3", "AER-1", "AER-2"], projectId: h.OtherProjectId), default));
 
         Assert.Equal(["OPS-1", "OPS-2", "OPS-3"], result.Changed);
+        Assert.Equal(
+            [("AER-3", "OPS-1"), ("AER-1", "OPS-2"), ("AER-2", "OPS-3")],
+            result.Rekeyed.Select(r => (r.From, r.To)));
+    }
+
+    /// <summary>
+    /// A second context creating an issue in the target project between a
+    /// bulk move's read and its write - the same race
+    /// <see cref="AMoveRacingANewIssueInTheTarget_StillMintsADistinctNumber"/>
+    /// already survives for a single <c>PATCH</c>, now exercised against
+    /// <c>BulkEdit</c>'s own retry.
+    /// </summary>
+    [Fact]
+    public async Task ABulkMoveRacingANewIssueInTheTarget_StillMintsADistinctNumber()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        // Read through the harness's own context first, so its tracked copy
+        // of the target project's NextIssueNumber is stale once the second
+        // context below advances the real row underneath it.
+        await h.Db.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+
+        await using var racing = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(h.DbName).Options);
+        var racingProject = await racing.Projects.FirstAsync(p => p.Id == h.OtherProjectId);
+        racing.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = racingProject.Id,
+            Number = racingProject.NextIssueNumber,
+            Type = "task",
+            Title = "raced in first",
+            StatusId = h.Inbox,
+            Rank = 1000,
+            CreatedBy = "someone else",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        racingProject.NextIssueNumber++;
+        await racing.SaveChangesAsync();
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-2"], result.Changed);
+        Assert.Equal("raced in first", Value(await h.Issues.GetIssue("OPS-1", default)).Title);
     }
 
     // ---- Harness ----

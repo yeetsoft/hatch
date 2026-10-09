@@ -104,6 +104,15 @@ public sealed class IncrementReport
     /// <summary>Whether the session was told, mid-run, to wrap up because it crossed its budget.</summary>
     public bool Clamped => ClampedAtTokens is not null;
 
+    /// <summary>The cumulative tokens the session had spent when its hard limit was crossed.</summary>
+    public long? HardLimitedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its hard limit was crossed.</summary>
+    public int? HardLimitedAtRequests { get; set; }
+
+    /// <summary>Whether the session was stopped outright for crossing its hard limit.</summary>
+    public bool HardLimited => HardLimitedAtTokens is not null;
+
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
 
@@ -194,6 +203,8 @@ public sealed class IncrementReport
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : HardLimited ? $"the hard limit was hit at {Format.Compact(HardLimitedAtTokens!.Value)} tokens"
+            + (Filed.Count > 0 ? $", filed {Filed.Count} under it" : ", its continuation could not be filed")
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -317,7 +328,7 @@ public sealed class Increment(
                 stopping.Cancel();
             };
 
-            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping.Token, addDirs, repositories, branches, conflict?.Found, build?.Found);
+            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found);
             report.ExitCode = result.ExitCode;
             report.SessionId = facts.SessionId;
             report.Cost = facts.CostUsd;
@@ -333,6 +344,8 @@ public sealed class Increment(
 
             report.ClampedAtTokens = facts.ClampedAtTokens;
             report.ClampedAtRequests = facts.ClampedAtRequests;
+            report.HardLimitedAtTokens = facts.HardLimitedAtTokens;
+            report.HardLimitedAtRequests = facts.HardLimitedAtRequests;
 
             // Before anything is written anywhere. A lease that went means this
             // runner no longer holds the ticket, and everything below except the
@@ -480,7 +493,7 @@ public sealed class Increment(
                 // the ticket to a new column while still leaving that branch
                 // unresolved. This guard runs regardless, so the branch is still
                 // said - but see below for who wins the claim's own verdict.
-                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted)
+                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                 {
                     if (report.Asked > 0)
                     {
@@ -665,12 +678,23 @@ public sealed class Increment(
 
     // ---- The session ----
 
+    /// <summary>
+    /// The hard limit sits this far above the playbook's own budget: a 5M-token
+    /// budget's hard limit is <c>5_000_000 * HardLimitMultiplierNumerator /
+    /// HardLimitMultiplierDenominator</c>, computed in whole tokens so a budget
+    /// never drifts through <c>decimal</c> or a floating multiply.
+    /// </summary>
+    private const long HardLimitMultiplierNumerator = 3;
+    private const long HardLimitMultiplierDenominator = 2;
+
     private async Task<SessionResult> SpawnAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
-        RunFacts facts, Claim claim, CancellationToken ct,
+        RunFacts facts, Claim claim, CancellationTokenSource stopping,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build)
     {
+        var ct = stopping.Token;
+
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
         using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath));
@@ -799,6 +823,20 @@ public sealed class Increment(
                     // A clamp that cannot be written must not fail the
                     // increment; the session runs on undirected.
                 }
+            }
+
+            // Past the soft clamp above by half again, the session is stopped
+            // outright rather than asked to wrap up - cancelling the same
+            // source a lost lease already cancels. Guarded on the fact rather
+            // than a file: this runs in-process and can cancel directly, so
+            // there is no hook file for it to wait on.
+            if (budget is { } hardBudget && render.TokensSoFar >= hardBudget * HardLimitMultiplierNumerator / HardLimitMultiplierDenominator && facts.HardLimitedAtTokens is null)
+            {
+                facts.HardLimitedAtTokens = render.TokensSoFar;
+                facts.HardLimitedAtRequests = render.Requests;
+                say.Line("");
+                say.Line($"hatch: {work.Issue.Key} - the hard limit was hit at {Format.Compact(render.TokensSoFar)} tokens; stopping the session");
+                stopping.Cancel();
             }
         }, ct);
 
