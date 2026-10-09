@@ -43,6 +43,7 @@ import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
+import { MoveProjectDialog } from '../components/MoveProjectDialog';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -63,7 +64,8 @@ import { projectLogoUrl } from '../lib/projectLogo';
 import { openQuestions } from '../lib/questions';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { useProjects } from '../lib/useProjects';
+import { useMoveProject } from '../lib/useMoveProject';
+import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useWipOverride } from '../lib/useWipOverride';
 import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -93,7 +95,8 @@ export function IssuePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
-  const { byKey: projectsByKey } = useProjects();
+  const { projects, byKey: projectsByKey } = useProjects();
+  const move = useMoveProject((moved) => void navigate(`/issues/${moved.key}`));
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -400,7 +403,7 @@ export function IssuePage() {
   const closing = useCloseSubtree(load);
 
   // The dialog a status-bar press into a full WIP section raises. No
-  // `onLeave`: `move`'s own catch has already re-read the issue before asking.
+  // `onLeave`: `moveStatus`'s own catch has already re-read the issue before asking.
   const wip = useWipOverride();
 
   if (error && !issue) return <p className="text-danger">{error}</p>;
@@ -426,7 +429,7 @@ export function IssuePage() {
 
   /* A const rather than a declaration, so it is written after the guards above
      and `issue` and `board` are the narrowed ones. */
-  const move = async (statusId: number) => {
+  const moveStatus = async (statusId: number) => {
     // Computed before the patch, so it is the subtree the operator was looking
     // at when they pressed; asked after it, so a refused move asks nothing.
     const offer = closeOffer(board, key, issue.statusId, statusId);
@@ -508,7 +511,7 @@ export function IssuePage() {
       <StatusBar
         statuses={board.statuses}
         statusId={issue.statusId}
-        onMove={(statusId) => void move(statusId)}
+        onMove={(statusId) => void moveStatus(statusId)}
       />
 
       <Card>
@@ -535,8 +538,7 @@ export function IssuePage() {
 
           {/* `as="div"` for the reason the fields below it are - `ProjectMark`'s
               own `role="img" aria-label=...` would otherwise be folded into a
-              <label>'s accessible name. No picker and no `onChange` here -
-              moving a ticket between projects is HA-236's. */}
+              <label>'s accessible name. */}
           <Field label="Project" as="div">
             <span className="hatch-issue-project">
               <ProjectMark
@@ -549,6 +551,11 @@ export function IssuePage() {
               />
               {project?.name ?? issue.projectKey}
             </span>
+            {directory?.me?.kind === 'person' && hasMultipleProjects(projects) && (
+              <button type="button" className="hatch-issue-move-project" onClick={() => move.open(issue)}>
+                Move…
+              </button>
+            )}
           </Field>
 
           {/* `as="div"`: Field wraps its children in a <label> for implicit
@@ -747,6 +754,8 @@ export function IssuePage() {
         onConfirm={wip.confirm}
         onClose={wip.close}
       />
+
+      <MoveProjectDialog move={move} projects={projects} />
     </div>
   );
 }
