@@ -1536,6 +1536,11 @@ button.hatch-chip {
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 
+.hatch-project-chooser__tile--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* The input keeps its focus and keyboard behaviour and gives up only its
    painting - the same technique ThemeSwitch.css's .hatch-theme-switch__option
    input uses. */
