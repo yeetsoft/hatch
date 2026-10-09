@@ -900,6 +900,7 @@
 }
 
 .hatch-facet {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
@@ -930,21 +931,46 @@
   flex: none;
 }
 
-/* The select inside a facet is stripped to its text: the wrapper draws the box.
+/* The select inside a facet is laid over the whole box, transparent: it stays
+   focusable, pressable and the browser's own picker, and a press anywhere in
+   the border reaches it. Facet draws the selected option's text beneath it.
    Whose cards to draw is a native <select> and not IssuePicker - that component
    exists for sixty issue keys sharing a prefix, and a household's worth of
    names is neither long enough nor ambiguous enough to need it. */
 .hatch-facet select {
-  appearance: none;
-  max-width: 12rem;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
-  background: transparent;
-  box-shadow: none;
+  border-radius: inherit;
+  opacity: 0;
+  appearance: none;
   font: inherit;
-  color: inherit;
   cursor: pointer;
+}
+
+/* Every option's text stacked in one cell, only the selected one visible, so
+   the facet is as wide as its widest option whatever is selected. */
+.hatch-facet__value {
+  display: inline-grid;
+  grid-template-columns: minmax(0, max-content);
+  max-width: 12rem;
+}
+
+.hatch-facet__option {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+  visibility: hidden;
+}
+
+.hatch-facet__option--shown {
+  visibility: visible;
 }
 
 .hatch-facet select:focus {
@@ -1638,6 +1664,24 @@ button.hatch-chip {
 }
 
 /* ---- The issue page ---- */
+
+.hatch-issue-subheader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+}
+
+/* The four facts that say what this is: project, key, type, parent. Lifted to
+   --t-subhead and drawn first, so they read before the secondary row below -
+   see HA-328 §5. Wraps rather than squeezing or truncating at phone width. */
+.hatch-issue-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--t-subhead);
+  font-weight: 600;
+}
 
 .hatch-issue-meta {
   display: flex;
