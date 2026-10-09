@@ -35,6 +35,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   expressSkips: false,
   parentPulls: false,
   agentFiles: false,
+  isImplementation: false,
   color: '#336699',
   ...over,
 });

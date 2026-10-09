@@ -27,6 +27,7 @@ const status = (over: Partial<Status> = {}): Status => ({
   expressSkips: false,
   parentPulls: false,
   agentFiles: false,
+  isImplementation: false,
   color: '#888888',
   ...over,
 });
