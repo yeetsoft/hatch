@@ -63,16 +63,16 @@ export function BoardFilters({
           this a control with a single option, and Hatch ships to operators
           who will have several. */}
       {hasMultipleProjects(projects) && (
-        <Facet label="Project" lit={filter.project !== ''}>
-          <select value={filter.project} onChange={(e) => onChange({ ...filter, project: e.target.value })}>
-            <option value="">All projects</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.key}>
-                {project.key} — {project.name}
-              </option>
-            ))}
-          </select>
-        </Facet>
+        <Facet
+          label="Project"
+          lit={filter.project !== ''}
+          value={filter.project}
+          options={[
+            { value: '', text: 'All projects' },
+            ...projects.map((project) => ({ value: project.key, text: `${project.key} — ${project.name}` })),
+          ]}
+          onChange={(project) => onChange({ ...filter, project })}
+        />
       )}
 
       <TypesFacet filter={filter} counts={typeCounts(cards)} onChange={onChange} />
@@ -98,17 +98,17 @@ export function BoardFilters({
           "Unassigned" is its own row above the identities rather than derived
           from the cards, because it is the one choice that is a fact about
           absence - assigneeFacets can only report who is there. */}
-      <Facet label="Assignee" lit={filter.assignee !== ''}>
-        <select value={filter.assignee} onChange={(e) => onChange({ ...filter, assignee: e.target.value })}>
-          <option value="">— anyone —</option>
-          <option value={UNASSIGNED}>Unassigned</option>
-          {assignees.map((assignee) => (
-            <option key={assigneeToken(assignee)} value={assigneeToken(assignee)}>
-              {assignee.name}
-            </option>
-          ))}
-        </select>
-      </Facet>
+      <Facet
+        label="Assignee"
+        lit={filter.assignee !== ''}
+        value={filter.assignee}
+        options={[
+          { value: '', text: '— anyone —' },
+          { value: UNASSIGNED, text: 'Unassigned' },
+          ...assignees.map((assignee) => ({ value: assigneeToken(assignee), text: assignee.name })),
+        ]}
+        onChange={(assignee) => onChange({ ...filter, assignee })}
+      />
 
       {filtering && (
         <span className="hatch-filter-count">

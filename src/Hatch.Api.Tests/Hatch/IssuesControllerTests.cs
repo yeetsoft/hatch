@@ -2993,6 +2993,57 @@ public class IssuesControllerTests
         Assert.Single(await h.EventsAsync("AER-3"));
     }
 
+    [Fact]
+    public async Task ABulkMoveNamingATaskBeforeItsOwnStory_DoesNotDoubleMoveTheTask()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "the task", parentKey: "AER-1");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-2", "AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.Equal(["OPS-2"], result.Unchanged);
+
+        var task = Value(await h.Issues.GetIssue("OPS-2", default));
+        Assert.Equal("OPS-1", task.ParentKey);
+
+        var taskEvents = await h.EventsAsync("OPS-2");
+        Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+    }
+
+    [Fact]
+    public async Task ABulkMoveNamingAStoryBeforeItsOwnTask_AlsoDoesNotDoubleMoveTheTask()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "the task", parentKey: "AER-1");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.Equal(["OPS-2"], result.Unchanged);
+
+        var task = Value(await h.Issues.GetIssue("OPS-2", default));
+        Assert.Equal("OPS-1", task.ParentKey);
+
+        var taskEvents = await h.EventsAsync("OPS-2");
+        Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+    }
+
+    [Fact]
+    public async Task ABulkMoveOfIndependentLeaves_ReportsChangedInTheRequestsOwnOrder()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-3", "AER-1", "AER-2"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1", "OPS-2", "OPS-3"], result.Changed);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
