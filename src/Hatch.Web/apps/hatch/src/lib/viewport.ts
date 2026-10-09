@@ -43,6 +43,47 @@ export function usePhone(): boolean {
   return isPhone;
 }
 
+export const COARSE_QUERY = '(pointer: coarse)';
+
+/**
+ * Whether the viewport matches {@link COARSE_QUERY} right now - a phone or an
+ * iPad alike, whatever the input happens to be, not the width breakpoint: an
+ * iPad has a coarse pointer and a desk-width screen, and either query trying
+ * to do both jobs would misclassify it (see docs/design-system-architecture.md,
+ * "The phone").
+ *
+ * `window` itself is absent in this workspace's tests (plain Node, no jsdom),
+ * not just `matchMedia` - the existence check has to come first or a call from
+ * viewport.test.ts throws.
+ */
+export function matchesCoarse(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(COARSE_QUERY).matches;
+}
+
+/** Calls back when the match flips. Returns the unsubscribe. */
+function watchCoarse(onChange: (isCoarse: boolean) => void): () => void {
+  const query = window.matchMedia(COARSE_QUERY);
+  const listener = (event: MediaQueryListEvent) => onChange(event.matches);
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
+
+/** Whether the pointer is coarse, re-answered as it changes. */
+export function useCoarsePointer(): boolean {
+  const [isCoarse, setIsCoarse] = useState<boolean>(matchesCoarse);
+
+  useEffect(() => {
+    const unwatch = watchCoarse(setIsCoarse);
+    /* The pointer may have changed between the initial render and this effect. */
+    setIsCoarse(matchesCoarse());
+    return unwatch;
+  }, []);
+
+  return isCoarse;
+}
+
 export const STANDALONE_QUERY = '(display-mode: standalone)';
 
 /** `navigator.standalone` is iOS Safari's own flag, non-standard and absent from lib.dom's Navigator type. */
