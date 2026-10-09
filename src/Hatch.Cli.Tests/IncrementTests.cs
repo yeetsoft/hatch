@@ -251,6 +251,158 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-335: the hard limit ----
+
+    [Fact]
+    public async Task Crossing_the_hard_limit_stops_the_streamed_session_and_reports_it()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 5) };
+        CancellationToken ct = default;
+
+        h.Sessions.Behaviour = (_, onLine, sessionCt) =>
+        {
+            ct = sessionCt;
+
+            // 7,000,000 + 500,000 = 7,500,000 tokens, exactly the hard limit a
+            // 5M-token budget carries (budget * 3 / 2).
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            Assert.True(ct.IsCancellationRequested);
+            Assert.Contains(h.Say.Said, l => l.Contains("the hard limit was hit at 7.5M tokens; stopping the session", StringComparison.Ordinal));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.HardLimited);
+        Assert.Equal(7_500_000, report.HardLimitedAtTokens);
+        Assert.Equal(1, report.HardLimitedAtRequests);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_hard_stop_fires_once_not_on_every_further_line_past_the_cross()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 5) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            Assert.Equal(1, h.Say.Said.Count(l => l.Contains("the hard limit was hit", StringComparison.Ordinal)));
+
+            // A further line past the cross neither fires the line again nor
+            // moves the recorded fact.
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 10, output: 10));
+            Assert.Equal(1, h.Say.Said.Count(l => l.Contains("the hard limit was hit", StringComparison.Ordinal)));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Equal(7_500_000, report.HardLimitedAtTokens);
+        await claim.ReleaseAsync();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(10)]
+    public async Task A_run_that_never_reaches_15x_its_budget_or_has_none_never_sets_HardLimited(int? budget)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: budget) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.HardLimited);
+        Assert.Null(report.HardLimitedAtTokens);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public void HardLimited_reads_as_its_own_sentence_whether_or_not_anything_was_filed()
+    {
+        var withoutFiling = new IncrementReport { Key = "AER-1", From = "In Progress", To = "In Review", HardLimitedAtTokens = 7_500_000 };
+        Assert.Equal("the hard limit was hit at 7.5M tokens, its continuation could not be filed", withoutFiling.Outcome);
+
+        var withFiling = new IncrementReport
+        {
+            Key = "AER-1", From = "In Progress", To = "In Review", HardLimitedAtTokens = 7_500_000, Filed = ["AER-2"],
+        };
+        Assert.Equal("the hard limit was hit at 7.5M tokens, filed 1 under it", withFiling.Outcome);
+    }
+
+    [Fact]
+    public async Task A_hard_limited_report_does_not_enter_the_stall_flagging_path_even_on_a_second_stall_in_a_row()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        var work = Fixtures.Work("AER-1", letGo: 1) with { Playbook = Fixtures.Playbook(budget: 5) };
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 7_000_000, output: 500_000));
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, children: []));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Stalled);
+        Assert.True(report.HardLimited);
+
+        // The clamp's own comment still goes up - this task leaves that alone -
+        // but the stall-flagging path that a second stall in a row would
+        // otherwise take does not: no question, and no comment about the
+        // ticket being left where it was found.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/questions"));
+        Assert.DoesNotContain(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"),
+            c => c.Body.Contains("in a row to leave this ticket here", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_quiet_run_posts_null_requests_and_peak_context_but_a_known_prompt_length()
     {

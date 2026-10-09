@@ -41,6 +41,12 @@ public sealed class RunFacts
 
     /// <summary>The requests the session had made when its playbook's budget was crossed.</summary>
     public int? ClampedAtRequests { get; set; }
+
+    /// <summary>The cumulative tokens the session had spent when its hard limit was crossed, read back in <see cref="Increment.SpawnAsync"/>.</summary>
+    public long? HardLimitedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its hard limit was crossed.</summary>
+    public int? HardLimitedAtRequests { get; set; }
 }
 
 /// <summary>
