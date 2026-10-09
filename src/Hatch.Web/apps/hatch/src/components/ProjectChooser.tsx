@@ -13,6 +13,11 @@ export interface ProjectChooserProps {
       which excludes nothing; the move dialog's own project in the move
       dialog. */
   disabledId?: number | null;
+  /** Rendered as one more tile, first, sharing this chooser's own radio group.
+      Omitted by the New-issue and Move dialogs, which have no "leave it alone"
+      state to offer. */
+  keepLabel?: string;
+  onKeep?: () => void;
 }
 
 /**
@@ -28,13 +33,19 @@ export interface ProjectChooserProps {
  * same custom properties `ProjectMark` itself paints from - set on every tile
  * so the CSS can read them only on the `:checked` one.
  */
-export function ProjectChooser({ projects, value, onChange, legend, disabledId }: ProjectChooserProps) {
+export function ProjectChooser({ projects, value, onChange, legend, disabledId, keepLabel, onKeep }: ProjectChooserProps) {
   const name = useId();
 
   return (
     <fieldset className="hatch-project-chooser">
       <legend className="hatch-project-chooser__legend">{legend}</legend>
       <div className="hatch-project-chooser__tiles">
+        {keepLabel && (
+          <label className="hatch-project-chooser__tile">
+            <input type="radio" name={name} checked={value === null} onChange={() => onKeep?.()} />
+            <span>{keepLabel}</span>
+          </label>
+        )}
         {projects.map((project) => {
           const disabled = project.id === disabledId;
           return (

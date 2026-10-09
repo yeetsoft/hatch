@@ -86,4 +86,36 @@ describe('ProjectChooser', () => {
 
     expect(html).not.toContain('disabled=""');
   });
+
+  it('renders a Keep tile first, checked, when keepLabel is set and value is null', () => {
+    const projects = [project({ id: 1, key: 'HA', name: 'Hatch' }), project({ id: 2, key: 'AER', name: 'Aerie' })];
+    const html = renderToStaticMarkup(
+      <ProjectChooser projects={projects} value={null} onChange={noop} legend="Project" keepLabel="Keep" onKeep={noop} />,
+    );
+
+    expect(html.indexOf('Keep')).toBeLessThan(html.indexOf('title="Hatch"'));
+    const checked = [...html.matchAll(/checked=""/g)];
+    expect(checked).toHaveLength(1);
+    expect(html.indexOf('checked=""')).toBeLessThan(html.indexOf('title="Hatch"'));
+  });
+
+  it('checks a project tile instead of Keep once a project is chosen', () => {
+    const projects = [project({ id: 1, key: 'HA', name: 'Hatch' }), project({ id: 2, key: 'AER', name: 'Aerie' })];
+    const html = renderToStaticMarkup(
+      <ProjectChooser projects={projects} value={1} onChange={noop} legend="Project" keepLabel="Keep" onKeep={noop} />,
+    );
+
+    const checked = [...html.matchAll(/checked=""/g)];
+    expect(checked).toHaveLength(1);
+    expect(html.indexOf('checked=""')).toBeGreaterThan(html.indexOf('Keep'));
+  });
+
+  it('omits the Keep tile when keepLabel is not passed', () => {
+    const projects = [project({ id: 1, key: 'HA', name: 'Hatch' }), project({ id: 2, key: 'AER', name: 'Aerie' })];
+    const html = renderToStaticMarkup(
+      <ProjectChooser projects={projects} value={null} onChange={noop} legend="Project" />,
+    );
+
+    expect(html).not.toContain('Keep');
+  });
 });
