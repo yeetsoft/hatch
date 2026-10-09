@@ -8,7 +8,7 @@ public sealed class TallyTests
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
-        bool skipped = false) =>
+        bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null) =>
         new()
         {
             Key = key,
@@ -27,6 +27,8 @@ public sealed class TallyTests
             PreemptedTitle = preempted ? "Trunk is down" : null,
             Filed = filed > 0 ? Enumerable.Range(1, filed).Select(n => $"AER-{10 + n}").ToList() : [],
             Skipped = skipped,
+            ClampedAtTokens = clamped ? clampedAtTokens ?? 500_000L : null,
+            ClampedAtRequests = clamped ? clampedAtRequests : null,
         };
 
     [Fact]
@@ -362,5 +364,35 @@ public sealed class TallyTests
 
         Assert.True(tally.ShouldStop());
         Assert.Equal(3, tally.Fails);
+    }
+
+    /// <summary>HA-224: a clamp that fired on a ticket left where it found it, with tasks filed under it, is its own list - not stalled.</summary>
+    [Fact]
+    public void A_clamped_and_filed_but_unmoved_ticket_lands_on_the_clamped_list_and_not_the_stalled_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", moved: false, filed: 2, clamped: true, clampedAtTokens: 820_000));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("clamped  AER-1", StringComparison.Ordinal) && l.Contains("clamped at", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-224: a clamp firing on a ticket that still moved is reported as an ordinary move - the clamp is incidental.</summary>
+    [Fact]
+    public void A_clamped_ticket_that_moved_lands_on_the_moved_list_like_any_other_move()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", moved: true, clamped: true, clampedAtTokens: 820_000));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("clamped  AER-1", StringComparison.Ordinal));
     }
 }

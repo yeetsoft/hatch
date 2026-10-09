@@ -95,6 +95,15 @@ public sealed class IncrementReport
     /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
     public bool UsageLimited => UsageLimitResetAt is not null;
 
+    /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed.</summary>
+    public long? ClampedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its playbook's budget was crossed.</summary>
+    public int? ClampedAtRequests { get; set; }
+
+    /// <summary>Whether the session was told, mid-run, to wrap up because it crossed its budget.</summary>
+    public bool Clamped => ClampedAtTokens is not null;
+
     /// <summary>What was done about that, in the words the tally says it in.</summary>
     public string? Flag { get; set; }
 
@@ -185,7 +194,7 @@ public sealed class IncrementReport
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
-        : Filed.Count > 0 ? $"filed {Filed.Count} under it"
+        : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
@@ -322,6 +331,9 @@ public sealed class Increment(
                 report.PeakContextTokens = summary.PeakContextTokens;
             }
 
+            report.ClampedAtTokens = facts.ClampedAtTokens;
+            report.ClampedAtRequests = facts.ClampedAtRequests;
+
             // Before anything is written anywhere. A lease that went means this
             // runner no longer holds the ticket, and everything below except the
             // work log is a write onto somebody else's increment.
@@ -332,6 +344,9 @@ public sealed class Increment(
                 say.Complain($"hatch: {report.Key} - {gone}");
                 say.Complain("hatch:   the session was stopped; nothing further was written there");
             }
+
+            if (report.Clamped && claim.Lost is null)
+                await Clamp.CommentAsync(board, say, report.Key, report.ClampedAtTokens!.Value, report.ClampedAtRequests, ct);
 
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and
@@ -680,6 +695,28 @@ public sealed class Increment(
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
 
+        // Whichever side wrote hooks.Clamp - the streamed callback below, or a
+        // --quiet session's own transcript-reading hook - this is the one place
+        // that reads it back onto the facts the increment reports from.
+        void ReadClamp()
+        {
+            if (hooks is null || !File.Exists(hooks.Clamp)) return;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(hooks.Clamp));
+                facts.ClampedAtTokens = doc.RootElement.GetProperty("tokens").GetInt64();
+                if (doc.RootElement.TryGetProperty("requests", out var requests))
+                    facts.ClampedAtRequests = requests.GetInt32();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // Best-effort, the same as every other read of a hook file in
+                // this area: a clamp that cannot be read is not reported, but
+                // must not fail the increment.
+            }
+        }
+
         await MarkSaidAsync(work, ct);
 
         if (quiet)
@@ -717,6 +754,7 @@ public sealed class Increment(
 
             if (facts.Result is { } quietEntry) facts.Result = quietEntry with { PromptChars = prompt.Length };
 
+            ReadClamp();
             return quietly;
         }
 
@@ -772,6 +810,7 @@ public sealed class Increment(
                 PromptChars = prompt.Length,
             };
 
+        ReadClamp();
         return streamed;
     }
 

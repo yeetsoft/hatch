@@ -35,6 +35,12 @@ public sealed class RunFacts
     /// event arrived at all - the one place a limit hit mid-stream shows up.
     /// </summary>
     public string? LastAssistantText { get; set; }
+
+    /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed, read back from <see cref="SessionHooks.Clamp"/>.</summary>
+    public long? ClampedAtTokens { get; set; }
+
+    /// <summary>The requests the session had made when its playbook's budget was crossed.</summary>
+    public int? ClampedAtRequests { get; set; }
 }
 
 /// <summary>
