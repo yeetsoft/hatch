@@ -54,7 +54,7 @@ public class BoardController(
         // A card that is waiting on somebody has to say so here: the board is
         // where the operator looks, and a question they cannot see is a question
         // they never answer.
-        var waiting = await Questions.OpenCountsAsync(db, ct);
+        var waiting = await Questions.WaitingCountsAsync(db, ct);
 
         var issues = await db.Issues.AsNoTracking()
             .OrderBy(i => i.StatusId)

@@ -1444,7 +1444,7 @@ public record RollupSliceDto(int StatusId, int Count);
 /// <param name="Waiting">
 /// Open questions on this issue and every descendant, at any depth. What says
 /// an epic is blocked on a person rather than on an agent, counted through
-/// <see cref="Questions.OpenCountsAsync"/> so there is still one definition of
+/// <see cref="Questions.WaitingCountsAsync"/> so there is still one definition of
 /// "open".
 /// </param>
 /// <param name="Slices">In board order (<c>sortOrder</c>, then id), empty columns absent.</param>

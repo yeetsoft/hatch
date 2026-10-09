@@ -190,7 +190,11 @@ public class BuildCheckController(
         }
 
         // Rule four. Skipped when a question is already open: that is already
-        // the flag, and a second under it says no more than the first.
+        // the flag, and a second under it says no more than the first. Reads
+        // Open rather than Waiting on purpose - this is deciding whether to ask
+        // a fresh one, not whether to keep counting an old one, and narrowing it
+        // would start asking stall questions again on a ticket that has already
+        // shipped.
         var failedAndFlagged = row.Verdict == BuildVerdicts.Failed && row.PushedByIncrement;
         if (failedAndFlagged && !wasFailedAndFlagged
             && !await Questions.Open(db).AnyAsync(c => c.IssueId == issue.Id, ct))

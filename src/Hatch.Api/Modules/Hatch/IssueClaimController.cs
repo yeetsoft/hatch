@@ -120,6 +120,10 @@ public class IssueClaimController(
     {
         if (claims.StallLapseSeconds <= 0) return;
 
+        // Reads Open rather than Waiting: a shipped issue cannot be claimed, so
+        // this is moot in practice, but answering a stale question is not
+        // something that should start depending on the column it was asked
+        // from.
         var open = await Questions.Open(db)
             .Where(c => c.IssueId == issueId)
             .Select(c => new { c.Id, c.CreatedAt, c.Options })

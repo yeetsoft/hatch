@@ -575,6 +575,27 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Questions);
     }
 
+    [Fact]
+    public async Task Attention_LeavesOutAQuestionOnAnIssueInATerminalColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "shipped", h.Done);
+        await h.AskAsync(issue, "per-node or global?");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Questions);
+    }
+
+    [Fact]
+    public async Task Attention_StillListsAQuestionOnADeferredIssue()
+    {
+        var h = await NewAsync();
+        var shelf = await h.ShelfAsync(37);
+        var issue = await h.FileAsync("story", "parked", shelf);
+        await h.AskAsync(issue, "per-node or global?");
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).Questions);
+    }
+
     // ---- Runners out of usage ----
 
     [Fact]
@@ -740,6 +761,7 @@ public class AttentionControllerTests
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
         public required int Review { get; init; }
+        public required int Done { get; init; }
 
         private int next = 1;
         private int nextRepoOrder = 1;
@@ -983,6 +1005,7 @@ public class AttentionControllerTests
             Todo = todo.Id,
             InProgress = doing.Id,
             Review = review.Id,
+            Done = done.Id,
         };
     }
 
@@ -1013,6 +1036,7 @@ public class AttentionControllerTests
             Todo = done.Id,
             InProgress = done.Id,
             Review = done.Id,
+            Done = done.Id,
         };
     }
 
