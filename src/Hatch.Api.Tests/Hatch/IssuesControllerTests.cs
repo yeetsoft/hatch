@@ -2897,6 +2897,67 @@ public class IssuesControllerTests
         Assert.Contains("at most 500", Reason(result.Result));
     }
 
+    // ---- Moving between projects, in bulk ----
+
+    [Fact]
+    public async Task ABulkMove_ReKeysTheLeafAndTheOldKey404s()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        Assert.IsType<NotFoundResult>((await h.Issues.GetIssue("AER-1", default)).Result);
+
+        var events = await h.EventsAsync("OPS-1");
+        var projectChanged = Assert.Single(events.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        var payload = projectChanged.Payload!.Value;
+        Assert.Equal("AER-1", payload.GetProperty("from").GetString());
+        Assert.Equal("OPS-1", payload.GetProperty("to").GetString());
+        Assert.Equal(0, payload.GetProperty("descendants").GetInt32());
+    }
+
+    [Fact]
+    public async Task ABulkEditNamingOnlyAProject_IsAcceptedRatherThanRefusedAsEmpty()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+    }
+
+    [Fact]
+    public async Task ABulkMoveWithAClaimedIssueAmongFreeOnes_FailsOnlyTheClaimedOne()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+        await h.ClaimAsync("AER-2");
+
+        var result = Value(await h.Issues.BulkEdit(
+            Bulk(["AER-1", "AER-2", "AER-3"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal("AER-2", result.Failures.Single().Key);
+        Assert.Equal(["OPS-1", "OPS-2"], result.Changed);
+    }
+
+    [Fact]
+    public async Task ABulkMoveRunAgainNamingTheNowDeadOldKey_ReportsItAsNotThere()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default);
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1"], projectId: h.OtherProjectId), default));
+
+        Assert.Equal("AER-1", result.Failures.Single().Key);
+        Assert.Contains("there is no AER-1", result.Failures.Single().Reason);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -3183,8 +3244,10 @@ public class IssuesControllerTests
         int? statusId = null,
         string? parentKey = null,
         string? readyAt = null,
-        string? dueAt = null) =>
-        new(keys, type, statusId, parentKey, readyAt, dueAt);
+        string? dueAt = null,
+        int? projectId = null,
+        bool? moveDescendants = null) =>
+        new(keys, type, statusId, parentKey, readyAt, dueAt, projectId, moveDescendants);
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");

@@ -694,6 +694,8 @@ export interface IssueBulkEditRequest {
   parentKey?: string | null;
   readyAt?: string | null;
   dueAt?: string | null;
+  projectId?: number | null;
+  moveDescendants?: boolean | null;
 }
 
 export interface IssueBulkFailure {
