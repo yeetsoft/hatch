@@ -16,8 +16,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// so a method-level attribute silently *replaces* a class-level one rather
 /// than tightening it. Decorating every action explicitly is what keeps
 /// <see cref="PutExpressSkips"/>, <see cref="PutParentPulls"/> and
-/// <see cref="PutAgentFiles"/> closed to a key whatever else is added beside
-/// it - each decides which gates the loop may pass unattended, the same kind
+/// <see cref="PutAgentFiles"/> and <see cref="PutImplementation"/> closed to a
+/// key whatever else is added beside it - each decides which gates the loop may pass unattended, the same kind
 /// of power <see cref="PutRepositories"/> guards over there.
 /// </remarks>
 [ApiController]
@@ -33,7 +33,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             .ThenBy(s => s.Id)
             .Select(s => new StatusDto(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-                s.AgentFiles))
+                s.AgentFiles, s.IsImplementation))
             .ToListAsync(ct);
 
         return statuses;
@@ -66,7 +66,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             nameof(GetStatuses),
             new StatusDto(
                 status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles));
+                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation));
     }
 
     [HttpPatch("{id:int}")]
@@ -98,7 +98,8 @@ public class StatusesController(HatchContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
+            status.IsImplementation);
     }
 
     /// <summary>
@@ -120,7 +121,8 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
+            status.IsImplementation);
     }
 
     /// <summary>
@@ -142,7 +144,8 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
+            status.IsImplementation);
     }
 
     /// <summary>
@@ -176,7 +179,43 @@ public class StatusesController(HatchContext db) : ControllerBase
 
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles);
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
+            status.IsImplementation);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Implementation</em>: the column where code gets
+    /// written. Refuses a deferred or a terminal column - parked or shipped
+    /// work is not somewhere code is written, the same refusal
+    /// <see cref="PutAgentFiles"/> gives those columns - and ticking one
+    /// column clears every other, so at most one ever holds it; unticking is
+    /// always allowed, including on a column that became deferred or terminal
+    /// after being ticked, the same stranded-flag tolerance <c>IsWip</c>
+    /// gives that case.
+    /// </summary>
+    [HttpPut("{id:int}/implementation")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutImplementation(int id, ImplementationRequest request, CancellationToken ct)
+    {
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        if (request.IsImplementation)
+        {
+            if (status.IsDeferred) return BadRequest($"\"{status.Name}\" is deferred - code is not written there");
+            if (status.IsTerminal) return BadRequest($"\"{status.Name}\" is a done column - code is not written there");
+
+            var others = await db.Statuses.Where(s => s.Id != id && s.IsImplementation).ToListAsync(ct);
+            foreach (var other in others) other.IsImplementation = false;
+        }
+
+        status.IsImplementation = request.IsImplementation;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
+            status.IsImplementation);
     }
 
     /// <summary>
