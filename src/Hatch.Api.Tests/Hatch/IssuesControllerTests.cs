@@ -2958,6 +2958,41 @@ public class IssuesControllerTests
         Assert.Contains("there is no AER-1", result.Failures.Single().Reason);
     }
 
+    [Fact]
+    public async Task ABulkKeyOrKeylessRunnerMovingAProject_Is403AndWritesNothingForAny()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2", "AER-3"], projectId: h.OtherProjectId), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving an issue to another project is a person's call, not an agent's", obj.Value);
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Single(await h.EventsAsync("AER-3"));
+    }
+
+    [Fact]
+    public async Task ABulkUnknownTargetProject_Is400ForTheWholeRequestAndWritesNothingForAny()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+        await h.CreateAsync("task", "three");
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2", "AER-3"], projectId: 99999), default);
+
+        Assert.Contains("99999", Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString());
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.Single(await h.EventsAsync("AER-3"));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
