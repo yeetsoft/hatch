@@ -4,6 +4,7 @@
    the PUT shape, like lib/repositories.ts does and for the same reason: a
    newly-added entry has no `canonical` yet. No DOM. */
 
+import { normalizeProjectKey, rekeyObjection } from './projectKey';
 import type { Project, ProjectPatchRequest, ProjectRepositoryWriteRequest } from '../types';
 
 export interface ProjectDraft {
@@ -41,6 +42,12 @@ export function openProjectDraft(project: Project): ProjectDraft {
     icon: project.icon,
     repositories,
   };
+}
+
+/** Why Save is greyed by the key, or null - a key left alone is no objection; a changed one meets the rekey speed bump. */
+export function projectDraftKeyObjection(draft: ProjectDraft, confirmation: string): string | null {
+  if (normalizeProjectKey(draft.key) === normalizeProjectKey(draft.known.key)) return null;
+  return rekeyObjection(draft.known.key, draft.key, confirmation);
 }
 
 export function projectDraftDiff(draft: ProjectDraft): ProjectDraftDiff {

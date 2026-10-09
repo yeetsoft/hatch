@@ -9,6 +9,7 @@ import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavUtilization } from './components/NavUtilization';
 import { PrimaryNav } from './components/PrimaryNav';
+import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
@@ -43,7 +44,7 @@ export function App() {
 function AppShell() {
   const { me, isAdmin } = useMe();
   const isPhone = usePhone();
-  usePullToRefresh();
+  const pull = usePullToRefresh();
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
@@ -52,6 +53,7 @@ function AppShell() {
        from either. */
     <ConfirmationsProvider>
       <div className="hatch-app">
+        <PullToRefresh {...pull} />
         <TopBar
           appName="Hatch"
           homeHref={appHref('/')}

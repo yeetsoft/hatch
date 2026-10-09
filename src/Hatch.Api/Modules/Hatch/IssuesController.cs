@@ -463,15 +463,46 @@ public class IssuesController(
         var unchanged = new List<string>();
         var failures = new List<IssueBulkFailureDto>();
 
+        var resolved = new List<(string Key, EfHatchIssue Issue)>();
         foreach (var key in keys)
         {
             var issue = await LoadAsync(key, ct);
-            if (issue is null)
+            if (issue is null) failures.Add(new IssueBulkFailureDto(key, $"there is no {key}"));
+            else resolved.Add((key, issue));
+        }
+
+        // A move can rekey a named descendant before the loop reaches that
+        // descendant's own turn - EF's identity map then hands StageEditAsync
+        // back the same, already-moved, already-tracked instance, which mints
+        // it a second, bogus re-key. Staging every named ancestor ahead of any
+        // named descendant it actually carries avoids that: by the
+        // descendant's turn it is already in the target project, and
+        // StageEditAsync's own "already there" check no-ops it. Skipped for an
+        // ordinary bulk edit, so nothing about today's cost or ordering
+        // changes for the common case.
+        if (edit.ProjectId is not null)
+        {
+            var parentIds = await db.Issues.AsNoTracking()
+                .Select(i => new { i.Id, i.ParentId })
+                .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
+            var resolvedIds = resolved.Select(r => r.Issue.Id).ToHashSet();
+
+            int AncestorCount(long id)
             {
-                failures.Add(new IssueBulkFailureDto(key, $"there is no {key}"));
-                continue;
+                var count = 0;
+                for (var at = parentIds.GetValueOrDefault(id); at is { } parentId; at = parentIds.GetValueOrDefault(parentId))
+                {
+                    if (resolvedIds.Contains(parentId)) count++;
+                }
+
+                return count;
             }
 
+            resolved = resolved.OrderBy(r => AncestorCount(r.Issue.Id)).ToList();
+        }
+
+        foreach (var (key, issue) in resolved)
+        {
             var (moved, error, conflict, full) = await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
             if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
             else if (conflict is not null) failures.Add(new IssueBulkFailureDto(key, conflict));
