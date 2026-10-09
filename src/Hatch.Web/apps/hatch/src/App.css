@@ -1698,6 +1698,24 @@ button.hatch-chip {
   background: color-mix(in srgb, var(--status-color) 18%, transparent);
 }
 
+/* The same 44px floor as the topbar's controls and .hatch-btn, reached here
+   by its own rule because these buttons carry neither class - layout follows
+   width, touch follows pointer, so the desk's row above is untouched. */
+@media (pointer: coarse) {
+  .hatch-status-steps {
+    gap: var(--sp-3);
+  }
+
+  .hatch-status-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--t-body);
+  }
+}
+
 /* The column it is already in. Disabled rather than merely marked - pressing it
    would write an event saying an issue moved from todo to todo. */
 .hatch-status-step.here {
@@ -4541,6 +4559,76 @@ button.hatch-option.chosen {
      empty part of it stays clickable. Each chicklet takes its own clicks back
      below. */
   pointer-events: none;
+}
+
+/* PullToRefresh.tsx's one surface: a pill fixed to the top of the viewport,
+   above <TopBar> in the DOM and drawn over it by position - at the instant a
+   pull can start the bar is at the top of the screen too, and this is where
+   the browser's own indicator would draw (App.tsx, and App.css's
+   .hatch-board--stacked .hatch-column-head comment). Owns no state:
+   PullToRefresh.tsx returns null at rest, and this can never draw while a
+   dialog is open - mayStart (lib/pullToRefresh.ts) refuses while
+   .hatch-modal__overlay is present, so it never competes with Modal's
+   stacking context in practice. */
+.hatch-pull-indicator {
+  position: fixed;
+  top: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: var(--t-label);
+  font-weight: 700;
+  /* Over the page and under Modal's 100, same reasoning as
+     .hatch-confirmations - the two are never open together in practice. */
+  z-index: 90;
+  pointer-events: none;
+}
+
+/* The two phases read differently by colour alone, so the distinction
+   survives prefers-reduced-motion untouched. pullCss.test.ts pins this
+   directly on these two selectors. */
+.hatch-pull-indicator--pulling {
+  color: var(--muted);
+}
+
+.hatch-pull-indicator--ready {
+  color: var(--primary);
+}
+
+.hatch-pull-indicator__icon {
+  display: inline-flex;
+  transform: rotate(0deg);
+}
+
+/* Movement, not just colour: the arrow points up once letting go would
+   reload, instead of down while still pulling. That rotation is a flat rule
+   change, not a `transition`, so it is never something
+   prefers-reduced-motion has to remove - only the attention pulse below is. */
+.hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+  transform: rotate(180deg);
+  animation: hatch-pull-ready-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hatch-pull-ready-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+    animation: none;
+  }
 }
 
 /* Outside the scrolling list, so the way out of a tall stack does not scroll
