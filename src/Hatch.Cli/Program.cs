@@ -433,6 +433,8 @@ internal partial class Program
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
+        "  HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH",
+        "                     (exported only: scripts/.env and `config` are not read for it)",
         "",
         "A go-to-work whose own source changes under it asks to be restarted as the new",
         "build, and something outside it has to rebuild and run it again. A hatch started",

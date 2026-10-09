@@ -17,6 +17,13 @@ namespace Hatch.Cli;
 /// deliver at the session's next step, and <c>Stop</c>, to keep a session that is
 /// finishing going long enough to read what is waiting. Both run <c>hatch
 /// inbox</c>, which is this program.</para>
+///
+/// <para>A third, <c>PreToolUse</c> on <c>Bash</c>, is written when an <c>rtk</c>
+/// binary is on <c>PATH</c> and <c>HATCH_RTK</c> is not <c>off</c>: RTK rewrites
+/// a shell command into a compact proxy of itself, so the output that reaches
+/// the model is a fraction of the size. It lives here because this is the one
+/// settings file every session is handed, whether or not the operator ever ran
+/// <c>rtk init -g</c>. Without RTK the file is what it always was.</para>
 /// </remarks>
 public sealed class SessionHooks : IDisposable
 {
@@ -73,7 +80,8 @@ public sealed class SessionHooks : IDisposable
     /// <see cref="Reach"/> uses for the session's <c>PATH</c>, and for the same
     /// reason: the word only resolves where <c>Reach</c> made it.
     /// </param>
-    public static SessionHooks? Write(string temp, string key, string hatch)
+    /// <param name="rtk">The absolute path to <c>rtk</c> from <see cref="Rtk"/>, or null to write no <c>PreToolUse</c> hook.</param>
+    public static SessionHooks? Write(string temp, string key, string hatch, string? rtk = null)
     {
         string? made = null;
         try
@@ -84,6 +92,7 @@ public sealed class SessionHooks : IDisposable
 
             var run = $"{Quote(hatch)} inbox {Quote(key)} --hook";
             File.WriteAllText(hooks.Settings, Json(
+                rtk is null ? null : $"{Quote(rtk)} hook claude",
                 $"{run} post-tool-use --stamp {Quote(hooks.Stamp)} --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}",
                 $"{run} stop --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}"));
             return hooks;
@@ -99,7 +108,14 @@ public sealed class SessionHooks : IDisposable
     public static string Binary(string? processPath) =>
         Reach.OwnDirectory(processPath) is null ? "hatch" : processPath!;
 
-    private static string Json(string postToolUse, string stop)
+    /// <summary>
+    /// The <c>rtk</c> to hook in, or null when <paramref name="setting"/> (the
+    /// <c>HATCH_RTK</c> value) is <c>off</c> or none is on <paramref name="path"/>.
+    /// </summary>
+    public static string? Rtk(string? setting, string? path) =>
+        string.Equals(setting?.Trim(), "off", StringComparison.OrdinalIgnoreCase) ? null : Reach.Find("rtk", path);
+
+    private static string Json(string? preToolUse, string postToolUse, string stop)
     {
         // Written by hand, because the binary is trimmed and this is a shape
         // known at compile time.
@@ -108,6 +124,7 @@ public sealed class SessionHooks : IDisposable
         {
             json.WriteStartObject();
             json.WriteStartObject("hooks");
+            if (preToolUse is not null) Hook(json, "PreToolUse", preToolUse, matcher: "Bash");
             Hook(json, "PostToolUse", postToolUse, matcher: "*");
             Hook(json, "Stop", stop, matcher: null);
             json.WriteEndObject();

@@ -46,6 +46,59 @@ public sealed class ReachTests
         Assert.Null(Reach.OwnDirectory(""));
     }
 
+    [Fact]
+    public void A_file_with_no_execute_bit_is_not_found_on_unix()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var dir = Path(System.IO.Path.GetTempPath(), $"hatch-find-{Guid.NewGuid():N}");
+        var later = Path(dir, "later");
+        Directory.CreateDirectory(Path(dir, "first"));
+        Directory.CreateDirectory(later);
+        try
+        {
+            var inert = Path(dir, "first", "tool");
+            var runnable = Path(later, "tool");
+            File.WriteAllText(inert, "");
+            File.WriteAllText(runnable, "");
+            File.SetUnixFileMode(inert, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.SetUnixFileMode(runnable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            Assert.Equal(runnable, Reach.Find("tool", string.Join(System.IO.Path.PathSeparator, Path(dir, "first"), later)));
+            Assert.Null(Reach.Find("tool", Path(dir, "first")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_relative_path_entry_is_found_as_an_absolute_path()
+    {
+        var dir = Path(System.IO.Path.GetTempPath(), $"hatch-find-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var original = Directory.GetCurrentDirectory();
+        try
+        {
+            var file = Path(dir, OperatingSystem.IsWindows() ? "tool.exe" : "tool");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            Directory.SetCurrentDirectory(dir);
+            var found = Reach.Find("tool", ".");
+
+            Assert.NotNull(found);
+            Assert.True(System.IO.Path.IsPathRooted(found));
+            Assert.Equal(System.IO.Path.GetFileName(file), System.IO.Path.GetFileName(found));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(original);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>
     /// The front rather than the back, so the <c>hatch</c> that answers is the
     /// one that composed the prompt.
