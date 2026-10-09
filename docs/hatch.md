@@ -3273,6 +3273,19 @@ into the WIP section — an edited row, or a stock row on a board that has
 never turned WIP on, is left exactly as it is, and still dispatches a session
 the ordinary way.
 
+**The breakdown, analysis and implementation rows ask for less, and verify
+rather than redo.** The breakdown row caps a story's acceptance criteria at
+five, retyping one that needs more to `epic` and breaking it into stories
+under it; it and the analysis row now write the implementation plan onto the
+tasks a ticket is cut into, not into its own description, with those tasks
+filed into the column the ticket is leaving; and the implementation row, once
+every one of a story's or a task's own child tasks stands in a terminal or
+deferred column, verifies the ticket against the trunk criterion by criterion
+and records or opens its pull request, rather than implementing it again.
+`ShrinkStockPlaybooks` rewords all three rows only where each still reads its
+current text byte for byte — the same guard every reword before it has used —
+and leaves an edited row exactly as it is.
+
 ## The unattended loop
 
 `hatch go-to-work` is [the dispatcher](#the-dispatcher) run in a circle: read
