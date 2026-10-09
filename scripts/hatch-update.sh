@@ -11,13 +11,13 @@ done
 script=$(cd -P "$(dirname "$src")" && pwd)/$(basename "$src")
 cd -P "$(dirname "$src")/.."
 
-# Link onto ~/bin as `hatch-update` the first time, unless something is there.
-link=$HOME/bin/hatch-update
+# Link onto ~/.local/bin as `hatch-update` the first time, unless something is there.
+link=$HOME/.local/bin/hatch-update
 if [ ! -e "$link" ] && [ ! -L "$link" ]; then
-  mkdir -p "$HOME/bin"
+  mkdir -p "$HOME/.local/bin"
   ln -s "$script" "$link"
   echo "hatch: linked $link"
-  case ":$PATH:" in *":$HOME/bin:"*) ;; *) echo "hatch: add \$HOME/bin to your PATH to run it as 'hatch-update'" ;; esac
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "hatch: add \$HOME/.local/bin to your PATH to run it as 'hatch-update'" ;; esac
 fi
 
 branch=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
