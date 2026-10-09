@@ -21,6 +21,28 @@ namespace Hatch.Cli;
 public static class Reach
 {
     /// <summary>
+    /// The first file called <paramref name="name"/> in a directory of
+    /// <paramref name="path"/>, or null. On Windows <c>.exe</c> and <c>.cmd</c>
+    /// are tried before the bare name.
+    /// </summary>
+    /// <param name="path"><see cref="Environment"/>'s <c>PATH</c> in a real run; a parameter so a test can name directories of its own.</param>
+    public static string? Find(string name, string? path)
+    {
+        foreach (var dir in (path ?? "").Split(Path.PathSeparator))
+        {
+            if (dir.Length == 0) continue;
+
+            foreach (var candidateName in OperatingSystem.IsWindows() ? (string[])[$"{name}.exe", $"{name}.cmd", name] : [name])
+            {
+                var candidate = Path.Combine(dir, candidateName);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The directory holding this program, if this program is a binary called
     /// <c>hatch</c>. Null for every other way of being started.
     /// </summary>

@@ -673,7 +673,8 @@ public sealed class Increment(
     {
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
-        using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath));
+        using var hooks = SessionHooks.Write(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath),
+            SessionHooks.Rtk(Environment.GetEnvironmentVariable("HATCH_RTK"), Environment.GetEnvironmentVariable("PATH")));
         if (hooks is null)
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
