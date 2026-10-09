@@ -83,6 +83,7 @@ public sealed class WorkspaceLimitTests : RepoFixture
 
         Assert.Equal(LimitPush.Refused, pushed.Outcome);
         Assert.Contains("protected", pushed.Why);
+        Assert.Equal(G(_work, "rev-parse", "--short=9", "HEAD").Trim(), pushed.Sha);
 
         var left = ws.Leave("HA-31", false);
         Assert.Contains(left.Notes, n => n.Contains("ha-31-thing has 1 commit(s) origin does not"));

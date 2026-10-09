@@ -86,6 +86,13 @@ public interface IWorkspace
     /// <see cref="Leave"/>, which then finds a clean tree.
     /// </summary>
     LimitPushed PushForLimit(string key, string title);
+
+    /// <summary>
+    /// What <paramref name="branch"/> changes relative to the trunk, as
+    /// <c>git diff --stat</c> would print it - best-effort, and null wherever it
+    /// cannot be read rather than thrown.
+    /// </summary>
+    string? DiffStat(string branch);
 }
 
 /// <summary>What came of pushing a session's work after its account ran out of usage.</summary>
@@ -101,7 +108,11 @@ public enum LimitPush
 }
 
 /// <param name="Branch">The issue's branch, cut if it did not exist - null only for <see cref="LimitPush.Nothing"/> off the trunk.</param>
-/// <param name="Sha">Where the branch stands now, on <see cref="LimitPush.Pushed"/> only.</param>
+/// <param name="Sha">
+/// The local commit's sha, once there is one - on <see cref="LimitPush.Pushed"/>,
+/// and on the <see cref="LimitPush.Refused"/> whose commit went through and only
+/// the push itself did not. Null everywhere nothing has been committed yet.
+/// </param>
 public sealed record LimitPushed(LimitPush Outcome, string? Branch, string? Sha, string? Why);
 
 /// <summary>

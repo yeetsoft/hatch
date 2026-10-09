@@ -47,9 +47,11 @@ public sealed partial class Workspace
                 return new LimitPushed(LimitPush.Refused, branch, null, "what was in the tree would not commit");
         }
 
-        var push = Git("push", "origin", branch);
-        if (!push.Ok) return new LimitPushed(LimitPush.Refused, branch, null, push.Why);
+        var sha = Short("HEAD");
 
-        return new LimitPushed(LimitPush.Pushed, branch, Short("HEAD"), null);
+        var push = Git("push", "origin", branch);
+        if (!push.Ok) return new LimitPushed(LimitPush.Refused, branch, sha, push.Why);
+
+        return new LimitPushed(LimitPush.Pushed, branch, sha, null);
     }
 }
