@@ -946,6 +946,7 @@ HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every
                    repository the board binds that it has no checkout of
 HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on
 HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH
+                   (exported only: scripts/.env and `hatch config` are not read for it)
 ```
 
 `--repo` on `go-to-work` or `work` (repeatable) beats `HATCH_REPOS` outright for

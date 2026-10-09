@@ -1329,7 +1329,9 @@ public sealed class IncrementTests
         var temp = Path.Combine(dir, "temp");
         try
         {
-            File.WriteAllText(Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk"), "");
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
             var rtk = SessionHooks.Rtk(null, dir);
             Assert.Equal(Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk"), rtk);
@@ -1356,7 +1358,9 @@ public sealed class IncrementTests
         Directory.CreateDirectory(empty);
         try
         {
-            File.WriteAllText(Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk"), "");
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
             Assert.Null(SessionHooks.Rtk("off", dir));
             Assert.Null(SessionHooks.Rtk(" OFF ", dir));
