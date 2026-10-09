@@ -65,6 +65,9 @@ public class PlanController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.Express,
+                i.StalledAt,
+                i.StalledWhy,
+                i.Held,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -91,7 +94,10 @@ public class PlanController(
                     Claim: claims.Project(c.Claim, now),
                     Expedited: c.Priority >= PriorityLevels.Expedited,
                     Express: c.Express,
-                    Priority: PriorityLevels.Name(c.Priority)),
+                    Priority: PriorityLevels.Name(c.Priority),
+                    StalledAt: c.StalledAt,
+                    StalledWhy: c.StalledWhy,
+                    Held: c.Held),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
 
@@ -139,6 +145,9 @@ public class PlanController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.Express,
+                i.StalledAt,
+                i.StalledWhy,
+                i.Held,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -219,7 +228,10 @@ public class PlanController(
                         Claim: claims.Project(row.Claim, now),
                         Expedited: row.Priority >= PriorityLevels.Expedited,
                         Express: row.Express,
-                        Priority: PriorityLevels.Name(row.Priority)),
+                        Priority: PriorityLevels.Name(row.Priority),
+                        StalledAt: row.StalledAt,
+                        StalledWhy: row.StalledWhy,
+                        Held: row.Held),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested

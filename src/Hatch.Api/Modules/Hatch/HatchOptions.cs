@@ -67,4 +67,32 @@ public class HatchOptions
     /// negative value is the misconfiguration the fallback is for.
     /// </remarks>
     public int StallLapseMinutes { get; set; } = 5;
+
+    /// <summary>
+    /// How long a marked issue is folded before the loop picks it back up by
+    /// itself - see <see cref="EfHatchIssue.StalledAt"/>. Zero means never
+    /// resume unattended; negative falls back to the default, exactly as
+    /// <see cref="StallLapseMinutes"/> does.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="StallLapseMinutes"/> raised to 15. That one
+    /// is also the claim-quiet window - <see cref="IssueClaims.IsQuiet"/> and
+    /// <see cref="IssueClaimController"/> read the same seconds - and raising
+    /// it would make a dead runner's claim hold three times as long, which is
+    /// not what this setting is for.
+    ///
+    /// Read through <see cref="IssueClaims.StallResumeSeconds"/> and nowhere
+    /// else, guarded there the way <see cref="StallLapseMinutes"/> is.
+    /// </remarks>
+    public int StallResumeMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// How many consecutive stalls an issue may resume through before it
+    /// holds for a person instead.
+    /// </summary>
+    /// <remarks>
+    /// Read through <see cref="IssueClaims.StallResumeLimit"/> and nowhere
+    /// else.
+    /// </remarks>
+    public int StallResumeLimit { get; set; } = 3;
 }
