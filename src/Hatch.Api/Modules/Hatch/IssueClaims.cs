@@ -60,6 +60,28 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         _ => new HatchOptions().StallLapseMinutes * 60,
     };
 
+    /// <summary>
+    /// How long a marked issue is folded before the loop picks it back up by
+    /// itself, in seconds - see <see cref="HatchOptions.StallResumeMinutes"/>.
+    /// Guarded the way <see cref="StallLapseSeconds"/> is: zero is kept as
+    /// "never resume unattended", and only a negative value falls back.
+    /// </summary>
+    public int StallResumeSeconds { get; } = options.Value.StallResumeMinutes switch
+    {
+        0 => 0,
+        > 0 => options.Value.StallResumeMinutes * 60,
+        _ => new HatchOptions().StallResumeMinutes * 60,
+    };
+
+    /// <summary>
+    /// How many consecutive stalls an issue may resume through before it
+    /// holds for a person instead - see
+    /// <see cref="HatchOptions.StallResumeLimit"/>.
+    /// </summary>
+    public int StallResumeLimit { get; } = options.Value.StallResumeLimit > 0
+        ? options.Value.StallResumeLimit
+        : new HatchOptions().StallResumeLimit;
+
     /// <summary>The heartbeat at or after which a claim is still alive.</summary>
     public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-TtlSeconds);
 

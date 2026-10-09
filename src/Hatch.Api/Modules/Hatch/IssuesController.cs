@@ -161,6 +161,9 @@ public class IssuesController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.Express,
+                i.StalledAt,
+                i.StalledWhy,
+                i.Held,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -194,7 +197,10 @@ public class IssuesController(
                 Express: i.Express,
                 Priority: PriorityLevels.Name(effective),
                 PriorityOwn: PriorityLevels.Name(i.Priority),
-                PriorityFrom: effectiveFrom));
+                PriorityFrom: effectiveFrom,
+                StalledAt: i.StalledAt,
+                StalledWhy: i.StalledWhy,
+                Held: i.Held));
         }
 
         return cards;

@@ -195,6 +195,14 @@ export interface IssueCard {
       opposite of `expedited` - so nothing here sorts either. See
       IssueCardDto.Express. */
   express: boolean;
+  /** When an increment last left this ticket where it found it, or null.
+      See IssueCardDto.StalledAt. */
+  stalledAt: string | null;
+  /** One sentence saying why, or null. See IssueCardDto.StalledWhy. */
+  stalledWhy: string | null;
+  /** A person has said the loop is to keep off this ticket until they say
+      otherwise. See IssueCardDto.Held. */
+  held: boolean;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -370,6 +378,14 @@ export interface Issue {
       other time. Readable by anybody a dispatch reaches and writable only by
       a person, through its own route - see IssueExpressController. */
   express: boolean;
+  /** When an increment last left this ticket where it found it, or null.
+      See IssueCard.stalledAt and IssueDto.StalledAt. */
+  stalledAt: string | null;
+  /** One sentence saying why, or null. See IssueCard.stalledWhy and IssueDto.StalledWhy. */
+  stalledWhy: string | null;
+  /** A person has said the loop is to keep off this ticket until they say
+      otherwise. See IssueCard.held and IssueDto.Held. */
+  held: boolean;
   /** What a runner last found when it merged this issue's branch against the
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */

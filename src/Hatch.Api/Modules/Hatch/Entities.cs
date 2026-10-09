@@ -676,6 +676,24 @@ public class EfHatchIssue
     public bool Express { get; set; }
 
     /// <summary>
+    /// When an increment last left this ticket where it found it. Null for
+    /// the overwhelming majority of issues.
+    /// </summary>
+    public DateTimeOffset? StalledAt { get; set; }
+
+    /// <summary>
+    /// One sentence saying why, capped the way <see cref="ClaimChatter"/> is.
+    /// </summary>
+    [MaxLength(MaxClaimChatterLength)]
+    public string? StalledWhy { get; set; }
+
+    /// <summary>
+    /// A person has said the loop is to keep off this ticket until they say
+    /// otherwise.
+    /// </summary>
+    public bool Held { get; set; }
+
+    /// <summary>
     /// How many of an epic's stories may be in progress at once. Means
     /// something on an epic and nothing on any other type; null reads as
     /// <see cref="DefaultEpicWipLimit"/>, not as unlimited.
@@ -1299,6 +1317,15 @@ public class EfHatchIssueEvent
     /// same as <see cref="PriorityChanged"/>.
     /// </summary>
     public const string ExpressChanged = "express_changed";
+
+    /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
+    public const string Stalled = "stalled";
+
+    /// <summary>A person marked this ticket for the loop to keep off - see <see cref="EfHatchIssue.Held"/>.</summary>
+    public const string Held = "held";
+
+    /// <summary>A person let the loop resume dispatching this ticket.</summary>
+    public const string Resumed = "resumed";
 
     /// <summary>
     /// An epic's <see cref="EfHatchIssue.WipLimit"/> was set, changed or
