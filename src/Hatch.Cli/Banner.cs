@@ -78,7 +78,7 @@ public static class Banner
     private static string Glyph(IncrementReport report) =>
         report.Preempted ? Siren
         : report.ExitCode != 0 || report.Interrupted || report.LostLease || report.Skipped ? Pan
-        : report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 ? Chick
+        : report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Clamped ? Chick
         : Egg;
 
     /// <summary>

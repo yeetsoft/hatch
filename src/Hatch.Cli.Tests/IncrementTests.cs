@@ -370,6 +370,81 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-224: a session that writes <see cref="SessionHooks.Clamp"/> - whichever
+    /// hook or callback did it - is read back onto the report once the session
+    /// ends, the ticket is told about it in one comment, and the outcome reads
+    /// as clamped rather than a plain "filed N under it".
+    /// </summary>
+    [Fact]
+    public async Task A_clamped_session_that_filed_work_but_did_not_move_reports_clamped_and_comments_once()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            var clamp = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "clamp.json");
+            File.WriteAllText(clamp, """{"tokens":820000,"requests":37}""");
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Clamped);
+        Assert.Equal(820_000, report.ClampedAtTokens);
+        Assert.Equal(37, report.ClampedAtRequests);
+        Assert.Equal(["AER-2", "AER-3"], report.Filed);
+        Assert.Equal("clamped at 820k tokens, filed 2 under it", report.Outcome);
+        Assert.False(report.Stalled);
+
+        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
+        Assert.Single(written);
+        var body = written[0].Read<CommentCreateRequest>().Body;
+        Assert.Contains("820k", body, StringComparison.Ordinal);
+        Assert.Contains("37", body, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-224, HA-127's own regression anchor: filed work with no clamp still
+    /// reads exactly as it did before the clamp existed.
+    /// </summary>
+    [Fact]
+    public async Task A_ticket_that_filed_work_without_a_clamp_reads_as_it_always_did()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.Clamped);
+        Assert.Equal(["AER-2", "AER-3"], report.Filed);
+        Assert.Equal("filed 2 under it", report.Outcome);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
     /// <summary>A child present at dispatch and gone by the after-read is not filed - only new keys count.</summary>
     [Fact]
     public async Task A_child_that_disappeared_does_not_count_as_filed()

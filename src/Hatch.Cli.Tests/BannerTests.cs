@@ -101,6 +101,18 @@ public sealed class BannerTests
         Assert.Contains(lines, l => l.Contains("conflicts with main resolved", StringComparison.Ordinal));
     }
 
+    /// <summary>HA-224: a clamp that fired on an unmoved ticket still closes with the success glyph.</summary>
+    [Fact]
+    public void AClampedTicket_ClosesWithAChick()
+    {
+        var report = Report();
+        report.ClampedAtTokens = 820_000;
+
+        var lines = Banner.Closing(report);
+
+        Assert.StartsWith("🐣🐣🐣🐣🐣 STOPPING WORK ON AER-1", lines[0], StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AStall_ClosesWithAnEgg()
     {
