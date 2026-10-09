@@ -394,6 +394,12 @@ public class AdminSurfaceTests
         // column its own filing lands in. See StatusesController.PutAgentFiles.
         "StatusesController.PutAgentFiles",
 
+        // The column where code gets written. Reading it is open, the same as
+        // ExpressSkips, ParentPulls and AgentFiles - only the write is here.
+        // It decides which move a dependency gates, which the loop must not be
+        // able to move for itself. See StatusesController.PutImplementation.
+        "StatusesController.PutImplementation",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -514,6 +520,10 @@ public class AdminSurfaceTests
         // Where an agent's own issues are born, which the loop must not be
         // able to move for itself.
         "StatusesController.PutAgentFiles",
+
+        // The column where code gets written, which the loop must not be able
+        // to move for itself.
+        "StatusesController.PutImplementation",
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",

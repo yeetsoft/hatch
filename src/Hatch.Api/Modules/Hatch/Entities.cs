@@ -358,6 +358,21 @@ public class EfHatchStatus
     public bool AgentFiles { get; set; }
 
     /// <summary>
+    /// The column where code gets written - see HAT-4, the first thing that
+    /// reads it, through <c>Columns.Implementation</c>. At most one column holds
+    /// this; <see cref="StatusesController.PutImplementation"/> clears every
+    /// other row when it sets one. It is read only where the column is neither
+    /// deferred nor terminal, so a tick left on a column that became either is
+    /// carried as stored and ignored.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutImplementation"/>) for the same reason
+    /// as <see cref="AgentFiles"/>: it decides which move a dependency gates,
+    /// and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool IsImplementation { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave

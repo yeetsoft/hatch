@@ -78,9 +78,15 @@ public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 /// whatever it was flagged, and it is <c>WipSectionDto.StatusIds</c> that
 /// answers the counted question. See <see cref="EfHatchStatus.IsWip"/>.
 /// </param>
+/// <param name="IsImplementation">
+/// The stored tick: whether the operator has named this column as where code
+/// gets written. A tick on a deferred or terminal column is carried as stored
+/// and ignored by the reader, the same stranded-flag tolerance as
+/// <paramref name="IsWip"/>. See <see cref="EfHatchStatus.IsImplementation"/>.
+/// </param>
 public record StatusDto(
     int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
-    bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false);
+    bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false, bool IsImplementation = false);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
@@ -165,6 +171,13 @@ public record ParentPullsRequest(bool ParentPulls);
 /// same route both ticks and unticks it, and the caller says which it meant.
 /// </summary>
 public record AgentFilesRequest(bool AgentFiles);
+
+/// <summary>
+/// Whether this column is where code gets written. One required boolean, for
+/// the reason <see cref="ExpressSkipsRequest"/> is: the same route both ticks
+/// and unticks it, and the caller says which it meant.
+/// </summary>
+public record ImplementationRequest(bool IsImplementation);
 
 // ---- Issues ----
 
