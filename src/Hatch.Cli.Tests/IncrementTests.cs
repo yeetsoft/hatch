@@ -1472,4 +1472,65 @@ public sealed class IncrementTests
         Assert.Equal("hatch", SessionHooks.Binary("/usr/share/dotnet/dotnet"));
         Assert.Equal("hatch", SessionHooks.Binary(null));
     }
+
+    [Fact]
+    public void The_session_settings_carry_rtks_bash_hook_where_rtk_is_on_path()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hatch-rtk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var temp = Path.Combine(dir, "temp");
+        try
+        {
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            var rtk = SessionHooks.Rtk(null, dir);
+            Assert.Equal(Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk"), rtk);
+
+            using var hooks = SessionHooks.Write(temp, "AR-8", "hatch", rtk);
+            Assert.NotNull(hooks);
+
+            using var settings = System.Text.Json.JsonDocument.Parse(File.ReadAllText(hooks.Settings));
+            var pre = settings.RootElement.GetProperty("hooks").GetProperty("PreToolUse")[0];
+            Assert.Equal("Bash", pre.GetProperty("matcher").GetString());
+            Assert.Equal($"\"{rtk}\" hook claude", pre.GetProperty("hooks")[0].GetProperty("command").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_session_settings_are_unchanged_where_rtk_is_absent_or_off()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hatch-rtk-{Guid.NewGuid():N}");
+        var empty = Path.Combine(dir, "empty");
+        Directory.CreateDirectory(empty);
+        try
+        {
+            var file = Path.Combine(dir, OperatingSystem.IsWindows() ? "rtk.exe" : "rtk");
+            File.WriteAllText(file, "");
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            Assert.Null(SessionHooks.Rtk("off", dir));
+            Assert.Null(SessionHooks.Rtk(" OFF ", dir));
+            Assert.Null(SessionHooks.Rtk(null, empty));
+
+            using var without = SessionHooks.Write(dir, "AR-8", "hatch", rtk: null);
+            using var bare = SessionHooks.Write(dir, "AR-8", "hatch");
+            Assert.NotNull(without);
+            Assert.NotNull(bare);
+
+            var a = File.ReadAllText(without.Settings).Replace(without.Directory.Replace("\\", "\\\\"), "<dir>");
+            var b = File.ReadAllText(bare.Settings).Replace(bare.Directory.Replace("\\", "\\\\"), "<dir>");
+            Assert.DoesNotContain("PreToolUse", a);
+            Assert.Equal(a, b);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
