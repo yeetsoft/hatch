@@ -32,6 +32,7 @@ import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
+import { IssueFacts } from '../components/IssueFacts';
 import { IssuePicker } from '../components/IssuePicker';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MomentChip } from '../components/MomentChip';
@@ -114,6 +115,10 @@ export function IssuePage() {
   const [priorityBusy, setPriorityBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
+  /* Whether the primary-info card shows its form or its read mode - deliberately
+     not persisted (HA-334 §6.7: a speed bump that only works on the first page
+     load is not a speed bump), so every fresh load opens read-only. */
+  const [editingPrimary, setEditingPrimary] = useState(false);
 
   const load = useCallback(async () => {
     /* The fifth read, sent with the other four and awaited apart from them.
@@ -524,6 +529,16 @@ export function IssuePage() {
       />
 
       <Card>
+        <div className="hatch-section-head">
+          <h2 className="hatch-section-title">Details</h2>
+          <div className="hatch-section-actions">
+            <Button onClick={() => setEditingPrimary(!editingPrimary)}>{editingPrimary ? 'Done' : 'Edit'}</Button>
+          </div>
+        </div>
+
+        {!editingPrimary && <IssueFacts issue={issue} project={project} stopped={stopped} />}
+
+        {editingPrimary && (
         <div className="hatch-issue-controls">
           <Field label="Type">
             <select value={issue.type} onChange={(e) => void save({ type: e.target.value as IssueType })}>
@@ -675,6 +690,7 @@ export function IssuePage() {
             <WipLimitField limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
           )}
         </div>
+        )}
       </Card>
 
       {/* Drawn where something may be filed under this issue, and where
