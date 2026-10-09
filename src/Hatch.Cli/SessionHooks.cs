@@ -53,6 +53,15 @@ public sealed class SessionHooks : IDisposable
     public string ClampDelivered => Path.ChangeExtension(Clamp, ".delivered");
 
     /// <summary>
+    /// The playbook's budget, in tokens, written once before the session's
+    /// quiet/streamed branches split - its mere presence on disk is the signal
+    /// that this session has a budget at all, so a <c>--quiet</c> session's hook
+    /// knows whether to read its own transcript for the count a streamed
+    /// session's in-process loop already has.
+    /// </summary>
+    public string Budget => Path.Combine(Directory, "budget");
+
+    /// <summary>
     /// Makes the directory and writes the file, or answers null where it cannot.
     /// A session without hooks still works its ticket; it is a message sent
     /// mid-run that waits for the next session instead.
@@ -75,8 +84,8 @@ public sealed class SessionHooks : IDisposable
 
             var run = $"{Quote(hatch)} inbox {Quote(key)} --hook";
             File.WriteAllText(hooks.Settings, Json(
-                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)} --clamp {Quote(hooks.Clamp)}",
-                $"{run} stop --clamp {Quote(hooks.Clamp)}"));
+                $"{run} post-tool-use --stamp {Quote(hooks.Stamp)} --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}",
+                $"{run} stop --clamp {Quote(hooks.Clamp)} --budget {Quote(hooks.Budget)}"));
             return hooks;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

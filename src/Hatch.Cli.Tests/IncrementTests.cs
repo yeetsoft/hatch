@@ -152,6 +152,71 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-223: the budget file, for a --quiet session's own hook to read ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_playbook_with_a_budget_gets_the_budget_file_before_the_quiet_streamed_split(bool quiet)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: 2) };
+        string? budgetPath = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            budgetPath = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "budget");
+            Assert.True(File.Exists(budgetPath));
+            Assert.Equal("2000000", File.ReadAllText(budgetPath));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet, claim, default);
+
+        Assert.NotNull(budgetPath);
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_playbook_with_no_budget_never_gets_a_budget_file()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        var work = Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(budget: null) };
+        string? budgetPath = null;
+
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            budgetPath = Path.Combine(Path.GetDirectoryName(request.HookSettings)!, "budget");
+            Assert.False(File.Exists(budgetPath));
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.NotNull(budgetPath);
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-222: the clamp ----
+
     [Theory]
     [InlineData(null)]
     [InlineData(10)]
@@ -918,12 +983,13 @@ public sealed class IncrementTests
         Assert.Contains("inbox \"AER-1\" --hook post-tool-use --stamp ", stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
         Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "inbox.stamp"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
         Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "clamp.json"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(path)!, "budget"), stepHook.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         var stop = hooks.GetProperty("Stop")[0].GetProperty("hooks")[0];
         Assert.Equal(10, stop.GetProperty("timeout").GetInt32());
         Assert.Contains("inbox \"AER-1\" --hook stop", stop.GetProperty("command").GetString(), StringComparison.Ordinal);
         Assert.EndsWith(
-            $"--clamp \"{Path.Combine(Path.GetDirectoryName(path)!, "clamp.json")}\"",
+            $"--clamp \"{Path.Combine(Path.GetDirectoryName(path)!, "clamp.json")}\" --budget \"{Path.Combine(Path.GetDirectoryName(path)!, "budget")}\"",
             stop.GetProperty("command").GetString(), StringComparison.Ordinal);
 
         await claim.ReleaseAsync();

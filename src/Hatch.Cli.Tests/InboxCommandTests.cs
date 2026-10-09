@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 
@@ -18,6 +19,7 @@ public sealed class InboxCommandTests : IDisposable
 
     private string Stamp => Path.Combine(_dir, "inbox.stamp");
     private string Clamp => Path.Combine(_dir, "clamp.json");
+    private string Budget => Path.Combine(_dir, "budget");
 
     public void Dispose()
     {
@@ -25,8 +27,8 @@ public sealed class InboxCommandTests : IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private InboxCommand Command(TimeSpan? limit = null) =>
-        new(_h.Board, _h.Say, new StringReader("{\"tool_name\":\"Bash\"}"), new FrozenClock(Now))
+    private InboxCommand Command(TimeSpan? limit = null, string? stdin = null) =>
+        new(_h.Board, _h.Say, new StringReader(stdin ?? "{\"tool_name\":\"Bash\"}"), new FrozenClock(Now))
         {
             Limit = limit ?? TimeSpan.FromSeconds(InboxCommand.CallSeconds),
         };
@@ -51,6 +53,18 @@ public sealed class InboxCommandTests : IDisposable
     }
 
     private void Crossed() => File.WriteAllText(Clamp, "{\"tokens\":1200000,\"requests\":42}");
+
+    private void BudgetIs(long tokens) => File.WriteAllText(Budget, tokens.ToString(CultureInfo.InvariantCulture));
+
+    private string Transcript(params string[] lines)
+    {
+        var path = Path.Combine(_dir, "transcript.jsonl");
+        File.WriteAllLines(path, lines);
+        return path;
+    }
+
+    private static string StdinWithTranscript(string path) =>
+        JsonSerializer.Serialize(new { transcript_path = path });
 
     // ---- The throttle ----
 
@@ -199,6 +213,117 @@ public sealed class InboxCommandTests : IDisposable
         Assert.False(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
     }
 
+    // ---- HA-223: a --quiet session's own clamp, read off its transcript ----
+
+    [Theory]
+    [InlineData("post-tool-use")]
+    [InlineData("stop")]
+    public async Task A_transcripts_tokens_crossing_the_budget_clamps_and_delivers(string hook)
+    {
+        BudgetIs(1_000_000);
+        var transcript = Transcript(
+            Fixtures.AssistantUsage("msg_1", input: 600_000, output: 100_000),
+            Fixtures.AssistantUsage("msg_2", input: 300_000, output: 50_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", hook, "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(Clamp));
+        var fact = JsonDocument.Parse(File.ReadAllText(Clamp)).RootElement;
+        Assert.Equal(1_050_000, fact.GetProperty("tokens").GetInt64());
+        Assert.Equal(2, fact.GetProperty("requests").GetInt64());
+
+        var output = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement;
+        var text = hook == "stop"
+            ? output.GetProperty("reason").GetString()!
+            : output.GetProperty("hookSpecificOutput").GetProperty("additionalContext").GetString()!;
+        Assert.Contains(Prompt.WrapUp("AER-1"), text, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task A_transcript_under_budget_clamps_nothing()
+    {
+        BudgetIs(2_000_000);
+        var transcript = Transcript(
+            Fixtures.AssistantUsage("msg_1", input: 600_000, output: 100_000),
+            Fixtures.AssistantUsage("msg_2", input: 300_000, output: 50_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_clamp_already_written_is_not_re_derived_from_the_transcript()
+    {
+        Crossed();
+        BudgetIs(1);
+        // Pointed at a transcript that does not exist: if this were read, the
+        // call would still succeed (nothing crosses a missing file), so what
+        // this actually proves is that Clamp's own contents survive unchanged
+        // rather than being recomputed.
+        var transcript = Path.Combine(_dir, "does-not-exist.jsonl");
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "post-tool-use", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("{\"tokens\":1200000,\"requests\":42}", File.ReadAllText(Clamp));
+        Assert.True(File.Exists(Path.ChangeExtension(Clamp, ".delivered")));
+    }
+
+    [Fact]
+    public async Task No_budget_file_means_no_transcript_read_even_with_a_transcript_path()
+    {
+        var transcript = Transcript(Fixtures.AssistantUsage("msg_1", input: 5_000_000, output: 1_000_000));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_missing_transcript_file_fails_nothing()
+    {
+        BudgetIs(1);
+        var transcript = Path.Combine(_dir, "does-not-exist.jsonl");
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_transcript_line_that_is_not_json_fails_nothing()
+    {
+        BudgetIs(1);
+        var transcript = Transcript("not json at all", Fixtures.AssistantUsage("msg_1", input: 10));
+        Waiting();
+
+        var code = await Command(stdin: StdinWithTranscript(transcript))
+            .RunAsync(["AER-1", "--hook", "stop", "--budget", Budget, "--clamp", Clamp], default);
+
+        Assert.Equal(0, code);
+        Assert.True(File.Exists(Clamp));
+        Assert.Empty(_h.Say.Complained);
+    }
+
     // ---- What it prints ----
 
     [Fact]
@@ -339,7 +464,7 @@ public sealed class InboxCommandTests : IDisposable
     // ---- The arguments ----
 
     [Fact]
-    public async Task It_reads_and_discards_what_the_hook_was_given()
+    public async Task It_reads_and_parses_what_the_hook_was_given()
     {
         var stdin = new StringReader("{\"anything\":true}");
         Waiting();

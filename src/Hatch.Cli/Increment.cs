@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Hatch.Cli;
@@ -661,10 +662,23 @@ public sealed class Increment(
         if (hooks is null)
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
+        var budget = work.Playbook?.Budget is { } m ? m * 1_000_000L : (long?)null;
+        if (budget is { } limitTokens && hooks is not null)
+        {
+            try
+            {
+                File.WriteAllText(hooks.Budget, limitTokens.ToString(CultureInfo.InvariantCulture));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A budget that cannot be written must not fail the increment -
+                // a --quiet session's hook simply has nothing to clamp against.
+            }
+        }
+
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
         var render = new StreamRender(root, facts);
-        var budget = work.Playbook?.Budget is { } m ? m * 1_000_000L : (long?)null;
 
         await MarkSaidAsync(work, ct);
 
