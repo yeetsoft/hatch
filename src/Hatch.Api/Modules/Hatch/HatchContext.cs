@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, fifteen tables.
+/// migration history, sixteen tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -13,6 +13,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
+    public DbSet<EfHatchImage> Images => Set<EfHatchImage>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();

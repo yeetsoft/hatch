@@ -2815,6 +2815,12 @@ input.hatch-inline-title-input {
   overflow-x: auto;
 }
 
+/* A pasted screenshot is as wide as the screen it came from. */
+.hatch-markdown img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ---- The Statuses page ----
 
    Four of the table's headers carry their meaning only in `title=` - a mouse

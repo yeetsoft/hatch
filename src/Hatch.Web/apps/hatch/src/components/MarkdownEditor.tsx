@@ -23,9 +23,19 @@
    It is in apps/hatch and not @hatch/ui: the ui barrel pulls every component's
    CSS into every app, and only this app writes prose. */
 
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import { Button, useTheme } from '@hatch/ui';
+import { uploadImage } from '../api/client';
 import { clientLogger } from '../lib/clientLogger';
+import {
+  SHRINK_ATTEMPTS,
+  encodeType,
+  imageMarkdown,
+  insertText,
+  pastedImage,
+  shrinkTarget,
+} from '../lib/descriptionImage';
+import { message } from '../lib/errors';
 import { normalizeEol } from '../lib/text';
 import { clampedHeight, parseCeiling, useAutoGrow } from '../lib/useAutoGrow';
 
@@ -105,6 +115,70 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   return <MonacoEditor {...props} monaco={ready.monaco} handoff={ready.handoff} />;
 }
 
+/** The file itself when it fits, else it drawn smaller onto a canvas and
+    re-encoded - the DOM half of ProjectLogoField's resize, with the arithmetic
+    in lib/descriptionImage.ts. Gives up after SHRINK_ATTEMPTS and returns what
+    it has: the server's refusal is what the person then reads. */
+async function shrink(file: File): Promise<Blob> {
+  let blob: Blob = file;
+  let bitmap: ImageBitmap | null = null;
+  try {
+    for (let attempt = 0; attempt < SHRINK_ATTEMPTS; attempt++) {
+      bitmap ??= await createImageBitmap(file);
+      const target = shrinkTarget(bitmap.width, bitmap.height, blob.size);
+      if (!target) return blob;
+      const canvas = document.createElement('canvas');
+      canvas.width = target.width;
+      canvas.height = target.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return blob;
+      ctx.drawImage(bitmap, 0, 0, target.width, target.height);
+      const next = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, encodeType(file.type)));
+      if (!next) return blob;
+      blob = next;
+    }
+    return blob;
+  } finally {
+    bitmap?.close();
+  }
+}
+
+/**
+ * Paste an image into either body of the editor.
+ *
+ * Nothing is inserted until the upload has succeeded, and then at the caret as
+ * it is *then* - there is no placeholder to find again. While it is in flight
+ * the note says so; on a refusal the note carries the server's sentence and the
+ * draft is untouched. `onPaste` is stable, since Monaco's listener is attached
+ * once; it reads the latest `insert` through a ref, as `onChangeRef` does.
+ */
+function useImagePaste(insert: (text: string) => void) {
+  const insertRef = useRef(insert);
+  useEffect(() => {
+    insertRef.current = insert;
+  });
+  const [note, setNote] = useState<string | null>(null);
+
+  const onPaste = useCallback((e: ClipboardEvent) => {
+    const file = pastedImage(Array.from(e.clipboardData?.files ?? []));
+    if (!file) return; // text, or nothing Hatch stores: the paste is left alone
+    e.preventDefault();
+    e.stopPropagation();
+    setNote('Uploading image\u2026');
+    shrink(file)
+      .then(uploadImage)
+      .then(
+        ({ id }) => {
+          insertRef.current(imageMarkdown(id));
+          setNote(null);
+        },
+        (err: unknown) => setNote(message(err)),
+      );
+  }, []);
+
+  return { onPaste, note };
+}
+
 /** Today's textarea, exactly. */
 function PlainEditor({
   value,
@@ -119,6 +193,19 @@ function PlainEditor({
 }: MarkdownEditorProps & { handle: Ref<PlainHandle>; onWanted: () => void; failed: boolean }) {
   const ref = useAutoGrow(value);
   useFocusFromLabel(ref, () => ref.current?.focus());
+
+  const image = useImagePaste((text) => {
+    const el = ref.current;
+    if (!el) return;
+    const { value: next, caret } = insertText(el.value, el.selectionStart, el.selectionEnd, text);
+    onChange(next);
+    // The textarea is controlled: the caret can only be put back once React has
+    // written the new value.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+  });
 
   // What the parent asks for at the moment the editor arrives: where the caret
   // is in this box, so the one that replaces it can put it back.
@@ -139,12 +226,14 @@ function PlainEditor({
         placeholder={placeholder}
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value)}
+        onPaste={(e) => image.onPaste(e.nativeEvent)}
         onFocus={onWanted}
         onPointerEnter={onWanted}
       />
       {/* The box still works - this says why it is plain, and offers the only
           thing that can fix it: Chrome's memory of the failed fetch outlives
           the page, so a reload is the retry. */}
+      {image.note && <p className="hatch-md-editor__failed">{image.note}</p>}
       {failed && (
         <p className="hatch-md-editor__failed">
           The editor didn&rsquo;t load. Hatch may have been updated since this page was opened.{' '}
@@ -204,6 +293,13 @@ function MonacoEditor({
     onChangeRef.current = onChange;
   });
   const { resolved } = useTheme();
+
+  const image = useImagePaste((text) => {
+    const editor = editorRef.current;
+    const selection = editor?.getSelection();
+    // onDidChangeContent reports the edit through onChange, as a keystroke is.
+    if (editor && selection) editor.executeEdits('image-paste', [{ range: selection, text, forceMoveMarkers: true }]);
+  });
 
   const { EndOfLinePreference, EditorOption } = monaco.editor;
 
@@ -298,6 +394,10 @@ function MonacoEditor({
     // box and not the viewport.
     window.addEventListener('resize', fit);
 
+    // Capture phase, on the host: Monaco's own paste handler sits on an element
+    // inside it and would otherwise read the clipboard as text first.
+    el.addEventListener('paste', image.onPaste, true);
+
     const changed = model.onDidChangeContent(() => {
       if (applying.current) return;
       onChangeRef.current(model.getValue(EndOfLinePreference.LF));
@@ -305,6 +405,7 @@ function MonacoEditor({
 
     return () => {
       window.removeEventListener('resize', fit);
+      el.removeEventListener('paste', image.onPaste, true);
       changed.dispose();
       sized.dispose();
       editor.dispose();
@@ -331,5 +432,10 @@ function MonacoEditor({
     }
   }, [value, EndOfLinePreference]);
 
-  return <div ref={host} className={`hatch-md-editor${className ? ` ${className}` : ''}`} />;
+  return (
+    <>
+      <div ref={host} className={`hatch-md-editor${className ? ` ${className}` : ''}`} />
+      {image.note && <p className="hatch-md-editor__failed">{image.note}</p>}
+    </>
+  );
 }

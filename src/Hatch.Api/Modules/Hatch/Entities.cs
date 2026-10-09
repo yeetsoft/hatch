@@ -203,6 +203,33 @@ public class EfHatchProjectLogo
 }
 
 /// <summary>
+/// One image pasted into a description or a comment, stored as bytes in
+/// Postgres for the same reason <see cref="EfHatchProjectLogo"/> is: bytes in
+/// the row ride the existing backup and the disaster-recovery path unchanged,
+/// and a row cannot disagree with a file on a volume.
+///
+/// Belongs to no issue. The New issue dialog accepts a paste before the issue
+/// has a key, so an image gets an id of its own and the markdown that shows it
+/// is the only thing that points here. Nothing collects an image whose draft
+/// was discarded.
+/// </summary>
+[Table("Images")]
+public class EfHatchImage
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
+    public required byte[] Bytes { get; set; }
+
+    /// <summary>Sniffed from the bytes, never taken from the request's Content-Type - see <see cref="EfHatchProjectLogo.ContentType"/>.</summary>
+    [MaxLength(64)]
+    public required string ContentType { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// One column on the board. Global rather than per-project - the board shows
 /// every project at once, so a per-project status set would have no column to
 /// put a foreign issue in.
