@@ -174,6 +174,9 @@ public sealed class FakeWorkspace
     /// <summary>Every <c>PushForLimit</c>, as <c>path key</c>, in order.</summary>
     public List<string> Pushed { get; } = [];
 
+    /// <summary>What <c>DiffStat</c> answers, per checkout - null unless a test says.</summary>
+    public Dictionary<string, string?> DiffStatFor { get; } = [];
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -241,6 +244,12 @@ public sealed class FakeWorkspace
             owner.Calls.Add($"push {path}");
             owner.Pushed.Add($"{path} {key}");
             return owner.PushFor.GetValueOrDefault(path, new LimitPushed(LimitPush.Nothing, null, null, null));
+        }
+
+        public string? DiffStat(string branch)
+        {
+            owner.Calls.Add($"diff {path}");
+            return owner.DiffStatFor.GetValueOrDefault(path);
         }
 
         private BranchEntry Answer(string key, string title) =>
