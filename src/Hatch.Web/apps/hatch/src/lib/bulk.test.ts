@@ -56,6 +56,25 @@ describe('buildBulkEdit', () => {
     expect(request.readyAt).toBe('2027-08-15');
     expect(request.dueAt).toBe('');
   });
+
+  it('sends the project and moveDescendants together once a project is chosen', () => {
+    expect(buildBulkEdit(KEYS, form({ projectId: 7, moveDescendants: true }))).toEqual({
+      keys: KEYS,
+      projectId: 7,
+      moveDescendants: true,
+    });
+    expect(buildBulkEdit(KEYS, form({ projectId: 7, moveDescendants: false }))).toEqual({
+      keys: KEYS,
+      projectId: 7,
+      moveDescendants: false,
+    });
+  });
+
+  it('leaves projectId and moveDescendants off entirely when the project is being left alone', () => {
+    const request = buildBulkEdit(KEYS, form({ projectId: KEEP, statusId: 3 }))!;
+    expect('projectId' in request).toBe(false);
+    expect('moveDescendants' in request).toBe(false);
+  });
 });
 
 describe('isEmptyForm', () => {
@@ -64,6 +83,7 @@ describe('isEmptyForm', () => {
     expect(isEmptyForm(form({ type: 'task' }))).toBe(false);
     expect(isEmptyForm(form({ parent: '' }))).toBe(false);
     expect(isEmptyForm(form({ setReady: true }))).toBe(false);
+    expect(isEmptyForm(form({ projectId: 7 }))).toBe(false);
   });
 });
 
@@ -81,5 +101,16 @@ describe('summarize', () => {
         rekeyed: [],
       }),
     ).toBe('0 changed, 2 already like that, 1 refused');
+  });
+
+  it('says how many moved to the new project, when any did', () => {
+    expect(
+      summarize({
+        changed: ['AER-1'],
+        unchanged: [],
+        failures: [],
+        rekeyed: [{ from: 'AER-1', to: 'BER-5' }],
+      }),
+    ).toBe('1 changed, 1 moved to BER');
   });
 });
