@@ -203,7 +203,8 @@ public sealed class Tally
         // done, though the ticket did not move, and so is a fix pushed to a
         // failing build - and so is work filed under the ticket, though it
         // stayed put.
-        if (report.Clamped && report.Filed.Count > 0 && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
+        if (report.HardLimited && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
+        else if (report.Clamped && report.Filed.Count > 0 && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
         else if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
         else if (report.LetGo) _letGo.Add($"hatch:   let go   {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
@@ -221,6 +222,12 @@ public sealed class Tally
         // same reason: neither one is a verdict on whether the last increment
         // actually worked.
         if (report.Skipped) return;
+
+        // Nor is a hard limit. The killed CLI process exits non-zero, but the
+        // runner stopped it on purpose and published what it left - the same
+        // reasoning a lost lease and a skip both get, for the same reason:
+        // this says nothing about whether the last increment actually worked.
+        if (report.HardLimited) return;
 
         // A failed increment on its own is not a reason to stop - a ticket can
         // be wrong, or a test can be flaky, and the next ticket is a different
@@ -1426,7 +1433,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var preempted = report.Preempted
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted);
+                var hardLimit = report.HardLimited
+                    ? new HardLimitInfo(report.HardLimitedAtTokens!.Value, report.HardLimitedAtRequests, report.SessionId)
+                    : null;
+                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit);
+
+                // The session was killed before it could file anything itself -
+                // the filing above is the runner's, done after RunAsync already
+                // returned - so the report's own Filed list, read by Outcome in
+                // the finally block below, only sees it if it is spliced in here.
+                if (hardLimit is not null && left.FiledKey is { } filedKey) report.Filed = [.. report.Filed, filedKey];
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged

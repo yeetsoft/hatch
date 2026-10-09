@@ -8,7 +8,8 @@ public sealed class TallyTests
     private static IncrementReport Report(
         string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
-        bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null) =>
+        bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
+        bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null) =>
         new()
         {
             Key = key,
@@ -29,6 +30,8 @@ public sealed class TallyTests
             Skipped = skipped,
             ClampedAtTokens = clamped ? clampedAtTokens ?? 500_000L : null,
             ClampedAtRequests = clamped ? clampedAtRequests : null,
+            HardLimitedAtTokens = hardLimited ? hardLimitedAtTokens ?? 7_500_000L : null,
+            HardLimitedAtRequests = hardLimited ? hardLimitedAtRequests : null,
         };
 
     [Fact]
@@ -394,5 +397,41 @@ public sealed class TallyTests
 
         Assert.Contains(say.Said, l => l.Contains("moved    AER-1", StringComparison.Ordinal));
         Assert.DoesNotContain(say.Said, l => l.Contains("clamped  AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// HA-337: a hard limit is reported *clamped*, never a stall and never one
+    /// of the three failures that end a night - even though the killed CLI
+    /// process exits non-zero, the one thing this task's own brief warns is
+    /// the trap.
+    /// </summary>
+    [Fact]
+    public void A_hard_limited_report_lands_on_the_clamped_list_and_not_stalled_or_failed()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1, moved: false, hardLimited: true));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("clamped  AER-1", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+        Assert.Equal(0, tally.Fails);
+        Assert.False(tally.ShouldStop());
+    }
+
+    /// <summary>A hard limit does not arm the three-strikes stop, exactly like a lost lease or a skip.</summary>
+    [Fact]
+    public void Three_hard_limits_in_a_row_do_not_end_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1, moved: false, hardLimited: true));
+        tally.Record(Report("AER-2", exit: 1, moved: false, hardLimited: true));
+        tally.Record(Report("AER-3", exit: 1, moved: false, hardLimited: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
     }
 }
