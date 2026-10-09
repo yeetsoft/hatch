@@ -428,6 +428,10 @@ public class IssuesController(
     [HttpPost("bulk")]
     public async Task<ActionResult<IssueBulkResultDto>> BulkEdit(IssueBulkEditRequest request, CancellationToken ct)
     {
+        if (await ProjectMoveRefusal(request.ProjectId, ct) is { } notAPersonMove) return notAPersonMove;
+        if (request.ProjectId is { } targetId && !await db.Projects.AnyAsync(p => p.Id == targetId, ct))
+            return BadRequest($"there is no project {targetId}");
+
         // Deduplicated rather than refused: a client that sent AER-1 twice meant
         // it once, and reporting the second as a failure would be a refusal
         // about nothing.
