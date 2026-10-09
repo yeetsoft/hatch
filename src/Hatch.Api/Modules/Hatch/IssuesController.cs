@@ -438,7 +438,7 @@ public class IssuesController(
 
         var patch = new IssuePatchRequest(
             null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null,
-            null, null);
+            request.ProjectId, request.MoveDescendants);
 
         if (Invalid(null, null, request.Type, required: false) is { } invalid) return BadRequest(invalid);
         if (!ReadEdit(patch, out var edit, out var editError)) return BadRequest(editError);
@@ -1033,7 +1033,7 @@ public class IssuesController(
         /// <summary>Whether this edit names nothing at all - the request a bulk edit refuses rather than reports as a hundred no-ops.</summary>
         public bool IsEmpty =>
             Title is null && Description is null && Type is null && StatusId is null
-            && ParentKey is null && !SetReady && !SetDue && !SetPullRequest;
+            && ParentKey is null && !SetReady && !SetDue && !SetPullRequest && ProjectId is null;
     }
 
     /// <summary>

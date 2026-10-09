@@ -644,13 +644,24 @@ public record WipRefusalDto(string Error, int Load, int Limit);
 /// act on a row that arrived between the operator reading the list and pressing
 /// the button, which is the one thing a bulk edit must never do.
 /// </param>
+/// <param name="ProjectId">
+/// Which project the issue should belong to. No "clear" sentinel - an issue
+/// always belongs to some project, so unlike <paramref name="ParentKey"/>
+/// there is no empty-string meaning here.
+/// </param>
+/// <param name="MoveDescendants">
+/// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
+/// default, and <c>false</c> is the one a caller has to ask for.
+/// </param>
 public record IssueBulkEditRequest(
     IReadOnlyList<string> Keys,
     string? Type = null,
     int? StatusId = null,
     string? ParentKey = null,
     string? ReadyAt = null,
-    string? DueAt = null);
+    string? DueAt = null,
+    int? ProjectId = null,
+    bool? MoveDescendants = null);
 
 // ---- Comments and events ----
 
