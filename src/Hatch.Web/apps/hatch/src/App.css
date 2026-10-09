@@ -1876,6 +1876,25 @@ input.hatch-inline-title-input {
   margin: 0;
 }
 
+/* .hatch-section-title also lands on BoardFilters' own <summary> (Filters)
+   and on IssuePeek's bare <h4> - neither is this component's to change, so
+   the pointer and the touch floor below are keyed off .hatch-issue-section's
+   own <summary> rather than off .hatch-section-title alone. Nothing here
+   suppresses the browser's native <summary> triangle - unlike the stacked
+   board column's ::-webkit-details-marker rule, which hides it only because
+   that column already has its own affordance in its name and count. */
+.hatch-issue-section > summary {
+  cursor: pointer;
+}
+
+/* 44px is Apple's and WCAG's minimum comfortable touch target - the same
+   literal Button.css:77 and App.css:76 already state. */
+@media (pointer: coarse) {
+  .hatch-issue-section > summary {
+    min-height: 44px;
+  }
+}
+
 .hatch-description-editor {
   width: 100%;
   font-family: var(--mono);
@@ -2340,10 +2359,6 @@ input.hatch-inline-title-input {
   font-size: var(--t-small);
 }
 
-.hatch-depends-add + .hatch-section-title {
-  margin-top: var(--sp-5);
-}
-
 .hatch-comment {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-3);
@@ -2392,11 +2407,7 @@ input.hatch-inline-title-input {
   }
 }
 
-.hatch-events summary {
-  cursor: pointer;
-}
-
-.hatch-events ul {
+.hatch-events {
   list-style: none;
   margin: var(--sp-3) 0 0;
   padding: 0;
