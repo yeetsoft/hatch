@@ -42,7 +42,7 @@ public static class Rollup
         // The one definition of "open" lives in Questions.cs, and this is a
         // caller rather than a second copy - "waiting on a person" has to mean
         // the same thing on a meter as it does on a card and in a refusal.
-        var waiting = await Questions.OpenCountsAsync(db, ct);
+        var waiting = await Questions.WaitingCountsAsync(db, ct);
 
         return new Tree(
             statuses.Select(s => (s.Id, s.IsTerminal, s.IsDeferred)).ToList(),

@@ -22,9 +22,13 @@ public static class Questions
             .Where(c => c.Kind == EfHatchComment.Question)
             .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id));
 
+    /// Every unanswered question outside a terminal column - the one a person is actually still owed.
+    public static IQueryable<EfHatchComment> Waiting(HatchContext db) =>
+        Open(db).Where(c => !c.Issue!.Status!.IsTerminal);
+
     /// <summary>How many questions each issue is waiting on. Issues waiting on none are absent rather than zero.</summary>
-    public static async Task<Dictionary<long, int>> OpenCountsAsync(HatchContext db, CancellationToken ct) =>
-        await Open(db)
+    public static async Task<Dictionary<long, int>> WaitingCountsAsync(HatchContext db, CancellationToken ct) =>
+        await Waiting(db)
             .GroupBy(c => c.IssueId)
             .Select(g => new { IssueId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.IssueId, x => x.Count, ct);
@@ -74,7 +78,7 @@ public static class Questions
 
     /// <summary>How many open questions each issue is waiting on, and whether a lapsed stall question was among them - the dispatcher's own count, not the board's.</summary>
     /// <remarks>
-    /// This is deliberately not <see cref="OpenCountsAsync"/> with an extra
+    /// This is deliberately not <see cref="WaitingCountsAsync"/> with an extra
     /// argument. That method also badges a card and rolls up an epic
     /// (<see cref="BoardController"/>, <see cref="Rollup"/>), and a stall
     /// nobody has touched in the lapse window is still a real open question

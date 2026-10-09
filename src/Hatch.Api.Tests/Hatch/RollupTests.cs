@@ -333,6 +333,19 @@ public class RollupTests
         Assert.Equal(1, plan.Rollup.Waiting);
     }
 
+    [Fact]
+    public async Task AQuestionOnADoneIssue_StopsWaiting()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "shipped mid-question", h.Todo);
+        var task = await h.FileAsync("task", "done", h.Done, parentId: story.Id);
+        await h.AskAsync(task, "which way round?");
+
+        var plan = Value(await h.Plan.GetIssuePlan(Key(story), default));
+
+        Assert.Equal(0, plan.Rollup.Waiting);
+    }
+
     // ---- The harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);

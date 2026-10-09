@@ -1594,6 +1594,35 @@ public class IssuesControllerTests
         Assert.Equal(0, board.Issues.Single(i => i.Key == "AER-2").OpenQuestions);
     }
 
+    [Fact]
+    public async Task TheBoard_StopsCountingAQuestionOnceTheCardIsInATerminalColumn()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still open");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal(0, board.Issues.Single(i => i.Key == "AER-1").OpenQuestions);
+    }
+
+    [Fact]
+    public async Task TheBoard_StillCountsAQuestionOnACardInADeferredColumn()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still open");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Todo, null, null), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal(1, board.Issues.Single(i => i.Key == "AER-1").OpenQuestions);
+    }
+
     // ---- Options on a question ----
 
     /* Options are what turn a question from a paragraph into something the

@@ -38,9 +38,9 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .ThenBy(s => s.Id)
             .ToListAsync(ct);
 
-        // Every open question in the house, whatever shape the board is - a
-        // question is waiting on somebody wherever its issue happens to stand.
-        var questions = await Questions.ProjectAsync(db, Questions.Open(db), ct);
+        // Every open question still waiting on somebody - not one on an issue
+        // that has already shipped, which nobody is going to answer.
+        var questions = await Questions.ProjectAsync(db, Questions.Waiting(db), ct);
 
         var exhausted = await ExhaustedRunnersAsync(ct);
 
