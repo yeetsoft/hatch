@@ -703,12 +703,18 @@ export interface IssueBulkFailure {
   reason: string;
 }
 
+export interface IssueBulkRekeyed {
+  from: string;
+  to: string;
+}
+
 export interface IssueBulkResult {
   /** The keys that actually moved. */
   changed: string[];
   /** Keys that matched but already held every named value - re-applying an edit is not an edit. */
   unchanged: string[];
   failures: IssueBulkFailure[];
+  rekeyed: IssueBulkRekeyed[];
 }
 
 export interface IssueMoveRequest {
