@@ -2409,6 +2409,112 @@ public class IssuesControllerTests
         Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.AgentFiles);
     }
 
+    // ---- Implementation column ----
+    //
+    // The column where code gets written. Set only through its own route -
+    // PutImplementation - and untouched by the two ordinary routes, the same
+    // split AgentFiles draws. At most one column ever holds it, it refuses a
+    // deferred or a terminal column outright, and an untick is always
+    // accepted, including on a column that became deferred after the tick.
+
+    [Fact]
+    public async Task ANewColumn_StartsWithImplementationUnticked()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
+
+        Assert.False(created.IsImplementation);
+    }
+
+    [Fact]
+    public async Task PutImplementation_TicksAndUnticksIt()
+    {
+        var h = await NewAsync();
+
+        var ticked = Value(await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(true), default));
+        Assert.True(ticked.IsImplementation);
+
+        var unticked = Value(await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(false), default));
+        Assert.False(unticked.IsImplementation);
+    }
+
+    [Fact]
+    public async Task APatchOfOtherFields_LeavesImplementationAlone()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(true), default);
+
+        var patched = Value(await h.Statuses.PatchStatus(h.Todo, new StatusPatchRequest("later", null, null), default));
+
+        Assert.Equal("later", patched.Name);
+        Assert.True(patched.IsImplementation);
+    }
+
+    [Fact]
+    public async Task TickingASecondImplementationColumn_MovesTheTick()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(true), default);
+
+        var ticked = Value(await h.Statuses.PutImplementation(h.Inbox, new ImplementationRequest(true), default));
+
+        Assert.True(ticked.IsImplementation);
+        var statuses = Value(await h.Statuses.GetStatuses(default));
+        Assert.Single(statuses, s => s.IsImplementation);
+        Assert.False(statuses.Single(s => s.Id == h.Todo).IsImplementation);
+    }
+
+    [Fact]
+    public async Task TickingATerminalColumnImplementation_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Statuses.PutImplementation(h.Done, new ImplementationRequest(true), default);
+
+        Assert.Contains("\"done\" is a done column", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.IsImplementation);
+    }
+
+    [Fact]
+    public async Task TickingADeferredColumnImplementation_Is400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Inbox);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Statuses.PutImplementation(h.Inbox, new ImplementationRequest(true), default);
+
+        Assert.Contains("\"inbox\" is deferred", Reason(result.Result));
+        Assert.DoesNotContain(Value(await h.Statuses.GetStatuses(default)), s => s.IsImplementation);
+    }
+
+    [Fact]
+    public async Task UntickingAColumnDeferredSinceItWasTicked_IsAccepted()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(true), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        var unticked = Value(await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(false), default));
+
+        Assert.False(unticked.IsImplementation);
+    }
+
+    [Fact]
+    public async Task TheBoard_CarriesTheImplementationTick()
+    {
+        var h = await NewAsync();
+        await h.Statuses.PutImplementation(h.Todo, new ImplementationRequest(true), default);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal(h.Todo, Assert.Single(board.Statuses, s => s.IsImplementation).Id);
+    }
+
     [Fact]
     public async Task ReorderingAColumn_MovesIt()
     {
