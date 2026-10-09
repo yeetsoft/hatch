@@ -13,7 +13,7 @@ import {
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, EmptyState } from '@hatch/ui';
-import { getAssignees, getBoard, moveIssue } from '../api/client';
+import { deleteIssue, getAssignees, getBoard, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -406,6 +406,17 @@ export function BoardPage() {
     [board, commit, reload],
   );
 
+  /** The peek's Delete, once it has been confirmed there. A refusal propagates
+      to the dialog untouched, and nothing is reloaded because nothing changed. */
+  const remove = useCallback(
+    async (key: string) => {
+      await deleteIssue(key);
+      closePeek();
+      await reload();
+    },
+    [closePeek, reload],
+  );
+
   // Undo on the board's own account: this listener is mounted only while the
   // board is the page on screen, so a keystroke made anywhere else cannot
   // rearrange it. Each condition below leaves the key to whoever else wants it -
@@ -658,6 +669,7 @@ export function BoardPage() {
         project={peeked && showProjectMark ? (projectsByKey.get(peeked.projectKey) ?? null) : null}
         onExpedited={() => void reload()}
         onMove={send}
+        onDelete={remove}
         onClose={closePeek}
       />
 
