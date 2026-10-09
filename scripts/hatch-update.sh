@@ -8,7 +8,17 @@ while [ -L "$src" ]; do
   src=$(readlink "$src")
   case $src in /*) ;; *) src=$dir/$src ;; esac
 done
+script=$(cd -P "$(dirname "$src")" && pwd)/$(basename "$src")
 cd -P "$(dirname "$src")/.."
+
+# Link onto ~/bin as `hatch-update` the first time, unless something is there.
+link=$HOME/bin/hatch-update
+if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+  mkdir -p "$HOME/bin"
+  ln -s "$script" "$link"
+  echo "hatch: linked $link"
+  case ":$PATH:" in *":$HOME/bin:"*) ;; *) echo "hatch: add \$HOME/bin to your PATH to run it as 'hatch-update'" ;; esac
+fi
 
 branch=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
 branch=${branch#origin/}
