@@ -1,19 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UNASSIGNED, assigneeToken } from './assignee';
 import {
+  BOARD_TYPES_STORAGE_KEY,
   DEFAULT_FILTER,
+  DEFAULT_TYPES,
   assigneeFacets,
   filterCards,
   isFiltering,
   matchesQuery,
+  readBoardTypes,
   revealType,
   toggleType,
   toggleWaiting,
   typeCounts,
   typesSummary,
+  writeBoardTypes,
 } from './filter';
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, IssueCard } from '../types';
+
+/** A localStorage that holds what it is given, and can be made to throw - the
+    same stub phoneBoard.test.ts uses for its storage pair. */
+function stubStorage(initial: Record<string, string> = {}, throws = false) {
+  const data = { ...initial };
+  const storage = {
+    getItem: (k: string) => {
+      if (throws) throw new Error('blocked');
+      return k in data ? data[k] : null;
+    },
+    setItem: (k: string, v: string) => {
+      if (throws) throw new Error('blocked');
+      data[k] = v;
+    },
+  };
+  vi.stubGlobal('window', { localStorage: storage });
+  return data;
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   key: 'AER-1',
@@ -308,5 +332,69 @@ describe('typeCounts', () => {
   it('counts the cards a filter would hide', () => {
     expect(typeCounts(board).task).toBe(2);
     expect(filterCards(board, toggleType(DEFAULT_FILTER, 'task'))).toHaveLength(1);
+  });
+});
+
+describe('readBoardTypes / writeBoardTypes', () => {
+  it('defaults to every type when nobody has chosen', () => {
+    stubStorage();
+
+    expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+  });
+
+  it('hands back a copy of the default, never the constant itself', () => {
+    stubStorage();
+
+    expect(readBoardTypes()).not.toBe(DEFAULT_TYPES);
+  });
+
+  it('round-trips a single type, a subset, and all of them', () => {
+    stubStorage();
+
+    for (const types of [['task'], ['epic', 'story', 'bug'], [...ISSUE_TYPES]] as (typeof ISSUE_TYPES)[number][][]) {
+      writeBoardTypes(types);
+      expect(readBoardTypes()).toEqual(types);
+    }
+  });
+
+  it('stores a JSON array under its own key', () => {
+    const data = stubStorage();
+
+    writeBoardTypes(['epic', 'task']);
+
+    expect(data[BOARD_TYPES_STORAGE_KEY]).toBe('["epic","task"]');
+  });
+
+  it('returns a stored list in ISSUE_TYPES order', () => {
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["bug","epic"]' });
+
+    expect(readBoardTypes()).toEqual(['epic', 'bug']);
+  });
+
+  it('drops types this build does not have and keeps the known ones', () => {
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["initiative","task","spike"]' });
+
+    expect(readBoardTypes()).toEqual(['task']);
+  });
+
+  it.each([['an empty list', '[]'], ['only unknowns', '["initiative"]'], ['non-JSON', 'epic,task'], ['a string', '"task"'], ['an object', '{}']])(
+    'falls back to the default for %s',
+    (_, stored) => {
+      stubStorage({ [BOARD_TYPES_STORAGE_KEY]: stored });
+
+      expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+    },
+  );
+
+  it('falls back to the default when storage throws', () => {
+    stubStorage({}, true);
+
+    expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+  });
+
+  it('does not throw when storage cannot be written', () => {
+    stubStorage({}, true);
+
+    expect(() => writeBoardTypes(['task'])).not.toThrow();
   });
 });

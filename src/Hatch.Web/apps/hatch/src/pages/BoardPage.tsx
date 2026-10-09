@@ -30,7 +30,15 @@ import { cascadeEntries, dropConfirmation } from '../lib/confirmations';
 import type { CascadeEntry } from '../lib/confirmations';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
-import { DEFAULT_FILTER, assigneeFacets, filterCards, isFiltering, revealType } from '../lib/filter';
+import {
+  DEFAULT_FILTER,
+  assigneeFacets,
+  filterCards,
+  isFiltering,
+  readBoardTypes,
+  revealType,
+  writeBoardTypes,
+} from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
 import { whereOnBoard } from '../lib/goTo';
@@ -120,17 +128,26 @@ export function BoardPage() {
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
   const [filing, setFiling] = useState(false);
   const [params, setParams] = useSearchParams();
-  /* Only the project half of the filter lives in the URL - see setFilter
-     below - so it is read once here, on the way into local state, rather than
-     off `params` on every render. */
-  const [filter, setFilter] = useState<CardFilter>(() => ({ ...DEFAULT_FILTER, project: params.get(PROJECT) ?? '' }));
+  /* Only two halves of the filter outlive the page: the types are in the
+     browser's storage and the project is in the URL - see changeFilter below -
+     so each is read once here, on the way into local state, rather than off
+     `params` or storage on every render. */
+  const [filter, setFilter] = useState<CardFilter>(() => ({
+    ...DEFAULT_FILTER,
+    types: readBoardTypes(),
+    project: params.get(PROJECT) ?? '',
+  }));
 
   /* Wraps the plain setter so a change to the project also writes (or drops)
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
-     does, since flipping a filter is not a place worth six presses of Back. */
+     does, since flipping a filter is not a place worth six presses of Back -
+     and a change to the types is remembered. The types are compared by
+     reference: toggleType and revealType hand back a fresh array when they
+     change anything, and every other change spreads the filter and keeps it. */
   const changeFilter = useCallback(
     (next: CardFilter) => {
       setFilter((prev) => {
+        if (next.types !== prev.types) writeBoardTypes(next.types);
         if (next.project !== prev.project) {
           const nextParams = new URLSearchParams(params);
           if (next.project) nextParams.set(PROJECT, next.project);

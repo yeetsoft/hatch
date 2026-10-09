@@ -20,8 +20,10 @@ import { hasMultipleProjects } from '../lib/useProjects';
  * would drop the drag in progress and would make typing into the box a
  * conversation with the server.
  *
- * The board opens on every type (DEFAULT_FILTER). The last type drawn cannot
- * be switched off, so the board never goes blank from a checkbox.
+ * A browser's first visit opens the board on every type (DEFAULT_FILTER); after
+ * that it opens on the types last chosen there, and Reset returns to the
+ * default. The last type drawn cannot be switched off, so the board never goes
+ * blank from a checkbox.
  */
 export function BoardFilters({
   filter,
