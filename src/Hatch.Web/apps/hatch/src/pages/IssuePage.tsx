@@ -33,17 +33,14 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssuePicker } from '../components/IssuePicker';
+import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
-import { MomentChip } from '../components/MomentChip';
 import { MessageState } from '../components/MessageState';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
-import { BuildCheckChips } from '../components/BuildCheckChips';
-import { MergeConflictChips } from '../components/MergeConflictChips';
-import { PullRequestLink } from '../components/PullRequestLink';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -458,29 +455,7 @@ export function IssuePage() {
     <div className="hatch-issue-page">
       <PageHeader
         title={<InlineTitle issue={issue} onSave={(title) => void save({ title })} />}
-        description={
-          <span className="hatch-issue-meta">
-            <ProjectMark
-              size="sm"
-              letters={project?.key ?? issue.projectKey}
-              color={project?.color ?? null}
-              icon={project?.icon ?? null}
-              logoUrl={project ? projectLogoUrl(project) : null}
-              title={project?.name ?? issue.projectKey}
-            />
-            <span className="hatch-issue-key">{issue.key}</span>
-            <TypeBadge type={issue.type} />
-            {issue.parentKey && <Link to={`/issues/${issue.parentKey}`}>↳ {issue.parentKey}</Link>}
-            <MomentChip kind="ready" value={issue.readyAt} expandable />
-            <MomentChip kind="due" value={issue.dueAt} muted={stopped} expandable />
-            <PullRequestLink url={issue.pullRequestUrl} />
-            <MergeConflictChips checks={issue.mergeChecks} />
-            <BuildCheckChips checks={issue.buildChecks} />
-            <span className="text-muted">
-              filed by {issue.createdBy} on {new Date(issue.createdAt).toLocaleDateString()}
-            </span>
-          </span>
-        }
+        description={<IssueSubheader issue={issue} project={project} stopped={stopped} />}
         actions={
           <Button variant="danger" onClick={() => void remove()}>
             Delete

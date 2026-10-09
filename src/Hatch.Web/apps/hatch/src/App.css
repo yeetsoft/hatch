@@ -1618,6 +1618,24 @@ button.hatch-chip {
 
 /* ---- The issue page ---- */
 
+.hatch-issue-subheader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+}
+
+/* The four facts that say what this is: project, key, type, parent. Lifted to
+   --t-subhead and drawn first, so they read before the secondary row below -
+   see HA-328 §5. Wraps rather than squeezing or truncating at phone width. */
+.hatch-issue-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--t-subhead);
+  font-weight: 600;
+}
+
 .hatch-issue-meta {
   display: flex;
   align-items: center;
