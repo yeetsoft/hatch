@@ -53,6 +53,7 @@ import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
+import { deleteQuestion } from '../lib/deletion';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
@@ -445,7 +446,7 @@ export function IssuePage() {
   };
 
   async function remove() {
-    if (!confirm(`Delete ${key}? Its comments and its history go with it.`)) return;
+    if (!confirm(deleteQuestion(key))) return;
     try {
       await deleteIssue(key);
       void navigate('/');
