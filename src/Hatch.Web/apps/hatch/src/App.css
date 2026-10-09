@@ -2815,6 +2815,13 @@ input.hatch-inline-title-input {
   overflow-x: auto;
 }
 
+/* The three-block preview (HA-332) - a coarse pointer only, set up by the
+   caller passing ProseClamp a limit. The fade is the newspaper-paywall look:
+   the last block trails off rather than stopping square. */
+.hatch-prose-clamp--faded {
+  mask-image: linear-gradient(to bottom, black 0%, black 80%, transparent 100%);
+}
+
 /* ---- The Statuses page ----
 
    Four of the table's headers carry their meaning only in `title=` - a mouse

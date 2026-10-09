@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStandalone, matchesPhone, matchesStandalone, PHONE_QUERY } from './viewport';
+import { isStandalone, matchesCoarse, matchesPhone, matchesStandalone, PHONE_QUERY } from './viewport';
 
 describe('PHONE_QUERY', () => {
   it('is the one breakpoint, written the same way everywhere it appears', () => {
@@ -13,6 +13,14 @@ describe('matchesPhone', () => {
      this, so it's the browser pass's, not a unit test's. */
   it('answers false where window is absent', () => {
     expect(matchesPhone()).toBe(false);
+  });
+});
+
+describe('matchesCoarse', () => {
+  /* Same reasoning as matchesPhone's own test: window itself is absent in
+     this workspace's tests, so the guard chain has to short-circuit first. */
+  it('answers false where window is absent', () => {
+    expect(matchesCoarse()).toBe(false);
   });
 });
 
