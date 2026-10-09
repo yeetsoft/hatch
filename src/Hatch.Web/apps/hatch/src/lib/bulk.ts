@@ -24,6 +24,10 @@ export interface BulkForm {
   statusId: number | '';
   /** KEEP leaves the parent alone, '' clears it, anything else is the new parent's key. */
   parent: string;
+  /** KEEP leaves the project alone, otherwise the new project's id. */
+  projectId: number | typeof KEEP;
+  /** Only read when projectId !== KEEP. Matches useMoveProject's own default. */
+  moveDescendants: boolean;
   /** Whether the ready date is being touched at all. */
   setReady: boolean;
   /** The wire form, or '' for the clear. Only read when setReady. */
@@ -36,6 +40,8 @@ export const EMPTY_FORM: BulkForm = {
   type: '',
   statusId: '',
   parent: KEEP,
+  projectId: KEEP,
+  moveDescendants: true,
   setReady: false,
   readyAt: '',
   setDue: false,
@@ -44,7 +50,12 @@ export const EMPTY_FORM: BulkForm = {
 
 /** Whether the form would change anything, which is what enables the button. */
 export const isEmptyForm = (form: BulkForm): boolean =>
-  form.type === '' && form.statusId === '' && form.parent === KEEP && !form.setReady && !form.setDue;
+  form.type === '' &&
+  form.statusId === '' &&
+  form.parent === KEEP &&
+  form.projectId === KEEP &&
+  !form.setReady &&
+  !form.setDue;
 
 /**
  * The request, or null when there is nothing to send - no issues chosen, or a
@@ -60,6 +71,10 @@ export function buildBulkEdit(keys: string[], form: BulkForm): IssueBulkEditRequ
   if (form.type !== '') request.type = form.type;
   if (form.statusId !== '') request.statusId = form.statusId;
   if (form.parent !== KEEP) request.parentKey = form.parent;
+  if (form.projectId !== KEEP) {
+    request.projectId = form.projectId;
+    request.moveDescendants = form.moveDescendants;
+  }
   if (form.setReady) request.readyAt = form.readyAt;
   if (form.setDue) request.dueAt = form.dueAt;
 
@@ -75,5 +90,9 @@ export function summarize(result: IssueBulkResult): string {
   const parts = [`${result.changed.length} changed`];
   if (result.unchanged.length > 0) parts.push(`${result.unchanged.length} already like that`);
   if (result.failures.length > 0) parts.push(`${result.failures.length} refused`);
+  if (result.rekeyed.length > 0) {
+    const to = result.rekeyed[0].to;
+    parts.push(`${result.rekeyed.length} moved to ${to.slice(0, to.lastIndexOf('-'))}`);
+  }
   return parts.join(', ');
 }
