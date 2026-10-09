@@ -170,6 +170,15 @@ export const setAgentFiles = (id: number, agentFiles: boolean) =>
     ...asJson({ agentFiles }),
   });
 
+/** Which column is where code gets written. Its own route for the same
+    reason AgentFiles has one: writing it is closed to an API key - see
+    StatusesController.PutImplementation. */
+export const setImplementation = (id: number, isImplementation: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/implementation`, {
+    method: 'PUT',
+    ...asJson({ isImplementation }),
+  });
+
 // ---- Issues ----
 
 // ---- Playbooks ----

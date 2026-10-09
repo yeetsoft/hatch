@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   agentFilesBlocked,
+  implementationBlocked,
   limitDraft,
   limitRequest,
   meterText,
@@ -27,6 +28,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   expressSkips: false,
   parentPulls: false,
   agentFiles: false,
+  isImplementation: false,
   color: '#336699',
   ...over,
 });
@@ -111,6 +113,20 @@ describe('agentFilesBlocked', () => {
 
   it('names why a done column is blocked', () => {
     expect(agentFilesBlocked(DONE)).toContain('shipped work');
+  });
+});
+
+describe('implementationBlocked', () => {
+  it('is null for an ordinary column', () => {
+    expect(implementationBlocked(TODO)).toBeNull();
+  });
+
+  it('names why a deferred column is blocked', () => {
+    expect(implementationBlocked(SHELVED)).toContain('parked work');
+  });
+
+  it('names why a done column is blocked', () => {
+    expect(implementationBlocked(DONE)).toContain('shipped work');
   });
 });
 

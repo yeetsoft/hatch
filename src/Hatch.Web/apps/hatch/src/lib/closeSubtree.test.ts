@@ -9,11 +9,11 @@ const DROPPED = 4;
 const SHELVED = 5;
 
 const statuses: Status[] = [
-  { id: TODO, name: 'To Do', sortOrder: 1, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, color: '#888888' },
-  { id: DOING, name: 'In Progress', sortOrder: 2, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, color: '#888888' },
-  { id: DONE, name: 'Done', sortOrder: 3, isTerminal: true, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, color: '#888888' },
-  { id: DROPPED, name: "Won't Do", sortOrder: 4, isTerminal: true, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, color: '#888888' },
-  { id: SHELVED, name: 'Deferred', sortOrder: 5, isTerminal: false, isDeferred: true, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, color: '#888888' },
+  { id: TODO, name: 'To Do', sortOrder: 1, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, color: '#888888' },
+  { id: DOING, name: 'In Progress', sortOrder: 2, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, color: '#888888' },
+  { id: DONE, name: 'Done', sortOrder: 3, isTerminal: true, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, color: '#888888' },
+  { id: DROPPED, name: "Won't Do", sortOrder: 4, isTerminal: true, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, color: '#888888' },
+  { id: SHELVED, name: 'Deferred', sortOrder: 5, isTerminal: false, isDeferred: true, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, color: '#888888' },
 ];
 
 const card = (key: string, statusId: number, parentKey: string | null, rank = 1024): IssueCard => ({

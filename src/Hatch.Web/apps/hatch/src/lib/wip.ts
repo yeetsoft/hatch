@@ -30,6 +30,16 @@ export function agentFilesBlocked(status: Status): string | null {
   return null;
 }
 
+/** Why a column's Code written here box is disabled, or null when it may be
+    ticked - the same two reasons wipBlocked gives, read against the
+    question this flag asks instead: not "in progress" but "where code is
+    written". */
+export function implementationBlocked(status: Status): string | null {
+  if (status.isDeferred) return 'Deferred columns are parked work, never where code is written';
+  if (status.isTerminal) return 'Done columns are shipped work, never where code is written';
+  return null;
+}
+
 /** The next `statusIds` after ticking or unticking one column - in board
     order, which is the order `statuses` already holds. */
 export function toggled(section: WipSection, statuses: Status[], id: number, on: boolean): number[] {

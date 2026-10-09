@@ -9,12 +9,20 @@ import {
   putWip,
   setAgentFiles,
   setExpressSkips,
+  setImplementation,
   setParentPulls,
 } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
-import { agentFilesBlocked, limitDraft, limitRequest, toggled, wipBlocked } from '../lib/wip';
+import {
+  agentFilesBlocked,
+  implementationBlocked,
+  limitDraft,
+  limitRequest,
+  toggled,
+  wipBlocked,
+} from '../lib/wip';
 import type { Status, WipSliceSetting } from '../types';
 
 export function StatusesPage() {
@@ -107,7 +115,7 @@ export function StatusesPage() {
 
       {statuses && section && (
         <Card className="hatch-statuses-legend-card">
-          {/* The same four sentences the header cells' `title=` carries,
+          {/* The same sentences the header cells' `title=` carries,
               always on the page rather than only on hover - a coarse pointer
               never triggers a title, so CSS is what decides whether this is
               shown, not whether it is rendered. See .hatch-statuses-legend. */}
@@ -144,6 +152,14 @@ export function StatusesPage() {
                 born leftmost.
               </dd>
             </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Code written here</dt>
+              <dd className="text-muted">
+                The column where code gets written: a dependency holds the move into it, and a story's open tasks
+                hold the move out of it. One column at a time - ticking this unticks whichever column held it - and
+                with none ticked, Hatch uses the column just left of review.
+              </dd>
+            </div>
           </dl>
         </Card>
       )}
@@ -168,6 +184,9 @@ export function StatusesPage() {
                 </th>
                 <th title="An issue filed by an agent is born in this column rather than the leftmost one. One column at a time - ticking this unticks whichever column held it - and with none ticked, agent-filed issues are born leftmost.">
                   Agent files here
+                </th>
+                <th title="The column where code gets written: a dependency holds the move into it, and a story's open tasks hold the move out of it. One column at a time - ticking this unticks whichever column held it - and with none ticked, Hatch uses the column just left of review.">
+                  Code written here
                 </th>
                 <th>Order</th>
                 <th />
@@ -258,6 +277,20 @@ export function StatusesPage() {
                       title={agentFilesBlocked(status) ?? undefined}
                       aria-label={`${status.name} is where agents file`}
                       onChange={(e) => void act(() => setAgentFiles(status.id, e.target.checked))}
+                    />
+                  </td>
+                  {/* Its own route for the same reason Agent files here has one, and
+                      guarded the same way: a deferred or a done column is refused by the
+                      server - see StatusesController.PutImplementation - so it is disabled
+                      here first, the way lib/wip.ts's implementationBlocked says why. */}
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.isImplementation}
+                      disabled={implementationBlocked(status) !== null}
+                      title={implementationBlocked(status) ?? undefined}
+                      aria-label={`${status.name} is where code is written`}
+                      onChange={(e) => void act(() => setImplementation(status.id, e.target.checked))}
                     />
                   </td>
                   <td>
