@@ -172,6 +172,10 @@ What survives is the part that matters — parentage is a foreign key and the
 number is the issue's own column, so a rekeyed project keeps every story under
 its epic.
 
+That is a project renaming its own key, in place. An issue changing which
+project it belongs to is a different rekey, paid by that issue alone — see
+[Moving between projects](#moving-between-projects).
+
 ### Logo
 
 `EfHatchProjectLogo` — `ProjectId` (PK, cascading FK), `Bytes`, `ContentType`,
@@ -730,6 +734,38 @@ violations) and retries up to five times. The unique index on
 `(ProjectId, Number)` is the backstop underneath, so the worst case is a refused
 request rather than two issues wearing the same key. No raw SQL, and testable
 in memory.
+
+#### Moving between projects
+
+An issue's project can change too — `PATCH /api/hatch/issues/{key}` takes a
+`projectId` alongside the fields above. The move mints the issue a number in
+the target project through the exact mint just described, with the same
+retry on a lost race; its old key goes dead, the same cost a project's own
+key rename pays (see [Project](#project)), just paid by one issue instead of
+every issue under it.
+
+A parent and its child always share a project — `ResolveParentAsync` refuses
+otherwise, on every write — so a move has to settle the tree. An ancestor
+never moves *with* its descendant, only a descendant moves down, so the
+moved issue's own parent is always left behind unless the same request also
+re-parents it: `parentKey`, resolved against the *target* project rather
+than the old one. `moveDescendants: true` — the default when the field is
+absent — carries everything below the moved issue along with it, so the
+subtree's own parentage survives inside it; `moveDescendants: false`
+detaches its direct children instead, and they stay in the old project with
+their own subtrees under them intact.
+
+What refuses, before anything is written: an unknown target project (`400`);
+the issue's own project, read as no opinion at all rather than a move
+(nothing staged); a caller that is a key or a keyless runner (`403` — an
+issue's project decides which repository it is dispatched to, the same
+routing-power argument that keeps [binding a remote](#repository) closed to
+a key); any issue in the moving set holding a live [claim](#claim) (`409`,
+naming it).
+
+Every issue that moves, the one named and each descendant carried with it,
+gets a `project_changed` event, `{ from, to }` as display keys; the named
+issue's also carries `descendants`, the count of what moved alongside it.
 
 #### Ordering
 
@@ -1966,7 +2002,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures` |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key or a keyless runner, `409` naming any issue in the moving set holding a live claim |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
