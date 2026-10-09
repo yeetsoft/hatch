@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { bulkEditIssues, getBoard, getProjects, searchIssues } from '../api/client';
 import { MomentField } from '../components/MomentField';
+import { ProjectChooser } from '../components/ProjectChooser';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
 import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, summarize } from '../lib/bulk';
@@ -49,6 +50,7 @@ export function BulkPage() {
   const [applying, setApplying] = useState(false);
   const [outcome, setOutcome] = useState<IssueBulkResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const descendantsName = useId();
 
   useEffect(() => {
     Promise.all([getBoard(), getProjects()])
@@ -243,6 +245,38 @@ export function BulkPage() {
                   ))}
                 </select>
               </Field>
+
+              <ProjectChooser
+                legend="Project"
+                projects={projects}
+                value={form.projectId === KEEP ? null : form.projectId}
+                keepLabel="Keep"
+                onKeep={() => setForm({ ...form, projectId: KEEP })}
+                onChange={(id) => setForm({ ...form, projectId: id })}
+              />
+
+              {form.projectId !== KEEP && (
+                <fieldset className="hatch-move-descendants">
+                  <label>
+                    <input
+                      type="radio"
+                      name={descendantsName}
+                      checked={form.moveDescendants}
+                      onChange={() => setForm({ ...form, moveDescendants: true })}
+                    />
+                    Move the issues under them too
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name={descendantsName}
+                      checked={!form.moveDescendants}
+                      onChange={() => setForm({ ...form, moveDescendants: false })}
+                    />
+                    Leave them with no parent
+                  </label>
+                </fieldset>
+              )}
 
               {/* The tick is what separates "leave this alone" from "clear it" -
                   an empty date field cannot say both, and the difference is the
