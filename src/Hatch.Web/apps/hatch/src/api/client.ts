@@ -39,6 +39,7 @@ import type {
   Playbook,
   PlaybookCreateRequest,
   PlaybookPatchRequest,
+  HatchImage,
   Project,
   ProjectCreateRequest,
   ProjectPatchRequest,
@@ -118,6 +119,10 @@ export const putProjectLogo = (id: number, blob: Blob) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'PUT', body: blob });
 export const deleteProjectLogo = (id: number) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'DELETE' });
+
+// ---- Images ----
+
+export const uploadImage = (blob: Blob) => fetchJson<HatchImage>('/api/hatch/images', { method: 'POST', body: blob });
 
 // ---- Statuses ----
 

@@ -145,6 +145,9 @@ public class AdminSurfaceTests
         "ProjectsController.DeleteProject",
         "ProjectsController.GetRepositories",
         "ProjectsController.GetLogo",
+        // A pasted image: read by a key named in a brief, posted by a person.
+        "ImagesController.GetImage",
+        "ImagesController.PostImage",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -514,6 +517,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",
+        "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

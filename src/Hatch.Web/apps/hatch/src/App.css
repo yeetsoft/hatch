@@ -2815,6 +2815,12 @@ input.hatch-inline-title-input {
   overflow-x: auto;
 }
 
+/* A pasted screenshot is as wide as the screen it came from. */
+.hatch-markdown img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* The three-block preview (HA-332) - a coarse pointer only, set up by the
    caller passing ProseClamp a limit. The fade is the newspaper-paywall look:
    the last block trails off rather than stopping square. */

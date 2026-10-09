@@ -19,6 +19,9 @@ public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt);
 
+/// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
+public record ImageDto(Guid Id);
+
 /// <summary>
 /// A new project. <paramref name="Key"/> is checked against
 /// <see cref="EfHatchProject.KeyPattern"/> and against every existing key. It
