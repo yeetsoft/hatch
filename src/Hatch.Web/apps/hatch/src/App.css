@@ -1698,6 +1698,24 @@ button.hatch-chip {
   background: color-mix(in srgb, var(--status-color) 18%, transparent);
 }
 
+/* The same 44px floor as the topbar's controls and .hatch-btn, reached here
+   by its own rule because these buttons carry neither class - layout follows
+   width, touch follows pointer, so the desk's row above is untouched. */
+@media (pointer: coarse) {
+  .hatch-status-steps {
+    gap: var(--sp-3);
+  }
+
+  .hatch-status-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--t-body);
+  }
+}
+
 /* The column it is already in. Disabled rather than merely marked - pressing it
    would write an event saying an issue moved from todo to todo. */
 .hatch-status-step.here {
