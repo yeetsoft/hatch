@@ -346,6 +346,13 @@ export function BulkPage() {
                     ))}
                   </ul>
                 )}
+                {outcome.rekeyed.length > 0 && (
+                  <ul className="hatch-bulk-rekeyed">
+                    {outcome.rekeyed.map((pair) => (
+                      <li key={pair.from}><code>{pair.from}</code> → <code>{pair.to}</code></li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </Card>
