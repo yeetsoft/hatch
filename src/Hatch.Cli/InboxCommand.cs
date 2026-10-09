@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Hatch.Cli;
@@ -51,7 +52,7 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
 
     public static readonly string[] InboxUsage =
     [
-        "usage: hatch inbox <key> --hook post-tool-use|stop [--stamp <path>] [--clamp <path>]",
+        "usage: hatch inbox <key> --hook post-tool-use|stop [--stamp <path>] [--clamp <path>] [--budget <path>]",
         "",
         "  For the hooks a spawned session runs, and nothing else: it prints what was",
         "  said to the session on this ticket, in the shape the hook expects, and marks",
@@ -62,7 +63,7 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
     {
         if (Usage.Wanted(args)) return Usage.Print(say, InboxUsage);
 
-        string? key = null, hook = null, stamp = null, clamp = null;
+        string? key = null, hook = null, stamp = null, clamp = null, budget = null;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -70,6 +71,7 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
                 case "--hook" when i + 1 < args.Length: hook = args[++i]; break;
                 case "--stamp" when i + 1 < args.Length: stamp = args[++i]; break;
                 case "--clamp" when i + 1 < args.Length: clamp = args[++i]; break;
+                case "--budget" when i + 1 < args.Length: budget = args[++i]; break;
                 case var other when !other.StartsWith('-') && key is null: key = other; break;
                 default: return Usage.Refuse(say, $"inbox does not know {args[i]}", InboxUsage);
             }
@@ -78,16 +80,22 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
         if (key is null || hook is not ("post-tool-use" or "stop"))
             return Usage.Refuse(say, "inbox takes an issue key and --hook post-tool-use|stop", InboxUsage);
 
-        // The hook's own JSON, which nothing here needs. Read to the end so the
-        // session is not left writing into a pipe nobody drains.
+        // The hook's own JSON - read to the end so the session is not left
+        // writing into a pipe nobody drains, and parsed so the transcript path
+        // it carries can be read below. A payload that fails to parse, or is
+        // not there at all, is the same as a quiet session with no budget.
+        JsonElement? given = null;
         try
         {
-            await stdin.ReadToEndAsync(ct);
+            var raw = await stdin.ReadToEndAsync(ct);
+            given = JsonDocument.Parse(raw).RootElement;
         }
-        catch (Exception e) when (e is IOException or ObjectDisposedException or OperationCanceledException)
+        catch (Exception e) when (e is IOException or ObjectDisposedException or OperationCanceledException or JsonException)
         {
-            // Nothing to discard.
+            // Nothing usable was given.
         }
+
+        if (budget is not null && clamp is not null) ClampFromTranscript(budget, clamp, given);
 
         var wrapUp = Clamped(clamp, key);
 
@@ -154,6 +162,81 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
             return null;
         }
     }
+
+    /// <summary>
+    /// A <c>--quiet</c> session's own stand-in for <see cref="StreamRender.TokensSoFar"/>:
+    /// a budget was set, nothing has clamped yet, and the stdin the hook was
+    /// given carries <c>transcript_path</c> - so sum that transcript's assistant
+    /// messages the same way <see cref="StreamRender"/> sums a streamed one, and
+    /// write <see cref="SessionHooks.Clamp"/> the first time the sum reaches the
+    /// budget. Anything that goes wrong reading or parsing the transcript - it
+    /// is missing, a line is not JSON, the budget file is not a number - leaves
+    /// the budget simply not confirmed crossed yet, never a failure.
+    /// </summary>
+    private static void ClampFromTranscript(string budget, string clamp, JsonElement? given)
+    {
+        try
+        {
+            if (!File.Exists(budget) || File.Exists(clamp)) return;
+            if (given is not { } root || !root.TryGetProperty("transcript_path", out var path) ||
+                path.ValueKind != JsonValueKind.String)
+                return;
+
+            var transcript = path.GetString();
+            if (transcript is null || !File.Exists(transcript)) return;
+
+            if (!long.TryParse(File.ReadAllText(budget).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var limit))
+                return;
+
+            var counted = new HashSet<string>();
+            var tokens = 0L;
+            foreach (var line in File.ReadLines(transcript))
+            {
+                var trimmed = line.TrimStart();
+                if (!trimmed.StartsWith('{')) continue;
+
+                JsonElement e;
+                try
+                {
+                    e = JsonDocument.Parse(trimmed).RootElement;
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                if (Text(e, "type") != "assistant" || !e.TryGetProperty("message", out var message)) continue;
+
+                var id = Text(message, "id");
+                if (id is null || !counted.Add(id)) continue;
+                if (!message.TryGetProperty("usage", out var usage)) continue;
+
+                tokens += Long(usage, "input_tokens") + Long(usage, "output_tokens")
+                    + Long(usage, "cache_creation_input_tokens") + Long(usage, "cache_read_input_tokens");
+            }
+
+            if (tokens < limit) return;
+
+            File.WriteAllText(clamp, JsonSerializer.Serialize(new ClampFact(tokens, counted.Count), HatchJson.Default.ClampFact));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A clamp that cannot be written must not fail the hook - the
+            // session simply is not told to wrap up on this call.
+        }
+    }
+
+    private static string? Text(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static long Long(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)
+            ? number
+            : 0;
 
     /// <summary>
     /// Whether a per-step check is due, and if it is, the stamp is touched
