@@ -28,6 +28,9 @@ const card = (
   priorityOwn: priority,
   priorityFrom: null,
   express: false,
+  stalledAt: null,
+  stalledWhy: null,
+  held: false,
 });
 
 /* The board as the API hands it over: grouped by column, ranked within it. */

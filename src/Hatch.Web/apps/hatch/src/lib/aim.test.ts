@@ -26,6 +26,9 @@ const card = (key: string, statusId: number): IssueCard => ({
   priorityOwn: 'normal',
   priorityFrom: null,
   express: false,
+  stalledAt: null,
+  stalledWhy: null,
+  held: false,
 });
 
 const rect = (left: number, top: number, width: number, height: number): ClientRect => ({

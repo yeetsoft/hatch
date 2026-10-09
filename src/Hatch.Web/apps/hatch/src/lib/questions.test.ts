@@ -97,6 +97,9 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   priorityOwn: 'normal',
   priorityFrom: null,
   express: false,
+  stalledAt: null,
+  stalledWhy: null,
+  held: false,
   ...over,
 });
 
