@@ -178,6 +178,7 @@ public static class Questions
                 IssueProjectKey = c.Issue!.Project!.Key,
                 IssueNumber = c.Issue!.Number,
                 IssueTitle = c.Issue!.Title,
+                IssueIsTerminal = c.Issue!.Status!.IsTerminal,
             })
             .ToListAsync(ct);
 
@@ -204,7 +205,8 @@ public static class Questions
             r.Author,
             r.CreatedAt,
             ReadOptions(r.Options),
-            byQuestion.TryGetValue(r.Id, out var found) ? found : [])).ToList();
+            byQuestion.TryGetValue(r.Id, out var found) ? found : [],
+            r.IssueIsTerminal)).ToList();
     }
 }
 

@@ -779,6 +779,10 @@ public record CommentCreateRequest(
 /// </param>
 /// <param name="Answers">Oldest first. Empty is what "open" means; there is no second flag saying so.</param>
 /// <param name="Options">The answers it offers, or null if it was asked in prose.</param>
+/// <param name="Obviated">
+/// Whether the issue this question is on has reached a terminal column - left
+/// out of the list a person answers from, kept in the record.
+/// </param>
 public record QuestionDto(
     long Id,
     string IssueKey,
@@ -787,7 +791,8 @@ public record QuestionDto(
     string AskedBy,
     DateTimeOffset AskedAt,
     IReadOnlyList<QuestionOptionDto>? Options,
-    IReadOnlyList<CommentDto> Answers);
+    IReadOnlyList<CommentDto> Answers,
+    bool Obviated = false);
 
 /// <param name="Payload">
 /// <c>{ "from": …, "to": … }</c> for an edit, the source filename for an
