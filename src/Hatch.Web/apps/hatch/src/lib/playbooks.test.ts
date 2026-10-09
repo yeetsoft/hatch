@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReviewPlaybook, transitionLabel } from './playbooks';
+import { budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from './playbooks';
 
 const move = { fromStatusId: 3, toStatusId: 4, fromStatusName: 'In Progress', toStatusName: 'In Review' };
 const review = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
@@ -21,5 +21,23 @@ describe('transitionLabel', () => {
 
   it('names the review playbook by its column and what it is for', () => {
     expect(transitionLabel(review)).toBe('In Review review');
+  });
+});
+
+describe('the budget field', () => {
+  it('shows no cap as a blank box', () => {
+    expect(budgetDraft(null)).toBe('');
+  });
+
+  it('shows a held budget as its number', () => {
+    expect(budgetDraft(3)).toBe('3');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(budgetRequest(' 3 ')).toBe('3');
+  });
+
+  it('a blank field clears the budget', () => {
+    expect(budgetRequest('  ')).toBe('');
   });
 });
