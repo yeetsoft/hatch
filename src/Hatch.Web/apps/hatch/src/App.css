@@ -4543,6 +4543,76 @@ button.hatch-option.chosen {
   pointer-events: none;
 }
 
+/* PullToRefresh.tsx's one surface: a pill fixed to the top of the viewport,
+   above <TopBar> in the DOM and drawn over it by position - at the instant a
+   pull can start the bar is at the top of the screen too, and this is where
+   the browser's own indicator would draw (App.tsx, and App.css's
+   .hatch-board--stacked .hatch-column-head comment). Owns no state:
+   PullToRefresh.tsx returns null at rest, and this can never draw while a
+   dialog is open - mayStart (lib/pullToRefresh.ts) refuses while
+   .hatch-modal__overlay is present, so it never competes with Modal's
+   stacking context in practice. */
+.hatch-pull-indicator {
+  position: fixed;
+  top: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: var(--t-label);
+  font-weight: 700;
+  /* Over the page and under Modal's 100, same reasoning as
+     .hatch-confirmations - the two are never open together in practice. */
+  z-index: 90;
+  pointer-events: none;
+}
+
+/* The two phases read differently by colour alone, so the distinction
+   survives prefers-reduced-motion untouched. pullCss.test.ts pins this
+   directly on these two selectors. */
+.hatch-pull-indicator--pulling {
+  color: var(--muted);
+}
+
+.hatch-pull-indicator--ready {
+  color: var(--primary);
+}
+
+.hatch-pull-indicator__icon {
+  display: inline-flex;
+  transform: rotate(0deg);
+}
+
+/* Movement, not just colour: the arrow points up once letting go would
+   reload, instead of down while still pulling. That rotation is a flat rule
+   change, not a `transition`, so it is never something
+   prefers-reduced-motion has to remove - only the attention pulse below is. */
+.hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+  transform: rotate(180deg);
+  animation: hatch-pull-ready-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hatch-pull-ready-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-pull-indicator--ready .hatch-pull-indicator__icon {
+    animation: none;
+  }
+}
+
 /* Outside the scrolling list, so the way out of a tall stack does not scroll
    away with it. Indented by the list's own padding so the two line up. */
 .hatch-confirmations-clear {
