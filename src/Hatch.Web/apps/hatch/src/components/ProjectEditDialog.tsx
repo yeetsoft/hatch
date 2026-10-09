@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
 import { deleteProjectLogo, patchProject, putProjectLogo, putProjectRepositories } from '../api/client';
 import { message } from '../lib/errors';
-import { openProjectDraft, projectDraftDiff, type ProjectDraft } from '../lib/projectDraft';
-import { rekeyObjection } from '../lib/projectKey';
+import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, type ProjectDraft } from '../lib/projectDraft';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import type { Project } from '../types';
@@ -55,7 +54,7 @@ export function ProjectEditDialog({
 
   if (!project || !draft) return <Modal open={false} onClose={onClose} title="" />;
 
-  const objection = rekeyObjection(draft.known.key, draft.key, confirmation);
+  const objection = projectDraftKeyObjection(draft, confirmation);
   const list = draft.repositories;
 
   function write(next: typeof list) {

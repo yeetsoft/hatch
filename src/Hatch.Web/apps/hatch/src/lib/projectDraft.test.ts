@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openProjectDraft, projectDraftDiff, type ProjectDraft } from './projectDraft';
+import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, type ProjectDraft } from './projectDraft';
 
 describe('openProjectDraft', () => {
   it('seeds known and the working fields from a Project', () => {
@@ -142,5 +142,36 @@ describe('projectDraftDiff', () => {
     };
 
     expect(projectDraftDiff(draft).repositories).toBeNull();
+  });
+});
+
+describe('projectDraftKeyObjection', () => {
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+  };
+  const withKey = (key: string): ProjectDraft => ({ known, name: known.name, key, color: known.color, icon: known.icon, repositories: known.repositories });
+
+  it('is no objection when the key is unchanged', () => {
+    expect(projectDraftKeyObjection(withKey('AER'), '')).toBeNull();
+  });
+
+  it('is no objection when the key differs only by case or padding', () => {
+    expect(projectDraftKeyObjection(withKey(' aer '), '')).toBeNull();
+  });
+
+  it('asks for the old key when the key changed and is unconfirmed', () => {
+    expect(projectDraftKeyObjection(withKey('NEW'), '')).toBe('Type AER to confirm.');
+  });
+
+  it('is no objection when the key changed and the old key is typed', () => {
+    expect(projectDraftKeyObjection(withKey('NEW'), 'aer')).toBeNull();
+  });
+
+  it('objects to a changed key that is invalid', () => {
+    expect(projectDraftKeyObjection(withKey('1X'), 'AER')).not.toBeNull();
   });
 });
