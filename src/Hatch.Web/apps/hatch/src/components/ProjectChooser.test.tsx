@@ -66,4 +66,24 @@ describe('ProjectChooser', () => {
     expect(html).toContain('AER');
     expect(html).toContain('Aerie');
   });
+
+  it('disables only the tile matching disabledId', () => {
+    const projects = [project({ id: 1, key: 'HA', name: 'Hatch' }), project({ id: 2, key: 'AER', name: 'Aerie' })];
+    const html = renderToStaticMarkup(
+      <ProjectChooser projects={projects} value={null} onChange={noop} legend="Project" disabledId={2} />,
+    );
+
+    const disabled = [...html.matchAll(/disabled=""/g)];
+    expect(disabled).toHaveLength(1);
+    expect(html.indexOf('disabled=""')).toBeLessThan(html.indexOf('title="Aerie"'));
+  });
+
+  it('disables no tile when disabledId is omitted', () => {
+    const projects = [project({ id: 1, key: 'HA', name: 'Hatch' }), project({ id: 2, key: 'AER', name: 'Aerie' })];
+    const html = renderToStaticMarkup(
+      <ProjectChooser projects={projects} value={null} onChange={noop} legend="Project" />,
+    );
+
+    expect(html).not.toContain('disabled=""');
+  });
 });
