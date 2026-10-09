@@ -77,6 +77,10 @@ export interface Status {
   /** Whether a program's own issues are born here rather than in the
       leftmost column - see HA-195. At most one column ever holds it. */
   agentFiles: boolean;
+  /** Whether this is the column where code gets written. At most one column
+      ever holds it. With none ticked, Hatch measures it as the column just
+      left of review. A tick left on a deferred or done column is ignored. */
+  isImplementation: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
