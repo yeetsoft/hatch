@@ -21,12 +21,14 @@ import {
   setAssignee,
   setPriority,
   setExpress,
+  setHold,
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { PriorityControl } from '../components/PriorityControl';
 import { ExpressControl } from '../components/ExpressControl';
 import { ClaimPanel } from '../components/ClaimPanel';
+import { StallPanel } from '../components/StallPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -57,6 +59,7 @@ import { dependencyCandidates } from '../lib/dependencies';
 import { deleteQuestion } from '../lib/deletion';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
+import { heldBy } from '../lib/stall';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
 import { renderMarkdown } from '../lib/markdown';
@@ -116,6 +119,9 @@ export function IssuePage() {
      answering, `aria-busy`, until the server replies - `PriorityControl`'s own
      flag, the way `StatusPicker`'s pill carries one. */
   const [priorityBusy, setPriorityBusy] = useState(false);
+  /* A hold or a resume is already out - StallPanel's own busy flag, the same
+     single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
+  const [stallBusy, setStallBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
   /* Whether the primary-info card shows its form or its read mode - deliberately
@@ -360,6 +366,23 @@ export function IssuePage() {
     [key, load],
   );
 
+  /* Resume now or Hold for me - StallPanel's two buttons, both PutHold under
+     the one busy flag, the same shape saveExpress uses. */
+  const saveHold = useCallback(
+    async (held: boolean) => {
+      setStallBusy(true);
+      try {
+        await setHold(key, held);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setStallBusy(false);
+      }
+    },
+    [key, load],
+  );
+
   /* Taking the ticket back off a runner. Its own call for the reason
      `saveAssignee` is - its own endpoint, closed to an API key - and otherwise
      exactly `save`: it re-reads, so the section, the card and the trail below
@@ -503,6 +526,18 @@ export function IssuePage() {
         sending={messageSending}
         onSend={sendMessage}
         onClear={() => setClearingClaim(true)}
+      />
+
+      {/* Beside ClaimPanel, and for the same stated reason: a fact about the
+          ticket that something else is or is not about to act on it. Draws
+          nothing on the overwhelming majority of pages. */}
+      <StallPanel
+        issue={issue}
+        heldBy={heldBy(events)}
+        directory={directory}
+        busy={stallBusy}
+        onResume={() => void saveHold(false)}
+        onHold={() => void saveHold(true)}
       />
 
       <ClearClaimDialog

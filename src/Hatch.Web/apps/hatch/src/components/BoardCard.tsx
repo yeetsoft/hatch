@@ -187,6 +187,21 @@ function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps,
             ?{card.openQuestions > 1 && <span className="hatch-card-asking-count">{card.openQuestions}</span>}
           </span>
         )}
+        {/* Its own badge, distinct from the asking one above - after HA-341 a
+            held or stalled issue is no longer a question, and a reader who
+            sees the asking badge should still be able to trust that somebody
+            is actually being asked something. Held takes precedence, the same
+            order markState resolves in, so a card never wears both. */}
+        {card.held && (
+          <span className="hatch-card-held" title={`Held${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
+            🔒
+          </span>
+        )}
+        {!card.held && card.stalledAt && (
+          <span className="hatch-card-stalled" title={`Stalled${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
+            ⏳
+          </span>
+        )}
         {/* Nothing at all where there is no assignee - not an empty chip and
             not a dash. Most of the board owns nothing, and a placeholder on
             every card would be noise the eye has to skip past to find the
