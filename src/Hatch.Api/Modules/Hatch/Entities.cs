@@ -1592,6 +1592,12 @@ public class EfHatchPlaybook
     /// </summary>
     public int? Budget { get; set; }
 
+    /// <summary>
+    /// The brief's limit, in characters - blank unless a person has set one,
+    /// and read by a key but never written by one.
+    /// </summary>
+    public int? BriefLimit { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
