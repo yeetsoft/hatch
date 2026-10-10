@@ -28,9 +28,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// A board's worth of rows against a handful of queries, because a scan that
     /// cost a query a row would be a scan nobody leaves running.
     /// </remarks>
+    /// <param name="principalOverride">
+    /// Whose tickets <paramref name="mine"/> means, already resolved - so
+    /// <see cref="IActorDirectory.PrincipalAsync"/> is not asked again. Null,
+    /// every caller before this one, keeps today's live-caller resolution
+    /// exactly as it was. For a caller answering on a named runner's behalf,
+    /// the row's own owner is not whoever the HTTP caller happens to be.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
-        CancellationToken ct)
+        CancellationToken ct, Actor? principalOverride = null)
     {
         var statuses = await OrderedStatusesAsync(ct);
 
@@ -64,10 +71,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         Guid? callerKeyId = null;
         if (mine)
         {
-            principal = await actors.PrincipalAsync(ct);
-            if (await actors.MeAsync(ct) is { Kind: ActorKind.Key } me) callerKeyId = me.Id;
-            if (principal is null)
-                return Scan.Refused("this key belongs to nobody, so it has no tickets of its own - an admin sets its owner on the API Keys page");
+            if (principalOverride is not null)
+            {
+                principal = principalOverride;
+            }
+            else
+            {
+                principal = await actors.PrincipalAsync(ct);
+                if (await actors.MeAsync(ct) is { Kind: ActorKind.Key } me) callerKeyId = me.Id;
+                if (principal is null)
+                    return Scan.Refused("this key belongs to nobody, so it has no tickets of its own - an admin sets its owner on the API Keys page");
+            }
         }
 
         var loop = new LoopScope(DayNumber(now, offsetMinutes), offsetMinutes, mine, principal, callerKeyId);
