@@ -93,6 +93,22 @@ public static class Prompt
             lines.Add("");
         }
 
+        // A ticket a person marked themselves, rather than an increment
+        // spending itself with nothing to show - handed over directly, in
+        // place of a question and an answer nobody typed in the comment
+        // thread.
+        if (issue.StalledWhy is { Length: > 0 } stalledWhy)
+        {
+            lines.Add("## This ticket stalled");
+            lines.Add("");
+            lines.Add(stalledWhy);
+            lines.Add("");
+            lines.Add(work.LetGo > 1
+                ? $"It has stalled {work.LetGo} times in a row."
+                : "The loop folded it rather than redispatching blindly, and is handing it back now.");
+            lines.Add("");
+        }
+
         // Decisions that were asked for and given, on this ticket, before now.
         // Carried into the prompt rather than left for the agent to find in the
         // comment thread, because the one thing a session must not do is reopen

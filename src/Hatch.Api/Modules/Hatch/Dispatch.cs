@@ -160,6 +160,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
             pace = await PaceReadingsAsync(ct);
 
+        // Resolved only when some candidate is actually marked - a pass with
+        // nothing stalled has no reason to read any issue's trail at all.
+        Dictionary<long, int>? letGoCounts = null;
+        var marked = candidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
+        if (marked.Count > 0) letGoCounts = await LetGo.CountsAsync(db, marked, ct);
+
         // Set only after a tier's own loop below has finished, so two clear rows in
         // the same tier never park each other - only a strictly higher tier's clear
         // row, remembered here on a previous iteration, can. Never reassigned once
@@ -191,8 +197,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hopKind = HopKind(issue, status, to, family, statuses, wip, parent);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
+                    var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, loop, pace, gate, family, claimed,
+                        issue, status, to, playbook, summary.Waiting, letGo, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
 
                     var sentence = blocked;
@@ -220,6 +227,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         sentence is null ? hopUnder : null,
                         sentence is null && summary.LapsedStall
                             ? ClearNote(claims.StallLapseSeconds)
+                            : sentence is null && issue.StalledAt is not null
+                            ? ResumedClearNote(issue.StalledAt.Value, claimed.Now, claimed.Claims!.StallResumeSeconds)
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
                             : null,
@@ -278,6 +287,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </summary>
     private static string ClearNote(int lapseSeconds) =>
         $"its stall question lapsed after {Minutes(lapseSeconds)} untouched";
+
+    /// <summary>
+    /// The other reason a row is clear with nothing in <see cref="ScanRow.Blocked"/>:
+    /// its own mark resumed, rather than a stall question lapsing - see
+    /// <see cref="ClearNote"/>.
+    /// </summary>
+    private static string ResumedClearNote(DateTimeOffset stalledAt, DateTimeOffset now, int resumeSeconds) =>
+        $"it stalled {Minutes((int)(now - stalledAt).TotalSeconds)} ago and resumes itself after {Minutes(resumeSeconds)}";
 
     private static string Minutes(int seconds)
     {
@@ -499,6 +516,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// "nobody has answered you" is a more useful sentence than "no playbook
     /// covers this" when both are true.
     /// </param>
+    /// <param name="letGo">
+    /// How many increments in a row let this issue go without moving it - see
+    /// <see cref="LetGo.Count"/>. Read only when the issue is marked - a
+    /// stalled issue past its own resume window is held rather than resumed
+    /// once this reaches <see cref="IssueClaims.StallResumeLimit"/>.
+    /// </param>
     /// <param name="loop">
     /// The pass's own policy, or null when somebody named this ticket by hand.
     /// The one fold it adds is a decision about what an unattended run may
@@ -567,6 +590,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchStatus? to,
         EfHatchPlaybook? playbook,
         int waiting,
+        int letGo,
         LoopScope? loop,
         PaceReadings? pace,
         DependencyGate gate,
@@ -601,6 +625,24 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (claimed.Held(issue) is { } holder)
             return holder;
+
+        if (issue.Held)
+            return "held - a person told the loop to leave this alone until they say otherwise";
+
+        if (issue.StalledAt is { } stalledAt)
+        {
+            var resumeSeconds = claimed.Claims!.StallResumeSeconds;
+            var why = issue.StalledWhy is { Length: > 0 } w ? $" ({w})" : "";
+
+            if (resumeSeconds <= 0)
+                return $"stalled{why} - this board never resumes a marked ticket unattended; a person moves it";
+
+            if (claimed.Now - stalledAt < TimeSpan.FromSeconds(resumeSeconds))
+                return $"stalled {Minutes((int)(claimed.Now - stalledAt).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}";
+
+            if (letGo >= claimed.Claims!.StallResumeLimit)
+                return $"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again";
+        }
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)

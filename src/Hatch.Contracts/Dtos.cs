@@ -377,6 +377,15 @@ public record IssueClaimDto(
 /// <see cref="IssueWipLimitController"/>: a key that could raise its own
 /// epic's ceiling could pull more of its own stories into progress at once.
 /// </param>
+/// <param name="StallResumeSeconds">
+/// How long after <paramref name="StalledAt"/> this issue resumes on its own,
+/// in seconds, or <c>0</c> when the install has turned unattended resuming
+/// off - the same window <see cref="ClaimTakenDto.StallLapseSeconds"/> rides
+/// back for a live claim. The server is what honours it, so the server is
+/// what says what it is: a client could not draw a countdown without this,
+/// and hardcoding the shipped default would be true of today's install and
+/// not of every one.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -410,7 +419,8 @@ public record IssueDto(
     int? WipLimit = null,
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
-    bool Held = false);
+    bool Held = false,
+    int StallResumeSeconds = 0);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1196,6 +1206,19 @@ public record PriorityRequest(string Priority);
 /// route both marks and unmarks, and the caller says which it meant.
 /// </summary>
 public record ExpressRequest(bool Express);
+
+/// <summary>
+/// The sentence an increment leaves behind it, saying why it left this ticket
+/// where it found it - see <see cref="EfHatchIssue.StalledAt"/>.
+/// </summary>
+public record StallRequest(string Why);
+
+/// <summary>
+/// Hold the ticket, or resume it - see <see cref="EfHatchIssue.Held"/>. One
+/// required boolean, for the same reason as <see cref="ExpressRequest"/>: the
+/// same route both marks and unmarks, and the caller says which it meant.
+/// </summary>
+public record HoldRequest(bool Held);
 
 /// <summary>
 /// The picker's rows and the answer to "who am I", in one read.

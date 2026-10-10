@@ -386,6 +386,10 @@ export interface Issue {
   /** A person has said the loop is to keep off this ticket until they say
       otherwise. See IssueCard.held and IssueDto.Held. */
   held: boolean;
+  /** How long after `stalledAt` this issue resumes on its own, in seconds, or
+      0 when the install has turned unattended resuming off. See
+      IssueDto.StallResumeSeconds. */
+  stallResumeSeconds: number;
   /** What a runner last found when it merged this issue's branch against the
       trunk, one verdict per repository. Empty until somebody has checked. Read
       through `conflictedChecks` - only a conflicted one is drawn. */
@@ -474,6 +478,9 @@ export type IssueEventKind =
   | 'merge_check_changed'
   | 'build_check_changed'
   | 'wip_overridden'
+  | 'stalled'
+  | 'held'
+  | 'resumed'
   | 'commented'
   | 'messaged'
   | 'message_delivered'

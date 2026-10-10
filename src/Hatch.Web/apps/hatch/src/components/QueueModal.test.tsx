@@ -50,6 +50,7 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   stalledAt: null,
   stalledWhy: null,
   held: false,
+  stallResumeSeconds: 0,
   mergeChecks: [],
   buildChecks: [],
   wipLimit: null,
