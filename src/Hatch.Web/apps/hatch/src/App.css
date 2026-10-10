@@ -2592,6 +2592,25 @@ input.hatch-inline-title-input {
   overflow-wrap: anywhere;
 }
 
+/* Beside .hatch-claim and for the same reason - a band down the left edge
+   marking a fact about the ticket rather than the ticket itself. Warn rather
+   than success: unlike a claim, a mark is never good news. */
+.hatch-stall {
+  border-left: 3px solid var(--warn);
+}
+
+.hatch-stall-line {
+  margin: 0 0 var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+/* What a key reading the page gets instead of the two buttons - ExpressControl's
+   own register for a state it may not write. */
+.hatch-stall-said {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* The dialog's stack, as .hatch-cascade is for the close offer. */
 .hatch-claim-clear {
   display: flex;
@@ -2997,6 +3016,32 @@ input.hatch-inline-title-input {
 
 .hatch-card-asking-count {
   font-variant-numeric: tabular-nums;
+}
+
+/* Held and stalled, in the asking badge's own shape - distinct from it (HA-354:
+   after HA-341 neither is a question any more) and from each other: warn for a
+   stall, the same tone .hatch-waiting carries, because it is still pending on
+   its own; primary for a hold, because a person already acted on it. */
+.hatch-card-stalled {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: var(--t-micro);
+  line-height: 1.6;
+}
+
+.hatch-card-held {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-size: var(--t-micro);
+  line-height: 1.6;
 }
 
 /* This one first.
