@@ -12,6 +12,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
 
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
+    public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
     public DbSet<EfHatchImage> Images => Set<EfHatchImage>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
@@ -205,6 +206,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             .HasOne(l => l.Project)
             .WithOne()
             .HasForeignKey<EfHatchProjectLogo>(l => l.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Cascade off the project, same reasoning as its repository bindings:
+        // a project's memberships are not a reason to keep it around. No
+        // inverse navigation - the read path is a plain query against
+        // db.ProjectMembers, the same shape EfHatchProjectLogo above uses.
+        modelBuilder.Entity<EfHatchProjectMember>()
+            .HasOne(m => m.Project)
+            .WithMany()
+            .HasForeignKey(m => m.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // A verdict is about an issue and means nothing without it, the same

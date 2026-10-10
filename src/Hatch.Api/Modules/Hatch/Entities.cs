@@ -159,6 +159,44 @@ public class EfHatchProjectRepository
     public required DateTimeOffset CreatedAt { get; set; }
 }
 
+/// <summary>The roles a person can hold on a project, and nothing else.</summary>
+public static class ProjectMemberRole
+{
+    public const string Owner = "owner";
+    public const string Approver = "approver";
+
+    public static bool IsKnown(string? role) => role is Owner or Approver;
+}
+
+/// <summary>
+/// One person's role on one project - who may own it or approve on it, which
+/// <see cref="ProjectAccess"/> is the one place that answers.
+/// </summary>
+[Table("ProjectMembers")]
+[Index(nameof(ProjectId), nameof(PersonId), IsUnique = true)]
+public class EfHatchProjectMember
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchIssue.AssigneePersonId"/> is one: Hatch owns its own
+    /// schema and its own migration history, and a constraint from a module
+    /// into <c>public.People</c> is the compile-time coupling Modules/README.md
+    /// exists to prevent.
+    /// </summary>
+    public Guid PersonId { get; set; }
+
+    [MaxLength(20)]
+    public required string Role { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>
 /// One project's logo, stored as bytes in Postgres rather than as a path into a
 /// volume.

@@ -47,6 +47,10 @@ public static class HatchModule
         // Dispatch it decides alongside.
         services.AddScoped<Preemption>();
 
+        // Scoped, the same reason as Dispatch and Preemption above it: it
+        // holds a scoped HatchContext.
+        services.AddScoped<IProjectAccess, ProjectAccess>();
+
         // The container runner's entrypoint authenticates the `claude` CLI it
         // starts with this - the one thing the pasted token still does. The
         // credential is its own interface so that where the token lives is one
