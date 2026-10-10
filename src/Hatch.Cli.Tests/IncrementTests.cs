@@ -544,10 +544,9 @@ public sealed class IncrementTests
         // A comment naming the session and mentioning this is the second
         // increment in a row, and the mark that actually stops the next pass
         // spending the same money the same way.
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
-        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
-        Assert.Contains("second increment in a row", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
-        Assert.Contains("claude --resume s-1", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("second increment in a row", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
         var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
         Assert.Contains("without moving it", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
