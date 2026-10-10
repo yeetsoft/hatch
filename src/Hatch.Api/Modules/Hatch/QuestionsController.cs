@@ -24,9 +24,9 @@ public class QuestionsController(HatchContext db) : ControllerBase
     /// up longest.
     /// </summary>
     /// <param name="open">
-    /// True, the default, for the ones nobody has answered. False for all of
-    /// them, answers included, which is what a reader catching up on decisions
-    /// wants.
+    /// True, the default, for the ones waiting on somebody - unanswered, and
+    /// outside a terminal column. False for all of them, answers and obviated
+    /// ones included, which is what a reader catching up on decisions wants.
     /// </param>
     [HttpGet("/api/hatch/questions")]
     public async Task<ActionResult<IReadOnlyList<QuestionDto>>> GetQuestions([FromQuery] bool open = true, CancellationToken ct = default) =>
@@ -46,6 +46,6 @@ public class QuestionsController(HatchContext db) : ControllerBase
 
     private IQueryable<EfHatchComment> Source(bool open) =>
         open
-            ? Questions.Open(db)
+            ? Questions.Waiting(db)
             : db.Comments.AsNoTracking().Where(c => c.Kind == EfHatchComment.Question);
 }

@@ -1577,6 +1577,61 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AQuestionOnADoneIssue_IsLeftOutOfTheOpenListAndMarkedObviatedInTheRecord()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still relevant?");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Empty(Value(await h.Questions.GetIssueQuestions("AER-1", open: true, default)));
+
+        var all = Value(await h.Questions.GetIssueQuestions("AER-1", open: false, default));
+        Assert.True(Assert.Single(all).Obviated);
+    }
+
+    [Fact]
+    public async Task AQuestionOnADoneIssue_IsLeftOutOfTheHouseWideOpenList()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still relevant?");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Empty(Value(await h.Questions.GetQuestions(open: true, default)));
+    }
+
+    [Fact]
+    public async Task AQuestionOnAnOrdinaryIssue_IsNotObviated()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still open");
+
+        Assert.False(Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: true, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: false, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetQuestions(open: true, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetQuestions(open: false, default))).Obviated);
+    }
+
+    [Fact]
+    public async Task AQuestionOnADeferredIssue_IsNotObviated()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "still open");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Todo, null, null), default);
+        var row = await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo);
+        row.IsDeferred = true;
+        await h.Db.SaveChangesAsync();
+
+        Assert.False(Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: true, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: false, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetQuestions(open: true, default))).Obviated);
+        Assert.False(Assert.Single(Value(await h.Questions.GetQuestions(open: false, default))).Obviated);
+    }
+
+    [Fact]
     public async Task TheBoard_CountsWhatEachCardIsWaitingOn()
     {
         var h = await NewAsync();
