@@ -57,8 +57,10 @@ public sealed class Idle(
         // Scoped to match the sentence above it: an evening pointed at one epic
         // is not helped by a count of every question in the house. Counted over
         // the whole subtree rather than over the dispatcher's path, which is a
-        // different and still useful number - a question on a card in a terminal
-        // column is still a question somebody owes an answer to.
+        // different and still useful number - though a question on a card in a
+        // terminal column is left out of it now, the same as everywhere else a
+        // person is asked to act: the ticket shipped with it open, and nobody is
+        // coming back to answer it.
         var waiting = 0;
         try
         {
