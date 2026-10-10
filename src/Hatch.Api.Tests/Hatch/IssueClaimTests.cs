@@ -749,91 +749,32 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
     }
 
-    // ---- Lapsed stall questions, answered on take ----
+    // ---- Taking a claim answers no question ----
 
     [SkippableFact]
-    public async Task ATakeAnswersALapsedStallQuestion_AndLeavesAProseQuestionAlone()
+    public async Task ATake_AnswersNoQuestionAtAll_HoweverOldOrShapedLikeTheFormerStallPair()
     {
         await using var h = await NewAsync();
         var issue = await h.FileAsync();
-        var stall = await h.AskStallAsync(issue, Now);
+
+        // Written by hand, carrying exactly the labels the old stall question used to -
+        // the type that named them is gone, so this proves the controller never
+        // special-cased them, not merely that it stopped calling the thing that used
+        // to write them.
+        var db = h.Connect();
+        var formerStallShape = new EfHatchComment
+        {
+            IssueId = (await h.RowAsync(issue)).Id,
+            Author = "hatch-agent",
+            Body = "an increment did nothing - what next?",
+            Kind = EfHatchComment.Question,
+            Options = Questions.WriteOptions([new QuestionOptionDto("leave it", ""), new QuestionOptionDto("try again", "")]),
+            CreatedAt = Now,
+        };
+        db.Comments.Add(formerStallShape);
+        await db.SaveChangesAsync();
+
         var prose = await h.AskProseAsync(issue, Now, "what should this be called?");
-
-        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
-
-        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
-
-        var comments = await h.CommentsAsync(issue);
-        var answer = Assert.Single(comments, c => c.Kind == EfHatchComment.Answer);
-        Assert.Equal(stall, answer.AnswersId);
-        Assert.Equal(StallAnswers.TryAgain, answer.Body);
-        Assert.Equal("Hatch", answer.Author);
-
-        var answered = (await h.EventsAllAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.Answered);
-        Assert.Equal("Hatch", answered.Actor);
-        Assert.True(answered.Payload!.Value.GetProperty("lapsed").GetBoolean());
-        Assert.Equal(stall, answered.Payload!.Value.GetProperty("questionId").GetInt64());
-
-        // The prose question is a question nobody may guess the label for -
-        // never a stall question, never auto-answered.
-        Assert.DoesNotContain(comments, c => c.Kind == EfHatchComment.Answer && c.AnswersId == prose);
-    }
-
-    [SkippableFact]
-    public async Task AFreshStallQuestion_IsNotYetAnsweredOnATake()
-    {
-        await using var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.AskStallAsync(issue, Now);
-
-        // Not yet five minutes old.
-        h.Time.Advance(TimeSpan.FromMinutes(1));
-
-        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
-
-        Assert.DoesNotContain(await h.CommentsAsync(issue), c => c.Kind == EfHatchComment.Answer);
-    }
-
-    [SkippableFact]
-    public async Task ATakeThatLosesTheLineRecheck_AnswersNothing()
-    {
-        await using var h = await NewAsync();
-        var parent = await h.FileAsync();
-        var child = await h.FileAsync(parent);
-        await h.AskStallAsync(child, Now);
-
-        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
-
-        // Two connections racing a take on the parent and the child, the same
-        // interleaving TwoTakesOnAParentAndItsChild_NeverBothKeepAClaim uses -
-        // one of the two takes is bound to lose the recheck and let go again.
-        var one = h.Connect();
-        var two = h.Connect();
-        var parentId = (await h.RowAsync(parent)).Id;
-        var childId = (await h.RowAsync(child)).Id;
-        var claims = TestClaims.With();
-
-        var mine = Guid.NewGuid();
-        var theirs = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", h.Time.GetUtcNow(), default));
-        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", h.Time.GetUtcNow(), default));
-
-        Assert.NotNull(await claims.ConfirmLineAsync(one, parentId, mine, h.Time.GetUtcNow(), default));
-        Assert.Null(await claims.ConfirmLineAsync(two, childId, theirs, h.Time.GetUtcNow(), default));
-
-        // Neither of these bare writes goes through TakeClaim's own answering
-        // step, so the lapsed question on the child is untouched either way -
-        // which is exactly the state a losing take must leave it in.
-        Assert.DoesNotContain(await h.CommentsAsync(child), c => c.Kind == EfHatchComment.Answer);
-    }
-
-    [SkippableFact]
-    public async Task StallLapseMinutesOfZero_NeverAnswersAQuestionOnATake()
-    {
-        await using var h = await NewAsync();
-        h.Rule = TestClaims.With(stallLapseMinutes: 0);
-        var issue = await h.FileAsync();
-        await h.AskStallAsync(issue, Now);
 
         h.Time.Advance(TimeSpan.FromDays(1));
 
@@ -1366,40 +1307,6 @@ public class IssueClaimTests
 
         public async Task<IReadOnlyList<CommentDto>> CommentsAsync(string key) =>
             Value(await Thread.GetComments(key, default));
-
-        /// <summary>
-        /// A stall question, written straight to the table with the shared
-        /// options and its own <c>asked</c> event - what a runner asks when an
-        /// increment does nothing, and what <see cref="BuildCheckController"/>
-        /// asks when a fixed build fails again. These tests are about what a
-        /// take does with one once it has gone quiet, not about who asks it.
-        /// </summary>
-        public async Task<long> AskStallAsync(string key, DateTimeOffset at)
-        {
-            var issue = await RowAsync(key);
-            var db = Connect();
-
-            var comment = new EfHatchComment
-            {
-                IssueId = issue.Id,
-                Author = "hatch-agent",
-                Body = "an increment did nothing - what next?",
-                Kind = EfHatchComment.Question,
-                Options = Questions.WriteOptions(StallAnswers.Options()),
-                CreatedAt = at,
-            };
-            db.Comments.Add(comment);
-            db.IssueEvents.Add(new EfHatchIssueEvent
-            {
-                IssueId = issue.Id,
-                Actor = "hatch-agent",
-                Kind = EfHatchIssueEvent.Asked,
-                At = at,
-            });
-
-            await db.SaveChangesAsync();
-            return comment.Id;
-        }
 
         /// <summary>A question asked in prose - no options, and never a stall question however long it waits.</summary>
         public async Task<long> AskProseAsync(string key, DateTimeOffset at, string body)

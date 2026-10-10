@@ -1181,33 +1181,6 @@ public class WorkControllerTests
         Assert.NotNull(work.Playbook);
     }
 
-    // ---- A lapsed stall question ----
-
-    [Fact]
-    public async Task ALapsedStallQuestion_DoesNotFoldTheIssue()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
-        await h.AskStallAsync(issue, Now);
-
-        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
-
-        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
-    }
-
-    [Fact]
-    public async Task AFreshStallQuestion_StillFoldsTheIssue()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync("task", "just asked", h.Todo);
-        await h.AskStallAsync(issue, Now);
-
-        // Not yet five minutes old.
-        h.Time.Advance(TimeSpan.FromMinutes(1));
-
-        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
-    }
-
     [Fact]
     public async Task AProseQuestion_FoldsHoweverLongItWaits()
     {
@@ -1220,37 +1193,6 @@ public class WorkControllerTests
         // No options at all - never a stall question, whatever its body reads
         // like, so it never lapses.
         Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
-    }
-
-    [Fact]
-    public async Task AStallQuestionOnARecentlyTouchedIssue_StillFolds()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync("task", "somebody is still looking", h.Todo);
-        await h.AskStallAsync(issue, Now);
-
-        h.Time.Advance(TimeSpan.FromMinutes(10));
-
-        // The question itself is ten minutes old, well past the window - but
-        // something happened to the issue seconds ago, so the untouched half
-        // of the lapse is not met and the question still folds.
-        await h.LogEventAsync(issue, EfHatchIssueEvent.Commented, null, h.Time.GetUtcNow());
-
-        Assert.Contains("unanswered question", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
-    }
-
-    [Fact]
-    public async Task Queue_NamesTheLapseOnARowClearOnlyBecauseOfIt()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
-        await h.AskStallAsync(issue, Now);
-
-        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
-
-        var row = Only(await h.Work.GetQueue(0, null, default));
-        Assert.Null(row.Blocked);
-        Assert.Equal("its stall question lapsed after 5 minutes untouched", row.ClearNote);
     }
 
     [Fact]
@@ -6284,38 +6226,6 @@ public class WorkControllerTests
             };
 
             Db.Comments.Add(comment);
-            await Db.SaveChangesAsync();
-            return comment;
-        }
-
-        /// <summary>
-        /// A stall question, written straight to the table with the shared
-        /// options and its own <c>asked</c> event - what a runner asks when an
-        /// increment does nothing, and what the server asks when a fixed build
-        /// fails again. These tests are about what a lapsed one does to a
-        /// dispatch, not about who asks it.
-        /// </summary>
-        public async Task<EfHatchComment> AskStallAsync(EfHatchIssue issue, DateTimeOffset at)
-        {
-            var comment = new EfHatchComment
-            {
-                IssueId = issue.Id,
-                Author = "hatch-agent",
-                Body = "an increment did nothing - what next?",
-                Kind = EfHatchComment.Question,
-                Options = Questions.WriteOptions(StallAnswers.Options()),
-                CreatedAt = at,
-            };
-
-            Db.Comments.Add(comment);
-            Db.IssueEvents.Add(new EfHatchIssueEvent
-            {
-                IssueId = issue.Id,
-                Actor = "hatch-agent",
-                Kind = EfHatchIssueEvent.Asked,
-                At = at,
-            });
-
             await Db.SaveChangesAsync();
             return comment;
         }

@@ -419,7 +419,7 @@ public class BuildCheckControllerTests
     }
 
     [Fact]
-    public async Task TheMarkArrivingAfterTheFailure_OpensTheQuestionAllTheSame()
+    public async Task TheMarkArrivingAfterTheFailure_StallsTheIssueAllTheSame()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
@@ -432,7 +432,8 @@ public class BuildCheckControllerTests
 
         Assert.Equal(BuildVerdicts.Failed, kept.Verdict);
         Assert.True(kept.PushedByIncrement);
-        Assert.Single(await h.QuestionsAsync());
+        Assert.Empty(await h.QuestionsAsync());
+        Assert.NotNull((await h.ReadAsync(issue.Key)).StalledAt);
     }
 
     [Fact]

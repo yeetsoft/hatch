@@ -301,6 +301,7 @@ public sealed class BuildIncrementTests
         h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
         h.Wire.Json("PUT", Put, Fixtures.Build());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
 
         h.Workspace.HeadsFor[h.Root] = Heads(Tip);
     }
@@ -466,11 +467,13 @@ public sealed class BuildIncrementTests
 
         Assert.Single(h.Sessions.Spawned);
         var written = Stall(h);
-        Assert.Equal(2, written.Count);
+        Assert.Single(written);
         Assert.Contains("- api", written[0].Body, StringComparison.Ordinal);
-        Assert.Equal("question", written[1].Kind);
 
-        // Only the recheck's verdict was put: nothing was pushed to mark.
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Contains("still fails", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+
+        // The recheck's own verdict landed on its own route, same as always.
         Assert.Single(h.Wire.To("PUT", Put));
     }
 
