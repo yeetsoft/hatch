@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from './playbooks';
+import { briefLimitDraft, briefLimitRequest, budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from './playbooks';
 
 const move = { fromStatusId: 3, toStatusId: 4, fromStatusName: 'In Progress', toStatusName: 'In Review' };
 const review = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
@@ -39,5 +39,23 @@ describe('the budget field', () => {
 
   it('a blank field clears the budget', () => {
     expect(budgetRequest('  ')).toBe('');
+  });
+});
+
+describe('the brief limit field', () => {
+  it('shows no cap as a blank box', () => {
+    expect(briefLimitDraft(null)).toBe('');
+  });
+
+  it('shows a held brief limit as its number', () => {
+    expect(briefLimitDraft(3)).toBe('3');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(briefLimitRequest(' 3 ')).toBe('3');
+  });
+
+  it('a blank field clears the brief limit', () => {
+    expect(briefLimitRequest('  ')).toBe('');
   });
 });
