@@ -201,6 +201,20 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Mine);
     }
 
+    [Fact]
+    public async Task Standing_IsSeededOverwrittenAndLeftAloneTheSameWayMineIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Standing: true));
+        Assert.True((await h.OneAsync()).Standing);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Standing: false));
+        Assert.False((await h.OneAsync()).Standing);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.False((await h.OneAsync()).Standing);
+    }
+
     // ---- Out of Claude usage ----
 
     [Fact]

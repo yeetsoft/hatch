@@ -1090,6 +1090,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
+                Standing: runtime.Checkouts.Any(c => c.Standing),
                 Where: runtime.Where,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,

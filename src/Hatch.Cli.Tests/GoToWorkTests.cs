@@ -173,6 +173,36 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task The_heartbeat_carries_standing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.True(beat.Standing);
+    }
+
+    [Fact]
+    public async Task The_heartbeat_carries_standing_false_when_no_checkout_is_standing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var path = h.Runtime.Checkouts[0].Path;
+        var runtime = h.Runtime with { Checkouts = [new CheckoutEntry(path, "https://example.test/repo.git", Standing: false)] };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.False(beat.Standing);
+    }
+
+    [Fact]
     public async Task The_heartbeat_carries_the_readouts_reading()
     {
         using var h = new Harness();
