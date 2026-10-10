@@ -105,6 +105,7 @@ public sealed class Runners(IOptions<HatchOptions> options)
         runner.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
         runner.Clones,
         runner.Mine,
+        runner.Standing,
         runner.Where,
         runner.ExhaustedUntil);
 

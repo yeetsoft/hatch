@@ -291,7 +291,7 @@ public sealed class ConfigCommandTests : IDisposable
                 [
                     new RunnerDto(
                         "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                        "running", null, null, null, null, 90, [], null, null, "elsewhere:/some/tree"),
+                        "running", null, null, null, null, 90, [], null, null, null, "elsewhere:/some/tree"),
                 ]))
             .RunAsync([], default);
 
@@ -335,7 +335,7 @@ public sealed class ConfigCommandTests : IDisposable
                 [
                     new RunnerDto(
                         "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                        "running", null, null, null, null, 90, [], null, null, "elsewhere:/some/tree"),
+                        "running", null, null, null, null, 90, [], null, null, null, "elsewhere:/some/tree"),
                 ]))
             .RunAsync(["--runner", "Liz Lemon"], default);
 

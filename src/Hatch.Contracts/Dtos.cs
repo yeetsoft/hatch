@@ -2103,6 +2103,11 @@ public static class RunnerStates
 /// </param>
 /// <param name="Clones">Whether this runner makes a clone for itself when it lacks one.</param>
 /// <param name="Mine">Whether this runner was started with `do-my-work` or `--mine` - working its owner's tickets only.</param>
+/// <param name="Standing">
+/// Whether this runner was started inside one of the checkouts it is
+/// serving - a fact about the running process, drawn and never set from a
+/// page, the same as <see cref="Clones"/> and <see cref="Mine"/>.
+/// </param>
 /// <param name="Where">
 /// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
 /// about the process, drawn under its name rather than as the name, now that
@@ -2130,6 +2135,7 @@ public record RunnerDto(
     string[] Repositories,
     bool? Clones,
     bool? Mine,
+    bool? Standing,
     string? Where,
     DateTimeOffset? ExhaustedUntil = null);
 
@@ -2181,6 +2187,11 @@ public record RunnerDto(
 /// reported, so an idle runner re-sending an hour-old reading on every poll
 /// does not make it look new.
 /// </param>
+/// <param name="Standing">
+/// Whether this runner was started inside one of the checkouts it is
+/// serving - a fact about the process, on the terms <see cref="Mine"/>
+/// already has: absent leaves the row alone, true or false sets or clears it.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -2191,6 +2202,7 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<string>? Remotes = null,
     bool? Clones = null,
     bool? Mine = null,
+    bool? Standing = null,
     string? Where = null,
     bool? Exhausted = null,
     DateTimeOffset? ExhaustedUntil = null,

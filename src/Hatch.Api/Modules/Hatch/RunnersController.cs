@@ -325,6 +325,7 @@ public class RunnersController(
         Remotes = Canonicalised(request.Remotes),
         Clones = request.Clones,
         Mine = request.Mine,
+        Standing = request.Standing,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
         ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
         ForPersonId = forPersonId,
@@ -364,6 +365,7 @@ public class RunnersController(
         if (request.Remotes is not null) row.Remotes = Canonicalised(request.Remotes);
         if (request.Clones is not null) row.Clones = request.Clones;
         if (request.Mine is not null) row.Mine = request.Mine;
+        if (request.Standing is not null) row.Standing = request.Standing;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
 
         // A tri-state of its own: absent leaves the row's own record alone (an
