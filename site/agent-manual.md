@@ -30,7 +30,7 @@ A name that is not a command is refused before anything is loaded:
 hatch: no such command "<x>" - `hatch --help` lists them.
 ```
 
-### The eighteen commands
+### The nineteen commands
 
 | Command | Needs a checkout | Writes to the board |
 |---|---|---|
@@ -39,6 +39,7 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `next` | no | no |
 | `queue` | no | no |
 | `show` | no | no |
+| `comments` | no | no |
 | `start` | no | yes |
 | `move` | no | yes |
 | `comment` | no | yes |
@@ -826,7 +827,7 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 | GET | `/api/hatch/statuses` | `show` |
 | GET | `/api/hatch/issues/{key}` | `show`, `pr` read, `depends` read |
 | GET | `/api/hatch/issues?ancestorKey=…` | the idle report under an epic |
-| GET | `/api/hatch/issues/{key}/comments` | `show` |
+| GET | `/api/hatch/issues/{key}/comments` | `show`, `comments` |
 | POST | `/api/hatch/issues/{key}/comments` | `comment`, `ask`, `answer`, the stall comment, the let-go comment |
 | POST | `/api/hatch/issues/{key}/move` | `move`, `start` |
 | PATCH | `/api/hatch/issues/{key}` | `pr` set and clear |

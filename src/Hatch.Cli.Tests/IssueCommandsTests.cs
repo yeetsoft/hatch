@@ -311,6 +311,42 @@ public sealed class IssueCommandsTests
         Assert.Contains("status:   3", h.Said);
     }
 
+    // ---- comments ----
+
+    [Fact]
+    public async Task Comments_prints_exactly_the_thread_with_no_fetch_of_the_issue()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[]
+        {
+            new CommentDto(1, "hatch", "First.", "", null, null, DateTimeOffset.UnixEpoch),
+            new CommentDto(2, "somebody", "Second,\nover two lines.", "", null, null, DateTimeOffset.UnixEpoch),
+        });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).CommentsAsync(["AER-12"], default));
+
+        Assert.Equal(
+            "--- 2 comment(s) ---\n" +
+            "[1970-01-01T00:00:00+00:00] hatch:\n" +
+            "First.\n" +
+            "\n" +
+            "[1970-01-01T00:00:00+00:00] somebody:\n" +
+            "Second,\nover two lines.\n",
+            h.Said);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12");
+    }
+
+    [Fact]
+    public async Task Comments_prints_nothing_when_there_are_none()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).CommentsAsync(["AER-12"], default));
+
+        Assert.Equal("", h.Said);
+    }
+
     // ---- start and move ----
 
     [Fact]
@@ -481,6 +517,7 @@ public sealed class IssueCommandsTests
 
     [Theory]
     [InlineData("show", 0)]
+    [InlineData("comments", 0)]
     [InlineData("start", 0)]
     [InlineData("move", 1)]
     [InlineData("comment", 1)]
@@ -493,6 +530,7 @@ public sealed class IssueCommandsTests
         var code = command switch
         {
             "show" => await commands.ShowAsync(["-h"], default),
+            "comments" => await commands.CommentsAsync(["-h"], default),
             "start" => await commands.StartAsync(["--help"], default),
             "move" => await commands.MoveAsync(["-h"], default),
             "comment" => await commands.CommentAsync(["-h"], default),
