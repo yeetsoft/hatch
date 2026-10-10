@@ -10,7 +10,9 @@ import {
   setAgentFiles,
   setExpressSkips,
   setImplementation,
+  setMergesPullRequest,
   setParentPulls,
+  setProtected,
 } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
 import { message } from '../lib/errors';
@@ -20,6 +22,8 @@ import {
   implementationBlocked,
   limitDraft,
   limitRequest,
+  mergesPullRequestBlocked,
+  protectedBlocked,
   toggled,
   wipBlocked,
 } from '../lib/wip';
@@ -160,6 +164,20 @@ export function StatusesPage() {
                 with none ticked, Hatch uses the column just left of review.
               </dd>
             </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Protected</dt>
+              <dd className="text-muted">
+                Only an owner or approver of the issue's project may move work into this column by hand - never a
+                key, never a hop, never a dispatch.
+              </dd>
+            </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Merges PR</dt>
+              <dd className="text-muted">
+                The runner merges an issue's pull request once it stands here, current and green, with no session.
+                Needs Protected ticked first.
+              </dd>
+            </div>
           </dl>
         </Card>
       )}
@@ -187,6 +205,12 @@ export function StatusesPage() {
                 </th>
                 <th title="The column where code gets written: a dependency holds the move into it, and a story's open tasks hold the move out of it. One column at a time - ticking this unticks whichever column held it - and with none ticked, Hatch uses the column just left of review.">
                   Code written here
+                </th>
+                <th title="Only an owner or approver of the issue's project may move work into this column by hand - never a key, never a hop, never a dispatch.">
+                  Protected
+                </th>
+                <th title="The runner merges an issue's pull request once it stands here, current and green, with no session. Needs Protected ticked first.">
+                  Merges PR
                 </th>
                 <th>Order</th>
                 <th />
@@ -291,6 +315,26 @@ export function StatusesPage() {
                       title={implementationBlocked(status) ?? undefined}
                       aria-label={`${status.name} is where code is written`}
                       onChange={(e) => void act(() => setImplementation(status.id, e.target.checked))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.isProtected}
+                      disabled={protectedBlocked(status) !== null}
+                      title={protectedBlocked(status) ?? undefined}
+                      aria-label={`${status.name} is protected`}
+                      onChange={(e) => void act(() => setProtected(status.id, e.target.checked))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={status.mergesPullRequest}
+                      disabled={mergesPullRequestBlocked(status) !== null}
+                      title={mergesPullRequestBlocked(status) ?? undefined}
+                      aria-label={`${status.name} merges the pull request`}
+                      onChange={(e) => void act(() => setMergesPullRequest(status.id, e.target.checked))}
                     />
                   </td>
                   <td>

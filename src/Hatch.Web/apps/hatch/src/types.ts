@@ -91,6 +91,13 @@ export interface Status {
       ever holds it. With none ticked, Hatch measures it as the column just
       left of review. A tick left on a deferred or done column is ignored. */
   isImplementation: boolean;
+  /** Whether an owner or approver of the issue's project must move work into
+      this column by hand - never a key, never a hop, never a dispatch (HA-293).
+      Ticking mergesPullRequest requires this to be on first. */
+  isProtected: boolean;
+  /** Whether the runner merges an issue's pull request once it stands here,
+      current and green, with no session (HA-289). Requires isProtected. */
+  mergesPullRequest: boolean;
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;

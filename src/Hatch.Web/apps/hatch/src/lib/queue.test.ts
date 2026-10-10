@@ -14,6 +14,8 @@ const status = (over: Partial<Status> = {}): Status => ({
   parentPulls: false,
   agentFiles: false,
   isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
   color: '#888888',
   ...over,
 });

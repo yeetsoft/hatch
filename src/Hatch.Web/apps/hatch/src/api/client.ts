@@ -186,6 +186,18 @@ export const setImplementation = (id: number, isImplementation: boolean) =>
     ...asJson({ isImplementation }),
   });
 
+/** Who may move work into this column: an owner or approver of the issue's
+    project, never a key. Its own route for the reason the other four flag
+    routes have one - see StatusesController.PutProtected. */
+export const setProtected = (id: number, on: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/protected`, { method: 'PUT', ...asJson({ on }) });
+
+/** Whether the runner merges an issue's pull request once it stands here,
+    current and green, with no session. Requires Protected - see
+    StatusesController.PutMergesPullRequest. */
+export const setMergesPullRequest = (id: number, on: boolean) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/merges-pull-request`, { method: 'PUT', ...asJson({ on }) });
+
 // ---- Issues ----
 
 // ---- Playbooks ----

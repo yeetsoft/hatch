@@ -13,6 +13,8 @@ const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Stat
   parentPulls: false,
   agentFiles: false,
   isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
   color: '#6b7280',
   ...opts,
 });

@@ -40,6 +40,25 @@ export function implementationBlocked(status: Status): string | null {
   return null;
 }
 
+/** Why a column's Protected box is disabled, or null when it may be ticked -
+    the same two reasons wipBlocked gives, read against this flag's own
+    question: not "in progress" but "who may move work in". */
+export function protectedBlocked(status: Status): string | null {
+  if (status.isDeferred) return 'Deferred columns are parked work, never protected';
+  if (status.isTerminal) return 'Done columns are shipped work, never protected';
+  return null;
+}
+
+/** Why a column's Merges PR box is disabled, or null when it may be ticked -
+    the same two reasons above, plus the one this flag adds on top: it may
+    not be ticked until Protected is. */
+export function mergesPullRequestBlocked(status: Status): string | null {
+  if (status.isDeferred) return 'Deferred columns are parked work, never merged';
+  if (status.isTerminal) return 'Done columns are shipped work, never merged';
+  if (!status.isProtected) return 'Tick Protected first';
+  return null;
+}
+
 /** The next `statusIds` after ticking or unticking one column - in board
     order, which is the order `statuses` already holds. */
 export function toggled(section: WipSection, statuses: Status[], id: number, on: boolean): number[] {
