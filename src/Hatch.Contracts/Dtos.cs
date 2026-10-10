@@ -1185,6 +1185,19 @@ public record PriorityRequest(string Priority);
 public record ExpressRequest(bool Express);
 
 /// <summary>
+/// The sentence an increment leaves behind it, saying why it left this ticket
+/// where it found it - see <see cref="EfHatchIssue.StalledAt"/>.
+/// </summary>
+public record StallRequest(string Why);
+
+/// <summary>
+/// Hold the ticket, or resume it - see <see cref="EfHatchIssue.Held"/>. One
+/// required boolean, for the same reason as <see cref="ExpressRequest"/>: the
+/// same route both marks and unmarks, and the caller says which it meant.
+/// </summary>
+public record HoldRequest(bool Held);
+
+/// <summary>
 /// The picker's rows and the answer to "who am I", in one read.
 /// </summary>
 /// <remarks>
