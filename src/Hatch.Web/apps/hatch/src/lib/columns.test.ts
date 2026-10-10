@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isObviated, landingFocus, statusChoices } from './columns';
+import { awaitingReview, implementation, isObviated, landingFocus, statusChoices } from './columns';
 import type { Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -59,6 +59,66 @@ describe('landingFocus', () => {
 
   it('has nowhere to land on a board with one lane', () => {
     expect(landingFocus([INBOX], INBOX.id)).toBeNull();
+  });
+});
+
+describe('awaitingReview and implementation', () => {
+  it('on a plain board, name review and doing', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20);
+    const review = status(3, 30);
+    const done = status(4, 40, { isTerminal: true });
+    const board = [todo, doing, review, done];
+
+    expect(awaitingReview(board)?.id).toBe(review.id);
+    expect(implementation(board)?.id).toBe(doing.id);
+  });
+
+  it('step back over one protected column before done', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20);
+    const review = status(3, 30);
+    const approved = status(4, 40, { isProtected: true });
+    const done = status(5, 50, { isTerminal: true });
+    const board = [todo, doing, review, approved, done];
+
+    expect(awaitingReview(board)?.id).toBe(review.id);
+    expect(implementation(board)?.id).toBe(doing.id);
+  });
+
+  it('step back over two protected columns before done', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20);
+    const review = status(3, 30);
+    const approved = status(4, 40, { isProtected: true });
+    const qa = status(5, 50, { isProtected: true });
+    const done = status(6, 60, { isTerminal: true });
+    const board = [todo, doing, review, approved, qa, done];
+
+    expect(awaitingReview(board)?.id).toBe(review.id);
+    expect(implementation(board)?.id).toBe(doing.id);
+  });
+
+  it('a protected column mid-board moves nothing', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20, { isProtected: true });
+    const review = status(3, 30);
+    const done = status(4, 40, { isTerminal: true });
+    const board = [todo, doing, review, done];
+
+    expect(awaitingReview(board)?.id).toBe(review.id);
+    expect(implementation(board)?.id).toBe(doing.id);
+  });
+
+  it('a ticked column wins over the computed measurement', () => {
+    const todo = status(1, 10, { isImplementation: true });
+    const doing = status(2, 20);
+    const review = status(3, 30);
+    const done = status(4, 40, { isTerminal: true });
+    const board = [todo, doing, review, done];
+
+    expect(implementation(board)?.id).toBe(todo.id);
+    expect(awaitingReview(board)?.id).toBe(review.id);
   });
 });
 

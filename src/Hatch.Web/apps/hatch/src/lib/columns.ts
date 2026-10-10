@@ -58,6 +58,56 @@ export function statusChoices(statuses: Status[]): { lanes: Status[]; shelf: Sta
 }
 
 /**
+ * The column immediately to the right, or null at the end of the board.
+ *
+ * Deferred and terminal columns have nothing after them: work is never
+ * advanced into a siding, and a shipped or shelved column is where a board
+ * walk stops.
+ */
+function advance(statuses: Status[], from: Status): Status | null {
+  if (from.isTerminal || from.isDeferred) return null;
+  const board = boardColumns(statuses);
+  const at = board.findIndex((s) => s.id === from.id);
+  return at >= 0 && at + 1 < board.length ? board[at + 1] : null;
+}
+
+/**
+ * The last stop before shipped: the column immediately left of the first
+ * terminal one, or the rightmost column on a board with no terminal column
+ * at all - stepping back further over any protected columns standing in
+ * that run, since a protected column is one a person gated, not one work
+ * drifts into on its way to review.
+ *
+ * Measured rather than named, mirroring the server's Columns.AwaitingReview -
+ * an operator renames columns, and a hardcoded "review" would be a rule that
+ * quietly stopped applying.
+ */
+export function awaitingReview(statuses: Status[]): Status | null {
+  const board = boardColumns(statuses);
+  const terminal = board.findIndex((s) => s.isTerminal);
+  let at = terminal < 0 ? board.length - 1 : terminal - 1;
+  while (at >= 0 && board[at].isProtected) at--;
+  return at >= 0 ? board[at] : null;
+}
+
+/**
+ * The column where code gets written: the one a person ticked
+ * isImplementation on. Where none is ticked, the one whose own next move is
+ * into the awaiting-review column. Null only on an unticked board too short
+ * to have one.
+ *
+ * Mirrors the server's Columns.Implementation for the same reason
+ * awaitingReview does - a tick on a deferred or terminal column is ignored,
+ * since the board then answers as if nothing were ticked.
+ */
+export function implementation(statuses: Status[]): Status | null {
+  const ticked = statuses.find((s) => s.isImplementation && !s.isDeferred && !s.isTerminal);
+  if (ticked) return ticked;
+  const review = awaitingReview(statuses);
+  return review ? (statuses.find((s) => advance(statuses, s)?.id === review.id) ?? null) : null;
+}
+
+/**
  * Where the keyboard lands when a picker opens on this column: one lane
  * along the board, in the direction that makes Enter, Enter walk it forward.
  *
