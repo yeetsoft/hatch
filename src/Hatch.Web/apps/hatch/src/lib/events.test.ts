@@ -113,6 +113,20 @@ describe('describe', () => {
       ),
     ).toBe('Jeff Winger on here:/checkouts/one stopped answering, last heard from 2026-09-28T00:00:00Z');
   });
+
+  it('names why a stall left the ticket where it was found', () => {
+    expect(describeEvent(event({ kind: 'stalled', payload: { why: 'left where it was found' } }))).toBe(
+      'left where it was found',
+    );
+  });
+
+  it('draws a held event as blank - the badge already says held', () => {
+    expect(describeEvent(event({ kind: 'held', payload: { from: false, to: true } }))).toBe('');
+  });
+
+  it('draws a resumed event as blank', () => {
+    expect(describeEvent(event({ kind: 'resumed', payload: { from: true, to: false } }))).toBe('');
+  });
 });
 
 describe('short', () => {

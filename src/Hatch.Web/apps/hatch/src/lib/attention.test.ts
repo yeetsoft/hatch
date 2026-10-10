@@ -9,6 +9,7 @@ import {
   failingBuildEmptyWords,
   questionEmptyWords,
   resetWords,
+  resumeWords,
   reviewEmptyWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
@@ -330,6 +331,26 @@ describe('waitedWords', () => {
 
   it('falls back to a word rather than NaN on an unparseable instant', () => {
     expect(waitedWords('not a date', NOW)).toBe('waiting');
+  });
+});
+
+describe('resumeWords', () => {
+  const STALL_RESUME_SECONDS = 900;
+
+  it('counts down the minutes left in the shipped window', () => {
+    expect(resumeWords(ago(12 * 60_000), STALL_RESUME_SECONDS, NOW)).toBe('in 3 minutes');
+  });
+
+  it('says any moment now once the window has passed', () => {
+    expect(resumeWords(ago(16 * 60_000), STALL_RESUME_SECONDS, NOW)).toBe('any moment now');
+  });
+
+  it('says it will not resume on its own when the install has turned the window off', () => {
+    expect(resumeWords(ago(60_000), 0, NOW)).toBe('will not resume on its own');
+  });
+
+  it('falls back to a word rather than NaN on an unparseable instant', () => {
+    expect(resumeWords('not a date', STALL_RESUME_SECONDS, NOW)).toBe('resumes on its own');
   });
 });
 
