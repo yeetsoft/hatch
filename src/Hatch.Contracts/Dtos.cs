@@ -1089,6 +1089,7 @@ public record PlaybookDto(
     string Model,
     string Effort,
     int? Budget,
+    int? BriefLimit,
     DateTimeOffset UpdatedAt);
 
 /// <summary>
@@ -1097,6 +1098,11 @@ public record PlaybookDto(
 /// a parsed positive integer sets it - the same three states
 /// <see cref="IssueWipLimitRequest.Limit"/> carries.
 /// </summary>
+/// <param name="BriefLimit">
+/// The brief's limit, in characters. Null means none (on create) or leaves
+/// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
+/// integer sets it - the same three states <paramref name="Budget"/> carries.
+/// </param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1105,9 +1111,15 @@ public record PlaybookCreateRequest(
     string? Model,
     string? Effort,
     string? Budget = null,
+    string? BriefLimit = null,
     string? Shape = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
+/// <param name="BriefLimit">
+/// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
+/// whitespace clears it; a parsed positive integer sets it - the same three
+/// states <paramref name="Budget"/> carries.
+/// </param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -1116,6 +1128,7 @@ public record PlaybookPatchRequest(
     string? Model,
     string? Effort,
     string? Budget = null,
+    string? BriefLimit = null,
     string? Shape = null);
 
 /// <summary>

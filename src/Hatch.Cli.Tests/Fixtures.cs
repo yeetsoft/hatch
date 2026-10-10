@@ -52,8 +52,8 @@ public static class Fixtures
     public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
         new(key, "AER", type, title, 3, 1000, null, null, null);
 
-    public static PlaybookDto Playbook(string model = "opus", string effort = "high", int? budget = null) =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, DateTimeOffset.UnixEpoch);
+    public static PlaybookDto Playbook(string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null) =>
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, briefLimit, DateTimeOffset.UnixEpoch);
 
     public static WorkDto Work(
         string key,

@@ -58,7 +58,7 @@ public class PlaybooksControllerTests
     {
         var h = await NewAsync();
         var row = await h.CreateAsync();
-        await h.SetAsync(row.Id, "5");
+        await h.SetAsync(row.Id, budget: "5");
 
         var patched = Value(await h.Playbooks.PatchPlaybook(
             row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
@@ -121,6 +121,110 @@ public class PlaybooksControllerTests
             Reason(refusal.Result));
     }
 
+    // ---- BriefLimit: setting, changing, clearing ----
+
+    [Fact]
+    public async Task ABriefLimit_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, briefLimit: "5");
+
+        Assert.Equal(5, patched.BriefLimit);
+        Assert.Equal(5, (await h.ReadAsync(row.Id)).BriefLimit);
+    }
+
+    [Fact]
+    public async Task ABriefLimit_AnEmptyString_ClearsIt()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, briefLimit: "5");
+
+        var cleared = await h.SetAsync(row.Id, briefLimit: "");
+
+        Assert.Null(cleared.BriefLimit);
+    }
+
+    [Fact]
+    public async Task ABriefLimit_Whitespace_ClearsIt_TheSameAsEmpty()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, briefLimit: "5");
+
+        var cleared = await h.SetAsync(row.Id, briefLimit: "   ");
+
+        Assert.Null(cleared.BriefLimit);
+    }
+
+    [Fact]
+    public async Task PatchingSomethingElse_WithBriefLimitOmitted_LeavesItUnchanged()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, briefLimit: "5");
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal("a new prompt", patched.Prompt);
+        Assert.Equal(5, patched.BriefLimit);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    public async Task ABriefLimit_ABadValue_IsRefused_AndWritesNothing(string bad)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, null, bad), default);
+
+        Assert.Equal(
+            $"a brief limit is a whole number of one or more, in characters - not \"{bad}\"",
+            Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).BriefLimit);
+    }
+
+    // ---- BriefLimit: create ----
+
+    [Fact]
+    public async Task ABriefLimit_CanBeSetOnCreate()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync(briefLimit: "5");
+
+        Assert.Equal(5, created.BriefLimit);
+    }
+
+    [Fact]
+    public async Task ANullBriefLimitOnCreate_MeansNoBriefLimit()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync();
+
+        Assert.Null(created.BriefLimit);
+    }
+
+    [Fact]
+    public async Task ABadBriefLimitOnCreate_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", null, "abc"), default);
+
+        Assert.Equal(
+            "a brief limit is a whole number of one or more, in characters - not \"abc\"",
+            Reason(refusal.Result));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -131,13 +235,13 @@ public class PlaybooksControllerTests
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
 
-        public async Task<PlaybookDto> CreateAsync(string? budget = null) =>
+        public async Task<PlaybookDto> CreateAsync(string? budget = null, string? briefLimit = null) =>
             Created(await Playbooks.CreatePlaybook(
-                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget), default));
+                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit), default));
 
-        public async Task<PlaybookDto> SetAsync(int id, string budget) =>
+        public async Task<PlaybookDto> SetAsync(int id, string? budget = null, string? briefLimit = null) =>
             Value(await Playbooks.PatchPlaybook(
-                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget), default));
+                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit), default));
 
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);

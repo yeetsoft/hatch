@@ -72,6 +72,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             budget = value;
         }
 
+        int? briefLimit = null;
+        if (request.BriefLimit is not null)
+        {
+            var (value, briefLimitError) = ParseBriefLimit(request.BriefLimit);
+            if (briefLimitError is not null) return BadRequest(briefLimitError);
+            briefLimit = value;
+        }
+
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
         {
@@ -83,6 +91,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Model = model,
             Effort = effort,
             Budget = budget,
+            BriefLimit = briefLimit,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -127,6 +136,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             budget = value;
         }
 
+        var briefLimit = playbook.BriefLimit;
+        if (request.BriefLimit is not null)
+        {
+            var (value, briefLimitError) = ParseBriefLimit(request.BriefLimit);
+            if (briefLimitError is not null) return BadRequest(briefLimitError);
+            briefLimit = value;
+        }
+
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
         playbook.Types = types;
@@ -134,6 +151,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.Model = model;
         playbook.Effort = effort;
         playbook.Budget = budget;
+        playbook.BriefLimit = briefLimit;
         playbook.UpdatedAt = time.GetUtcNow();
 
         await db.SaveChangesAsync(ct);
@@ -247,6 +265,18 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         return (null, $"a budget is a whole number of one or more, in millions of tokens - not \"{trimmed}\"");
     }
 
+    /// <summary>The same, for the brief's limit.</summary>
+    private static (int? Value, string? Error) ParseBriefLimit(string briefLimit)
+    {
+        var trimmed = briefLimit.Trim();
+        if (trimmed.Length == 0) return (null, null);
+
+        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
+            return (parsed, null);
+
+        return (null, $"a brief limit is a whole number of one or more, in characters - not \"{trimmed}\"");
+    }
+
     // ---- Reading back ----
 
     private async Task<PlaybookDto> LoadDtoAsync(int id, CancellationToken ct)
@@ -271,5 +301,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.Model,
         p.Effort,
         p.Budget,
+        p.BriefLimit,
         p.UpdatedAt);
 }
