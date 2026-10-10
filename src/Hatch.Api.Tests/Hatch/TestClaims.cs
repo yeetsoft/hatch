@@ -18,8 +18,20 @@ internal static class TestClaims
     /// <summary>The stall lapse window every harness here uses unless it is testing the lapse itself - five minutes, the shipped default.</summary>
     public const int StallLapseMinutes = 5;
 
-    public static IssueClaims With(int ttlSeconds = Ttl, int stallLapseMinutes = StallLapseMinutes) =>
-        new(Options.Create(new HatchOptions { ClaimTtlSeconds = ttlSeconds, StallLapseMinutes = stallLapseMinutes }));
+    /// <summary>The stall resume window every harness here uses unless it is testing the resume itself - fifteen minutes, the shipped default.</summary>
+    public const int StallResumeMinutes = 15;
+
+    /// <summary>The stall resume limit every harness here uses unless it is testing the limit itself - three, the shipped default.</summary>
+    public const int StallResumeLimit = 3;
+
+    public static IssueClaims With(
+        int ttlSeconds = Ttl, int stallLapseMinutes = StallLapseMinutes,
+        int stallResumeMinutes = StallResumeMinutes, int stallResumeLimit = StallResumeLimit) =>
+        new(Options.Create(new HatchOptions
+        {
+            ClaimTtlSeconds = ttlSeconds, StallLapseMinutes = stallLapseMinutes,
+            StallResumeMinutes = stallResumeMinutes, StallResumeLimit = stallResumeLimit,
+        }));
 
     /// <summary>
     /// A <see cref="Preemption"/> for a harness with nothing to say about it -
