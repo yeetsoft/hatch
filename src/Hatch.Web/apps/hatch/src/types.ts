@@ -817,6 +817,7 @@ export interface Playbook {
   effort: string;
   /** Millions of tokens, or null for no cap. */
   budget: number | null;
+  briefLimit: number | null;
   updatedAt: string;
 }
 
@@ -828,6 +829,7 @@ export interface PlaybookCreateRequest {
   model?: string;
   effort?: string;
   budget?: string;
+  briefLimit?: string;
   shape?: PlaybookShape;
 }
 
@@ -840,6 +842,7 @@ export interface PlaybookPatchRequest {
   model?: string;
   effort?: string;
   budget?: string;
+  briefLimit?: string;
   shape?: PlaybookShape;
 }
 

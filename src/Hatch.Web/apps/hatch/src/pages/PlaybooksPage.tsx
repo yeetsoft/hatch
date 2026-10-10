@@ -11,7 +11,14 @@ import { Choice } from '../components/Choice';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
-import { budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from '../lib/playbooks';
+import {
+  briefLimitDraft,
+  briefLimitRequest,
+  budgetDraft,
+  budgetRequest,
+  isReviewPlaybook,
+  transitionLabel,
+} from '../lib/playbooks';
 import { normalizeEol } from '../lib/text';
 import { useLoaded } from '../lib/useLoaded';
 import {
@@ -79,6 +86,7 @@ export function PlaybooksPage() {
                 <th>Model</th>
                 <th>Effort</th>
                 <th>Budget (M tokens)</th>
+                <th>Brief limit (chars)</th>
                 <th />
               </tr>
             </thead>
@@ -119,6 +127,7 @@ function Row({
     model?: string;
     effort?: string;
     budget?: string;
+    briefLimit?: string;
   }) => void;
   onDelete: () => void;
 }) {
@@ -169,6 +178,9 @@ function Row({
           <BudgetCell budget={playbook.budget} onPatch={(budget) => onPatch({ budget })} />
         </td>
         <td>
+          <BriefLimitCell briefLimit={playbook.briefLimit} onPatch={(briefLimit) => onPatch({ briefLimit })} />
+        </td>
+        <td>
           <div className="hatch-reorder">
             <Button onClick={() => setOpen(!open)}>{open ? 'Hide prompt' : 'Prompt'}</Button>
             <Button variant="danger" onClick={onDelete}>
@@ -179,7 +191,7 @@ function Row({
       </tr>
       {open && (
         <tr>
-          <td colSpan={6}>
+          <td colSpan={7}>
             <PromptCell prompt={playbook.prompt} onSave={(prompt) => onPatch({ prompt })} />
           </td>
         </tr>
@@ -271,6 +283,32 @@ function BudgetCell({ budget, onPatch }: { budget: number | null; onPatch: (budg
 }
 
 /**
+ * The brief limit, in characters - blur-commit, re-sync when the row's own
+ * value changes underneath. Mirrors BudgetCell exactly.
+ */
+function BriefLimitCell({ briefLimit, onPatch }: { briefLimit: number | null; onPatch: (briefLimit: string) => void }) {
+  const [draft, setDraft] = useState(briefLimitDraft(briefLimit));
+  const [known, setKnown] = useState(briefLimit);
+
+  if (briefLimit !== known) {
+    setKnown(briefLimit);
+    setDraft(briefLimitDraft(briefLimit));
+  }
+
+  return (
+    <input
+      inputMode="numeric"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = briefLimitRequest(draft);
+        if (next !== briefLimitDraft(briefLimit)) onPatch(next);
+      }}
+    />
+  );
+}
+
+/**
  * A new row. The transition is chosen from the board's own columns, so a
  * playbook can only ever name a column that exists - and an install that
  * renamed "todo" gets its own names here without this page knowing any.
@@ -300,6 +338,7 @@ function NewPlaybook({
   const [effort, setEffort] = useState<string>(PLAYBOOK_EFFORT_DEFAULT);
   const [shape, setShape] = useState<PlaybookShape>(PLAYBOOK_SHAPE_DEFAULT);
   const [budget, setBudget] = useState('');
+  const [briefLimit, setBriefLimit] = useState('');
 
   return (
     <Card>
@@ -341,6 +380,9 @@ function NewPlaybook({
         <Field label="Budget (M tokens)" hint="Leave blank for no cap.">
           <input inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} />
         </Field>
+        <Field label="Brief limit (chars)" hint="Leave blank for no cap.">
+          <input inputMode="numeric" value={briefLimit} onChange={(e) => setBriefLimit(e.target.value)} />
+        </Field>
       </div>
       <Field label="Prompt" as="div" hint="What the agent is told before it is shown the ticket.">
         <MarkdownEditor
@@ -360,7 +402,17 @@ function NewPlaybook({
              that says nothing about why. */
           disabled={!prompt.trim()}
           onClick={() => {
-            onCreate({ fromStatusId: from, toStatusId: to, types, prompt, model, effort, budget: budget || undefined, shape });
+            onCreate({
+              fromStatusId: from,
+              toStatusId: to,
+              types,
+              prompt,
+              model,
+              effort,
+              budget: budget || undefined,
+              briefLimit: briefLimit || undefined,
+              shape,
+            });
             setPrompt('');
             setTypes([]);
           }}
