@@ -19,11 +19,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// Neither half restates a rule that already lives somewhere. Which column is
 /// the review column is <see cref="Columns.AwaitingReview"/>'s answer, measured
-/// off the board's shape and not off a name, and what makes a question open is
-/// <see cref="Questions.Open"/>'s - the same call the board badges a card with
-/// and the dispatcher refuses a ticket on. A browser that derived either for
-/// itself would be the same rule written twice, in two languages, and the two
-/// would drift.
+/// off the board's shape and not off a name, and what makes a question wait on
+/// somebody is <see cref="Questions.Waiting"/>'s - the same call the board
+/// badges a card with. A browser that derived either for itself would be the
+/// same rule written twice, in two languages, and the two would drift.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/attention")]

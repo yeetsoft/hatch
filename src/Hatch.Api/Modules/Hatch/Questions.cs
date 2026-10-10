@@ -4,15 +4,21 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// One definition of "open", used by everything that asks.
+/// One definition of "open," and one of "waiting on somebody" - used by
+/// everything that asks either.
 ///
 /// A question is open when no comment answers it - computed here rather than
 /// stored as a flag on the row, so a question cannot be open and answered at
-/// the same time because two writes disagreed. Three callers ask the same thing
-/// for different reasons: <see cref="BoardController"/> to badge a card,
-/// <see cref="WorkController"/> to refuse a dispatch, and
-/// <see cref="QuestionsController"/> to hand somebody the list to answer. They
-/// share this file so that they cannot come to three different answers.
+/// the same time because two writes disagreed. Waiting narrows that to a
+/// question whose issue stands outside a terminal column: open is the whole
+/// record, waiting is what is actually owed.
+/// <see cref="BoardController"/>, <see cref="Rollup"/>,
+/// <see cref="AttentionController"/> and <see cref="QuestionsController"/>
+/// all read Waiting now; <see cref="BuildCheckController"/> and
+/// <see cref="IssueClaimController"/> still read Open, on purpose, for
+/// reasons each names where it calls in. They share this file so none of
+/// them can come to a different answer than the others asking the same
+/// question.
 /// </summary>
 public static class Questions
 {
