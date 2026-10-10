@@ -232,6 +232,14 @@ public sealed class Board(HatchClient client)
             ct);
 
     /// <summary>
+    /// Marks the issue stalled - an increment saying it left the ticket where it
+    /// found it, and why. See <see cref="StallRequest"/>; <see cref="IssueStallController.PutStall"/>
+    /// is what answers it.
+    /// </summary>
+    public Task<IssueDto?> StallAsync(string key, string why, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/stall", new StallRequest(why), ct);
+
+    /// <summary>
     /// Marks messages to the agent read, and answers with the ones this call
     /// marked - so a caller learns what it has to say, not what exists. Exactly
     /// <paramref name="ids"/> when given, every unread one when null.

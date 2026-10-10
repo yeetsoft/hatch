@@ -171,6 +171,7 @@ public sealed class BuildIncrementTests
         h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.Work(Key, from: endsIn));
         h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
 
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -216,7 +217,7 @@ public sealed class BuildIncrementTests
         Assert.Equal("its build still fails (api, CI), flagged", report.Outcome);
 
         var written = h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments");
-        Assert.Equal(2, written.Count);
+        Assert.Single(written);
 
         var comment = written[0].Read<CommentCreateRequest>().Body;
         Assert.Contains("failing build", comment, StringComparison.Ordinal);
@@ -225,9 +226,8 @@ public sealed class BuildIncrementTests
         Assert.Contains("- CI", comment, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", comment, StringComparison.Ordinal);
 
-        var question = written[1].Read<CommentCreateRequest>();
-        Assert.Equal("question", question.Kind);
-        Assert.Equal(StallAnswers.Options().Select(o => o.Label), question.Options!.Select(o => o.Label));
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Contains("still fails", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -62,6 +62,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(RunnerHeartbeatRequest))]
 [JsonSerializable(typeof(MergeCheckRequest))]
 [JsonSerializable(typeof(BuildCheckRequest))]
+[JsonSerializable(typeof(StallRequest))]
 [JsonSerializable(typeof(TrunkBuildRequest))]
 [JsonSerializable(typeof(PullRequestMergedRequest))]
 [JsonSerializable(typeof(NightState))]

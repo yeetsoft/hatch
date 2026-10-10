@@ -814,7 +814,8 @@ public sealed class WorkCommandTests
         var written = UnpublishedComments(h);
         Assert.Equal(2, written.Count);
         Assert.Equal("question", written[1].Kind);
-        Assert.False(StallAnswers.IsStall(written[1].Options));
+        Assert.Contains(written[1].Options!, o => o.Label == Unpublished.Recorded);
+        Assert.Contains(written[1].Options!, o => o.Label == Unpublished.NotNeeded);
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);

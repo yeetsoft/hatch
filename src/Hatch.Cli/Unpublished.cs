@@ -21,9 +21,8 @@ namespace Hatch.Cli;
 public static class Unpublished
 {
     /// <summary>
-    /// This question's own label pair - never <see cref="StallAnswers.Options"/>,
-    /// whose exact pair is how <see cref="StallAnswers.IsStall"/> lets a stall
-    /// lapse unattended after five minutes. Nothing here knows whether a pull
+    /// This question's own label pair - never a stall, which marks itself and
+    /// resumes unattended after a while. Nothing here knows whether a pull
     /// request is actually unnecessary, so this condition must not clear
     /// itself the same way: it waits for a person, however long that takes.
     /// </summary>

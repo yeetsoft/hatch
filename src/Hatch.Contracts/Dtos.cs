@@ -452,9 +452,9 @@ public record ClaimRequest(string Runner)
 /// only place it is ever handed out - it is on no read anywhere.
 /// </param>
 /// <param name="StallLapseSeconds">
-/// The window this claim goes quiet under - the same one a stall question
-/// lapses by, in seconds, or <c>0</c> when lapsing is off. The server is what
-/// honours it, so the server is what says what it is, the same reason
+/// The window this claim goes quiet under, in seconds, or <c>0</c> when quiet
+/// detection is off - see <see cref="IssueClaims.StallLapseSeconds"/>. The server is
+/// what honours it, so the server is what says what it is, the same reason
 /// <paramref name="TtlSeconds"/> rides back rather than being configured on
 /// both sides.
 /// </param>
@@ -2042,38 +2042,6 @@ public record TrunkBuildDto(
     string Runner,
     string CheckedBy,
     string? BugIssueKey);
-
-/// <summary>
-/// The stall guard's two answers, in its words. A question the board opens for a
-/// build that failed again on the agent's own fix offers the same two, so they
-/// live here and neither side spells them.
-/// </summary>
-public static class StallAnswers
-{
-    public const string LeaveIt = "leave it";
-    public const string TryAgain = "try again";
-
-    /// <summary>The two options, in the order they are offered. Neither is recommended: nothing here knows why it happened.</summary>
-    public static IReadOnlyList<QuestionOptionDto> Options() =>
-    [
-        new(LeaveIt,
-            "It waits for you. Nothing is dispatched at it while this question is open, so answer once you have looked - or once you have moved it somewhere the loop does not reach."),
-        new(TryAgain,
-            "Spend another increment on the same ticket. The next session is handed this stall, and your answer, among the decisions already made."),
-    ];
-
-    /// <summary>
-    /// Whether a question offered exactly this pair - the labels alone, in
-    /// either order, and nothing else. A question with a different label, a
-    /// third option, or asked in prose is never a stall question, however much
-    /// its body reads like one: the label is what a runner acts on, not the
-    /// prose around it.
-    /// </summary>
-    public static bool IsStall(IReadOnlyList<QuestionOptionDto>? options) =>
-        options is { Count: 2 } &&
-        options.Select(o => o.Label).OrderBy(l => l, StringComparer.Ordinal)
-            .SequenceEqual(Options().Select(o => o.Label).OrderBy(l => l, StringComparer.Ordinal));
-}
 
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and

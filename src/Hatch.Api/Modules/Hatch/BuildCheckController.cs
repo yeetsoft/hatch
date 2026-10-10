@@ -190,30 +190,25 @@ public class BuildCheckController(
         }
 
         // Rule four. Skipped when a question is already open: that is already
-        // the flag, and a second under it says no more than the first. Reads
-        // Open rather than Waiting on purpose - this is deciding whether to ask
-        // a fresh one, not whether to keep counting an old one, and narrowing it
-        // would start asking stall questions again on a ticket that has already
-        // shipped.
+        // the flag, and marking the issue under it says no more than the first.
+        // Reads Open rather than Waiting on purpose - this is deciding whether to
+        // mark it fresh, not whether to keep counting an old one, and narrowing
+        // it would start marking a ticket that has already shipped.
         var failedAndFlagged = row.Verdict == BuildVerdicts.Failed && row.PushedByIncrement;
         if (failedAndFlagged && !wasFailedAndFlagged
             && !await Questions.Open(db).AnyAsync(c => c.IssueId == issue.Id, ct))
         {
-            db.Comments.Add(new EfHatchComment
-            {
-                IssueId = issue.Id,
-                Author = actor,
-                Kind = EfHatchComment.Question,
-                Body = QuestionBody(key, sha, failing),
-                Options = Questions.WriteOptions(StallAnswers.Options()),
-                CreatedAt = now,
-            });
+            var why = $"the build on {branch} failed again at {Short(sha)}";
 
-            db.IssueEvents.Add(new EfHatchIssueEvent
+            issue.StalledAt = now;
+            issue.StalledWhy = why;
+            issue.UpdatedAt = now;
+
+            issue.Events.Add(new EfHatchIssueEvent
             {
-                IssueId = issue.Id,
                 Actor = actor,
-                Kind = EfHatchIssueEvent.Asked,
+                Kind = EfHatchIssueEvent.Stalled,
+                Payload = JsonSerializer.Serialize(new { why }),
                 At = now,
             });
         }
@@ -222,17 +217,6 @@ public class BuildCheckController(
 
         return IssueBuildChecks.Project(row);
     }
-
-    private static string QuestionBody(string key, string sha, IReadOnlyList<FailingCheckDto> failing) =>
-        $"""
-        An unattended build increment pushed {Short(sha)} to fix this branch's failing build, and the
-        build on that push has failed again. The checks that still fail:
-
-        {string.Join('\n', failing.Select(f => $"- {f.Name}"))}
-
-        The board does not send another agent at a build that failed on an agent's own fix.
-        Nothing further will be dispatched at {key} until somebody answers this.
-        """;
 
     private static string Short(string sha) => sha.Length > 10 ? sha[..10] : sha;
 

@@ -342,7 +342,7 @@ public class WorkController(
             ? null
             : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, ct);
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = await UnlapsedWaitingAsync(questions, issue.Id, now, ct);
+        var waiting = questions.Count(q => q.Answers.Count == 0);
 
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
@@ -551,7 +551,7 @@ public class WorkController(
         // dispatched at all, and the answered ones are what it is dispatched
         // knowing.
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = await UnlapsedWaitingAsync(questions, issue.Id, claimed.Now, ct);
+        var waiting = questions.Count(q => q.Answers.Count == 0);
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
 
@@ -614,28 +614,6 @@ public class WorkController(
             letGo,
             inReview);
     }
-
-    // ---- Waiting, past a lapsed stall question ----
-
-    /// <summary>
-    /// A named issue's own open-question count, the dispatcher's way: every
-    /// open question but a lapsed stall one - see
-    /// <see cref="Questions.DispatchCountsAsync"/>, this method's counterpart
-    /// for a whole scan. Two reads rather than one because a single named
-    /// dispatch has no scan-wide newest-event map to share.
-    /// </summary>
-    private async Task<int> UnlapsedWaitingAsync(
-        IReadOnlyList<QuestionDto> questions, long issueId, DateTimeOffset now, CancellationToken ct)
-    {
-        var open = questions.Where(q => q.Answers.Count == 0).ToList();
-        if (open.Count == 0) return 0;
-
-        var newestEventAt = await Questions.NewestEventAtAsync(db, issueId, ct);
-
-        return open.Count(q => !(StallAnswers.IsStall(q.Options)
-            && Questions.IsLapsed(q.AskedAt, newestEventAt, claims.StallLapseSeconds, now)));
-    }
-
 
     /// <summary>
     /// The issue's page as a browser would open it, or null when the install

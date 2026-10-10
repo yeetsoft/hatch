@@ -53,11 +53,10 @@ public class HatchOptions
     public int RunnerGoneAfterSeconds { get; set; } = 90;
 
     /// <summary>
-    /// How long a stall question or a claim may go untouched before it lapses -
-    /// see <see cref="IssueClaims.StallLapseSeconds"/> and
-    /// <see cref="Questions.IsLapsed"/>. Named in minutes rather than hours or
-    /// seconds: the whole point of this setting is that it is small enough an
-    /// operator will actually type it in.
+    /// How long a claim may go untouched before it is considered quiet - see
+    /// <see cref="IssueClaims.StallLapseSeconds"/>. Named in minutes rather than
+    /// hours or seconds: the whole point of this setting is that it is small
+    /// enough an operator will actually type it in.
     /// </summary>
     /// <remarks>
     /// Read through <see cref="IssueClaims.StallLapseSeconds"/> and nowhere

@@ -1627,7 +1627,6 @@ public sealed class GoToWorkTests
         Assert.Equal("question", written[1].Kind);
 
         var options = written[1].Options!;
-        Assert.False(StallAnswers.IsStall(options));
         Assert.Contains(options, o => o.Label == Unpublished.Recorded);
         Assert.Contains(options, o => o.Label == Unpublished.NotNeeded);
 

@@ -80,7 +80,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var family = await FamilyGate.ForAsync(db, statuses, ct);
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
-        var open = await Questions.DispatchCountsAsync(db, claims.StallLapseSeconds, now, ct);
+        var open = await Questions.WaitingCountsAsync(db, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
@@ -190,7 +190,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     if (effective[issue.Id].Level != level) continue;
 
                     var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0);
-                    var summary = open.GetValueOrDefault(issue.Id, new OpenSummary(0, false));
+                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
@@ -199,7 +199,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
-                        issue, status, to, playbook, summary.Waiting, letGo, loop, pace, gate, family, claimed,
+                        issue, status, to, playbook, waiting, letGo, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
 
                     var sentence = blocked;
@@ -225,9 +225,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
-                        sentence is null && summary.LapsedStall
-                            ? ClearNote(claims.StallLapseSeconds)
-                            : sentence is null && issue.StalledAt is not null
+                        sentence is null && issue.StalledAt is not null
                             ? ResumedClearNote(issue.StalledAt.Value, claimed.Now, claimed.Claims!.StallResumeSeconds)
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
@@ -282,16 +280,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     /// <summary>
     /// Why a row that carries no <see cref="ScanRow.Blocked"/> is clear at all -
-    /// see <see cref="QueueEntryDto.ClearNote"/>. The only caller today is a
-    /// lapsed stall question, so this is the one sentence rather than a switch.
-    /// </summary>
-    private static string ClearNote(int lapseSeconds) =>
-        $"its stall question lapsed after {Minutes(lapseSeconds)} untouched";
-
-    /// <summary>
-    /// The other reason a row is clear with nothing in <see cref="ScanRow.Blocked"/>:
-    /// its own mark resumed, rather than a stall question lapsing - see
-    /// <see cref="ClearNote"/>.
+    /// see <see cref="QueueEntryDto.ClearNote"/>: its own mark resumed.
     /// </summary>
     private static string ResumedClearNote(DateTimeOffset stalledAt, DateTimeOffset now, int resumeSeconds) =>
         $"it stalled {Minutes((int)(now - stalledAt).TotalSeconds)} ago and resumes itself after {Minutes(resumeSeconds)}";
