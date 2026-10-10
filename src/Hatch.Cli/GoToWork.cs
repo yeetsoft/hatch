@@ -1179,6 +1179,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         Increment? increment = null;
         var entered = false;
 
+        // Set when this pass folded past a row that outranked the ticket it
+        // spawned - the one thing worth leaving on the row untouched by this
+        // same pass's own outcome, so the next beat still names it rather than
+        // the routine "did it move" sentence that would otherwise clobber it.
+        string? foldedAbove = null;
+
         // What the release in the `finally` below says about how this pass
         // went - set on the increment's own report when one ran to a verdict,
         // or to dropped when the runner itself fell over. Left null on every
@@ -1260,10 +1266,27 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // An increment is about to run, so what the pass walked past on the
             // way to it is context rather than noise.
-            if (Digest.Of(picked.Queue) is { Count: > 0 } digest)
+            var foldedCount = picked.Queue.Count(q => q.Blocked is not null);
+            if (foldedCount > 0)
             {
-                runtime.Say.Line($"hatch:   folded past {picked.Queue.Count(q => q.Blocked is not null)} issue(s) on the way here:");
-                runtime.Say.Lines(digest);
+                runtime.Say.Line($"hatch:   folded past {foldedCount} issue(s) on the way here:");
+
+                // The row that outranked the ticket about to be spawned is
+                // named on its own line, not folded into a grouped count that
+                // would hide which key it was.
+                var above = Digest.Above(picked.Queue, work.Issue.Priority);
+                foreach (var row in above)
+                {
+                    var sentence = $"{row.Issue.Key}  {row.Blocked}";
+                    runtime.Say.Line($"hatch:     {sentence}");
+                    line.Line = sentence;
+                    foldedAbove = sentence;
+                }
+
+                var aboveKeys = above.Select(a => a.Issue.Key).ToHashSet();
+                var rest = picked.Queue.Where(q => q.Blocked is not null && !aboveKeys.Contains(q.Issue.Key)).ToList();
+                if (Digest.Of(rest) is { Count: > 0 } digest)
+                    runtime.Say.Lines(digest);
             }
 
             foreach (var held in picked.Busy)
@@ -1475,8 +1498,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
             runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)})");
 
             // What the next heartbeat carries. In-increment chatter rides the
-            // claim, so what this row wants is what happened to the last one.
-            line.Line = said;
+            // claim, so what this row wants is what happened to the last one -
+            // unless this same pass folded past a row that outranked it, which
+            // stays on the row rather than being clobbered by the routine verdict.
+            line.Line = foldedAbove ?? said;
 
             return Pass.Worked;
         }

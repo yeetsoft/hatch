@@ -643,6 +643,56 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.Contains($"3  {sentence}", StringComparison.Ordinal));
     }
 
+    // ---- Digest.Above: the one row that outranks the ticket about to be spawned (HA-369) ----
+
+    [Fact]
+    public void A_row_above_the_spawned_priority_is_returned()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.EmergencyName) };
+
+        Assert.Equal(["AER-1"], Digest.Above(queue, PriorityLevels.NormalName).Select(q => q.Issue.Key));
+    }
+
+    [Fact]
+    public void A_row_at_the_same_priority_as_the_spawned_ticket_is_not_returned()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.NormalName) };
+
+        Assert.Empty(Digest.Above(queue, PriorityLevels.NormalName));
+    }
+
+    [Fact]
+    public void A_row_below_the_spawned_priority_is_not_returned()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.LowName) };
+
+        Assert.Empty(Digest.Above(queue, PriorityLevels.NormalName));
+    }
+
+    [Fact]
+    public void A_clear_row_is_never_returned_regardless_of_priority()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", blocked: null, priority: PriorityLevels.EmergencyName) };
+
+        Assert.Empty(Digest.Above(queue, PriorityLevels.NormalName));
+    }
+
+    [Fact]
+    public void Queue_order_is_preserved_among_the_rows_above_returns()
+    {
+        var queue = new[]
+        {
+            Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.EmergencyName),
+            Fixtures.Row("AER-2", "Blocked", priority: PriorityLevels.LowName),
+            Fixtures.Row("AER-3", "Blocked", priority: PriorityLevels.ExpeditedName),
+            Fixtures.Row("AER-4", "Blocked", priority: PriorityLevels.EmergencyName),
+        };
+
+        Assert.Equal(
+            ["AER-1", "AER-3", "AER-4"],
+            Digest.Above(queue, PriorityLevels.NormalName).Select(q => q.Issue.Key));
+    }
+
     // ---- --workspace: cloning what the board binds (HA-19) ----
 
     [Fact]
