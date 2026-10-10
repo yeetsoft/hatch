@@ -145,6 +145,7 @@ public class AdminSurfaceTests
         "ProjectsController.DeleteProject",
         "ProjectsController.GetRepositories",
         "ProjectsController.GetLogo",
+        "ProjectsController.GetMembers",
         // A pasted image: read by a key named in a brief, posted by a person.
         "ImagesController.GetImage",
         "ImagesController.PostImage",
@@ -416,6 +417,9 @@ public class AdminSurfaceTests
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",
+        "ProjectsController.PutMember",
+        "ProjectsController.DeleteMember",
+        "ProjectsController.ClaimProject",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -535,6 +539,9 @@ public class AdminSurfaceTests
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",
+        "ProjectsController.PutMember",
+        "ProjectsController.DeleteMember",
+        "ProjectsController.ClaimProject",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

@@ -57,6 +57,12 @@ public record ProjectRepositoryDto(string Remote, string Canonical, string? Base
 /// </summary>
 public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
 
+/// <summary>One person's role on a project, as every client reads it back.</summary>
+public record ProjectMemberDto(Guid PersonId, string Name, string Role);
+
+/// <summary>A role to set a member to - <c>"owner"</c> or <c>"approver"</c>, nothing else.</summary>
+public record ProjectMemberWriteRequest(string Role);
+
 // ---- Statuses ----
 
 /// <param name="Color">
