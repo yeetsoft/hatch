@@ -23,7 +23,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/projects")]
-public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
+public class ProjectsController(
+    HatchContext db, TimeProvider time, ICallerIdentity caller,
+    IActorDirectory actors, IProjectAccess access, ILogger<ProjectsController> logger) : ControllerBase
 {
     /// <summary>A project may bind at most this many remotes - generous for anything a repository page has to draw in one row.</summary>
     public const int MaxRepositories = 20;
@@ -82,6 +84,19 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
 
         var project = new EfHatchProject { Key = key!, Name = name, Color = color, Icon = icon, CreatedAt = time.GetUtcNow() };
         db.Projects.Add(project);
+
+        var principal = await actors.PrincipalAsync(ct);
+        if (principal is { Kind: ActorKind.Person })
+        {
+            db.ProjectMembers.Add(new EfHatchProjectMember
+            {
+                Project = project,
+                PersonId = principal.Id,
+                Role = ProjectMemberRole.Owner,
+                CreatedAt = time.GetUtcNow(),
+            });
+        }
+
         await db.SaveChangesAsync(ct);
 
         return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null));
@@ -359,8 +374,145 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
         return ToDto(project, count, await RepositoriesAsync(id, ct), null);
     }
 
+    // ---- Members ----
+
+    /// <summary>Who owns or approves on this project, read by everybody - reading who is on a project is not a power.</summary>
+    [HttpGet("{id:int}/members")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    public async Task<ActionResult<IReadOnlyList<ProjectMemberDto>>> GetMembers(int id, CancellationToken ct)
+    {
+        if (!await db.Projects.AnyAsync(p => p.Id == id, ct)) return NotFound();
+
+        return await LiveMembersAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Sets one person's role, adding them if they hold none yet. Only an
+    /// owner may call this, and it refuses to leave a project with no owner at
+    /// all - the one state <see cref="ClaimProject"/> exists to recover from.
+    /// </summary>
+    [HttpPut("{id:int}/members/{personId:guid}")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<IReadOnlyList<ProjectMemberDto>>> PutMember(
+        int id, Guid personId, ProjectMemberWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may add or remove its members") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (await actors.ResolveAsync(ActorKind.Person, personId, ct) is null)
+            return BadRequest("there is no such person");
+
+        var role = request.Role?.Trim();
+        if (!ProjectMemberRole.IsKnown(role))
+            return BadRequest($"a role is \"owner\" or \"approver\" - not \"{request.Role}\"");
+
+        var members = await LiveMembersAsync(id, ct);
+        var existing = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == id && m.PersonId == personId, ct);
+
+        if (existing is { Role: ProjectMemberRole.Owner } && role != ProjectMemberRole.Owner &&
+            members.Count(m => m.Role == ProjectMemberRole.Owner) == 1)
+            return Conflict($"{project.Key} would be left with no owner");
+
+        if (existing is null)
+        {
+            db.ProjectMembers.Add(new EfHatchProjectMember { ProjectId = id, PersonId = personId, Role = role!, CreatedAt = time.GetUtcNow() });
+        }
+        else if (existing.Role != role)
+        {
+            existing.Role = role!;
+        }
+        else
+        {
+            return await LiveMembersAsync(id, ct);
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Project {ProjectKey} member {PersonId} set to {Role} by {Actor}", project.Key, personId, role, await caller.ActorNameAsync(ct));
+
+        return await LiveMembersAsync(id, ct);
+    }
+
+    /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
+    [HttpDelete("{id:int}/members/{personId:guid}")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<IReadOnlyList<ProjectMemberDto>>> DeleteMember(int id, Guid personId, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may add or remove its members") { StatusCode = StatusCodes.Status403Forbidden };
+
+        var row = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == id && m.PersonId == personId, ct);
+        if (row is null) return NotFound();
+
+        var members = await LiveMembersAsync(id, ct);
+        if (row.Role == ProjectMemberRole.Owner && members.Count(m => m.Role == ProjectMemberRole.Owner) == 1)
+            return Conflict($"{project.Key} would be left with no owner");
+
+        db.ProjectMembers.Remove(row);
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Project {ProjectKey} member {PersonId} removed from {Actor}", project.Key, personId, await caller.ActorNameAsync(ct));
+
+        return await LiveMembersAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Takes ownership of a project that has none - the way out of the state
+    /// every owner-removal guard above exists to prevent anybody reaching any
+    /// other way.
+    /// </summary>
+    [HttpPost("{id:int}/claim")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<IReadOnlyList<ProjectMemberDto>>> ClaimProject(int id, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        var members = await LiveMembersAsync(id, ct);
+        if (members.Any(m => m.Role == ProjectMemberRole.Owner))
+            return Conflict($"{project.Key} already has an owner");
+
+        var me = await actors.MeAsync(ct);
+        var personId = me!.Id;
+
+        var existing = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == id && m.PersonId == personId, ct);
+        if (existing is null)
+            db.ProjectMembers.Add(new EfHatchProjectMember { ProjectId = id, PersonId = personId, Role = ProjectMemberRole.Owner, CreatedAt = time.GetUtcNow() });
+        else
+            existing.Role = ProjectMemberRole.Owner;
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Project {ProjectKey} claimed by {Actor}", project.Key, await caller.ActorNameAsync(ct));
+
+        return await LiveMembersAsync(id, ct);
+    }
+
     private static ProjectDto ToDto(EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt) =>
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt);
+
+    private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
+    {
+        var rows = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId).ToListAsync(ct);
+
+        var members = new List<ProjectMemberDto>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (await actors.ResolveAsync(ActorKind.Person, row.PersonId, ct) is not { } person) continue;
+            members.Add(new ProjectMemberDto(row.PersonId, person.Name, row.Role));
+        }
+
+        return members;
+    }
 
     private async Task<List<ProjectRepositoryDto>> RepositoriesAsync(int projectId, CancellationToken ct) =>
         await db.ProjectRepositories.AsNoTracking()
@@ -386,7 +538,7 @@ public class ProjectsController(HatchContext db, TimeProvider time, ICallerIdent
     /// </summary>
     private async Task<ObjectResult?> NotAPerson(CancellationToken ct) =>
         await caller.IsProgramAsync(ct)
-            ? new ObjectResult("which repositories a project points at is the operator's to set, not an agent's")
+            ? new ObjectResult("which repositories a project points at, its logo, and who owns or approves on it are the operator's to set, not an agent's")
             {
                 StatusCode = StatusCodes.Status403Forbidden,
             }

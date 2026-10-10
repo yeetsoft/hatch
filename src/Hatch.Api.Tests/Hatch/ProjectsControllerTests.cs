@@ -5,6 +5,7 @@ using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -411,6 +412,187 @@ public class ProjectsControllerTests
         Assert.IsType<NotFoundResult>((await h.Projects.DeleteLogo(h.ProjectId, default)).Result);
     }
 
+    // ---- Members ----
+
+    [Fact]
+    public async Task CreatingAProjectAsAPerson_MakesThemSoleOwner()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var members = Value(await h.Projects.GetMembers(created.Id, default));
+
+        var member = Assert.Single(members);
+        Assert.Equal(h.Nathan.Id, member.PersonId);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task CreatingAsAKeyWithAnOwnerPrincipal_MakesThatPersonOwner()
+    {
+        var h = await NewAsync(program: true);
+        h.Actors.Principal = h.Nathan;
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var members = Value(await h.Projects.GetMembers(created.Id, default));
+
+        var member = Assert.Single(members);
+        Assert.Equal(h.Nathan.Id, member.PersonId);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task CreatingAsAKeyWithNoPrincipal_HasNoMembers()
+    {
+        var h = await NewAsync(program: true);
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var members = Value(await h.Projects.GetMembers(created.Id, default));
+
+        Assert.Empty(members);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnTheWritesAnd200OnGetMembers()
+    {
+        var h = await NewAsync(program: true);
+
+        var put = await h.Projects.PutMember(h.ProjectId, Guid.NewGuid(), new ProjectMemberWriteRequest(ProjectMemberRole.Owner), default);
+        Assert.Equal(403, ((ObjectResult)put.Result!).StatusCode);
+
+        var delete = await h.Projects.DeleteMember(h.ProjectId, Guid.NewGuid(), default);
+        Assert.Equal(403, ((ObjectResult)delete.Result!).StatusCode);
+
+        var claim = await h.Projects.ClaimProject(h.ProjectId, default);
+        Assert.Equal(403, ((ObjectResult)claim.Result!).StatusCode);
+
+        var get = Value(await h.Projects.GetMembers(h.ProjectId, default));
+        Assert.Empty(get);
+    }
+
+    [Fact]
+    public async Task ANonOwnerPerson_Is403OnPutAndDeleteMemberNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default);
+        var notAnOwner = h.Actors.AddPerson("Alice");
+        h.Actors.Principal = notAnOwner;
+        h.Actors.Me = notAnOwner;
+
+        var put = await h.Projects.PutMember(h.ProjectId, Guid.NewGuid(), new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        Assert.Contains("AER", Reason(put.Result));
+
+        var delete = await h.Projects.DeleteMember(h.ProjectId, h.Nathan.Id, default);
+        Assert.Contains("AER", Reason(delete.Result));
+    }
+
+    [Fact]
+    public async Task AddingASecondOwnerThenRemovingTheFirst_Succeeds()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var alice = h.Actors.AddPerson("Alice");
+
+        var afterAdd = Value(await h.Projects.PutMember(created.Id, alice.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Owner), default));
+        Assert.Equal(2, afterAdd.Count);
+        Assert.All(afterAdd, m => Assert.Equal(ProjectMemberRole.Owner, m.Role));
+
+        var afterRemove = Value(await h.Projects.DeleteMember(created.Id, h.Nathan.Id, default));
+        var remaining = Assert.Single(afterRemove);
+        Assert.Equal(alice.Id, remaining.PersonId);
+    }
+
+    [Fact]
+    public async Task RemovingTheSoleRemainingOwner_IsRefusedAndChangesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.DeleteMember(created.Id, h.Nathan.Id, default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        var members = Value(await h.Projects.GetMembers(created.Id, default));
+        var member = Assert.Single(members);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task DemotingTheSoleRemainingOwner_IsRefusedAndChangesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutMember(created.Id, h.Nathan.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        var members = Value(await h.Projects.GetMembers(created.Id, default));
+        var member = Assert.Single(members);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task ClaimProject_SucceedsAgainstAProjectWithNoMembersAtAll()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        // The sole-owner guard on DeleteMember would refuse reaching this
+        // state through the route, so clear the table directly instead.
+        h.Db.ProjectMembers.RemoveRange(h.Db.ProjectMembers);
+        await h.Db.SaveChangesAsync();
+
+        var alice = h.Actors.AddPerson("Alice");
+        h.Actors.Me = alice;
+
+        var claimed = Value(await h.Projects.ClaimProject(created.Id, default));
+
+        var member = Assert.Single(claimed);
+        Assert.Equal(alice.Id, member.PersonId);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task ClaimProject_SucceedsWhenTheOnlyOwnerIsNoLongerLive()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        h.Actors.Live.Remove(h.Nathan);
+        var alice = h.Actors.AddPerson("Alice");
+        h.Actors.Me = alice;
+
+        var claimed = Value(await h.Projects.ClaimProject(created.Id, default));
+
+        var member = Assert.Single(claimed);
+        Assert.Equal(alice.Id, member.PersonId);
+        Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    [Fact]
+    public async Task ClaimProject_Is409AgainstAProjectWithALiveOwner()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var alice = h.Actors.AddPerson("Alice");
+        h.Actors.Me = alice;
+
+        var result = await h.Projects.ClaimProject(created.Id, default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task RePuttingARoleAMemberAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var countBefore = await h.Db.ProjectMembers.CountAsync();
+
+        var result = Value(await h.Projects.PutMember(created.Id, h.Nathan.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Owner), default));
+
+        Assert.Equal(countBefore, await h.Db.ProjectMembers.CountAsync());
+        Assert.Equal(countBefore, result.Count);
+    }
+
     // ---- Harness ----
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01];
@@ -423,6 +605,8 @@ public class ProjectsControllerTests
         public required HatchContext Db { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
+        public required StubActorDirectory Actors { get; init; }
+        public required Actor Nathan { get; init; }
     }
 
     private static async Task<Harness> NewAsync(bool program = false)
@@ -435,6 +619,9 @@ public class ProjectsControllerTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
+
+        var actors = new StubActorDirectory();
+        var nathan = actors.AddPerson("Nathan");
 
         var caller = program
             ? new StubCaller
@@ -450,15 +637,23 @@ public class ProjectsControllerTests
             }
             : new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
 
+        if (!program)
+        {
+            actors.Principal = nathan;
+            actors.Me = nathan;
+        }
+
         return new Harness
         {
-            Projects = new ProjectsController(db, time, caller)
+            Projects = new ProjectsController(db, time, caller, actors, new ProjectAccess(db, actors), NullLogger<ProjectsController>.Instance)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             },
             Db = db,
             Time = time,
             ProjectId = project.Id,
+            Actors = actors,
+            Nathan = nathan,
         };
     }
 
