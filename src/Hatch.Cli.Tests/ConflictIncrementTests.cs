@@ -127,6 +127,7 @@ public sealed class ConflictIncrementTests
         h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.Work(Key, from: endsIn));
         h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", questionsOpen ? new[] { Fixtures.Question(9) } : Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
 
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -162,7 +163,7 @@ public sealed class ConflictIncrementTests
     }
 
     [Fact]
-    public async Task A_branch_that_still_conflicts_is_a_stall_flagged_with_the_files_in_the_comment_and_a_question()
+    public async Task A_branch_that_still_conflicts_is_a_stall_flagged_with_the_files_in_the_comment_and_marked()
     {
         var (report, h) = await RunAsync(_ => Judging(Found(Conflicted("a.txt", "b.txt"))), letGo: 1);
         using var _h = h;
@@ -174,7 +175,7 @@ public sealed class ConflictIncrementTests
         Assert.Equal("still conflicts with main, flagged", report.Outcome);
 
         var written = h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments");
-        Assert.Equal(2, written.Count);
+        Assert.Single(written);
 
         var comment = written[0].Read<CommentCreateRequest>().Body;
         Assert.Contains("still conflicts with it", comment, StringComparison.Ordinal);
@@ -183,7 +184,8 @@ public sealed class ConflictIncrementTests
         Assert.DoesNotContain("left this issue where it found it", comment, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", comment, StringComparison.Ordinal);
 
-        Assert.Equal("question", written[1].Read<CommentCreateRequest>().Kind);
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Contains("still conflicts", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -238,7 +240,8 @@ public sealed class ConflictIncrementTests
         Assert.Equal("In Progress", report.Ended);
         Assert.True(report.Stalled);
         Assert.Equal("flagged", report.Flag);
-        Assert.Equal(2, h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments").Count);
+        Assert.Single(h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments"));
+        Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
 
         // The ticket moved, so the claim's own verdict is worked - even though
         // its branch still needs another pass and is flagged for it.
@@ -302,6 +305,7 @@ public sealed class ConflictIncrementTests
         h.Wire.Reply(
             "PUT", Put, put,
             put == HttpStatusCode.OK ? System.Text.Json.JsonSerializer.Serialize(Fixtures.MergeCheck(), Fixtures.Json) : "\"no\"");
+        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
     }
 
     private static List<CommentCreateRequest> Stall(Harness h) =>
@@ -458,9 +462,11 @@ public sealed class ConflictIncrementTests
 
         Assert.Single(h.Sessions.Spawned);
         var written = Stall(h);
-        Assert.Equal(2, written.Count);
+        Assert.Single(written);
         Assert.Contains("- still.txt", written[0].Body, StringComparison.Ordinal);
-        Assert.Equal("question", written[1].Kind);
+
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Contains("still conflicts", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
     }
 
     [Fact]
