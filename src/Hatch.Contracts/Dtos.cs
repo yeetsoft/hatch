@@ -96,7 +96,8 @@ public record ProjectMemberWriteRequest(string Role);
 /// </param>
 public record StatusDto(
     int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
-    bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false, bool IsImplementation = false);
+    bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false, bool IsImplementation = false,
+    bool IsProtected = false, bool MergesPullRequest = false);
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -
@@ -188,6 +189,22 @@ public record AgentFilesRequest(bool AgentFiles);
 /// and unticks it, and the caller says which it meant.
 /// </summary>
 public record ImplementationRequest(bool IsImplementation);
+
+/// <summary>
+/// Whether this column is protected: who may move work into it. One required
+/// boolean, named <c>On</c> rather than <c>Protected</c>, for the reason
+/// <see cref="ExpressSkipsRequest"/> is - the same route both ticks and
+/// unticks it, and the caller says which it meant.
+/// </summary>
+public record ProtectedRequest(bool On);
+
+/// <summary>
+/// Whether this column merges the pull request. One required boolean, named
+/// <c>On</c> rather than <c>MergesPullRequest</c>, for the reason
+/// <see cref="ExpressSkipsRequest"/> is - the same route both ticks and
+/// unticks it, and the caller says which it meant.
+/// </summary>
+public record MergesPullRequestRequest(bool On);
 
 // ---- Issues ----
 

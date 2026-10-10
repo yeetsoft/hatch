@@ -411,6 +411,31 @@ public class EfHatchStatus
     public bool IsImplementation { get; set; }
 
     /// <summary>
+    /// Who may move work into this column: an owner or approver of the
+    /// issue's project - never a key, never a hop, never a dispatch. That gate
+    /// is HA-293's own question; this flag only carries it.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutProtected"/>) for the same reason as
+    /// <see cref="ParentPulls"/>: it decides who may move work past this door,
+    /// and that is a playbook's kind of power.</para>
+    /// </summary>
+    public bool IsProtected { get; set; }
+
+    /// <summary>
+    /// Whether the runner's poll merges an issue's pull request once it stands
+    /// here, current and green, with no session - HA-289's epic.
+    ///
+    /// <para>Writing it is closed to an API key
+    /// (<see cref="StatusesController.PutMergesPullRequest"/>) for the same
+    /// reason as <see cref="IsProtected"/>: it decides whose code merges
+    /// unattended, and that is a playbook's kind of power. Ticking it requires
+    /// <see cref="IsProtected"/> already on, enforced by the routes, not by
+    /// this entity.</para>
+    /// </summary>
+    public bool MergesPullRequest { get; set; }
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave
