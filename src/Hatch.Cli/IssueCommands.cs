@@ -119,17 +119,41 @@ public sealed class IssueCommands(Cli cli)
         cli.Say.Lines(issue.Description.ReplaceLineEndings("\n").Split('\n'));
         cli.Say.Line("");
 
-        if (comments.Count == 0) return 0;
+        PrintComments(cli.Say, comments);
+        return 0;
+    }
 
-        cli.Say.Line($"--- {comments.Count} comment(s) ---");
+    public static readonly string[] CommentsUsage =
+    [
+        "usage: hatch comments AER-12",
+        "",
+        "  The comments on it, and nothing else - no header, no status, no",
+        "  description. A session that already has the brief in its prompt reads",
+        "  the thread with this instead of re-reading the ticket with `show`.",
+    ];
+
+    /// <summary>The thread alone, for a session that already has the brief.</summary>
+    public async Task<int> CommentsAsync(string[] args, CancellationToken ct)
+    {
+        if (Usage.Wanted(args)) return Usage.Print(cli.Say, CommentsUsage);
+        if (args.Length != 1) return Usage.Refuse(cli.Say, "comments takes one issue key", CommentsUsage);
+
+        var comments = await cli.Board.CommentsAsync(args[0], ct);
+        PrintComments(cli.Say, comments);
+        return 0;
+    }
+
+    private static void PrintComments(Terminal say, IReadOnlyList<CommentDto> comments)
+    {
+        if (comments.Count == 0) return;
+
+        say.Line($"--- {comments.Count} comment(s) ---");
         foreach (var comment in comments)
         {
-            cli.Say.Line($"[{Format.Stamp(comment.CreatedAt)}] {comment.Author}{Delivery(comment)}:");
-            cli.Say.Lines(comment.Body.ReplaceLineEndings("\n").Split('\n'));
-            cli.Say.Line("");
+            say.Line($"[{Format.Stamp(comment.CreatedAt)}] {comment.Author}{Delivery(comment)}:");
+            say.Lines(comment.Body.ReplaceLineEndings("\n").Split('\n'));
+            say.Line("");
         }
-
-        return 0;
     }
 
     /// <summary>

@@ -4288,7 +4288,7 @@ of some six hundred lines driving `hatch.sh` through a fake `curl` and a fake
 `claude` on `PATH`, which is a second program to maintain and one that can only
 assert what a recorded request log happens to show.
 
-The other fourteen followed, and not because shell was the wrong language for
+The other fifteen followed, and not because shell was the wrong language for
 `curl | jq` — it was a perfectly good one, and the ported code says the same
 things. They followed because an operator who clones Hatch into their own house
 has no copy of `scripts/hatch.sh` on their `PATH`, and a tracker reachable from
@@ -4857,7 +4857,7 @@ as the board does. `hatch --help` lists the surface and every subcommand takes
 `-h` for its own.
 
 Only `work`, `go-to-work` and `do-my-work` need to be run inside a git
-checkout, because only those three are about a codebase. The other fourteen
+checkout, because only those three are about a codebase. The other fifteen
 are one request and a sentence about the answer, and `hatch board` from a
 directory that has never been a repository is the ordinary case.
 

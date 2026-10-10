@@ -449,7 +449,7 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
 `questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
@@ -459,7 +459,7 @@ takes `-h` for its own.
 
 Only `work`, `go-to-work` and `do-my-work` need a checkout, because only those
 three are about a codebase — the checkout you are standing in, or one named
-with `--repo` or `HATCH_REPOS`. The other fourteen are one request and a
+with `--repo` or `HATCH_REPOS`. The other fifteen are one request and a
 sentence about the answer, and `hatch board` from a directory that has never
 been a repository is the ordinary case.
 
@@ -893,6 +893,7 @@ hatch queue AER-1                 ...under one epic
 hatch next                        top workable card of "todo"
 hatch next "in progress"          ...or of any column
 hatch show AER-12                 the brief, plus its comments
+hatch comments AER-12             the comments, without the brief
 hatch questions                   everything waiting on an answer
 hatch questions AER-12            ...or just this ticket's
 ```

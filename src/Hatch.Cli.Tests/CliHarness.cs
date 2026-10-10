@@ -7,7 +7,7 @@ namespace Hatch.Cli.Tests;
 /// <remarks>
 /// Deliberately not <see cref="Harness"/>. That one builds a temporary
 /// checkout, a session runner and a workspace because <c>work</c> spawns an
-/// agent in a tree; the fourteen commands here make one request and say a
+/// agent in a tree; the fifteen commands here make one request and say a
 /// sentence about the answer, and giving them a checkout they never look at
 /// would hide the thing AERIE-934 changed - that they no longer need one.
 /// </remarks>

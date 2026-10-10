@@ -6,7 +6,7 @@ using Hatch.Cli;
 //
 // It began as the two commands that spawn an agent - `work` and `go-to-work` -
 // because a claim is a lease with a clock on it and none of that could be tested
-// in a shell script. AERIE-934 brought the other fourteen across for a different
+// in a shell script. AERIE-934 brought the other fifteen across for a different
 // reason: an operator who is not in this repository has no scripts/hatch.sh, and
 // a tracker that can only be reached from one clone is a tracker for one person.
 // So this is `hatch`, installed once and run anywhere, and hatch.sh is a door
@@ -220,6 +220,7 @@ try
         "next" => await new BoardCommands(cli).NextAsync(rest, cancelling.Token),
         "queue" => await new BoardCommands(cli).QueueAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
+        "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
         "move" => await new IssueCommands(cli).MoveAsync(rest, cancelling.Token),
         "comment" => await new IssueCommands(cli).CommentAsync(rest, cancelling.Token),
@@ -342,7 +343,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "show", "start", "move", "comment", "pr",
+        "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr",
         "depends", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -360,6 +361,7 @@ internal partial class Program
         "  hatch queue AER-1            ...under one epic",
         "  hatch queue --mine           ...only your own",
         "  hatch show AER-12            the brief, plus its comments",
+        "  hatch comments AER-12        the thread alone, without the brief you already have",
         "  hatch start AER-12           move it to \"in progress\"",
         "  hatch move AER-12 todo       ...or to any non-terminal column",
         "  hatch comment AER-12 \"sha abc123 on branch aer-12-thing\"",

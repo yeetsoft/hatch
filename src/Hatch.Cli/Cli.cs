@@ -7,7 +7,7 @@ namespace Hatch.Cli;
 /// <remarks>
 /// <see cref="Runtime"/> carries a checkout, a session runner, a workspace and a
 /// clock, because <c>work</c> and <c>go-to-work</c> spawn an agent in a tree.
-/// The other fourteen commands make one request and say a sentence about the
+/// The other fifteen commands make one request and say a sentence about the
 /// answer: they have no tree, and requiring one is exactly the thing AERIE-934
 /// is about undoing. So they take this instead, and <c>hatch board</c> works in
 /// a directory that has never been a repository.
@@ -28,7 +28,7 @@ public sealed record Cli(
 
     /// <summary>
     /// The checkouts this process is standing in, if any - empty everywhere
-    /// there is no tree, which is most places these fourteen commands run.
+    /// there is no tree, which is most places these fifteen commands run.
     /// Declared on the reads that fold on it, so a queue read from inside a
     /// checkout sees the same fold a spawned loop would.
     /// </summary>
