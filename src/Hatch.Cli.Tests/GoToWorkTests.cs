@@ -207,6 +207,104 @@ public sealed class GoToWorkTests
         Assert.Null(beat.UsageReadAt);
     }
 
+    // ---- The one row that outranked the ticket about to be spawned (HA-369) ----
+
+    /// <summary>A board with one row folded above the spawned ticket's priority, plus the clear row <see cref="OneTicket"/> wires.</summary>
+    private static Guid WithRowAbove(
+        Harness h, string blockedKey, string blockedSentence, string blockedPriority, string key = "AER-1")
+    {
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row(blockedKey, blockedSentence, priority: blockedPriority),
+            Fixtures.Row(key),
+        });
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: "In Review"));
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+
+        return token;
+    }
+
+    [Fact]
+    public async Task A_row_above_the_spawned_priority_is_named_on_its_own_ungrouped_line()
+    {
+        using var h = new Harness();
+        const string sentence = "bound to a repository, and this runner has no checkout of it";
+        WithRowAbove(h, "AER-2", sentence, PriorityLevels.EmergencyName);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains($"AER-2  {sentence}", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains($"1  {sentence}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_row_at_the_spawned_tickets_own_priority_still_goes_through_the_grouped_digest()
+    {
+        using var h = new Harness();
+        const string aboveSentence = "bound to a repository, and this runner has no checkout of it";
+        const string sameSentence = "AER-9 has not merged";
+        WithRowAbove(h, "AER-2", aboveSentence, PriorityLevels.EmergencyName);
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new[]
+            {
+                Fixtures.Row("AER-2", aboveSentence, priority: PriorityLevels.EmergencyName),
+                Fixtures.Row("AER-3", sameSentence, priority: PriorityLevels.NormalName),
+                Fixtures.Row("AER-1"),
+            },
+            Fixtures.Json));
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains($"AER-2  {aboveSentence}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains($"1  {sameSentence}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("folded past 2 issue(s)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Nothing_above_the_spawned_priority_prints_exactly_what_today_prints()
+    {
+        using var h = new Harness();
+        const string sentence = "AER-2 has not merged";
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-2", sentence, priority: PriorityLevels.LowName),
+            Fixtures.Row("AER-1"),
+        });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains($"1  {sentence}", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains($"AER-2  {sentence}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_folded_above_sentence_reaches_the_next_beat_not_only_the_terminal()
+    {
+        using var h = new Harness();
+        const string sentence = "bound to a repository, and this runner has no checkout of it";
+        WithRowAbove(h, "AER-2", sentence, PriorityLevels.EmergencyName);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
+
+        var beats = h.Wire.Calls
+            .Where(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .ToList();
+        Assert.True(beats.Count >= 2, "at least two beats were sent");
+        Assert.Equal($"AER-2  {sentence}", beats[1].Read<RunnerHeartbeatRequest>().Line);
+    }
+
     // ---- The usage probe - HA-173 ----
 
     /// <summary>

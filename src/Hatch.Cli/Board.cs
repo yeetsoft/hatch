@@ -318,4 +318,17 @@ public static class Digest
         var width = groups.Max(g => g.Count.ToString().Length);
         return groups.Select(g => $"hatch:     {g.Count.ToString().PadLeft(width)}  {g.Why}").ToList();
     }
+
+    /// <summary>
+    /// The folded rows whose effective priority outranks the ticket the pass is
+    /// about to spawn, in queue order - the ones a grouped count would hide the
+    /// one name that matters out of.
+    /// </summary>
+    public static IReadOnlyList<QueueEntryDto> Above(IReadOnlyList<QueueEntryDto> queue, string spawnedPriority)
+    {
+        var floor = Level(spawnedPriority);
+        return queue.Where(q => q.Blocked is { Length: > 0 } && Level(q.Issue.Priority) > floor).ToList();
+    }
+
+    private static int Level(string name) => PriorityLevels.TryParse(name, out var level) ? level : PriorityLevels.Normal;
 }
