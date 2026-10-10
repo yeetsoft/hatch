@@ -137,6 +137,28 @@ public sealed class PromptTests
             < prompt.IndexOf("## Decisions already made", StringComparison.Ordinal));
     }
 
+    // ---- HA-352: a ticket marked, then handed back ----
+
+    [Fact]
+    public void A_stalled_ticket_gets_a_section_naming_why_and_how_many_times()
+    {
+        var work = Fixtures.Work(
+            "AER-12", letGo: 2, issue: Fixtures.Issue("AER-12", stalledWhy: "left a half-finished merge"));
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket stalled", prompt, StringComparison.Ordinal);
+        Assert.Contains("left a half-finished merge", prompt, StringComparison.Ordinal);
+        Assert.Contains("It has stalled 2 times in a row.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_ticket_never_marked_gets_no_such_section()
+    {
+        Assert.DoesNotContain("## This ticket stalled",
+            Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_ticket_says_when_it_chose_the_model_rather_than_the_playbook()
     {

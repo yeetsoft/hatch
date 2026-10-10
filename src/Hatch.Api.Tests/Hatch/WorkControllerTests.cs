@@ -2672,6 +2672,115 @@ public class WorkControllerTests
         Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
+    // ---- HA-352: the mark ----
+
+    [Fact]
+    public async Task AHeldIssue_IsFoldedOnAPassWithItsOwnSentence()
+    {
+        var h = await NewAsync();
+        var held = await h.FileAsync("story", "a person parked this", h.Todo, rank: 1024);
+        var next = await h.FileAsync("story", "unrelated", h.Todo, rank: 2048);
+        await h.HoldAsync(held);
+
+        var blocked = Value(await h.Work.GetQueue(0, null, default))
+            .Single(e => e.Issue.Key == Key(held)).Blocked;
+        Assert.Equal("held - a person told the loop to leave this alone until they say otherwise", blocked);
+
+        Assert.Equal(
+            blocked, Value(await h.Work.GetWork(Key(held), null, default)).Blocked);
+
+        // Never offered by next, and the pass carries on to the next issue.
+        Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnIssueStalled14MinutesAgo_IsFolded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled recently", h.Todo);
+        await h.StallAsync(issue, Now, "left a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(14));
+
+        Assert.Contains("stalled", Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnIssueStalled16MinutesAgo_IsClear()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
+        await h.StallAsync(issue, Now, "left a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(16));
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AStallResumeMinutesOfZero_NeverResumesUnattended()
+    {
+        var h = await NewAsync(claims: TestClaims.With(stallResumeMinutes: 0));
+        var issue = await h.FileAsync("task", "marked on a board that never resumes", h.Todo);
+        await h.StallAsync(issue, Now, "a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromDays(1));
+
+        Assert.Contains(
+            "this board never resumes a marked ticket unattended",
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_NamesTheResumeOnARowClearOnlyBecauseOfIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled a while ago", h.Todo);
+        await h.StallAsync(issue, Now, "a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(18));
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(row.Blocked);
+        Assert.Equal("it stalled 18 minutes ago and resumes itself after 15 minutes", row.ClearNote);
+    }
+
+    [Fact]
+    public async Task AnIssueAtTheStallResumeLimit_IsFolded_NotResumed()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled three times in a row", h.Todo);
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(2), ClaimOutcomes.Dropped);
+        await h.StallAsync(issue, Now.AddMinutes(2), "a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(20));
+
+        var blocked = Value(await h.Work.GetWork(Key(issue), null, default)).Blocked;
+        Assert.Contains("stalled 3 times in a row", blocked);
+        Assert.Contains("held for a person now", blocked);
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(blocked, row.Blocked);
+    }
+
+    [Fact]
+    public async Task NamedWorkAndTheScan_AgreeOnAStalledIssuesVerdict()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "marked", h.Todo);
+        await h.StallAsync(issue, Now, "a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+
+        var named = Value(await h.Work.GetWork(Key(issue), null, default)).Blocked;
+        var scanned = Only(await h.Work.GetQueue(0, null, default)).Blocked;
+
+        Assert.NotNull(named);
+        Assert.Equal(named, scanned);
+    }
+
     [Fact]
     public async Task APausedIssue_NamedDirectly_IsRefusedWithTheSameSentence()
     {
@@ -6014,6 +6123,29 @@ public class WorkControllerTests
         }
 
         /// <summary>
+        /// A person's hold, written straight onto the row - what sets it from
+        /// the web is out of scope here; these tests are about what
+        /// <see cref="Dispatch.Blocked"/> does with it once set.
+        /// </summary>
+        public async Task HoldAsync(EfHatchIssue issue)
+        {
+            issue.Held = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The mark itself, written straight onto the row - what sets it is
+        /// HA-341's next task; these tests are about what
+        /// <see cref="Dispatch.Blocked"/> does with it once set.
+        /// </summary>
+        public async Task StallAsync(EfHatchIssue issue, DateTimeOffset at, string? why = null)
+        {
+            issue.StalledAt = at;
+            issue.StalledWhy = why;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
         /// Express, written straight onto the row - what the route that writes
         /// it accepts and refuses is <see cref="IssueExpressControllerTests"/>'s
         /// business; these tests are about what the dispatcher does with the
@@ -6357,7 +6489,7 @@ public class WorkControllerTests
     /// three playbook rows these tests reason about - a type-specific one, a
     /// catch-all beside it, and one for the column further right.
     /// </summary>
-    private static async Task<Harness> NewAsync(string publicBaseUrl = "")
+    private static async Task<Harness> NewAsync(string publicBaseUrl = "", IssueClaims? claims = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -6401,7 +6533,7 @@ public class WorkControllerTests
             Time = time,
             Actors = actors,
             Work = new WorkController(
-                db, actors, TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
+                db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             Caller = caller,
