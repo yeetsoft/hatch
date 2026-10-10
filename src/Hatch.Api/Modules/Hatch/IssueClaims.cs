@@ -46,7 +46,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         options.Value.ClaimTtlSeconds > 0 ? options.Value.ClaimTtlSeconds : new HatchOptions().ClaimTtlSeconds;
 
     /// <summary>
-    /// The window a stall question or a silent claim is judged against, in
+    /// The window a silent claim is judged against, in
     /// seconds - see <see cref="HatchOptions.StallLapseMinutes"/>. Guarded the
     /// way <see cref="TtlSeconds"/> is, with one difference: zero is not a
     /// misconfiguration here but the operator turning lapsing off, so it is

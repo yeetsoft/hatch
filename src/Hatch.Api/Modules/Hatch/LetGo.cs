@@ -8,10 +8,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="WorkDto.LetGo"/> for what the count means. Two callers ask
 /// the same thing for different reasons: <see cref="WorkController"/> for a
 /// single named issue, and <see cref="Dispatch.ScanAsync"/> for however many a
-/// pass is judging at once - the same bulk/single split
-/// <see cref="Questions.DispatchCountsAsync"/> and
-/// <see cref="WorkController"/>'s own <c>UnlapsedWaitingAsync</c> already use
-/// for an open question's own lapse rule.
+/// pass is judging at once.
 /// </summary>
 public static class LetGo
 {

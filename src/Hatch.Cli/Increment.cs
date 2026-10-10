@@ -947,16 +947,12 @@ public sealed class Increment(
     /// fails the same way - and does it all night. Every other way an increment
     /// can go badly costs one increment.</para>
     ///
-    /// <para>The flag is an open question, because a question already does all
-    /// three things a flag field would have to be taught: it blocks the issue
-    /// from being dispatched again, it badges the card on the board, and it is
-    /// the list <c>hatch.sh answer</c> walks. Answering it clears the flag,
-    /// which is the right gesture - the flag means "nobody has looked at this",
-    /// and answering is somebody having looked.</para>
-    ///
-    /// <para>Neither option is recommended, and that is not modesty.
-    /// A recommendation is for a choice something knows the answer to, and the
-    /// whole content of a stall is that nothing here knows why it happened.</para>
+    /// <para>The mark is what blocks the next dispatch and badges the card
+    /// (<c>Dispatch.Blocked</c>, the board's own <c>stalledAt</c> styling) - the
+    /// loop resumes the ticket itself after <c>StallResumeMinutes</c> rather than
+    /// waiting on an answer, so the comment's only remaining job is the session
+    /// id: that is most of why a stall is worth recording rather than merely
+    /// counting.</para>
     ///
     /// <para>Reached only for the second increment in a row to leave a ticket
     /// where it found it - <paramref name="letGo"/> counts the ones before
@@ -1020,9 +1016,10 @@ public sealed class Increment(
         }
         else
         {
-            body += "\n\nA question goes up with this comment, so nothing further will be dispatched at\n"
-                  + "this issue until somebody answers it.";
-            say.Line($"hatch: {report.Key} moved nothing - flagging it, and going on to the next");
+            body += "\n\nThis ticket is marked stalled along with this comment, so the loop\n"
+                  + "picks it back up by itself after a while rather than waiting on anybody\n"
+                  + "to answer a question about it.";
+            say.Line($"hatch: {report.Key} moved nothing - marking it stalled, and going on to the next");
         }
 
         say.Line("");
@@ -1030,18 +1027,22 @@ public sealed class Increment(
         // A stall is not a reason to stop, and neither is failing to write one
         // down. The comment goes on either way - it is where the session id
         // lives, and resuming the conversation is most of why a stall is worth
-        // recording rather than merely counting. The question goes up only when
-        // there is not one there.
+        // recording rather than merely counting. The mark goes up only when
+        // there is not already a question open here.
         try
         {
             await board.CommentAsync(report.Key, body, ct);
 
             if (waiting == 0)
-                await board.AskAsync(
-                    report.Key,
-                    $"An unattended increment left {report.Key} in \"{report.From}\" without moving it - what should happen to it now?",
-                    StallAnswers.Options(),
-                    ct);
+            {
+                var why = report.StillFailing.Count > 0
+                    ? $"the build on {report.BuildBranch} still fails"
+                    : report.StillConflicting.Count > 0
+                    ? $"the branch still conflicts with {report.ConflictTrunk}"
+                    : $"left it in \"{report.From}\" without moving it";
+
+                await board.StallAsync(report.Key, why, ct);
+            }
 
             report.Flag = waiting > 0 ? "waiting on a question" : "flagged";
         }

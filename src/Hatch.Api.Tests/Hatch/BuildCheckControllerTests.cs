@@ -386,7 +386,7 @@ public class BuildCheckControllerTests
     // ---- The failed-again question ----
 
     [Fact]
-    public async Task AFailedVerdictOnAShaAnIncrementPushed_OpensOneQuestion_WithTheSharedOptions()
+    public async Task AFailedVerdictOnAShaAnIncrementPushed_MarksTheIssueStalled()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
@@ -395,46 +395,16 @@ public class BuildCheckControllerTests
 
         await h.PutAsync(issue, Failed("api", "CI"));
 
-        var question = Assert.Single(await h.QuestionsAsync());
-        Assert.Equal("Nathan", question.Author);
-        Assert.Contains(Sha[..10], question.Body);
-        Assert.Contains("- api", question.Body);
-        Assert.Contains("- CI", question.Body);
-        Assert.Contains("build increment", question.Body);
-        Assert.Equal(
-            StallAnswers.Options().Select(o => (o.Label, o.Detail, o.Recommended)),
-            Questions.ReadOptions(question.Options)!.Select(o => (o.Label, o.Detail, o.Recommended)));
-        Assert.Single(await h.Db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.Asked).ToListAsync());
+        var reread = await h.ReadAsync(issue.Key);
+        Assert.NotNull(reread.StalledAt);
+        Assert.Contains("failed again", reread.StalledWhy, StringComparison.Ordinal);
+        Assert.Empty(await h.QuestionsAsync());
+        Assert.Single(await h.Db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.Stalled).ToListAsync());
 
-        // Again: no second one.
+        // Again: no second event - the row holds only the newest sentence, same as
+        // IssueStallController's own write.
         await h.PutAsync(issue, Failed("api", "CI"));
-        Assert.Single(await h.QuestionsAsync());
-    }
-
-    /// <summary>
-    /// The refail question offers exactly <see cref="StallAnswers.Options"/>,
-    /// so it lapses by the same rule a runner's own stall question does - one
-    /// definition, shared, rather than the dispatcher recognising this
-    /// question's options and a runner's as two different things.
-    /// </summary>
-    [Fact]
-    public async Task TheRefailQuestion_LapsesTheSameWayAStallQuestionDoes()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.PutAsync(issue, Pending() with { PushedByIncrement = true });
-        await h.PutAsync(issue, Failed("api", "CI"));
-
-        var question = Assert.Single(await h.QuestionsAsync());
-        Assert.True(StallAnswers.IsStall(Questions.ReadOptions(question.Options)));
-
-        var claims = TestClaims.With(stallLapseMinutes: 5);
-        var now = h.Time.GetUtcNow();
-
-        // Nothing else has touched the issue, so the question's own age is
-        // the newest history entry too.
-        Assert.False(Questions.IsLapsed(question.CreatedAt, question.CreatedAt, claims.StallLapseSeconds, now.AddMinutes(4)));
-        Assert.True(Questions.IsLapsed(question.CreatedAt, question.CreatedAt, claims.StallLapseSeconds, now.AddMinutes(5).AddSeconds(1)));
+        Assert.Single(await h.Db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.Stalled).ToListAsync());
     }
 
     [Fact]

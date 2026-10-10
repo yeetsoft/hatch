@@ -100,65 +100,13 @@ public class IssueClaimController(
         if (previous.Token is not null)
             LogLapsed(issue, actor, Holder(previous.ClaimedBy, previous.Runner), previous.HeartbeatAt, now);
 
-        await AnswerLapsedStallQuestionsAsync(issue.Id, now, ct);
-
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
         return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, claims.StallLapseSeconds);
     }
 
-    /// <summary>
-    /// The one moment a lapsed stall question gets answered rather than left
-    /// waiting: a session is about to spend an increment on this issue, and
-    /// <see cref="StallAnswers.TryAgain"/> is exactly the instruction a fresh
-    /// increment needs among its decisions already made. Written as
-    /// <see cref="HatchActor"/> rather than the caller's own name - the take is
-    /// a runner's, and the answer is not its call to have made.
-    /// </summary>
-    private async Task AnswerLapsedStallQuestionsAsync(long issueId, DateTimeOffset now, CancellationToken ct)
-    {
-        if (claims.StallLapseSeconds <= 0) return;
-
-        // Reads Open rather than Waiting: a shipped issue cannot be claimed, so
-        // this is moot in practice, but answering a stale question is not
-        // something that should start depending on the column it was asked
-        // from.
-        var open = await Questions.Open(db)
-            .Where(c => c.IssueId == issueId)
-            .Select(c => new { c.Id, c.CreatedAt, c.Options })
-            .ToListAsync(ct);
-        if (open.Count == 0) return;
-
-        var newestEventAt = await Questions.NewestEventAtAsync(db, issueId, ct);
-
-        foreach (var question in open)
-        {
-            if (!StallAnswers.IsStall(Questions.ReadOptions(question.Options))) continue;
-            if (!Questions.IsLapsed(question.CreatedAt, newestEventAt, claims.StallLapseSeconds, now)) continue;
-
-            db.Comments.Add(new EfHatchComment
-            {
-                IssueId = issueId,
-                Author = HatchActor,
-                Body = StallAnswers.TryAgain,
-                Kind = EfHatchComment.Answer,
-                AnswersId = question.Id,
-                CreatedAt = now,
-            });
-
-            db.IssueEvents.Add(new EfHatchIssueEvent
-            {
-                IssueId = issueId,
-                Actor = HatchActor,
-                Kind = EfHatchIssueEvent.Answered,
-                Payload = JsonSerializer.Serialize(new { questionId = question.Id, lapsed = true }),
-                At = now,
-            });
-        }
-    }
-
-    /// <summary>The name an answer nobody pressed is written under - see <see cref="AnswerLapsedStallQuestionsAsync"/>.</summary>
+    /// <summary>The name an answer nobody pressed is written under.</summary>
     private const string HatchActor = "Hatch";
 
     /// <summary>

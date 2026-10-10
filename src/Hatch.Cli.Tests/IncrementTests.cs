@@ -531,6 +531,7 @@ public sealed class IncrementTests
         h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -540,14 +541,16 @@ public sealed class IncrementTests
         Assert.Equal("flagged", report.Flag);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
-        // A comment naming the session, mentioning this is the second increment
-        // in a row, and a question, which is what actually stops the next pass
+        // A comment naming the session and mentioning this is the second
+        // increment in a row, and the mark that actually stops the next pass
         // spending the same money the same way.
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
         var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
-        Assert.Equal(2, written.Count);
         Assert.Contains("second increment in a row", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
-        Assert.Equal("question", written[1].Read<CommentCreateRequest>().Kind);
+
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Contains("without moving it", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
