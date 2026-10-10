@@ -408,6 +408,19 @@ public class AdminSurfaceTests
         // able to move for itself. See StatusesController.PutImplementation.
         "StatusesController.PutImplementation",
 
+        // Who may move work into this column - an owner or approver of the
+        // issue's project, never a key, never a hop, never a dispatch
+        // (HA-293's gate). Reading it is open, the same as the flags above -
+        // only the write is here. See StatusesController.PutProtected.
+        "StatusesController.PutProtected",
+
+        // What the loop does once it's there: whether the runner's poll
+        // merges an issue's pull request once it stands here, current and
+        // green, with no session (HA-289's epic). Reading it is open, the
+        // same as the flags above - only the write is here. See
+        // StatusesController.PutMergesPullRequest.
+        "StatusesController.PutMergesPullRequest",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -536,6 +549,12 @@ public class AdminSurfaceTests
         // The column where code gets written, which the loop must not be able
         // to move for itself.
         "StatusesController.PutImplementation",
+
+        // Who may move work into this column - HA-293's gate.
+        "StatusesController.PutProtected",
+
+        // What the loop does once it's there - HA-289's epic.
+        "StatusesController.PutMergesPullRequest",
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",

@@ -1,5 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,13 +17,14 @@ namespace Hatch.Api.Modules.Hatch;
 /// so a method-level attribute silently *replaces* a class-level one rather
 /// than tightening it. Decorating every action explicitly is what keeps
 /// <see cref="PutExpressSkips"/>, <see cref="PutParentPulls"/> and
-/// <see cref="PutAgentFiles"/> and <see cref="PutImplementation"/> closed to a
+/// <see cref="PutAgentFiles"/>, <see cref="PutImplementation"/>,
+/// <see cref="PutProtected"/> and <see cref="PutMergesPullRequest"/> closed to a
 /// key whatever else is added beside it - each decides which gates the loop may pass unattended, the same kind
 /// of power <see cref="PutRepositories"/> guards over there.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
-public class StatusesController(HatchContext db) : ControllerBase
+public class StatusesController(HatchContext db, ICallerIdentity caller) : ControllerBase
 {
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
@@ -33,7 +35,7 @@ public class StatusesController(HatchContext db) : ControllerBase
             .ThenBy(s => s.Id)
             .Select(s => new StatusDto(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-                s.AgentFiles, s.IsImplementation))
+                s.AgentFiles, s.IsImplementation, s.IsProtected, s.MergesPullRequest))
             .ToListAsync(ct);
 
         return statuses;
@@ -66,7 +68,8 @@ public class StatusesController(HatchContext db) : ControllerBase
             nameof(GetStatuses),
             new StatusDto(
                 status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation));
+                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
+                status.IsProtected, status.MergesPullRequest));
     }
 
     [HttpPatch("{id:int}")]
@@ -92,14 +95,30 @@ public class StatusesController(HatchContext db) : ControllerBase
         }
 
         if (request.SortOrder is { } sortOrder) status.SortOrder = sortOrder;
-        if (request.IsTerminal is { } terminal) status.IsTerminal = terminal;
-        if (request.IsDeferred is { } deferred) status.IsDeferred = deferred;
+
+        if (request.IsTerminal is { } terminal)
+        {
+            if (terminal && status.MergesPullRequest)
+                return BadRequest($"\"{status.Name}\" merges the pull request - untick that before making it a done column");
+            if (terminal && status.IsProtected)
+                return BadRequest($"\"{status.Name}\" is protected - untick that before making it a done column");
+            status.IsTerminal = terminal;
+        }
+
+        if (request.IsDeferred is { } deferred)
+        {
+            if (deferred && status.MergesPullRequest)
+                return BadRequest($"\"{status.Name}\" merges the pull request - untick that before making it deferred");
+            if (deferred && status.IsProtected)
+                return BadRequest($"\"{status.Name}\" is protected - untick that before making it deferred");
+            status.IsDeferred = deferred;
+        }
 
         await db.SaveChangesAsync(ct);
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
     }
 
     /// <summary>
@@ -122,7 +141,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
     }
 
     /// <summary>
@@ -145,7 +164,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
     }
 
     /// <summary>
@@ -180,7 +199,7 @@ public class StatusesController(HatchContext db) : ControllerBase
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
     }
 
     /// <summary>
@@ -215,7 +234,84 @@ public class StatusesController(HatchContext db) : ControllerBase
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Protected</em>: who may move work into this column -
+    /// an owner or approver of the issue's project, never a key, never a hop,
+    /// never a dispatch (HA-293 asks the gate; this ticket only carries the
+    /// flag). Refuses a deferred or a terminal column, the same refusal
+    /// <see cref="PutAgentFiles"/> gives those columns for its own question;
+    /// refuses unticking while <see cref="MergesPullRequest"/> still holds,
+    /// since a merge column with nobody guarding its door would let anything
+    /// that can move a card merge its own code (HA-289's decision). Checked in
+    /// the action as well as declared on the attribute
+    /// (<see cref="NotAPerson"/>), the <see cref="ProjectsController.NotAPerson"/>
+    /// idiom: <c>RoleGate</c> is dormant wherever the wall is off, and a keyless
+    /// runner there is a program too.
+    /// </summary>
+    [HttpPut("{id:int}/protected")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutProtected(int id, ProtectedRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        if (request.On)
+        {
+            if (status.IsDeferred) return BadRequest($"\"{status.Name}\" is deferred - parked work is never protected");
+            if (status.IsTerminal) return BadRequest($"\"{status.Name}\" is a done column - shipped work is never protected");
+        }
+        else if (status.MergesPullRequest)
+        {
+            return BadRequest($"\"{status.Name}\" merges the pull request - untick that first");
+        }
+
+        status.IsProtected = request.On;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
+            status.IsProtected, status.MergesPullRequest);
+    }
+
+    /// <summary>
+    /// Ticks or unticks <em>Merges the pull request</em>: whether the runner's
+    /// poll merges an issue's pull request once it stands here, current and
+    /// green, with no session (HA-289's epic). Requires <see cref="IsProtected"/>
+    /// already on - a column that merges but is not protected would let
+    /// anything that can move a card, a key included, merge its own code - and
+    /// refuses a deferred or a terminal column for the same reason
+    /// <see cref="PutProtected"/> does. Unticking is always allowed, the
+    /// stranded-flag tolerance <c>IsWip</c> gives that case.
+    /// </summary>
+    [HttpPut("{id:int}/merges-pull-request")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutMergesPullRequest(int id, MergesPullRequestRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+
+        if (request.On)
+        {
+            if (status.IsDeferred) return BadRequest($"\"{status.Name}\" is deferred - parked work never merges a pull request");
+            if (status.IsTerminal) return BadRequest($"\"{status.Name}\" is a done column - shipped work never merges a pull request");
+            if (!status.IsProtected) return BadRequest($"\"{status.Name}\" is not protected - tick that first");
+        }
+
+        status.MergesPullRequest = request.On;
+        await db.SaveChangesAsync(ct);
+
+        return new StatusDto(
+            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
+            status.IsProtected, status.MergesPullRequest);
     }
 
     /// <summary>
@@ -268,4 +364,12 @@ public class StatusesController(HatchContext db) : ControllerBase
         { Length: > EfHatchStatus.MaxNameLength } => $"a column name is at most {EfHatchStatus.MaxNameLength} characters",
         _ => null,
     };
+
+    private async Task<ObjectResult?> NotAPerson(CancellationToken ct) =>
+        await caller.IsProgramAsync(ct)
+            ? new ObjectResult("whether a column is protected, or merges the pull request, is the operator's to set - not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
 }
