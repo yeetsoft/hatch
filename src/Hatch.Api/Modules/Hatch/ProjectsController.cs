@@ -50,7 +50,23 @@ public class ProjectsController(
             .Select(l => new { l.ProjectId, l.UpdatedAt })
             .ToDictionaryAsync(l => l.ProjectId, l => (DateTimeOffset?)l.UpdatedAt, ct);
 
-        return projects.Select(p => ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []), logosByProject.GetValueOrDefault(p.Id))).ToList();
+        var memberRows = await db.ProjectMembers.AsNoTracking().ToListAsync(ct);
+        var rowsByProject = memberRows.GroupBy(m => m.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
+        var personById = (await actors.LiveAsync(ct)).Where(a => a.Kind == ActorKind.Person).ToDictionary(a => a.Id);
+        var me = await actors.MeAsync(ct);
+
+        return projects.Select(p =>
+        {
+            var rows = rowsByProject.GetValueOrDefault(p.Id, []);
+            var members = (IReadOnlyList<ProjectMemberDto>)rows
+                .Where(row => personById.ContainsKey(row.PersonId))
+                .Select(row => new ProjectMemberDto(row.PersonId, personById[row.PersonId].Name, row.Role))
+                .ToList();
+            var canAdminister = me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Owner);
+            var canApprove = canAdminister || (me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Approver));
+
+            return ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []), logosByProject.GetValueOrDefault(p.Id), members, canApprove, canAdminister);
+        }).ToList();
     }
 
     [HttpPost]
@@ -99,7 +115,13 @@ public class ProjectsController(
 
         await db.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null));
+        var me = await actors.MeAsync(ct);
+        var members = (IReadOnlyList<ProjectMemberDto>)(principal is { Kind: ActorKind.Person } p
+            ? [new ProjectMemberDto(p.Id, p.Name, ProjectMemberRole.Owner)]
+            : []);
+        var isSelfOwner = me is { Kind: ActorKind.Person } && principal is { Kind: ActorKind.Person } && me.Id == principal.Id;
+
+        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null, members, isSelfOwner, isSelfOwner));
     }
 
     /// <summary>
@@ -183,7 +205,8 @@ public class ProjectsController(
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         var repositories = await RepositoriesAsync(id, ct);
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
-        return ToDto(project, count, repositories, logoUpdatedAt);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
     }
 
     /// <summary>
@@ -353,7 +376,8 @@ public class ProjectsController(
 
         await db.SaveChangesAsync(ct);
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
-        return ToDto(project, count, await RepositoriesAsync(id, ct), now);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), now, members, canApprove, canAdminister);
     }
 
     [HttpDelete("{id:int}/logo")]
@@ -371,7 +395,8 @@ public class ProjectsController(
         db.ProjectLogos.Remove(logo);
         await db.SaveChangesAsync(ct);
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
-        return ToDto(project, count, await RepositoriesAsync(id, ct), null);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), null, members, canApprove, canAdminister);
     }
 
     // ---- Members ----
@@ -497,8 +522,11 @@ public class ProjectsController(
         return await LiveMembersAsync(id, ct);
     }
 
-    private static ProjectDto ToDto(EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt) =>
-        new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt);
+    private static ProjectDto ToDto(
+        EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt,
+        IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister) =>
+        new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
+            members, canApprove, canAdminister);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
@@ -512,6 +540,31 @@ public class ProjectsController(
         }
 
         return members;
+    }
+
+    /// <summary>
+    /// A single project's <see cref="ProjectDto.Members"/>/<see cref="ProjectDto.CanApprove"/>/
+    /// <see cref="ProjectDto.CanAdminister"/>, computed the same way <see cref="GetProjects"/>'s
+    /// batched version is: one raw row query, <see cref="ProjectMemberDto"/> resolved per row, and
+    /// the two booleans checked against the same raw rows and <see cref="IActorDirectory.MeAsync"/> -
+    /// not <see cref="IProjectAccess"/>, which is a second, independent expression of the same rule.
+    /// </summary>
+    private async Task<(IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister)> MembersAsync(int projectId, CancellationToken ct)
+    {
+        var rows = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId).ToListAsync(ct);
+
+        var members = new List<ProjectMemberDto>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (await actors.ResolveAsync(ActorKind.Person, row.PersonId, ct) is not { } person) continue;
+            members.Add(new ProjectMemberDto(row.PersonId, person.Name, row.Role));
+        }
+
+        var me = await actors.MeAsync(ct);
+        var canAdminister = me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Owner);
+        var canApprove = canAdminister || (me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Approver));
+
+        return (members, canApprove, canAdminister);
     }
 
     private async Task<List<ProjectRepositoryDto>> RepositoriesAsync(int projectId, CancellationToken ct) =>

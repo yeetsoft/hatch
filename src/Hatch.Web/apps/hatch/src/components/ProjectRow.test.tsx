@@ -13,6 +13,9 @@ const BASE: Project = {
   icon: null,
   logoUpdatedAt: null,
   repositories: [],
+  members: [],
+  canApprove: false,
+  canAdminister: false,
 };
 
 const noop = () => undefined;

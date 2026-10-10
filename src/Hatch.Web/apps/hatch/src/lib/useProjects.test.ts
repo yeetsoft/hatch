@@ -12,6 +12,9 @@ const project = (over: Partial<Project>): Project => ({
   icon: null,
   logoUpdatedAt: null,
   repositories: [],
+  members: [],
+  canApprove: false,
+  canAdminister: false,
   ...over,
 });
 

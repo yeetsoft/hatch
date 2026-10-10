@@ -55,6 +55,9 @@ const PROJECT: Project = {
   icon: null,
   logoUpdatedAt: null,
   repositories: [],
+  members: [],
+  canApprove: false,
+  canAdminister: false,
 };
 
 const OTHER: Project = {
@@ -67,6 +70,9 @@ const OTHER: Project = {
   icon: null,
   logoUpdatedAt: null,
   repositories: [],
+  members: [],
+  canApprove: false,
+  canAdminister: false,
 };
 
 const noop = () => undefined;

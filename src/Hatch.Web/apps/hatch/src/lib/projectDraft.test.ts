@@ -13,6 +13,9 @@ describe('openProjectDraft', () => {
       icon: 'rocket',
       logoUpdatedAt: null,
       repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: 'main' }],
+      members: [],
+      canApprove: false,
+      canAdminister: false,
     };
 
     const draft = openProjectDraft(project);
@@ -39,6 +42,9 @@ describe('openProjectDraft', () => {
       icon: null,
       logoUpdatedAt: null,
       repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: null }],
+      members: [],
+      canApprove: false,
+      canAdminister: false,
     };
 
     const draft = openProjectDraft(project);

@@ -16,6 +16,9 @@ function project(overrides: Partial<Project>): Project {
     icon: null,
     logoUpdatedAt: null,
     repositories: [],
+    members: [],
+    canApprove: false,
+    canAdminister: false,
     ...overrides,
   };
 }
