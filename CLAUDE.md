@@ -112,11 +112,13 @@ reading the terminal, and that the next increment starts the moment yours ends.
   the ticket is free for
   the very next pass, since most of the time whatever happened is weather and
   a retry a few minutes later just works. The second stall in a row on the
-  same ticket is flagged the way every stall used to be: the loop comments,
-  opens a question against the issue, and nothing further is dispatched there
-  until a person answers it. That guard exists so a ticket that is genuinely
-  stuck costs two increments and not a night, but a sentence you wrote about
-  why you stopped is worth more than the one it writes for you.
+  same ticket is flagged the way every stall used to be: the loop comments and
+  marks the ticket stalled, and it sits for fifteen minutes before the board
+  resumes it on its own — until it has stalled that way enough times in a row,
+  at which point it holds for a person instead of resuming again. That guard
+  exists so a ticket that is genuinely stuck costs a bounded run of increments
+  and not a night, but a sentence you wrote about why you stopped is worth more
+  than the one it writes for you.
 - **Asking is a full stop, not a pause.** An open question blocks the ticket
   from being dispatched at all. Ask and stop — do not ask and keep building.
 - **Record the pull request**: `./scripts/hatch.sh pr AER-12 <url>`. It is a

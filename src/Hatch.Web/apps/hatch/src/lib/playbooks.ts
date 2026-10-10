@@ -34,3 +34,14 @@ export function budgetDraft(budget: number | null): string {
 export function budgetRequest(draft: string): string {
   return draft.trim();
 }
+
+/** What the brief limit field shows: blank for no cap, the number otherwise.
+    Mirrors budgetDraft. */
+export function briefLimitDraft(briefLimit: number | null): string {
+  return briefLimit === null ? '' : String(briefLimit);
+}
+
+/** The field, trimmed, as the wire's `briefLimit` - blank clears it. */
+export function briefLimitRequest(draft: string): string {
+  return draft.trim();
+}

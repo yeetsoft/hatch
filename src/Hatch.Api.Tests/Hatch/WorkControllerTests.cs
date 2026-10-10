@@ -2162,6 +2162,228 @@ public class WorkControllerTests
         Assert.Equal(Key(normal), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
+    // ---- asRunner ----
+
+    /// <summary>
+    /// The runner's row carries a repository (<c>https://example.com/o/other</c>)
+    /// that is not the one the expedited issue's own project needs - so the
+    /// declared and undeclared readings of the very same board disagree about
+    /// which row is clear, and the disagreement is the proof that
+    /// <c>asRunner</c> is the one walk read a second way rather than a second
+    /// walk that happens to agree with it today.
+    /// </summary>
+    [Fact]
+    public async Task Queue_AsRunner_AnswersTheNamedRowsDeclaration()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var hurry = await h.FileAsync("bug", "expedited, bound to the project's own repo", h.Todo, rank: 1024);
+        await h.ExpediteAsync(hurry);
+
+        // A second project, bound to the repository this runner actually
+        // holds - so its issue is the one the asRunner reading can reach and
+        // the undeclared reading has no reason to treat any differently.
+        var other = new EfHatchProject { Key = "OTH", Name = "Other", CreatedAt = Now };
+        h.Db.Add(other);
+        await h.Db.SaveChangesAsync();
+        var (otherCanonical, _) = RemoteIdentity.Canonical("https://example.com/o/other");
+        h.Db.ProjectRepositories.Add(new EfHatchProjectRepository
+        {
+            ProjectId = other.Id,
+            Remote = "https://example.com/o/other",
+            Canonical = otherCanonical!,
+            SortOrder = 0,
+            CreatedAt = Now,
+        });
+        var normal = new EfHatchIssue
+        {
+            ProjectId = other.Id,
+            Number = 1,
+            Type = "bug",
+            Title = "normal, bound to the runner's own repo",
+            Description = "",
+            StatusId = h.Todo,
+            Rank = 2048,
+            CreatedBy = "operator",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        };
+        h.Db.Issues.Add(normal);
+        await h.Db.SaveChangesAsync();
+        var otherKey = IssueKey.Format("OTH", 1);
+
+        const string runnerName = "host:/checkout";
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = runnerName,
+            Kind = EfHatchRunner.LoopKind,
+            FirstSeenAt = Now,
+            LastSeenAt = Now,
+            State = EfHatchRunner.Running,
+            Remotes = "https://example.com/o/other",
+            Clones = false,
+            Standing = false,
+        });
+        await h.Db.SaveChangesAsync();
+
+        // Undeclared: nothing is folded by repository at all, so the
+        // expedited row is clear outright and parks the normal one behind it.
+        var undeclared = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Null(undeclared.Single(e => e.Issue.Key == Key(hurry)).Blocked);
+        Assert.Equal(
+            $"{Key(hurry)} ranks expedited and is clear - nothing at normal is picked up while higher-ranking work is available",
+            undeclared.Single(e => e.Issue.Key == otherKey).Blocked);
+
+        // asRunner: the row's own repository is declared, so the expedited
+        // row - bound to a checkout this runner lacks - folds by it instead,
+        // and the park rule costs nothing: the normal row, bound to the
+        // repository this runner actually holds, reads clear on its own.
+        var asRunner = Value(await h.Work.GetQueue(0, null, null, null, null, false, default, runnerName));
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            asRunner.Single(e => e.Issue.Key == Key(hurry)).Blocked);
+        Assert.Null(asRunner.Single(e => e.Issue.Key == otherKey).Blocked);
+
+        // The same walk, read two ways: declaring the row's own fields
+        // directly answers pointwise identically to naming the row.
+        var declaredDirectly = Value(await h.Work.GetQueue(
+            0, null, ["https://example.com/o/other"], false, false, false, default));
+        Assert.Equal(
+            asRunner.Select(e => (e.Issue.Key, e.Blocked)),
+            declaredDirectly.Select(e => (e.Issue.Key, e.Blocked)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Queue_AsRunnerNamingNoLiveRow_Is400(bool agedOut)
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "clear", h.Todo);
+
+        if (agedOut)
+        {
+            // Outside Runners.DropBefore's horizon (90s * 10 = 900s): the row
+            // exists, and reads exactly as if it did not.
+            h.Db.Runners.Add(new EfHatchRunner
+            {
+                Name = "host:/checkout",
+                Kind = EfHatchRunner.LoopKind,
+                FirstSeenAt = Now - TimeSpan.FromMinutes(30),
+                LastSeenAt = Now - TimeSpan.FromMinutes(20),
+                State = EfHatchRunner.Running,
+            });
+            await h.Db.SaveChangesAsync();
+        }
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetQueue(0, null, null, null, null, false, default, "host:/checkout")).Result);
+
+        Assert.Equal("there is no runner named host:/checkout", refused.Value);
+    }
+
+    [Theory]
+    [InlineData("remote")]
+    [InlineData("standing")]
+    [InlineData("clones")]
+    [InlineData("mine")]
+    [InlineData("ancestorKey")]
+    public async Task Queue_AsRunnerGivenWithASecondDeclaration_Is400(string which)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "clear", h.Todo);
+
+        const string runnerName = "host:/checkout";
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = runnerName,
+            Kind = EfHatchRunner.LoopKind,
+            FirstSeenAt = Now,
+            LastSeenAt = Now,
+            State = EfHatchRunner.Running,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var call = which switch
+        {
+            "remote" => h.Work.GetQueue(0, null, ["https://example.com/o/r"], null, null, false, default, runnerName),
+            "standing" => h.Work.GetQueue(0, null, null, true, null, false, default, runnerName),
+            "clones" => h.Work.GetQueue(0, null, null, null, true, false, default, runnerName),
+            "mine" => h.Work.GetQueue(0, null, null, null, null, true, default, runnerName),
+            "ancestorKey" => h.Work.GetQueue(0, Key(issue), null, null, null, false, default, runnerName),
+            _ => throw new InvalidOperationException(which),
+        };
+
+        var refused = Assert.IsType<BadRequestObjectResult>((await call).Result);
+
+        Assert.Equal(
+            "asRunner answers off that runner's own row - remote, standing, clones, mine and " +
+            "ancestorKey may not be given alongside it",
+            refused.Value);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_MineNarrowsToTheRowsOwnPersonNotTheCaller()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        var ada = h.Actors.AddPerson("Ada");
+
+        // The browser session's own identity - not the row's - to prove it
+        // decides nothing here.
+        h.Actors.Principal = ada;
+
+        var nathans = await h.FileAsync("story", "Nathan's own", h.Todo, rank: 1024);
+        await h.AssignAsync(nathans, personId: nathan.Id);
+        var adas = await h.FileAsync("story", "Ada's own", h.Todo, rank: 2048);
+        await h.AssignAsync(adas, personId: ada.Id);
+
+        const string runnerName = "host:/checkout";
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = runnerName,
+            Kind = EfHatchRunner.LoopKind,
+            FirstSeenAt = Now,
+            LastSeenAt = Now,
+            State = EfHatchRunner.Running,
+            Mine = true,
+            ForPersonId = nathan.Id,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var queue = Value(await h.Work.GetQueue(0, null, null, null, null, false, default, runnerName));
+
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(nathans)).Blocked);
+        Assert.Equal("assigned to Ada, not to you", queue.Single(e => e.Issue.Key == Key(adas)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_MineWithNoForPersonId_Is400()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "clear", h.Todo);
+
+        const string runnerName = "host:/checkout";
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = runnerName,
+            Kind = EfHatchRunner.LoopKind,
+            FirstSeenAt = Now,
+            LastSeenAt = Now,
+            State = EfHatchRunner.Running,
+            Mine = true,
+            ForPersonId = null,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var refused = Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetQueue(0, null, null, null, null, false, default, runnerName)).Result);
+
+        Assert.Equal(
+            $"{runnerName} belongs to nobody, so it has no tickets of its own - an admin sets its owner on the API Keys page",
+            refused.Value);
+    }
+
     [Fact]
     public async Task Queue_AFoldedLowRowParksNothing()
     {
@@ -6444,7 +6666,7 @@ public class WorkControllerTests
             Actors = actors,
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
-                new RankService(db), caller),
+                new RankService(db), caller, new Runners(Options.Create(new HatchOptions()))),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             Caller = caller,
             ProjectId = project.Id,
