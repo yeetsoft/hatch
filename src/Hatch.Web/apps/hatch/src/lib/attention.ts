@@ -125,6 +125,29 @@ export function waitedWords(askedAt: string, now: Date): string {
   return count(Math.floor(hours / 24), 'day');
 }
 
+/**
+ * When a stall resumes on its own: `in 12 minutes`, `in 1 minute`, `any moment
+ * now` once the window has passed, or `will not resume on its own` when the
+ * install has turned unattended resuming off (`stallResumeSeconds <= 0`,
+ * mirroring `Dispatch.Blocked`'s own branch for the same setting).
+ *
+ * A bare duration fragment, in `waitedWords`'s register, composed into a
+ * sentence by the component rather than here - this only answers "when",
+ * never "why" or "that it is held instead".
+ */
+export function resumeWords(stalledAt: string, stallResumeSeconds: number, now: Date): string {
+  if (stallResumeSeconds <= 0) return 'will not resume on its own';
+
+  const at = Date.parse(stalledAt);
+  if (Number.isNaN(at)) return 'resumes on its own';
+
+  const remainingMs = at + stallResumeSeconds * 1000 - now.getTime();
+  if (remainingMs <= 0) return 'any moment now';
+
+  const minutes = Math.ceil(remainingMs / 60_000);
+  return `in ${count(minutes, 'minute')}`;
+}
+
 /** `1 question`, `2 questions`. Every noun here takes a plain -s. */
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
 

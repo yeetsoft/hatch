@@ -28,6 +28,7 @@ public class IssueProjectionStallTests
         Assert.Equal(h.Now, read.StalledAt);
         Assert.Equal("left where it was found", read.StalledWhy);
         Assert.True(read.Held);
+        Assert.Equal(TestClaims.With().StallResumeSeconds, read.StallResumeSeconds);
     }
 
     [Fact]

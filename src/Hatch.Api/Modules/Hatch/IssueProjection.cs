@@ -171,7 +171,8 @@ public static class IssueProjection
                 issue.WipLimit,
                 issue.StalledAt,
                 issue.StalledWhy,
-                issue.Held);
+                issue.Held,
+                claims.StallResumeSeconds);
         });
     }
 

@@ -70,6 +70,14 @@ export function describe(event: IssueEvent): string {
     return `${short(from)} → ${short(to)}, ${event.payload.descendants} more moved with it`;
   }
 
+  /* stalled carries { why } - no from/to - so it falls through to the blank
+     line below unless it is read first. held/resumed carry { from, to } as
+     booleans, which the generic line would draw as "false → true": technically
+     not wrong, just not a sentence worth reading next to a badge that already
+     says "held". */
+  if (event.kind === 'stalled') return typeof event.payload?.why === 'string' ? event.payload.why : '';
+  if (event.kind === 'held' || event.kind === 'resumed') return '';
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

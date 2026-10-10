@@ -273,6 +273,24 @@ export const setExpress = (key: string, express: boolean) =>
     ...asJson({ express }),
   });
 
+/** Mark a ticket stalled, with why - and, through the same panel, read back
+    off. On `setExpress`'s shape: the state is sent, not toggled, and the
+    route is its own rather than a field on the patch. Today only the runner
+    and the board write this; nothing in the browser calls it yet. */
+export const setStall = (key: string, why: string) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/stall`, {
+    method: 'PUT',
+    ...asJson({ why }),
+  });
+
+/** Hold a ticket for a person, or let it go - StallPanel's two buttons. On
+    `setExpress`'s shape, matching HoldRequest(bool Held). */
+export const setHold = (key: string, held: boolean) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/hold`, {
+    method: 'PUT',
+    ...asJson({ held }),
+  });
+
 /** Take a ticket back off a runner - the operator's clobber, with no token in
     it, which is why the server refuses it from an API key: a key may release
     only the lease it holds. Answers nothing (204), so the page re-reads rather
