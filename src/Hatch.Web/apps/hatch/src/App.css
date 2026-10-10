@@ -145,17 +145,23 @@
   gap: var(--sp-2);
 }
 
-.hatch-sign-out {
-  background: none;
-  border: 0;
-  padding: 0;
+.hatch-sign-out,
+.hatch-sign-in {
   color: var(--muted);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
 }
 
-.hatch-sign-out:hover {
+/* The button-only resets - an <a> carries none of these by default. */
+.hatch-sign-out {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.hatch-sign-out:hover,
+.hatch-sign-in:hover {
   color: inherit;
 }
 
