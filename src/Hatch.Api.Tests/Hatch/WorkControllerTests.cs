@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -1059,6 +1060,107 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(
                 Key(issue), heldToken: token, remote: ["https://example.com/other.git"], standing: true,
                 ct: default)).Blocked);
+    }
+
+    // ---- Brief limit, the fold ----
+    //
+    // A playbook row can cap how long a leaf's description may be before a
+    // session is spawned on it (EfHatchPlaybook.BriefLimit) - past that, the
+    // move is folded naming both lengths, rather than spawning a session on a
+    // brief nobody has broken down yet. See HA-359.
+
+    [Fact]
+    public async Task Work_ALeafsOverLongBriefIsFoldedBeforeASessionIsSpawned()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "too long to spawn on", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        var sentence = $"its brief is {1001.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
+                        $"and this move is spawned on at most {1000.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+        Assert.Equal(sentence, Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_ABriefLimitDoesNotFoldAnIssueWithChildren()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "already broken down", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("task", "a task under it", h.Todo, parentId: issue.Id);
+
+        // Its children are the brief, not its own description, so a length
+        // nobody will read in one sitting is not this issue's to be folded on.
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_ARowWithNoBriefLimitFoldsNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "however long", h.Todo);
+        issue.Description = new string('x', 100_000);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_ABriefAtTheLimitIsNotFolded_OneOverIs()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var atLimit = await h.FileAsync("story", "exactly at the limit", h.Todo);
+        atLimit.Description = new string('x', 1000);
+        var overLimit = await h.FileAsync("story", "one over the limit", h.Todo);
+        overLimit.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(atLimit), null, default)).Blocked);
+        Assert.Equal(
+            $"its brief is {1001.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
+            $"and this move is spawned on at most {1000.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first",
+            Value(await h.Work.GetWork(Key(overLimit), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AnExpressIssueOverTheBriefLimitStillHops()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "carried across anyway", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_APulledChildOverTheBriefLimitStillHops()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "sonnet", briefLimit: 1000));
+        var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        child.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
     // ---- Refusals ----
@@ -6714,7 +6816,8 @@ public class WorkControllerTests
     /// <summary>The display key of an issue these tests filed directly.</summary>
     private static string Key(EfHatchIssue issue) => IssueKey.Format("AER", issue.Number);
 
-    private static EfHatchPlaybook Playbook(int from, int to, string types, string model, string shape = "any") => new()
+    private static EfHatchPlaybook Playbook(
+        int from, int to, string types, string model, string shape = "any", int? briefLimit = null) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -6723,6 +6826,7 @@ public class WorkControllerTests
         Prompt = "do the thing",
         Model = model,
         Effort = "high",
+        BriefLimit = briefLimit,
         CreatedAt = Now,
         UpdatedAt = Now,
     };

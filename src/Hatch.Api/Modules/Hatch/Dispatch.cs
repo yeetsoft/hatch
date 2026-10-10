@@ -1,3 +1,4 @@
+using System.Globalization;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
@@ -786,6 +787,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 ? "a sibling is already in flight, so only one child is pulled through at a time"
                 : "its parent has not reached the implementation column, so nothing pulls it forward yet";
         }
+
+        if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0 && issue.Description.Length > limit)
+            return $"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
+                   $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
 
         return playbook is null
             ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
