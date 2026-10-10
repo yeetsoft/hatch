@@ -5229,7 +5229,8 @@ public class WorkControllerTests
         var staleResult = await h.Work.MergedWork(
             Key(stale), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
         Assert.Equal(
-            "\"review\" is not the review column - a merge only advances a ticket waiting there",
+            "\"review\" is not the review column and does not merge the pull request - " +
+            "a merge only advances a ticket waiting there",
             Assert.IsType<ConflictObjectResult>(staleResult.Result).Value);
 
         var current = await h.FileAsync("task", "in the newly inserted column", inserted.Id);
@@ -5238,6 +5239,61 @@ public class WorkControllerTests
             Key(current), new PullRequestMergedRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default));
 
         Assert.Equal(h.Done, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task MergedWork_WithAnApprovedColumnInsertedBetweenReviewAndDone_LeftInReview_AdvancesPastItToDone()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var moved = Value(await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+
+        Assert.Equal(h.Done, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task MergedWork_FromTheApprovedColumnItself_AdvancesToDone()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("task", "waiting for a merge", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var moved = Value(await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+
+        Assert.Equal(h.Done, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task MergedWork_FromTheApprovedColumnWithNoColumnAfterIt_Refuses()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("task", "waiting for a merge", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        h.Db.Statuses.Remove(await h.Db.Statuses.SingleAsync(s => s.Id == h.Done));
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "there is no column after \"approved\", so there is nowhere for this to go",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
     }
 
     [Fact]
@@ -5251,7 +5307,8 @@ public class WorkControllerTests
             Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
 
         Assert.Equal(
-            "\"in progress\" is not the review column - a merge only advances a ticket waiting there",
+            "\"in progress\" is not the review column and does not merge the pull request - " +
+            "a merge only advances a ticket waiting there",
             Assert.IsType<ConflictObjectResult>(result.Result).Value);
     }
 

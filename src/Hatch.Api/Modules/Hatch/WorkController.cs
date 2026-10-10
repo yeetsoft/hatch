@@ -480,8 +480,10 @@ public class WorkController(
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         var from = statuses.First(s => s.Id == issue.StatusId);
 
-        if (Columns.AwaitingReview(statuses)?.Id != from.Id)
-            return Conflict($"\"{from.Name}\" is not the review column - a merge only advances a ticket waiting there");
+        if (Columns.AwaitingReview(statuses)?.Id != from.Id && !from.MergesPullRequest)
+            return Conflict(
+                $"\"{from.Name}\" is not the review column and does not merge the pull request - " +
+                "a merge only advances a ticket waiting there");
 
         var recorded = issue.PullRequestUrl?.Trim();
         if (string.IsNullOrEmpty(recorded))
@@ -491,7 +493,9 @@ public class WorkController(
         if (!string.Equals(url, recorded, StringComparison.Ordinal))
             return Conflict($"\"{url}\" is not the pull request recorded on this issue");
 
-        var to = Columns.Advance(statuses, from);
+        var board = Columns.Board(statuses);
+        var at = board.FindIndex(s => s.Id == from.Id);
+        var to = at >= 0 ? board.Skip(at + 1).FirstOrDefault(s => s.IsTerminal) : null;
         if (to is null)
             return Conflict($"there is no column after \"{from.Name}\", so there is nowhere for this to go");
 
