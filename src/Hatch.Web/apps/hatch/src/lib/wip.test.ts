@@ -4,9 +4,11 @@ import {
   implementationBlocked,
   limitDraft,
   limitRequest,
+  mergesPullRequestBlocked,
   meterText,
   plural,
   preview,
+  protectedBlocked,
   runs,
   tightest,
   tightness,
@@ -29,6 +31,8 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   parentPulls: false,
   agentFiles: false,
   isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
   color: '#336699',
   ...over,
 });
@@ -130,6 +134,38 @@ describe('implementationBlocked', () => {
 
   it('names why a done column is blocked', () => {
     expect(implementationBlocked(DONE)).toContain('shipped work');
+  });
+});
+
+describe('protectedBlocked', () => {
+  it('is null for an ordinary column', () => {
+    expect(protectedBlocked(TODO)).toBeNull();
+  });
+
+  it('names why a deferred column is blocked', () => {
+    expect(protectedBlocked(SHELVED)).toContain('parked work');
+  });
+
+  it('names why a done column is blocked', () => {
+    expect(protectedBlocked(DONE)).toContain('shipped work');
+  });
+});
+
+describe('mergesPullRequestBlocked', () => {
+  it('names why an ordinary but unprotected column is blocked', () => {
+    expect(mergesPullRequestBlocked(TODO)).toBe('Tick Protected first');
+  });
+
+  it('is null for an ordinary, protected column', () => {
+    expect(mergesPullRequestBlocked({ ...TODO, isProtected: true })).toBeNull();
+  });
+
+  it('names why a deferred column is blocked even when protected', () => {
+    expect(mergesPullRequestBlocked({ ...SHELVED, isProtected: true })).toContain('parked work');
+  });
+
+  it('names why a done column is blocked even when protected', () => {
+    expect(mergesPullRequestBlocked({ ...DONE, isProtected: true })).toContain('shipped work');
   });
 });
 
