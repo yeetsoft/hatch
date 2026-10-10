@@ -22,12 +22,12 @@ const noop = () => undefined;
 
 describe('ProjectRow', () => {
   it('renders the key inside <code>', () => {
-    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} />);
+    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} onClaim={noop} />);
     expect(html).toContain('<code>AER</code>');
   });
 
   it("draws the project's mark", () => {
-    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} />);
+    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} onClaim={noop} />);
     expect(html).toContain('role="img"');
     expect(html).toContain(`aria-label="${BASE.name}"`);
   });
@@ -40,24 +40,35 @@ describe('ProjectRow', () => {
         { remote: 'git@github.com:yeetsoft/aer2.git', canonical: 'github.com/yeetsoft/aer2', baseBranch: null },
       ],
     };
-    const html = renderToStaticMarkup(<ProjectRow project={project} onEdit={noop} onDelete={noop} />);
+    const html = renderToStaticMarkup(<ProjectRow project={project} onEdit={noop} onDelete={noop} onClaim={noop} />);
     expect(html).toContain('2');
     expect(html).toContain('class="text-muted">github.com/yeetsoft/aer<');
   });
 
   it('shows no muted canonical when there are no repositories', () => {
-    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} />);
+    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} onClaim={noop} />);
     expect(html).not.toContain('text-muted');
   });
 
   it('disables Delete when the project has issues, and not otherwise', () => {
     const withIssues: Project = { ...BASE, issueCount: 3 };
-    const busy = renderToStaticMarkup(<ProjectRow project={withIssues} onEdit={noop} onDelete={noop} />);
+    const busy = renderToStaticMarkup(<ProjectRow project={withIssues} onEdit={noop} onDelete={noop} onClaim={noop} />);
     const deleteButton = /<button[^>]*>Delete<\/button>/.exec(busy)![0];
     expect(deleteButton).toContain('disabled=""');
 
-    const idle = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} />);
+    const idle = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} onClaim={noop} />);
     const idleDelete = /<button[^>]*>Delete<\/button>/.exec(idle)![0];
     expect(idleDelete).not.toContain('disabled=""');
+  });
+
+  it('shows no Claim button when the project has an owner', () => {
+    const project: Project = { ...BASE, members: [{ personId: '1', name: 'A', role: 'owner' }] };
+    const html = renderToStaticMarkup(<ProjectRow project={project} onEdit={noop} onDelete={noop} onClaim={noop} />);
+    expect(html).not.toContain('>Claim<');
+  });
+
+  it('shows a Claim button when the project has no owner', () => {
+    const html = renderToStaticMarkup(<ProjectRow project={BASE} onEdit={noop} onDelete={noop} onClaim={noop} />);
+    expect(html).toContain('>Claim<');
   });
 });

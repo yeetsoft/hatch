@@ -1,10 +1,31 @@
 import { useState } from 'react';
 import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
-import { deleteProjectLogo, patchProject, putProjectLogo, putProjectRepositories } from '../api/client';
+import {
+  claimProject,
+  deleteProjectLogo,
+  deleteProjectMember,
+  getPeople,
+  patchProject,
+  putProjectLogo,
+  putProjectMember,
+  putProjectRepositories,
+} from '../api/client';
 import { message } from '../lib/errors';
 import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, type ProjectDraft } from '../lib/projectDraft';
+import {
+  hasOwner,
+  openProjectMembersDraft,
+  projectMembersDiff,
+  removeObjection,
+  reroled,
+  roleObjection,
+  withMember,
+  withoutMember,
+  type ProjectMembersDraft,
+} from '../lib/projectMembers';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
+import { useLoaded } from '../lib/useLoaded';
 import type { Project } from '../types';
 import { ProjectIconPicker } from './ProjectIconPicker';
 import { ProjectKeyField } from './ProjectKeyField';
@@ -29,13 +50,18 @@ export function ProjectEditDialog({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<ProjectDraft | null>(null);
+  const [membersDraft, setMembersDraft] = useState<ProjectMembersDraft | null>(null);
+  const [personPick, setPersonPick] = useState('');
   const [colorDraft, setColorDraft] = useState(safeColor(null));
   const [confirmation, setConfirmation] = useState('');
   const [remote, setRemote] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
   const [logoPending, setLogoPending] = useState<LogoPending>(null);
   const [saving, setSaving] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: people } = useLoaded(getPeople);
 
   // Reset whenever a different project is picked, so a half-typed
   // confirmation and a stale draft cannot be carried from one project to
@@ -44,6 +70,8 @@ export function ProjectEditDialog({
   if (project && project.id !== opened) {
     setOpened(project.id);
     setDraft(openProjectDraft(project));
+    setMembersDraft(openProjectMembersDraft(project));
+    setPersonPick('');
     setColorDraft(safeColor(project.color));
     setConfirmation('');
     setRemote('');
@@ -52,13 +80,26 @@ export function ProjectEditDialog({
     setError(null);
   }
 
-  if (!project || !draft) return <Modal open={false} onClose={onClose} title="" />;
+  if (!project || !draft || !membersDraft) return <Modal open={false} onClose={onClose} title="" />;
 
   const objection = projectDraftKeyObjection(draft, confirmation);
   const list = draft.repositories;
+  const members = membersDraft.members;
+  const availablePeople = (people ?? []).filter((person) => !members.some((m) => m.personId === person.id));
 
   function write(next: typeof list) {
     setDraft((d) => d && { ...d, repositories: next });
+  }
+
+  function writeMembers(next: typeof members) {
+    setMembersDraft((d) => d && { ...d, members: next });
+  }
+
+  function addMember() {
+    const person = availablePeople.find((p) => p.id === personPick);
+    if (!person) return;
+    writeMembers(withMember(members, person, 'approver'));
+    setPersonPick('');
   }
 
   function add() {
@@ -69,7 +110,14 @@ export function ProjectEditDialog({
 
   async function save() {
     const diff = projectDraftDiff(draft!);
-    if (diff.patch === null && diff.repositories === null && logoPending === null) {
+    const membersDiff = projectMembersDiff(membersDraft!);
+    if (
+      diff.patch === null &&
+      diff.repositories === null &&
+      logoPending === null &&
+      membersDiff.puts.length === 0 &&
+      membersDiff.deletes.length === 0
+    ) {
       onClose();
       return;
     }
@@ -78,6 +126,8 @@ export function ProjectEditDialog({
     try {
       if (diff.patch !== null) await patchProject(project!.id, diff.patch);
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
+      for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
+      for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
       else if (logoPending !== null) await putProjectLogo(project!.id, logoPending.blob);
       setError(null);
@@ -87,6 +137,20 @@ export function ProjectEditDialog({
       setError(message(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function claim() {
+    setClaiming(true);
+    try {
+      await claimProject(project!.id);
+      setError(null);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setClaiming(false);
     }
   }
 
@@ -200,6 +264,63 @@ export function ProjectEditDialog({
             Add
           </Button>
         </div>
+
+        <h2 className="hatch-section-title">Members</h2>
+        {!hasOwner(project.members) && (
+          <Button loading={claiming} onClick={() => void claim()}>
+            Claim
+          </Button>
+        )}
+        {members.length === 0 && <p className="text-muted">No members.</p>}
+        {members.map((member) => {
+          const otherRole = member.role === 'owner' ? 'approver' : 'owner';
+          const roleObj = roleObjection(members, member.personId, otherRole);
+          const removeObj = removeObjection(members, member.personId);
+          return (
+            <div className="hatch-inline-form" key={member.personId}>
+              <span>{member.name}</span>
+              {project.canAdminister ? (
+                <>
+                  <select
+                    aria-label={`Role of ${member.name}`}
+                    value={member.role}
+                    disabled={roleObj !== null}
+                    title={roleObj ?? undefined}
+                    onChange={(e) => writeMembers(reroled(members, member.personId, e.target.value))}
+                  >
+                    <option value="owner">owner</option>
+                    <option value="approver">approver</option>
+                  </select>
+                  <Button
+                    variant="danger"
+                    disabled={removeObj !== null}
+                    title={removeObj ?? undefined}
+                    onClick={() => writeMembers(withoutMember(members, member.personId))}
+                  >
+                    Remove
+                  </Button>
+                </>
+              ) : (
+                <span>{member.role}</span>
+              )}
+            </div>
+          );
+        })}
+        {project.canAdminister && (
+          <div className="hatch-inline-form">
+            <select aria-label="Add member" value={personPick} onChange={(e) => setPersonPick(e.target.value)}>
+              <option value="">Pick a person</option>
+              {availablePeople.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </select>
+            <Button disabled={!personPick} onClick={addMember}>
+              Add
+            </Button>
+          </div>
+        )}
       </div>
     </Modal>
   );

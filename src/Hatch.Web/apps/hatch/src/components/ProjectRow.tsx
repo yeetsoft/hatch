@@ -1,4 +1,5 @@
 import { Button, ProjectMark } from '@hatch/ui';
+import { hasOwner } from '../lib/projectMembers';
 import { projectLogoUrl } from '../lib/projectLogo';
 import type { Project } from '../types';
 
@@ -11,10 +12,12 @@ export function ProjectRow({
   project,
   onEdit,
   onDelete,
+  onClaim,
 }: {
   project: Project;
   onEdit: () => void;
   onDelete: () => void;
+  onClaim: () => void;
 }) {
   return (
     <tr>
@@ -39,6 +42,7 @@ export function ProjectRow({
       </td>
       <td>
         <div className="hatch-row-actions">
+          {!hasOwner(project.members) && <Button onClick={onClaim}>Claim</Button>}
           <Button onClick={onEdit}>Edit</Button>
           <Button variant="danger" disabled={project.issueCount > 0} onClick={onDelete}>
             Delete
