@@ -352,8 +352,9 @@ public class WorkController(
         var parent = family.ParentOf(issue.Id);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent);
         var hop = hopKind is not null;
+        var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting,
+            issue, from, to, playbook, waiting, letGo,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
             null,
             await DependencyGate.ForAsync(db, statuses, ct),
@@ -572,8 +573,9 @@ public class WorkController(
         var hopParent = family.ParentOf(issue.Id);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent);
         var hop = hopKind is not null;
+        var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
+            issue, from, to, playbook, waiting, letGo, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses, wip, epics);
         var hopped = hop && blocked is null;
@@ -609,7 +611,7 @@ public class WorkController(
             hopped,
             hopped ? hopKind : null,
             hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
-            await LetGoAsync(issue.Id, ct),
+            letGo,
             inReview);
     }
 
@@ -634,77 +636,6 @@ public class WorkController(
             && Questions.IsLapsed(q.AskedAt, newestEventAt, claims.StallLapseSeconds, now)));
     }
 
-    // ---- Let go ----
-
-    /// <summary>
-    /// How many increments in a row let this ticket go without moving it - see
-    /// <see cref="WorkDto.LetGo"/>. One query over this issue's own trail,
-    /// newest first, stopped at the first event that resets the count.
-    /// </summary>
-    private async Task<int> LetGoAsync(long issueId, CancellationToken ct)
-    {
-        var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.IssueId == issueId)
-            .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
-            .Select(e => new { e.Kind, e.Payload })
-            .ToListAsync(ct);
-
-        var letGo = 0;
-        foreach (var e in events)
-        {
-            if (e.Kind == EfHatchIssueEvent.StatusChanged) break;
-
-            if (e.Kind == EfHatchIssueEvent.ClaimReleased)
-            {
-                var outcome = ReleaseOutcome(e.Payload);
-                if (outcome == ClaimOutcomes.Dropped) { letGo++; continue; }
-                if (outcome == ClaimOutcomes.Worked) break;
-                continue; // no outcome: skipped over, neither counted nor stopped at
-            }
-
-            if (e.Kind == EfHatchIssueEvent.Answered)
-            {
-                if (!IsLapsedAnswer(e.Payload)) break;
-                continue; // an answer written by a lapse: skipped over, the same as a bare release
-            }
-        }
-
-        return letGo;
-    }
-
-    /// <summary>A release's own outcome, or null where it did not say - see <see cref="ClaimOutcomes"/>.</summary>
-    private static string? ReleaseOutcome(string? payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload)) return null;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(payload);
-            return doc.RootElement.TryGetProperty("outcome", out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>Whether an <c>answered</c> event's payload marks it as written by a lapse rather than by a person.</summary>
-    private static bool IsLapsedAnswer(string? payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload)) return false;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(payload);
-            return doc.RootElement.TryGetProperty("lapsed", out var value) && value.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
 
     /// <summary>
     /// The issue's page as a browser would open it, or null when the install

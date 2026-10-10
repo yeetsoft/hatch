@@ -38,7 +38,7 @@ public static class Fixtures
         string key, string type = "task", string title = "A ticket", string description = "The brief.",
         string? modelOverride = null, string? effortOverride = null, string? parentKey = null,
         bool expedited = false, string? pullRequestUrl = null, bool express = false, string? priority = null,
-        int? wipLimit = null) =>
+        int? wipLimit = null, string? stalledWhy = null) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
             StatusId: 3, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
@@ -47,7 +47,7 @@ public static class Fixtures
             CreatedBy: "somebody", CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
             Expedited: expedited, Express: express,
             Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
-            WipLimit: wipLimit);
+            WipLimit: wipLimit, StalledWhy: stalledWhy);
 
     public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
         new(key, "AER", type, title, 3, 1000, null, null, null);
