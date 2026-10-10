@@ -4,6 +4,7 @@
 import type { IssueCard, QueueEntry } from '../types';
 import { conflictedChecks } from './mergeCheck';
 import { failedBuilds } from './buildCheck';
+import { HttpError } from './errors';
 
 /** The sentence a queue row says, in the order `BoardCommands.Draw` picks
     one: the reason it is blocked, why it is clear despite carrying none,
@@ -84,6 +85,15 @@ export function anyClaimed(queue: readonly QueueEntry[]): boolean {
     rather than recounted by every consumer. */
 export function queueTally(queue: readonly QueueEntry[]): { total: number; clear: number } {
   return { total: queue.length, clear: queue.filter((q) => q.blocked === null).length };
+}
+
+/** Whether `err` is the queue refusing to answer *as the runner that was
+    asked for* - gone, aged out, or any other reason that row cannot answer
+    for itself (see WorkController.GetQueue's asRunner branch) - as opposed to
+    a 500 or a network failure, which says nothing about whether that runner
+    is still there and must not be read as "pick someone else". */
+export function isRefusedRunner(err: unknown, askedAsRunner: boolean): boolean {
+  return askedAsRunner && err instanceof HttpError && err.status === 400;
 }
 
 /** The board's own card for a queue row, found by key rather than cast - a

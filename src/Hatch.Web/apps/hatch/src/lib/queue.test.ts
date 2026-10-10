@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { anyAboveNormal, anyClaimed, queueCard, queueMarker, queueTally, queueWords } from './queue';
+import { anyAboveNormal, anyClaimed, isRefusedRunner, queueCard, queueMarker, queueTally, queueWords } from './queue';
+import { HttpError } from './errors';
 import type { BuildCheck, Issue, IssueCard, IssueClaim, MergeCheck, QueueEntry, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
@@ -282,6 +283,24 @@ describe('queueTally', () => {
     const tally = queueTally([entry(), entry({ blocked: 'waiting' }), entry(), entry({ blocked: 'waiting' })]);
 
     expect(tally).toEqual({ total: 4, clear: 2 });
+  });
+});
+
+describe('isRefusedRunner', () => {
+  it('is true for a 400 refusing the runner that was asked for', () => {
+    expect(isRefusedRunner(new HttpError('there is no runner named Jeff', 400), true)).toBe(true);
+  });
+
+  it('is false for the same 400 when no runner was asked for', () => {
+    expect(isRefusedRunner(new HttpError('there is no runner named Jeff', 400), false)).toBe(false);
+  });
+
+  it('is false for a 500, which says nothing about whether the runner is still there', () => {
+    expect(isRefusedRunner(new HttpError('internal error', 500), true)).toBe(false);
+  });
+
+  it('is false for a plain Error, which never reaches a status at all', () => {
+    expect(isRefusedRunner(new Error('network failure'), true)).toBe(false);
   });
 });
 

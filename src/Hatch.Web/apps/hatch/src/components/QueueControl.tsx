@@ -14,7 +14,7 @@ import type { IssueCard } from '../types';
  * is a request for nothing.
  */
 export function QueueControl({ cards, onTake }: { cards: readonly IssueCard[]; onTake: (card: IssueCard) => void }) {
-  const { status, queue, error, load } = useQueue();
+  const { status, queue, error, runner, runners, load, choose } = useQueue();
   const [open, setOpen] = useState(false);
 
   return (
@@ -42,6 +42,9 @@ export function QueueControl({ cards, onTake }: { cards: readonly IssueCard[]; o
         status={status}
         queue={queue}
         error={error}
+        runner={runner}
+        runners={runners}
+        onChoose={choose}
         onRefresh={load}
         cards={cards}
         onTake={onTake}

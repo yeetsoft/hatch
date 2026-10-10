@@ -4524,6 +4524,10 @@ button.hatch-option.chosen {
   fill: currentColor;
 }
 
+.hatch-queue-reading-field {
+  margin-bottom: var(--sp-3);
+}
+
 .hatch-queue-rows {
   list-style: none;
   margin: 0;
@@ -4610,7 +4614,7 @@ button.hatch-option.chosen {
   border-top: 1px solid var(--line);
 }
 
-.hatch-queue-checkout-note {
+.hatch-queue-reading-note {
   font-size: var(--t-label);
 }
 
