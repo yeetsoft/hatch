@@ -39,7 +39,7 @@ public class MeController(
         if (await caller.IsProgramAsync(ct)) return NoContent();
 
         if (await caller.PersonAsync(ct) is { } signedIn)
-            return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true);
+            return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true, false);
 
         if (await caller.LocalAsync(ct) is not { Kind: ActorKind.Person } person) return NoContent();
 
@@ -50,7 +50,7 @@ public class MeController(
             (await settings.GetAsync(ct)).LocalPersonName,
             options.Value.LocalPerson.Name);
 
-        return new MeDto("local", person.Name, null, configured, false);
+        return new MeDto("local", person.Name, null, configured, false, options.Value.Google.Configured);
     }
 }
 
@@ -68,4 +68,8 @@ public class MeController(
 /// person, who is named because they enrolled.
 /// </param>
 /// <param name="CanSignOut">Whether there is a grant to end. False for local.</param>
-public record MeDto(string Kind, string Name, string? Role, bool Configured, bool CanSignOut);
+/// <param name="CanSignIn">
+/// Whether an authority is configured to sign in with. False for a person,
+/// who already holds a grant and so has nothing to sign in to.
+/// </param>
+public record MeDto(string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn);

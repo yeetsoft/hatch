@@ -34,6 +34,7 @@ public class MeControllerTests
         Assert.Equal(expected, me.Role);
         Assert.True(me.Configured);
         Assert.True(me.CanSignOut);
+        Assert.False(me.CanSignIn);
     }
 
     [Fact]
@@ -77,6 +78,26 @@ public class MeControllerTests
         Assert.False(person.Configured);
     }
 
+    /// <summary>With an authority configured, local gets a sign-in link to offer alongside Sign out.</summary>
+    [Fact]
+    public async Task WithAnAuthorityConfigured_LocalCanSignIn()
+    {
+        var controller = NewController(
+            local: new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada"),
+            googleConfigured: true);
+
+        Assert.True(Value(await controller.GetMe(default)).CanSignIn);
+    }
+
+    /// <summary>With no authority configured, local has nothing to sign in to.</summary>
+    [Fact]
+    public async Task WithNoAuthorityConfigured_LocalCannotSignIn()
+    {
+        var controller = NewController(local: new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada"));
+
+        Assert.False(Value(await controller.GetMe(default)).CanSignIn);
+    }
+
     /// <summary>The setting is read too, which is what makes AERIE-936 a page rather than a restart.</summary>
     [Fact]
     public async Task ANameFromTheSettingsTable_CountsAsConfigured()
@@ -99,11 +120,15 @@ public class MeControllerTests
 
     private static MeController NewController(
         Actor? local, string? configuredName = null, string? settingName = null,
-        EfPerson? person = null, EfApiKey? key = null) =>
+        EfPerson? person = null, EfApiKey? key = null, bool googleConfigured = false) =>
         new(
             new StubLocalCaller(local, person, key),
             new StubSiteSettings(localPersonName: settingName),
-            Options.Create(new AuthOptions { LocalPerson = { Name = configuredName ?? "" } }));
+            Options.Create(new AuthOptions
+            {
+                LocalPerson = { Name = configuredName ?? "" },
+                Google = { ClientId = googleConfigured ? "id" : "", ClientSecret = googleConfigured ? "secret" : "" },
+            }));
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException("expected a value");

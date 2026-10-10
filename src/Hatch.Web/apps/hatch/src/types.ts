@@ -1129,6 +1129,8 @@ export interface Me {
   configured: boolean;
   /** Whether there is a grant to end. */
   canSignOut: boolean;
+  /** Whether an authority is configured to sign in with. False once a grant already holds someone. */
+  canSignIn: boolean;
 }
 
 // ---- Settings ----

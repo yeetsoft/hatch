@@ -45,3 +45,16 @@ describe('handledRefusal', () => {
     expect(await (await load())(refusal(200, '{}'))).toBe(false);
   });
 });
+
+describe('signInHref', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('location', { pathname: '/apps/hatch/board', search: '?x=1', replace: vi.fn() });
+  });
+
+  it('carries where the browser is now, so redemption lands back here', async () => {
+    const { signInHref } = await import('./signIn');
+
+    expect(signInHref()).toBe('/apps/auth/?r=%2Fapps%2Fhatch%2Fboard%3Fx%3D1');
+  });
+});

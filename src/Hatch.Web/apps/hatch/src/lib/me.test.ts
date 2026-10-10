@@ -8,6 +8,7 @@ const me = (over: Partial<Me>): Me => ({
   role: null,
   configured: false,
   canSignOut: false,
+  canSignIn: false,
   ...over,
 });
 
@@ -17,17 +18,27 @@ describe('describeMe', () => {
   });
 
   it('hints at an unnamed local person and offers nothing else', () => {
-    expect(describeMe(me({}))).toEqual({ name: 'friend', showHint: true, showSignOut: false, isAdmin: false });
+    expect(describeMe(me({}))).toEqual({
+      name: 'friend',
+      showHint: true,
+      showSignOut: false,
+      showSignIn: false,
+      isAdmin: false,
+    });
   });
 
   it('does not hint at a named local person', () => {
     expect(describeMe(me({ name: 'Ada', configured: true }))?.showHint).toBe(false);
   });
 
-  it('gives a person a sign-out and no hint or admin links', () => {
+  it('offers a local person sign-in when an authority is configured', () => {
+    expect(describeMe(me({ canSignIn: true }))?.showSignIn).toBe(true);
+  });
+
+  it('gives a person a sign-out and no hint, sign-in or admin links', () => {
     const view = describeMe(me({ kind: 'person', name: 'Ada', role: 'user', configured: true, canSignOut: true }));
 
-    expect(view).toEqual({ name: 'Ada', showHint: false, showSignOut: true, isAdmin: false });
+    expect(view).toEqual({ name: 'Ada', showHint: false, showSignOut: true, showSignIn: false, isAdmin: false });
   });
 
   it('knows an admin', () => {

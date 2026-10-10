@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { signOut } from '../api/client';
 import { describeMe } from '../lib/me';
-import { SIGN_IN_PATH } from '../lib/signIn';
+import { SIGN_IN_PATH, signInHref } from '../lib/signIn';
 import { useMe } from '../lib/useMe';
 
 /**
@@ -54,6 +54,13 @@ export function NavLocalPerson() {
         <button type="button" className="hatch-sign-out" onClick={() => void signOutAndLeave()}>
           Sign out
         </button>
+      ) : null}
+      {/* A plain document navigation, not a route: it leaves the SPA for the
+          sign-in shell, the same reason the Docs row in App.tsx is an anchor. */}
+      {view.showSignIn ? (
+        <a className="hatch-sign-in" href={signInHref()}>
+          Sign in
+        </a>
       ) : null}
     </span>
   );

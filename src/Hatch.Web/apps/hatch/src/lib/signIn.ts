@@ -22,6 +22,12 @@ export const SIGN_IN_PATH = '/apps/auth/';
 /** One navigation per document. A burst of parallel 401s must not stack them. */
 let leaving = false;
 
+/** The shell's address, carrying where the browser is now so redemption lands back here. */
+export function signInHref(): string {
+  const returnTo = `${location.pathname}${location.search}`;
+  return `${SIGN_IN_PATH}?r=${encodeURIComponent(returnTo)}`;
+}
+
 /**
  * Sends the browser to sign in, carrying where it was so redemption lands back
  * here. Returns whether it actually started navigating, so a caller can tell
@@ -39,8 +45,7 @@ export function redirectToSignIn(): boolean {
   if (location.pathname.startsWith(SIGN_IN_PATH)) return false;
 
   leaving = true;
-  const returnTo = `${location.pathname}${location.search}`;
-  location.replace(`${SIGN_IN_PATH}?r=${encodeURIComponent(returnTo)}`);
+  location.replace(signInHref());
   return true;
 }
 

@@ -8,6 +8,7 @@ const me = (over: Partial<Me>): Me => ({
   role: 'user',
   configured: true,
   canSignOut: true,
+  canSignIn: false,
   ...over,
 });
 
