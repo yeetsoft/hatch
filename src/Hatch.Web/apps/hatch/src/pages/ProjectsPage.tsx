@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Card, EmptyState, Field, Modal, PageHeader, Table } from '@hatch/ui';
-import { createProject, deleteProject, getProjects } from '../api/client';
+import { claimProject, createProject, deleteProject, getProjects } from '../api/client';
 import { ProjectEditDialog } from '../components/ProjectEditDialog';
 import { ProjectRow } from '../components/ProjectRow';
 import { message } from '../lib/errors';
@@ -43,6 +43,11 @@ export function ProjectsPage() {
       setDeleting(null);
       await reload();
     }
+  }
+
+  async function claim(project: Project) {
+    await claimProject(project.id);
+    await reload();
   }
 
   return (
@@ -92,6 +97,7 @@ export function ProjectsPage() {
                   project={project}
                   onEdit={() => setEditing(project)}
                   onDelete={() => setDeleting(project)}
+                  onClaim={() => void claim(project)}
                 />
               ))}
             </tbody>
