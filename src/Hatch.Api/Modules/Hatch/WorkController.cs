@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller) : ControllerBase
+    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners) : ControllerBase
 {
     private readonly Dispatch _dispatch = new(db, actors, claims, time);
 
@@ -160,6 +160,19 @@ public class WorkController(
     /// conflict to resolve, a failing build to fix, or a row saying why it is
     /// neither.
     /// </remarks>
+    /// <param name="asRunner">
+    /// Answers off that runner's own row instead of the query string: its
+    /// repositories, clone allowance, <paramref name="mine"/> and <paramref
+    /// name="ancestorKey"/> come from the row named <see
+    /// cref="EfHatchRunner.Name"/>, not from the caller. A browser operator
+    /// holds no checkout and must not claim one by hand - this is how a page
+    /// asks "what would that runner do" without pretending to be it. May not
+    /// be given alongside <paramref name="remote"/>, <paramref
+    /// name="standing"/>, <paramref name="clones"/>, <paramref name="mine"/>
+    /// or <paramref name="ancestorKey"/>: one caller, one declaration. A name
+    /// matching no row inside <see cref="Runners.DropBefore"/> is refused by
+    /// name rather than answered as an undeclared caller.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -168,12 +181,57 @@ public class WorkController(
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
         [FromQuery] bool mine = false,
-        CancellationToken ct = default)
+        // Deliberately last and out of position with mine/ancestorKey: ~185
+        // positional calls in WorkControllerTests.cs all end at ct, and a
+        // trailing optional parameter leaves every one of them compiling
+        // unchanged. Do not move this back beside mine - that reopens the churn.
+        CancellationToken ct = default,
+        [FromQuery] string? asRunner = null)
     {
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
-        var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct);
+        RepositoryDeclaration repos;
+        Actor? principal = null;
+
+        if (!string.IsNullOrWhiteSpace(asRunner))
+        {
+            if (remote is { Count: > 0 } || standing is not null || clones is not null || mine ||
+                !string.IsNullOrWhiteSpace(ancestorKey))
+            {
+                return BadRequest(
+                    "asRunner answers off that runner's own row - remote, standing, clones, mine and " +
+                    "ancestorKey may not be given alongside it");
+            }
+
+            var dropBefore = runners.DropBefore(time.GetUtcNow());
+            var row = await db.Runners.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Name == asRunner && r.LastSeenAt >= dropBefore, ct);
+            if (row is null) return BadRequest($"there is no runner named {asRunner}");
+
+            repos = RepositoryDeclaration.From(
+                row.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Standing, row.Clones);
+            ancestorKey = row.Under;
+            mine = row.Mine ?? false;
+
+            if (mine)
+            {
+                principal = row.ForPersonId is { } forPersonId
+                    ? await actors.ResolveAsync(ActorKind.Person, forPersonId, ct)
+                    : null;
+                if (principal is null)
+                {
+                    return BadRequest(
+                        $"{asRunner} belongs to nobody, so it has no tickets of its own - an admin sets its " +
+                        "owner on the API Keys page");
+                }
+            }
+        }
+        else
+        {
+            repos = RepositoryDeclaration.From(remote, standing, clones);
+        }
+
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
