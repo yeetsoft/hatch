@@ -362,10 +362,15 @@ export const getNextWorkUnder = (ancestorKey: string) =>
  *
  * No `ancestorKey`, `remote`, `standing` or `clones`: a browser holds no
  * checkouts and must not claim to, and nothing here narrows the scan to a
- * subtree yet.
+ * subtree yet. `asRunner`, given, answers off that runner's own declared row
+ * instead of this undeclared read - see WorkController.GetQueue's own doc
+ * comment for the four it still refuses alongside it.
  */
-export const getQueue = () =>
-  fetchJson<QueueEntry[]>(`/api/hatch/work/queue?offsetMinutes=${-new Date().getTimezoneOffset()}`);
+export const getQueue = (asRunner: string | null = null) => {
+  const params = new URLSearchParams({ offsetMinutes: String(-new Date().getTimezoneOffset()) });
+  if (asRunner !== null) params.set('asRunner', asRunner);
+  return fetchJson<QueueEntry[]>(`/api/hatch/work/queue?${params.toString()}`);
+};
 
 // ---- Comments and events ----
 

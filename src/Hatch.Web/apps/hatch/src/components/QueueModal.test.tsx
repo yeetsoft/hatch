@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueueModal } from './QueueModal';
 import type { QueueStatus } from '../lib/useQueue';
-import type { Issue, IssueCard, IssueClaim, QueueEntry, Status } from '../types';
+import type { Issue, IssueCard, IssueClaim, QueueEntry, Runner, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -105,12 +105,37 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   ...over,
 });
 
+const runner = (over: Partial<Runner> = {}): Runner => ({
+  name: 'Jeff Winger',
+  kind: 'loop',
+  firstSeenAt: '2026-09-09T12:00:00Z',
+  lastSeenAt: '2026-09-09T12:00:00Z',
+  claimKey: null,
+  line: null,
+  lineAt: null,
+  state: 'running',
+  under: null,
+  repositories: [],
+  clones: null,
+  mine: null,
+  where: null,
+  maxRuns: null,
+  maxSpend: null,
+  untilAt: null,
+  goneAfterSeconds: 300,
+  exhaustedUntil: null,
+  ...over,
+});
+
 const render = (
   status: QueueStatus,
   queue: QueueEntry[],
   error: string | null = null,
   cards: readonly IssueCard[] = [],
   onTake: (card: IssueCard) => void = () => {},
+  runnerChoice: string | null = null,
+  runners: Runner[] = [],
+  onChoose: (runner: string | null) => void = () => {},
 ) =>
   renderToStaticMarkup(
     <QueueModal
@@ -119,6 +144,9 @@ const render = (
       status={status}
       queue={queue}
       error={error}
+      runner={runnerChoice}
+      runners={runners}
+      onChoose={onChoose}
       onRefresh={async () => {}}
       cards={cards}
       onTake={onTake}
@@ -233,5 +261,38 @@ describe('QueueModal', () => {
     const html = render('ready', [entry({ issue: issue({ key: 'AER-1' }) })], null, [card({ key: 'AER-1' })]);
 
     expect(html).not.toMatch(/<button[^>]*disabled/);
+  });
+
+  it('offers every runner GET /api/hatch/runners returned, as options', () => {
+    const html = render('ready', [], null, [], () => {}, null, [runner({ name: 'Jeff Winger' }), runner({ name: 'Britta Perry' })]);
+
+    expect(html).toContain('>Jeff Winger<');
+    expect(html).toContain('>Britta Perry<');
+  });
+
+  it('selects Board-wide when nobody is chosen', () => {
+    const html = render('ready', [], null, [], () => {}, null, [runner({ name: 'Jeff Winger' })]);
+
+    expect(html).toMatch(/<option value="" selected[^>]*>Board-wide<\/option>/);
+  });
+
+  it("selects the chosen runner's own option", () => {
+    const html = render('ready', [], null, [], () => {}, 'Jeff Winger', [runner({ name: 'Jeff Winger' })]);
+
+    expect(html).toMatch(/<option value="Jeff Winger" selected[^>]*>Jeff Winger<\/option>/);
+  });
+
+  it('names the board-wide pass when nobody is chosen', () => {
+    const html = render('ready', [], null, [], () => {}, null);
+
+    expect(html).toContain('Reading nobody');
+    expect(html).toContain('the board-wide pass');
+  });
+
+  it('names the chosen runner when one is chosen', () => {
+    const html = render('ready', [], null, [], () => {}, 'A', [runner({ name: 'A' })]);
+
+    expect(html).toContain('Reading A');
+    expect(html).toContain('own queue');
   });
 });

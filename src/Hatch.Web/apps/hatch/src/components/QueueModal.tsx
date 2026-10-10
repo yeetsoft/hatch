@@ -1,9 +1,10 @@
-import { Button, EmptyState, Modal, Text } from '@hatch/ui';
+import { Button, EmptyState, Field, Modal, Text } from '@hatch/ui';
 import { anyAboveNormal, anyClaimed, queueCard, queueMarker, queueTally, queueWords } from '../lib/queue';
 import { ClaimBadge } from './ClaimBadge';
+import { Choice } from './Choice';
 import { TypeBadge } from './TypeBadge';
 import { StatusPill } from './StatusPill';
-import type { IssueCard, QueueEntry } from '../types';
+import type { IssueCard, QueueEntry, Runner } from '../types';
 import type { QueueStatus } from '../lib/useQueue';
 
 /**
@@ -19,6 +20,9 @@ export function QueueModal({
   status,
   queue,
   error,
+  runner,
+  runners,
+  onChoose,
   onRefresh,
   cards,
   onTake,
@@ -28,6 +32,9 @@ export function QueueModal({
   status: QueueStatus;
   queue: QueueEntry[];
   error: string | null;
+  runner: string | null;
+  runners: Runner[];
+  onChoose: (runner: string | null) => void;
   onRefresh: () => Promise<void>;
   cards: readonly IssueCard[];
   onTake: (card: IssueCard) => void;
@@ -48,9 +55,8 @@ export function QueueModal({
               {tally.total} issue{tally.total === 1 ? '' : 's'} in the pass, {tally.clear} clear
             </Text>
           )}
-          <Text tone="muted" className="hatch-queue-checkout-note">
-            A browser holds no checkouts, so nothing here is folded for a repository a runner does not
-            have - a runner's own queue may be shorter than this.
+          <Text tone="muted" className="hatch-queue-reading-note">
+            {runner === null ? "Reading nobody's queue - the board-wide pass." : `Reading ${runner}'s own queue.`}
           </Text>
           <Button variant="secondary" disabled={status === 'loading'} onClick={onRefresh}>
             {status === 'loading' ? 'Reading…' : 'Refresh'}
@@ -58,6 +64,19 @@ export function QueueModal({
         </div>
       }
     >
+      <Field
+        label="Reading as"
+        hint="Board-wide is the default. Choosing a runner re-reads its own pass."
+        className="hatch-queue-reading-field"
+      >
+        <Choice
+          value={runner ?? ''}
+          options={runners.map((r) => r.name)}
+          placeholder="Board-wide"
+          onChange={(v) => onChoose(v || null)}
+        />
+      </Field>
+
       {(status === 'idle' || status === 'loading') && <Text tone="muted">Reading the queue…</Text>}
 
       {status === 'error' && (
