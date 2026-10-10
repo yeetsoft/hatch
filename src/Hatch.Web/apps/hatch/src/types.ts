@@ -34,6 +34,9 @@ export interface Project {
   icon: string | null;
   logoUpdatedAt: string | null;
   repositories: ProjectRepository[];
+  members: ProjectMember[];
+  canApprove: boolean;
+  canAdminister: boolean;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -42,6 +45,13 @@ export interface ProjectRepository {
   /** What RemoteIdentity.Canonical folded `remote` to - display only, never recomputed here. */
   canonical: string;
   baseBranch: string | null;
+}
+
+/** One person's role on a project, as the server reads it back. */
+export interface ProjectMember {
+  personId: string;
+  name: string;
+  role: string;
 }
 
 /** One entry in the ordered list a PUT replaces the whole set with - the first is the primary. */

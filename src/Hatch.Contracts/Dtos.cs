@@ -15,9 +15,13 @@ namespace Hatch.Contracts;
 /// <param name="Icon">A slug naming one of a closed set of stock icons, or null if nobody has chosen one yet - see <see cref="EfHatchProject.Icon"/>.</param>
 /// <param name="Repositories">The remotes this project is bound to, in order - the first is the primary.</param>
 /// <param name="LogoUpdatedAt">When the project's logo was last written, or null if it has none.</param>
+/// <param name="Members">Who owns or approves on this project, resolved - the same list <c>GET .../members</c> answers with.</param>
+/// <param name="CanApprove">Whether the caller is a live owner or approver - the same question <c>IProjectAccess.CanApproveAsync</c> answers.</param>
+/// <param name="CanAdminister">Whether the caller is a live owner - the same question <c>IProjectAccess.IsOwnerAsync</c> answers.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
-    IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt);
+    IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
+    IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);

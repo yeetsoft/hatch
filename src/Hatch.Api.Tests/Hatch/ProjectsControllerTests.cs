@@ -194,6 +194,33 @@ public class ProjectsControllerTests
         Assert.Equal(["example.com/owner/one", "example.com/owner/two"], project.Repositories.Select(r => r.Canonical));
     }
 
+    [Fact]
+    public async Task GetProjects_CarriesMembersAndTheCallersCanApproveCanAdminister()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var stranger = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, stranger.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+
+        var ownerView = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(2, ownerView.Members.Count);
+        Assert.Contains(ownerView.Members, m => m.PersonId == h.Nathan.Id && m.Role == ProjectMemberRole.Owner);
+        Assert.Contains(ownerView.Members, m => m.PersonId == stranger.Id && m.Role == ProjectMemberRole.Approver);
+        Assert.True(ownerView.CanAdminister);
+        Assert.True(ownerView.CanApprove);
+
+        h.Actors.Me = stranger;
+        var approverView = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(approverView.CanAdminister);
+        Assert.True(approverView.CanApprove);
+
+        var directoryOnly = h.Actors.AddPerson("Bob");
+        h.Actors.Me = directoryOnly;
+        var strangerView = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(strangerView.CanAdminister);
+        Assert.False(strangerView.CanApprove);
+    }
+
     // ---- Colour and icon ----
 
     [Fact]
@@ -427,6 +454,20 @@ public class ProjectsControllerTests
         Assert.Equal(ProjectMemberRole.Owner, member.Role);
     }
 
+    /// <summary>The ordinary case: the person who created it is the one asking, so both questions are yes.</summary>
+    [Fact]
+    public async Task CreatingAProjectAsAPerson_TheResponseSaysTheyCanAdministerAndApprove()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.True(created.CanAdminister);
+        Assert.True(created.CanApprove);
+        var member = Assert.Single(created.Members);
+        Assert.Equal(h.Nathan.Id, member.PersonId);
+    }
+
     [Fact]
     public async Task CreatingAsAKeyWithAnOwnerPrincipal_MakesThatPersonOwner()
     {
@@ -439,6 +480,25 @@ public class ProjectsControllerTests
         var member = Assert.Single(members);
         Assert.Equal(h.Nathan.Id, member.PersonId);
         Assert.Equal(ProjectMemberRole.Owner, member.Role);
+    }
+
+    /// <summary>
+    /// The key made Nathan the owner, but the key is not Nathan: the response's
+    /// own CanAdminister/CanApprove must stay false for the caller, which is the
+    /// key - not the principal it just wrote as owner.
+    /// </summary>
+    [Fact]
+    public async Task CreatingAsAKeyWithAnOwnerPrincipal_TheResponseSaysTheKeyCannotAdministerOrApprove()
+    {
+        var h = await NewAsync(program: true);
+        h.Actors.Principal = h.Nathan;
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.CanAdminister);
+        Assert.False(created.CanApprove);
+        var member = Assert.Single(created.Members);
+        Assert.Equal(h.Nathan.Id, member.PersonId);
     }
 
     [Fact]
