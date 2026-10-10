@@ -68,20 +68,23 @@ public static class Columns
     /// the column. A move is a review move exactly when <c>to.Id == from.Id</c>;
     /// nothing compares column names.</para>
     ///
-    /// <para>Only where a terminal column stands after review. On a board with
-    /// none, <see cref="AwaitingReview"/> is the rightmost column and is where
-    /// work ends, so it is not dispatchable at all and
+    /// <para>Only where the next column is terminal or protected - a column a
+    /// dispatch is not allowed to land work in. On a board with neither after
+    /// review, <see cref="AwaitingReview"/> is the rightmost column and is
+    /// where work ends, so it is not dispatchable at all and
     /// <see cref="Advance"/>'s null stands.</para>
     /// </remarks>
     public static EfHatchStatus? Target(List<EfHatchStatus> statuses, EfHatchStatus from) =>
-        Advance(statuses, from) is { IsTerminal: true } && AwaitingReview(statuses)?.Id == from.Id
+        Advance(statuses, from) is { } next && (next.IsTerminal || next.IsProtected) && AwaitingReview(statuses)?.Id == from.Id
             ? from
             : Advance(statuses, from);
 
     /// <summary>
     /// The last stop before shipped: the column immediately left of the first
     /// terminal one, or the rightmost column on a board with no terminal column
-    /// at all.
+    /// at all - stepping back further over any protected columns standing in
+    /// that run, since a protected column is one a person gated, not one a
+    /// dispatch can land work in.
     ///
     /// Measured rather than named, and measured the same way the <c>review</c>
     /// column was placed by the migration that added it
@@ -97,6 +100,7 @@ public static class Columns
         var board = Board(statuses);
         var terminal = board.FindIndex(s => s.IsTerminal);
         var at = terminal < 0 ? board.Count - 1 : terminal - 1;
+        while (at >= 0 && board[at].IsProtected) at--;
         return at >= 0 ? board[at] : null;
     }
 
