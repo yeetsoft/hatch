@@ -1572,10 +1572,23 @@ counted, and it cannot block a dispatch.
 at it. That is why the link runs answer→question rather than the other way: a
 decision can be refined by a second answer without editing the first, and a
 question can never be open and answered at once because two writes disagreed.
-[`Questions.cs`](../src/Hatch.Api/Modules/Hatch/Questions.cs) holds the single
-definition, and the three callers that need it — the board badging a card, the
-dispatcher refusing a run, and the list somebody sits down to answer — share it
-rather than writing three.
+
+**Waiting on somebody is open, and outside a terminal column.** A question
+on a ticket that has shipped is never going to get an answer, so the moment
+its issue lands in a terminal column it stops being counted, badged or
+listed anywhere a person is asked to act — though it stays open, and stays
+on the record, exactly as it always did.
+[`Questions.cs`](../src/Hatch.Api/Modules/Hatch/Questions.cs) holds both
+`Open` and `Waiting` side by side, and most of what used to read `Open`
+reads `Waiting` now: the attention panel, the board's badge, the Plan
+page's meters, and the two routes a person actually answers from. Two
+callers keep reading `Open` on purpose, because what each is deciding does
+not change once a ticket has shipped: [build check](#build-check)'s rule
+four, which refuses to ask a second stall question while an earlier one is
+still open whatever column it's in, and the lapsed-stall answer a
+[claim](#claim) writes the moment it is taken, which is answering a
+question already there rather than asking whether anybody still needs the
+answer.
 
 `Options` is a `jsonb` list of `{ label, detail, recommended }`, null on a
 question asked in prose. It exists because the first cut of this let an agent
@@ -1623,6 +1636,19 @@ together, among the decisions already made, rather than have it ask the same
 thing again. A take that loses [the line-of-the-tree recheck](#claim) answers
 nothing: the lease it took is released, and the question is left exactly as it
 was.
+
+**Obviation is a lapse's mirror image.** A stall question that lapses is
+left out of one place and one place only — the dispatcher's own count
+(`Questions.DispatchCountsAsync`) — and still reads as open everywhere a
+person actually looks: the issue page, `hatch questions`, the attention
+panel, the board's badge. A question on an issue that has reached a
+terminal column is **obviated**, and that is the other way around: left
+out of every one of those (the panel, the badge, the meters, `hatch
+questions`) and still true wherever the record itself is read — `GET
+…/questions?open=false`, the issue page's own list. A lapse hides a stale
+question from the one place it is safe to stop re-asking it; obviation
+hides a settled one from everywhere a person is asked to act, because
+reading it is the only thing left to do with it.
 
 **`letGo` counts a ticket's trailing dropped increments.** A runner's release
 may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped` or
@@ -2015,6 +2041,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
+| `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
+| `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
@@ -2034,7 +2062,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question in the house, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -2322,10 +2350,13 @@ Neither half restates a rule that already lives somewhere:
   too short to have one answers with no rows rather than an error. The browser
   deliberately does not derive this from `/board`'s status list: that would be
   one rule written twice, in two languages, and the two would drift.
-- **Open means what it means everywhere else.** `questions` is the same call
-  `/questions` answers with — `Questions.Open`, a question with nothing pointing
-  at it — so the count on the bar and the badge on a board card cannot
-  disagree.
+- **Waiting means what it means everywhere else.** `questions` is the same
+  call `/questions` answers with — `Questions.Waiting`, an open question
+  whose issue stands outside a terminal column — so the count on the bar,
+  the badge on a board card, and the list somebody actually sits down to
+  answer cannot disagree. `Questions.Open` is still the wider record of
+  every question ever asked; this panel, like the board and the meters,
+  deliberately reads the narrower one.
 
 ### The trunk build that fails
 
@@ -4764,10 +4795,17 @@ A leaf in a [deferred](#status) column is in none of them — not `leaves`, not
 way, because calling it done would claim something shipped that never did and
 calling it outstanding would leave an epic that is finished except for three
 parked tasks stuck at 85% forever, which is how a progress bar stops being read.
-`waiting` is the exception and deliberately: a question is waiting on a person
-wherever its issue happens to stand, which is the rule the attention panel
-states, and a count that quietly dropped would be a question nobody ever
-answers.
+`waiting` is the exception, and now only on one side of it. A question on a
+[deferred](#status) leaf still counts: deferred is parked, not finished,
+and a person who un-parks it needs to see what is still unanswered, so a
+count that quietly dropped it would be a question nobody looking at the
+epic would know to go back for. A question on a leaf that has reached a
+**terminal** column does not: the ticket shipped with it open, nobody is
+coming back to move it, and keeping it in `waiting` forever would be the
+meter holding open a decision nobody is being asked to make.
+`Questions.Waiting` is where that line is drawn, and it is the same line
+the attention panel and the board's badge draw, so a subtree cannot read
+"waiting" on one screen and quiet on another.
 
 [`Rollup.cs`](../src/Hatch.Api/Modules/Hatch/Rollup.cs) loads the tracker once
 and folds post-order — O(n) for the tree rather than a walk per node — because

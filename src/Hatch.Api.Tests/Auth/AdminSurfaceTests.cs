@@ -375,6 +375,13 @@ public class AdminSurfaceTests
         // open, the same as expedite. See IssueExpressController.
         "IssueExpressController.PutIssueExpress",
 
+        // Holding and resuming a ticket - an agent that could hold its own
+        // ticket could park it off the board for the night. Stalling is the
+        // other write IssueStallController makes, and it is open to a key on
+        // purpose: a dispatcher is exactly who leaves that mark, so it carries
+        // no attribute at all and never appears here.
+        "IssueStallController.PutHold",
+
         // The column half of the same edge: which columns an express issue is
         // carried past with no session. Reading it is open - it rides
         // StatusDto, which is Hatch-scoped - and only the write is here. See
@@ -514,6 +521,7 @@ public class AdminSurfaceTests
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
         "IssueExpressController.PutIssueExpress",
+        "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",
 
