@@ -1072,6 +1072,104 @@ public sealed class GoToWorkTests
         Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
     }
 
+    // ---- HA-370: one queue read per increment, nothing carried from the last ----
+
+    /// <summary>
+    /// `LoopAsync` beats, polls, runs one `PassAsync` and goes straight back to
+    /// the top - so nothing stands between two increments to cache a manifest
+    /// across them. This is the clamp: a future change that reintroduced one
+    /// would show up here as a third increment running on a second read.
+    /// </summary>
+    [Fact]
+    public async Task Two_increments_read_the_queue_exactly_once_each()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Equal(2, h.Wire.Count("GET", Queue));
+    }
+
+    [Fact]
+    public async Task A_ticket_promoted_mid_increment_is_claimed_by_the_very_next_one()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+
+        // Only AER-1 on the read the first increment picks from - AER-2 does
+        // not exist on the board yet, standing in for a ticket raised to the
+        // top while the first increment is still running.
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1") }, Fixtures.Json));
+
+        var ran = false;
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            if (!ran && request.Prompt.Contains("AER-1", StringComparison.Ordinal))
+            {
+                ran = true;
+
+                // Promoted onto the board while AER-1's own increment is in
+                // flight - the second increment's read is the first one that
+                // ever offers it.
+                h.Wire.Replace(
+                    "GET", Queue, HttpStatusCode.OK,
+                    System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+            }
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+    }
+
+    [Fact]
+    public async Task A_pass_claims_the_first_clear_row_of_its_own_read_not_one_the_last_read_left_behind()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        OneTicket(h, "AER-3");
+
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
+
+        var ran = false;
+        h.Sessions.Behaviour = (request, onLine, _) =>
+        {
+            if (!ran && request.Prompt.Contains("AER-1", StringComparison.Ordinal))
+            {
+                ran = true;
+
+                // AER-1 is done and gone; AER-2 - second on the read just
+                // spent - is first on this one, ahead of a new AER-3. A pass
+                // that carried any position from the read before would walk
+                // past AER-2, the row it actually owes a claim to, and reach
+                // for AER-3 instead.
+                h.Wire.Replace(
+                    "GET", Queue, HttpStatusCode.OK,
+                    System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2"), Fixtures.Row("AER-3") }, Fixtures.Json));
+            }
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-3/claim"));
+    }
+
     // ---- The hop ----
 
     [Fact]
