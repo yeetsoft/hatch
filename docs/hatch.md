@@ -1216,8 +1216,7 @@ to go from one that is fine.
 heartbeat.** *Quiet* here is a hard rule, not the card's amber dot below: the
 later of `ClaimedAt` and `ClaimChatterAt` — the last time anybody said
 anything, or the take itself where nobody ever has — is judged against
-`Hatch:StallLapseMinutes`, five minutes by default, the same window a stall
-question lapses by (see [Comment, question and answer](#comment-question-and-answer)).
+`Hatch:StallLapseMinutes`, five minutes by default.
 A `--quiet` session sends no chatter at all, so its claim is measured from when
 it was taken. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
@@ -1232,6 +1231,17 @@ already has. The window rides back with the take as `stallLapseSeconds`, in
 seconds, `0` when lapsing is off — the server is what honours it, so the
 server is what says what it is, the same argument `TtlSeconds` makes for
 itself.
+
+**A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
+minutes by default — judged against `StalledAt`, and a separate window from
+the claim-quiet one above on purpose (see `HatchOptions.StallResumeMinutes`'s
+own remarks: raising the claim-quiet window to resume-length would make a
+dead runner's claim hold three times as long, which isn't what either
+setting is for). `0` turns unattended resuming off entirely — a marked ticket
+then waits for a person regardless of how long it has sat — and a negative
+value falls back to the default. `Hatch:StallResumeLimit`, three by default,
+caps how many such resumes a ticket gets in a row before it holds for a
+person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
 an optional `outcome`, `dropped`, `worked` or `preempted` — absent is accepted
@@ -1490,13 +1500,12 @@ increment's push and the increment marking it:
    `passed` or `failed`, takes the flag and keeps the verdict. Every other
    request stores what it says: a poll's `pending` after a `failed` is a re-run.
 3. `ShaSince` is kept for the same sha and is now for a new one.
-4. **The question opens when a save moves the row into *failed and flagged*.**
+4. **The mark is set when a save moves the row into *failed and flagged*.**
    That covers `pending` then `failed` on a marked sha, and `failed` read first
    and marked after. The board writes it in the same save as the verdict, so no
    pass can see that failure without it, and a repeated verdict writes no second.
-   It names the sha and the failing checks, says a build increment pushed it, and
-   offers the stall guard's two answers — `leave it` and `try again` — in the
-   stall guard's words, which live in `Hatch.Contracts` so both share one wording.
+   It sets `StalledAt` to now and `StalledWhy` to the branch and the sha it
+   failed at, the same two writes `PUT .../stall` makes.
    It is skipped when a question is already open: that is already the flag.
 
 **A verdict that changes the stored one writes a `build_check_changed` event; a
@@ -1581,14 +1590,11 @@ on the record, exactly as it always did.
 [`Questions.cs`](../src/Hatch.Api/Modules/Hatch/Questions.cs) holds both
 `Open` and `Waiting` side by side, and most of what used to read `Open`
 reads `Waiting` now: the attention panel, the board's badge, the Plan
-page's meters, and the two routes a person actually answers from. Two
-callers keep reading `Open` on purpose, because what each is deciding does
+page's meters, and the two routes a person actually answers from. One
+caller keeps reading `Open` on purpose, because what it is deciding does
 not change once a ticket has shipped: [build check](#build-check)'s rule
-four, which refuses to ask a second stall question while an earlier one is
-still open whatever column it's in, and the lapsed-stall answer a
-[claim](#claim) writes the moment it is taken, which is answering a
-question already there rather than asking whether anybody still needs the
-answer.
+four, which refuses to mark the issue stalled again while an earlier
+question is still open, whatever column it's in.
 
 `Options` is a `jsonb` list of `{ label, detail, recommended }`, null on a
 question asked in prose. It exists because the first cut of this let an agent
@@ -1604,53 +1610,38 @@ nobody kept, and the sentence the next agent's prompt carries is the same
 sentence a person reads six months later. A second column saying it in numbers
 is a second thing that can come to disagree with the first.
 
-**A stall question that nobody answers lapses.** A *stall question* is an open
-question whose options are exactly the labels `StallAnswers.Options()` offers
-(`leave it`, `try again`) — the ones a runner asks when an increment does
-nothing, and the ones the server asks when a fixed build fails again (see
-[build check](#build-check)). Any other options, or none at all, and it is
-never a stall question, however much its body reads like one. It has *lapsed*
-once two things are both true: it has been open at least `Hatch:StallLapseMinutes`
-(five minutes by default), and the issue's newest [event](#issue-event) is at
-least that old too — a comment, a status change, anything at all, resets the
-second half without touching the first, so an issue somebody is still looking
-at does not lapse just because the question itself is old. A lapsed stall
-question does not fold the issue: the dispatcher's unanswered-question count
-leaves it out, though it still shows as open everywhere else — the issue page,
-the questions list — until it is actually answered. `hatch queue` names a row
-that is clear only because of the lapse, e.g. `clear for To Do -> In Progress
-- its stall question lapsed after 5 minutes untouched` (`clearNote` on
-`QueueEntryDto`). `Hatch:StallLapseMinutes = 0` turns lapsing off entirely — for
-a question and for a [claim](#claim) alike — and a negative value falls back to
-the default.
+**A stall mark is three columns on the issue row, not a question.**
+`StalledAt`, `StalledWhy` and `Held` (`EfHatchIssue`) — the first two set by
+`PUT /issues/{key}/stall`, open to a key: a dispatcher is exactly who leaves
+this mark, and `StalledWhy` is the sentence it leaves behind saying why. A
+second mark replaces the first — the row holds only the latest `StalledWhy`
+— but every call still writes its own `stalled` [event](#issue-event), so the
+trail keeps every sentence a dispatch ever left even though the row answers
+with only the newest. `Held` is set only by `PUT /issues/{key}/hold`, a
+person's call and never a key's.
 
-**Taking the claim answers what lapsed.** When a claim on the issue is taken
-and kept, each lapsed stall question on it is answered `try again`
-(`StallAnswers.TryAgain`) as a real answer: a comment of kind `answer`, its
-`answersId` pointing at the question, written as `Hatch` rather than as the
-caller, and the `answered` event beside it carries `lapsed: true` in its
-payload. Because it is a real answer the issue page, the questions list and
-the next session's *Decisions already made* all read it exactly as they would
-a person's — the point is to hand a fresh increment the stall and the answer
-together, among the decisions already made, rather than have it ask the same
-thing again. A take that loses [the line-of-the-tree recheck](#claim) answers
-nothing: the lease it took is released, and the question is left exactly as it
-was.
+**A marked issue folds the dispatcher until it resumes itself, or a person
+clears it.** `Dispatch.Blocked` reads `Held` first, right after the claim and
+before a pause: a held issue is folded unconditionally, and only `PUT
+.../hold` with `held: false` lifts it. Short of that, a marked issue is
+folded while it has been less than `Hatch:StallResumeMinutes` since
+`StalledAt`, naming how long ago it stalled and when it resumes. Past that
+window it would ordinarily be picked up again, except once `letGo` (below)
+has reached `Hatch:StallResumeLimit` it is folded instead with a sentence
+naming the count and the limit: a ticket stuck through that many tries in a
+row is held for a person, not resumed again. Resuming — `PUT .../hold` with
+`held: false` — clears `StalledAt` and `StalledWhy` together, the same
+gesture whether or not anything was ever actually held, so *Resume now*
+always leaves a clean mark behind it.
 
-**Obviation is a lapse's mirror image.** A stall question that lapses is
-left out of one place and one place only — the dispatcher's own count
-(`Questions.DispatchCountsAsync`) — and still reads as open everywhere a
-person actually looks: the issue page, `hatch questions`, the attention
-panel, the board's badge. A question on an issue that has reached a
-terminal column is **obviated**, and that is the other way around: left
-out of every one of those (the panel, the badge, the meters, `hatch
-questions`) and still true wherever the record itself is read — `GET
-…/questions?open=false`, the issue page's own list. A lapse hides a stale
-question from the one place it is safe to stop re-asking it; obviation
-hides a settled one from everywhere a person is asked to act, because
-reading it is the only thing left to do with it.
+**A row clear only because its resume window has passed names it.** `hatch
+queue` prints it in place of the bare arrow, e.g. `clear for To Do -> In
+Progress - it stalled 18 minutes ago and resumes itself after 15 minutes`
+(`clearNote` on `QueueEntryDto`) — the same way it names a row clear only
+because of economy's or low's own pace.
 
-**`letGo` counts a ticket's trailing dropped increments.** A runner's release
+**`letGo` counts a ticket's trailing dropped increments, and is what the stall
+mark's resume limit is measured against.** A runner's release
 may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped` or
 `&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
 `work/next` and a queue row is this issue's releases, newest first, whose
@@ -1658,9 +1649,10 @@ outcome was `dropped`, counted back to the first of: a release whose outcome
 was `worked`, a `status_changed`, or an `answered` event written by a person.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
-own release from reading as a string of drops — and so is an answer written by
-a lapse, since it settled nothing a person decided. `0` on a client too old to
-read the field.
+own release from reading as a string of drops. `0` on a client too old to
+read the field. Once a marked issue's own `letGo` reaches
+`Hatch:StallResumeLimit`, the dispatcher folds it instead of resuming it —
+see the stall mark, above.
 
 **A message is not every comment, on purpose.** The server cannot tell an
 operator's comment from the session's own — both arrive on the same key under
@@ -1707,9 +1699,10 @@ would otherwise have been refused, and twice - the section's first, with no
 `epic`, then the epic's - where both limits were over at once),
 `commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered` (payload `{ questionId,
-lapsed }`, `lapsed: true` only where a take answered a stall question nobody
-had - see [Comment, question and answer](#comment-question-and-answer)),
-`imported`.
+lapsed }` - `lapsed: true` only on a row written before the stall mark
+replaced lapsing, when taking a claim answered a question itself; nothing
+writes that shape now, but an old one is still skipped rather than counted or
+stopped at, same as `letGo` above), `imported`.
 
 Nothing renders this, and it has been written since the first release anyway,
 because an event log is the one feature that cannot be added retroactively:
@@ -2043,7 +2036,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
-| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a stall question lapses by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
+| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
@@ -2051,10 +2044,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall question lapsed, e.g. `"its stall question lapsed after 5 minutes untouched"` — null on every ordinary clear row |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the one path past the terminal guard](#the-one-path-past-the-terminal-guard) |
-| `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged writes a question with it |
+| `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
 | `/trunk-builds/{id}/bug` | POST | **Person only** — no class-level scope, the way expedite is cut. Files the bug a failing trunk's *File a bug* button asks for (HA-95), expedited, in the project that binds the repository, in the board's first column — see [what is waiting on you](#what-is-waiting-on-you). `409` once the row is no longer failing; `400` naming the Projects page when no project binds it; a second call answers the bug already filed rather than filing another |
@@ -3023,10 +3016,11 @@ know how to run. A runner on an old binary given `kind: build` would treat it as
 an advance and stall; runners rebuild from the trunk between increments.
 
 **A build that fails again on the agent's own fix is not sent to another agent.**
-The board opens a question with the failed verdict, and an open question folds
-the issue — see [build check](#build-check). A `leave it` answer does not stop
-the loop: once answered, the issue is dispatchable again while its build still
-fails on that sha, exactly as after the stall guard's question.
+The board marks the issue stalled with the failed verdict, and a stall mark
+folds the issue the same way a question does — see [build check](#build-check).
+It resumes itself after `Hatch:StallResumeMinutes` without anybody answering
+anything, unless it has already resumed that way `Hatch:StallResumeLimit`
+times in a row, in which case it holds for a person instead.
 
 **Only what is broken.** A branch that has fallen behind the trunk but still
 merges cleanly, and whose build is green or still running, is left alone: the
@@ -3342,8 +3336,8 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Seventeen conditions, the sixteenth a way out of the fifteenth rather than one
-more gate, and the seventeenth a fact about the walk rather than the issue. An
+Nineteen conditions, the eighteenth a way out of the seventeenth rather than one
+more gate, and the nineteenth a fact about the walk rather than the issue. An
 issue is the loop's to pick up when it meets every one before it, and the
 sentence saying which one it failed is what `work/queue` reports:
 
@@ -3361,16 +3355,29 @@ sentence saying which one it failed is what `work/queue` reports:
    The claim may be a relative's — an ancestor's or a descendant's, at any
    depth — and that folds too; a token of one's own frees the relatives it
    holds as well as the issue.
-3. **It is not paused, on its own row or on an ancestor's.** The nearest level
+3. **It is not held.** `Held` (`EfHatchIssue`) is a person's own
+   mark, set only by `PUT /issues/{key}/hold` — never by a key, which keeps
+   holding a ticket off the board a person's call and not an agent's. A fact
+   about the issue like the claim before it, so `work/{key}` asks it too.
+4. **It is not stalled past its own resume window, or stalled
+   too many times in a row.** `StalledAt`/`StalledWhy` (`EfHatchIssue`), set by
+   `PUT /issues/{key}/stall` — a dispatcher leaving a ticket where it found it, or
+   the board itself after a build fails again on a fix (see [build
+   check](#build-check)). Folded until `Hatch:StallResumeMinutes` have passed
+   since `StalledAt` (naming how long and when it resumes), or — past that
+   window — until a person moves it, once `letGo` has reached `Hatch:StallResumeLimit`
+   (naming the count and the limit). A fact about the issue like the claim and
+   the hold before it, so `work/{key}` asks it too.
+5. **It is not paused, on its own row or on an ancestor's.** The nearest level
    other than normal, found the same walk the board and `hatch show` read — a
    person set it aside, and nothing picks it up until they set it back, named
    with the ancestor when the level is inherited. A fact about the issue like
    the claim before it, so `work/{key}` asks it too — unlike the ready date,
    [economy's and low's own gates](#expedite) and the assignee after them,
    which are the loop's own policy and are not.
-4. **Its ready date has arrived**, read against the caller's calendar day. A
+6. **Its ready date has arrived**, read against the caller's calendar day. A
    card folded off the board is not one to spend an increment on tonight.
-5. **It is not [economy](#expedite) level on an account with no reserve to
+7. **It is not [economy](#expedite) level on an account with no reserve to
    spare**, asked only of an unattended pass. The account the dispatch would
    spend — the calling key's owner, resolved the same way a `?mine=true` pass
    resolves its own — is projected to reset with at least `Utilization.Reserve`
@@ -3378,38 +3385,36 @@ sentence saying which one it failed is what `work/queue` reports:
    not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the sixteenth condition.
-6. **It is not [low](#expedite) level on an account whose session window is
+   this at all, and neither is a hop — see the eighteenth condition.
+8. **It is not [low](#expedite) level on an account whose session window is
    behind pace**, asked only of an unattended pass, reading the same account
-   the fifth condition reads. The account's session window alone is projected
+   the seventh condition reads. The account's session window alone is projected
    to reset with its own pace matched or beaten — no reserve held back, so
-   every reading that clears the fifth condition clears this one too; where it
+   every reading that clears the seventh condition clears this one too; where it
    does not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the sixteenth condition.
-7. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
+   this at all, and neither is a hop — see the eighteenth condition.
+9. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
    to an API key, or to nobody, is picked up exactly as it always was. A
    `?mine=true` pass inverts this condition rather than skipping it: it takes
    only a ticket assigned to the caller's own person or key, and folds every
    other one — see [one more, on `next` alone](#one-more-on-next-alone).
-8. **It holds no unanswered question.** It is waiting on a person, and another
-   agent sent at it would ask the same thing again or guess at the answer. A
-   lapsed stall question does not count here - see [Comment, question and
-   answer](#comment-question-and-answer).
-9. **The project's primary [repository](#repository) matches a remote the caller
+10. **It holds no unanswered question.** It is waiting on a person, and another
+   agent sent at it would ask the same thing again or guess at the answer.
+11. **The project's primary [repository](#repository) matches a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
    caller declares with `?remote=` (repeatable), `?standing=` and `?clones=`;
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-10. **Nothing it depends on is unfinished** — and only when the move is into the
+12. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-11. **None of its children are still open**, when the move is out of the column
+13. **None of its children are still open**, when the move is out of the column
     where the code gets written. An issue standing there with at least one
     child not in a terminal column is not itself the work — its children are —
     so it is folded rather than carried into review. A deferred child counts as
@@ -3420,7 +3425,7 @@ sentence saying which one it failed is what `work/queue` reports:
     [Running an epic](#running-an-epic) for why. The sentence names how many of
     its counted children are still open, that its only child is not done, or
     that nothing is filed under it at all.
-12. **The [WIP section](#wip) has room for it**, when the move is into it: the
+14. **The [WIP section](#wip) has room for it**, when the move is into it: the
     load, not counting this issue, is below the limit, nor counting any
     ancestor of this issue already standing in it — a family crosses together,
     at the cost of the one slot its nearest counted member already spent. Said
@@ -3432,7 +3437,7 @@ sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy: `work/{key}` is refused by
     it too, and overriding it
     is done on the board, by moving the card in.
-13. **An epic above it has room too**, when the move is into the WIP section
+15. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
     counting this issue, is below its own `WipLimit` (null reading as one) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
@@ -3441,7 +3446,7 @@ sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-14. **In review, its branch conflicts with the trunk or its build failed.** An
+16. **In review, its branch conflicts with the trunk or its build failed.** An
     issue in the review column is the loop's only when a [merge check](#merge-check)
     says `conflicted`, or — on a branch that merges cleanly — when the
     [build check](#build-check) on the branch's current tip says `failed`. Both
@@ -3450,23 +3455,23 @@ sentence saying which one it failed is what `work/queue` reports:
     on this tip, no checks, no branch, more than one branch and an unchecked one
     are what `hatch queue` prints. A clean branch that has merely fallen behind
     the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-15. **A playbook covers that transition for that type — or it does not need
+17. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-16. **Unless it does not need a session at all.** An issue that is
+18. **Unless it does not need a session at all.** An issue that is
     [express](#express) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the fifteenth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the seventeenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, only from needing a
-    playbook, from [economy's or low's own gate](#expedite) — the fifth and
-    sixth conditions — or from the park below — the seventeenth. A clear hop
+    playbook, from [economy's or low's own gate](#expedite) — the seventh and
+    eighth conditions — or from the park below — the nineteenth. A clear hop
     is still carried across either way, parked or not; being carried across is
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
@@ -3474,7 +3479,7 @@ sentence saying which one it failed is what `work/queue` reports:
     An epic standing in a column outside the WIP section whose next column is
     inside it is a second kind of hop: something is filed under it, of any
     type. Where nothing is, the refinement is its own fold rather than a
-    fall-through to the fifteenth condition: "nothing is filed under it — an
+    fall-through to the seventeenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic standing inside the
     WIP section, is a third kind: the epic's own pull reaching the work filed
@@ -3487,11 +3492,11 @@ sentence saying which one it failed is what `work/queue` reports:
     along, in board order, than the column this issue would be pulled into.
     Where the column is so marked but one of those two is not yet true, the
     refinement is its own two-sentence fold rather than a fall-through to the
-    fifteenth condition's "no playbook covers this": "its parent has not
+    seventeenth condition's "no playbook covers this": "its parent has not
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
-17. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+19. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
     six levels are walked top down, once each, across every row the walk
     reaches; the first *clear* row the walk sees is remembered, and every row
     in a tier strictly below that one that would otherwise be clear is folded
@@ -3515,12 +3520,12 @@ sentence saying which one it failed is what `work/queue` reports:
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
 
-Eleven of them — 1, 2, 3, 8, 9, 10, 11, 12, 13, 14 and 15 — are facts about the
-issue, and `work/{key}` asks them too. The sixteenth is as well, and
+Thirteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16 and 17 — are facts
+about the issue, and `work/{key}` asks them too. The eighteenth is as well, and
 `work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The
-other four — 4, 5, 6 and 7 — are the loop's policy and are asked only when the
+other four — 6, 7, 8 and 9 — are the loop's policy and are asked only when the
 pass is asking;
-see [one more, on `next` alone](#one-more-on-next-alone). The seventeenth is
+see [one more, on `next` alone](#one-more-on-next-alone). The nineteenth is
 neither: not a fact about one issue, since it depends on every other row the
 same walk reaches, and not the loop's policy, since it folds `work/queue`
 exactly as it folds `work/next`. It is a fact about the walk itself, asked only
@@ -4039,7 +4044,8 @@ can go badly costs one increment.
 So a stall is written on the ticket: a comment naming the session that ran and
 the transition it was trying to make — with the `claude --resume` command, since
 resuming the conversation is most of why a stall is worth recording rather than
-merely counting — and, if nothing is already open there, **a question**.
+merely counting — and, if nothing is already open there, **a mark**:
+`StalledAt` and `StalledWhy`, set by `PUT /issues/{key}/stall`.
 
 **A hop is never a stall.** No session ran, so there is no session to name and
 nothing was spent on a ticket that did not move - the ticket did move, one
@@ -4099,20 +4105,16 @@ lease and a usage limit get and for the same reason: this is the loop working
 correctly on a busy board, not a broken increment. The very next pass finds
 the emergency issue at the top of the walk and picks it straight up.
 
-A question rather than a **flag field**, which was the obvious alternative and
-would have had to be taught three things a question already does: it blocks the
-issue from being dispatched again, it badges the card on the board, and it is
-the list `hatch answer` walks. Answering it clears the flag, which is the
-right gesture, because the flag means "nobody has looked at this" and answering
-is somebody having looked. A field would have been a fourth thing on the issue
-row that only the loop writes and only the loop reads, and a second flag the
-loop could read is one step from a flag the loop could set.
+**A mark rather than a question that waits on a person forever, which is what
+this used to be.** Most of the time whatever happened is weather, and a ticket
+that can try again by itself in fifteen minutes does not need to cost a
+person's night too. The guard that keeps it from trying forever is `letGo` and
+`Hatch:StallResumeLimit`: a ticket that stalls that many times in a row holds
+for a person exactly as a question used to make every stall do, because a run
+of failures that long is no longer weather.
 
-Neither of its options is recommended, and that is not modesty: `--recommend` is
-for a choice something knows the answer to, and the whole content of a stall is
-that nothing here knows why it happened. A ticket that is already waiting on a
-question gets the comment and no second question — that question *is* the flag,
-usually raised by the session's own way out.
+A ticket already waiting on a question gets the comment and no mark — that
+question is already the flag, usually raised by the session's own way out.
 
 #### A conflict increment is judged by the branch, not by the column
 
@@ -4147,7 +4149,7 @@ origin — and it is the runner that asks, in the same code for the loop and for
   the ticket out of review is reported as having moved it — and judged by the
   verdict all the same.
 - **Anything that still conflicts is a stall**, flagged like any other and with
-  the same question, but the comment says the branch still conflicts with the
+  the same mark, but the comment says the branch still conflicts with the
   trunk and lists the files, in place of "left this issue where it found it". A
   conflict nobody can resolve costs **one increment and not a night**, for the
   reason every stall does. A check that could not be made is *not known* and
@@ -4197,19 +4199,19 @@ judged later, by the board:
   never taken for the session's fix. **A new tip is a fix pushed**, and not a
   stall: the terminal, the tally and the runner's row say `fix pushed, build
   pending`, and the runner puts a `pending` [build verdict](#build-check) on the
-  new tip *marked as a build increment's*, which is what lets the board open the
-  failed-again question if that build fails. One repository moved of two is
+  new tip *marked as a build increment's*, which is what lets the board mark the
+  issue stalled again if that build fails. One repository moved of two is
   progress. **A tip that did not move is a stall**, flagged like any other with
-  the same question, and the comment says the build still fails and names the
+  the same mark, and the comment says the build still fails and names the
   checks. A tip that could not be read is *not known*, and flagged as such.
 - **A build that fails on the tip an increment pushed is not sent to another
-  agent.** The board opens a question naming the checks that still fail, with the
-  stall guard's `leave it` and `try again` — so a build nobody can fix costs one
-  increment and then a question, not a night. A failure on a tip somebody else
-  pushed is new work, as it is today. A `leave it` answer does not stop the loop:
-  once it is answered the issue is dispatchable again while its build still
-  fails on that sha, exactly as after the stall guard's question — the option's
-  own text says the answer is how to make the loop stop.
+  agent.** The board marks the issue stalled, naming the checks that still fail
+  — so a build nobody can fix costs one increment and then a wait, not a night.
+  A failure on a tip somebody else pushed is new work, as it is today. The mark
+  does not stop the loop by itself: the issue resumes and is dispatchable again,
+  still failing on that sha, after `Hatch:StallResumeMinutes` — unless it has
+  already stalled that way `Hatch:StallResumeLimit` times in a row, at which
+  point it holds for a person instead of resuming again.
 
 None of it runs when the lease was lost, for the reason the conflict's does not.
 
@@ -4919,11 +4921,11 @@ up — so a queue reordered by one says why. A clear row that is a
 session)` in place of the bare arrow, naming which of the four carried it, so
 it reads differently from a row `go-to-work` would spawn a session for even
 though both print no reason to fold past. A row that is clear only
-because a stall question lapsed reads `clear for <column> -> <column> - its
-stall question lapsed after 5 minutes untouched` instead of the bare arrow, for
-the same reason: a row clear for the ordinary reason and one clear because
-nobody answered in time are both "clear", and only one of them is worth a
-second look. `hatch queue AER-1`
+because a stall mark's resume window has passed reads `clear for <column> ->
+<column> - it stalled 18 minutes ago and resumes itself after 15 minutes`
+instead of the bare arrow, for the same reason: a row clear for the ordinary
+reason and one clear because its mark's window passed are both "clear", and
+only one of them is worth a second look. `hatch queue AER-1`
 scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical
