@@ -327,4 +327,26 @@ public sealed class PromptTests
         Assert.DoesNotContain("question", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ---- HA-377: the prompt's fixed part has a character budget ----
+
+    [Fact]
+    public void The_fixed_part_of_the_prompt_stays_under_four_thousand_characters()
+    {
+        var fixedPart = string.Join('\n', Prompt.Tail(
+            "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, express: false));
+
+        Assert.True(fixedPart.Length < 4000,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,000.");
+    }
+
+    [Fact]
+    public void The_reaching_hatch_block_points_at_comments_not_show_and_says_the_brief_is_current()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch comments AER-12", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("hatch show AER-12", prompt, StringComparison.Ordinal);
+        Assert.Contains("the brief exactly as it stands", prompt, StringComparison.Ordinal);
+    }
 }
