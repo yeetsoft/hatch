@@ -2092,6 +2092,13 @@ public record TrunkBuildDto(
     string? BugIssueKey);
 
 /// <summary>
+/// The optional body of <c>POST .../trunk-builds/{id}/bug</c>. All three
+/// absent means "file as this route files today" - leftmost column,
+/// expedited, not express - independently per field.
+/// </summary>
+public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId);
+
+/// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
 /// stop.
 /// </summary>

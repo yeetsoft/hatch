@@ -27,11 +27,12 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical);
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api", "CI"]);
 
-        var dto = Value(await h.Bug.PostBug(row.Id, default));
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
 
         Assert.Equal("bug", dto.Type);
         Assert.Equal("Build failing on main", dto.Title);
         Assert.True(dto.Expedited);
+        Assert.False(dto.Express);
         Assert.Contains(Canonical, dto.Description);
         Assert.Contains(row.Sha, dto.Description);
         Assert.Contains("https://forge.example/checks/api", dto.Description);
@@ -48,7 +49,7 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical);
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
-        var dto = Value(await h.Bug.PostBug(row.Id, default));
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
 
         var stored = await h.Db.TrunkBuilds.SingleAsync(t => t.Id == row.Id);
         Assert.Equal(dto.Key, IssueKey.Format("AER", (await h.Db.Issues.SingleAsync(i => i.Id == stored.BugIssueId)).Number));
@@ -61,8 +62,8 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical);
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
-        var first = Value(await h.Bug.PostBug(row.Id, default));
-        var second = Value(await h.Bug.PostBug(row.Id, default));
+        var first = Value(await h.Bug.PostBug(row.Id, null, default));
+        var second = Value(await h.Bug.PostBug(row.Id, null, default));
 
         Assert.Equal(first.Key, second.Key);
         Assert.Equal(1, await h.Db.Issues.CountAsync(i => i.Type == "bug"));
@@ -75,7 +76,7 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical);
         var row = await h.TrunkAsync(BuildVerdicts.Passed);
 
-        Assert.IsType<ConflictObjectResult>((await h.Bug.PostBug(row.Id, default)).Result);
+        Assert.IsType<ConflictObjectResult>((await h.Bug.PostBug(row.Id, null, default)).Result);
         Assert.Empty(await h.Db.Issues.Where(i => i.Type == "bug").ToListAsync());
     }
 
@@ -85,7 +86,7 @@ public class TrunkBuildBugControllerTests
         var h = await NewAsync();
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
-        var reason = Assert.IsType<BadRequestObjectResult>((await h.Bug.PostBug(row.Id, default)).Result).Value!.ToString();
+        var reason = Assert.IsType<BadRequestObjectResult>((await h.Bug.PostBug(row.Id, null, default)).Result).Value!.ToString();
 
         Assert.Contains(Canonical, reason);
         Assert.Contains("Projects page", reason);
@@ -100,7 +101,7 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical, sortOrder: 1);
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
-        var dto = Value(await h.Bug.PostBug(row.Id, default));
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
 
         Assert.StartsWith("OPS-", dto.Key);
     }
@@ -114,7 +115,7 @@ public class TrunkBuildBugControllerTests
         await h.BindRepositoryAsync(h.ProjectId, Canonical, sortOrder: 1);
         var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
-        var dto = Value(await h.Bug.PostBug(row.Id, default));
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
 
         Assert.StartsWith("AER-", dto.Key);
     }
@@ -124,7 +125,160 @@ public class TrunkBuildBugControllerTests
     {
         var h = await NewAsync();
 
-        Assert.IsType<NotFoundResult>((await h.Bug.PostBug(404, default)).Result);
+        Assert.IsType<NotFoundResult>((await h.Bug.PostBug(404, null, default)).Result);
+    }
+
+    // ---- The body ----
+
+    [Fact]
+    public async Task ABody_FilesExpressAtALevel_IntoAChosenColumn()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var doing = await h.AddStatusAsync("doing", sortOrder: 15);
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(true, "emergency", doing.Id), default));
+
+        Assert.True(dto.Express);
+        Assert.Equal(doing.Id, dto.StatusId);
+        Assert.Equal(PriorityLevels.EmergencyName, dto.Priority);
+    }
+
+    [Fact]
+    public async Task ABody_WithNoStatusId_StillFilesIntoTheLeftmostColumn()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(true, "emergency", null), default));
+
+        var inbox = await h.Db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).FirstAsync();
+        Assert.Equal(inbox.Id, dto.StatusId);
+        Assert.True(dto.Express);
+        Assert.Equal(PriorityLevels.EmergencyName, dto.Priority);
+    }
+
+    [Fact]
+    public async Task ABadPriorityName_IsRefused_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var reason = Assert.IsType<BadRequestObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, "urgent", null), default)).Result).Value!.ToString();
+
+        Assert.Contains("urgent", reason);
+        Assert.Contains("paused, economy, low, normal, expedited or emergency", reason);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingNoColumn_IsRefused_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var reason = Assert.IsType<BadRequestObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, 999999), default)).Result).Value!.ToString();
+
+        Assert.Contains("999999", reason);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingATerminalColumn_IsRefused_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var done = await h.Db.Statuses.SingleAsync(s => s.Name == "done");
+
+        Assert.IsType<BadRequestObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, done.Id), default)).Result);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingADeferredColumn_IsRefused_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var parked = await h.AddStatusAsync("parked", sortOrder: 15, isDeferred: true);
+
+        Assert.IsType<BadRequestObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, parked.Id), default)).Result);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingAProtectedColumn_WithNoApprover_IsRefusedForbidden()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var guarded = await h.AddStatusAsync("guarded", sortOrder: 15, isProtected: true);
+
+        var result = Assert.IsType<ObjectResult>((await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, guarded.Id), default)).Result);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("owner or approver", result.Value!.ToString());
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingAProtectedColumn_WithAnApprover_Files()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var guarded = await h.AddStatusAsync("guarded", sortOrder: 15, isProtected: true);
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        h.Db.ProjectMembers.Add(new EfHatchProjectMember
+        {
+            ProjectId = h.ProjectId, PersonId = ada.Id, Role = ProjectMemberRole.Approver, CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, guarded.Id), default));
+
+        Assert.Equal(guarded.Id, dto.StatusId);
+    }
+
+    [Fact]
+    public async Task AStatusIdNamingAFullWipColumn_IsRefusedWithConflict_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var full = await h.AddStatusAsync("doing", sortOrder: 15, isWip: true);
+        h.Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = 0 });
+        await h.Db.SaveChangesAsync();
+
+        Assert.IsType<ConflictObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, full.Id), default)).Result);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task NoStatusId_NeverConsultsTheWipGate_EvenWhenTheLeftmostColumnIsFull()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var inbox = await h.Db.Statuses.SingleAsync(s => s.Name == "inbox");
+        inbox.IsWip = true;
+        h.Db.WipLimits.Add(new EfHatchWipLimit { Types = EfHatchWipLimit.StoriesAndBugs, Limit = 0 });
+        await h.Db.SaveChangesAsync();
+
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
+
+        Assert.Equal(inbox.Id, dto.StatusId);
     }
 
     // ---- The gate ----
@@ -157,9 +311,22 @@ public class TrunkBuildBugControllerTests
     {
         public required HatchContext Db { get; init; }
         public required TrunkBuildBugController Bug { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required int ProjectId { get; init; }
 
         private int nextRepoOrder = 1;
+
+        public async Task<EfHatchStatus> AddStatusAsync(
+            string name, int sortOrder, bool isDeferred = false, bool isProtected = false, bool isWip = false)
+        {
+            var status = new EfHatchStatus
+            {
+                Name = name, SortOrder = sortOrder, IsDeferred = isDeferred, IsProtected = isProtected, IsWip = isWip,
+            };
+            Db.Statuses.Add(status);
+            await Db.SaveChangesAsync();
+            return status;
+        }
 
         public async Task<EfHatchTrunkBuild> TrunkAsync(string verdict, string[]? failing = null)
         {
@@ -231,6 +398,7 @@ public class TrunkBuildBugControllerTests
             {
                 ControllerContext = controllerContext,
             },
+            Actors = actors,
             ProjectId = hatch.Id,
         };
     }

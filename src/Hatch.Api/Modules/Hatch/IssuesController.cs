@@ -220,15 +220,18 @@ public class IssuesController(
         CreateIssueAsync(request, PriorityLevels.Normal, ct);
 
     /// <summary>
-    /// The whole of <see cref="CreateIssue"/>, plus the one thing a key must
-    /// never set for itself: <paramref name="priority"/>. Internal, and called
+    /// The whole of <see cref="CreateIssue"/>, plus the two things a key must
+    /// never set for itself: <paramref name="priority"/>, and - when
+    /// <paramref name="express"/> or <paramref name="statusId"/> is given -
+    /// the express flag and the column a person chose. Internal, and called
     /// only from <see cref="TrunkBuildBugController"/> - the bug a failing
     /// trunk's button files is born expedited the way an issue under an express
     /// parent is born express (<see cref="EfHatchIssue.Express"/>), in the same
     /// save and with no second event, because expediting at birth is not a
     /// change from anything.
     /// </summary>
-    internal async Task<ActionResult<IssueDto>> CreateIssueAsync(IssueCreateRequest request, int priority, CancellationToken ct)
+    internal async Task<ActionResult<IssueDto>> CreateIssueAsync(
+        IssueCreateRequest request, int priority, CancellationToken ct, bool express = false, int? statusId = null)
     {
         var title = request.Title?.Trim();
         if (Invalid(title, request.Description, request.Type) is { } invalid) return BadRequest(invalid);
@@ -236,23 +239,57 @@ public class IssuesController(
         if (!ReadMoment(request.ReadyAt, "readyAt", out var readyAt, out var momentError)) return BadRequest(momentError);
         if (!ReadMoment(request.DueAt, "dueAt", out var dueAt, out momentError)) return BadRequest(momentError);
 
-        // Who is a program is ICallerIdentity's own narrowing - an API key, or
-        // a keyless runner that named itself - asked once, the way
-        // IssueWorkLogController and IssueClaimController do, so this cannot
-        // come to disagree with them about what an agent is.
-        //
-        // A stranded tick is not read: a ticked column that has since been
-        // made deferred or terminal does not count, exactly as IsWip does not
-        // where the column became either (Wip.cs) - filing falls back to the
-        // leftmost column instead of landing in a column nobody can see.
-        //
-        // The leftmost read is unchanged and stays the fallback, so a board
-        // with nothing ticked, or a person filing, behaves exactly as it does
-        // today.
-        var status = await caller.IsProgramAsync(ct)
-            ? await db.Statuses.FirstOrDefaultAsync(s => s.AgentFiles && !s.IsDeferred && !s.IsTerminal, ct)
-              ?? await Leftmost(ct)
-            : await Leftmost(ct);
+        EfHatchStatus? status;
+        if (statusId is { } chosen)
+        {
+            // The person chose this column, so a refusal here is meaningful
+            // and actionable (choose another) - unlike the fallback below,
+            // which never asks the gate at all, because nothing chose that
+            // column and there is nowhere else to send the issue instead.
+            status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == chosen, ct);
+            if (status is null) return BadRequest($"there is no column {chosen}");
+            if (status.IsDeferred) return BadRequest($"\"{status.Name}\" is deferred - a bug is not born there");
+            if (status.IsTerminal) return BadRequest($"\"{status.Name}\" is a done column - a bug is not born there");
+
+            var statusProject = await db.Projects.FirstOrDefaultAsync(p => p.Id == request.ProjectId, ct);
+            if (statusProject is null) return NotFound();
+            if (await ProtectedMoveRefusalAsync(statusProject, status, ct) is { } forbidden)
+                return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
+
+            var chosenParent = await ResolveParentAsync(request.ParentKey, statusProject.Id, request.Type, null, ct);
+            if (chosenParent.Error is { } parentError) return BadRequest(parentError);
+
+            var gate = new WipGate(db, claims, time.GetUtcNow());
+            var probe = new EfHatchIssue
+            {
+                ProjectId = statusProject.Id, Number = 0, Type = request.Type, Title = "", StatusId = 0, Rank = 0,
+                CreatedBy = "", CreatedAt = default, UpdatedAt = default,
+            };
+            var wip = await gate.AdmitAsync(probe, status.Id, request.Type, chosenParent.Issue?.Id, false, ct);
+            if (wip.Kind == WipVerdictKind.Refused) return Conflict(wip.Refusal);
+        }
+        else
+        {
+            // Who is a program is ICallerIdentity's own narrowing - an API key,
+            // or a keyless runner that named itself - asked once, the way
+            // IssueWorkLogController and IssueClaimController do, so this
+            // cannot come to disagree with them about what an agent is.
+            //
+            // A stranded tick is not read: a ticked column that has since been
+            // made deferred or terminal does not count, exactly as IsWip does
+            // not where the column became either (Wip.cs) - filing falls back
+            // to the leftmost column instead of landing in a column nobody
+            // can see.
+            //
+            // The leftmost read is unchanged and stays the fallback, so a
+            // board with nothing ticked, or a person filing, behaves exactly
+            // as it does today. Never gated by WIP: nothing chose this column,
+            // so there is nowhere else to send the issue if it were full.
+            status = await caller.IsProgramAsync(ct)
+                ? await db.Statuses.FirstOrDefaultAsync(s => s.AgentFiles && !s.IsDeferred && !s.IsTerminal, ct)
+                  ?? await Leftmost(ct)
+                : await Leftmost(ct);
+        }
         if (status is null) return Conflict("this board has no columns to put an issue in");
 
         Task<EfHatchStatus?> Leftmost(CancellationToken token) =>
@@ -288,7 +325,7 @@ public class IssuesController(
                 ReadyAtHasTime = readyAt?.HasTime ?? false,
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
-                Express = expressFrom is not null,
+                Express = express || expressFrom is not null,
                 Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,

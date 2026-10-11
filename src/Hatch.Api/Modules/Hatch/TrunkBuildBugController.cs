@@ -28,11 +28,13 @@ public class TrunkBuildBugController(
     /// <summary>
     /// Files the bug, or - if this row already has one - answers that bug
     /// again and files nothing: a second press, or a second person, never gets
-    /// a second bug.
+    /// a second bug. <paramref name="request"/> is optional and, field by
+    /// field, lets a person choose express, the priority, and the column the
+    /// bug is born in - absent means file exactly as this route always has.
     /// </summary>
     [HttpPost("api/hatch/trunk-builds/{id:long}/bug")]
     [RequireRole(PersonRole.User)]
-    public async Task<ActionResult<IssueDto>> PostBug(long id, CancellationToken ct)
+    public async Task<ActionResult<IssueDto>> PostBug(long id, TrunkBuildBugRequest? request, CancellationToken ct)
     {
         var row = await db.TrunkBuilds.Include(t => t.BugIssue).ThenInclude(i => i!.Project)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
@@ -60,6 +62,10 @@ public class TrunkBuildBugController(
         if (projectId is not { } project)
             return BadRequest($"no project binds {row.Canonical} - bind it on the Projects page");
 
+        var priority = PriorityLevels.Expedited;
+        if (request?.Priority is { } priorityName && !PriorityLevels.TryParse(priorityName, out priority))
+            return BadRequest($"\"{priorityName}\" is not a priority - paused, economy, low, normal, expedited or emergency");
+
         var failingChecks = EfHatchBuildCheck.ReadFailing(row.Failing);
         var description = string.Join("\n\n",
         [
@@ -71,7 +77,7 @@ public class TrunkBuildBugController(
         var issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)) { ControllerContext = ControllerContext };
         var created = await issues.CreateIssueAsync(
             new IssueCreateRequest(project, "bug", $"Build failing on {row.Trunk}", description, null, null, null),
-            PriorityLevels.Expedited, ct);
+            priority, ct, express: request?.Express ?? false, statusId: request?.StatusId);
 
         if (created.Result is not CreatedAtActionResult { Value: IssueDto dto }) return created.Result!;
 
