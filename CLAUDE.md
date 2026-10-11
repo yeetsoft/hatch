@@ -123,17 +123,15 @@ Read it, then get to work. The description is markdown and is the brief.
 
 ### Filing work: see `docs/hatch-planning.md`
 
-An increment that **files or reshapes work** — turning a draft into an epic with
-stories under it, breaking a story into tasks, dating something that cannot
-start yet, or moving a batch at once — reads
-[`docs/hatch-planning.md`](docs/hatch-planning.md) first. It has the shapes:
-`POST /api/hatch/issues` with a `parentKey`, the `readyAt` and `dueAt` dates,
-the `issues` filters and the bulk endpoint, and the `/api/hatch/plan` reads that
-say how far along a project is.
+An increment that **files or reshapes work** — an epic into stories, a story
+into tasks, dating something that cannot start yet, or moving a batch — reads
+[`docs/hatch-planning.md`](docs/hatch-planning.md) first: `POST
+/api/hatch/issues` with a `parentKey`, the `readyAt`/`dueAt` dates, the
+`issues` filters, the bulk endpoint, and the `/api/hatch/plan` reads that say
+how far along a project is.
 
-It is a separate file because an implementation increment never needs any of it,
-and this one is loaded on every increment. Two rules from it are worth carrying
-here, because getting them wrong is not recoverable by reading further:
+A separate file, since an implementation increment never needs it and this
+one loads on every increment. Two rules from it matter enough to repeat:
 
 - **An epic takes stories; a story takes tasks.** Plan on the ticket, not in a
   chat log — acceptance criteria go in the description, in a form somebody else
