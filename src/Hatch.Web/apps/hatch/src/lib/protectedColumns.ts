@@ -30,3 +30,19 @@ export function moveBlocked(
   }
   return null;
 }
+
+/** Why a drop of the card in hand into `target` would be refused, or null
+    where it would not. Resolves the dragging card's own project - not the
+    column's - through `projectsByKey`, failing closed (the same refusal a
+    non-approver gets) where that project is not in the map at all. Null
+    where nothing is being dragged, since there is then nothing to check.
+    A thin wrapper around `moveBlocked`, kept here rather than beside its one
+    caller (BoardPage's `Column`) so it can be unit-tested with no DOM and no
+    dnd-kit import. */
+export function columnBlocked(
+  target: Status,
+  dragging: IssueCard | null,
+  projectsByKey: Map<string, Project>,
+): string | null {
+  return dragging ? moveBlocked(target, projectsByKey.get(dragging.projectKey), dragging) : null;
+}

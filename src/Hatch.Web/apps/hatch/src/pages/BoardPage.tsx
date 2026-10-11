@@ -17,11 +17,11 @@ import { deleteIssue, getAssignees, getBoard, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
+import { ColumnHead } from '../components/ColumnHead';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
 import { QueueControl } from '../components/QueueControl';
-import { StatusDot } from '../components/StatusPill';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -46,6 +46,7 @@ import { readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } fr
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
+import { columnBlocked } from '../lib/protectedColumns';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
@@ -640,6 +641,7 @@ export function BoardPage() {
                 filtering={isFiltering(filter)}
                 dropping={dragging !== null && over === status.id}
                 lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
+                blocked={columnBlocked(status, dragging, projectsByKey)}
                 tint={zoneIds.has(status.id) ? tint : null}
                 found={found}
                 onPeek={peek}
@@ -743,6 +745,7 @@ function Column({
   filtering,
   dropping,
   lit,
+  blocked,
   tint,
   found,
   onPeek,
@@ -760,6 +763,12 @@ function Column({
       section - every column in the section lights together, not just the one
       under the pointer. */
   lit: boolean;
+  /** Why the card in hand could not land here, or null where it could. A
+      blocked column takes no drop at all (its own `useDroppable` is
+      disabled, which is what keeps it out of aim.ts's candidates) and never
+      wears the dropping/lit highlight, even where it shares a WIP run with
+      the column actually under the pointer. */
+  blocked: string | null;
   /** This column's tightness where it is in the WIP section, null where it
       is not. */
   tint: Tightness | null;
@@ -776,7 +785,7 @@ function Column({
   // which one the pointer is inside, and the heading and the empty space below
   // the last card have to answer that the same way the cards do, or a drop
   // over either reads as over no column at all.
-  const { setNodeRef } = useDroppable({ id: columnDroppableId(status.id) });
+  const { setNodeRef } = useDroppable({ id: columnDroppableId(status.id), disabled: blocked !== null });
 
   // Read once per render rather than per card, so a column cannot straddle
   // midnight and draw two different todays.
@@ -799,23 +808,15 @@ function Column({
   // header that went quiet when the fold closed would hide the thing it exists
   // to point at.
   const asking = askingCount(cards);
-  const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
 
   return (
     <section
-      className={`hatch-column${dropping || lit ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
+      className={`hatch-column${(dropping || lit) && !blocked ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
       style={statusVars(status.color)}
       ref={setNodeRef}
     >
       <header className="hatch-column-head">
-        <StatusDot status={status} />
-        <span className="hatch-column-name">{status.name}</span>
-        <span className="hatch-column-count">{workable.length}</span>
-        {asking > 0 && (
-          <span className="hatch-column-asking" role="img" aria-label={askingWords} title={askingWords}>
-            ?{asking}
-          </span>
-        )}
+        <ColumnHead status={status} count={workable.length} asking={asking} />
       </header>
 
       <div className="hatch-column-cards">
@@ -853,7 +854,7 @@ function Column({
       {/* The drop target, drawn in the column's own colour so the answer to
           "what am I moving this into" is the same colour as the column heading
           rather than a generic outline. */}
-      {dropping && <div className="hatch-column-drop">{status.name}</div>}
+      {dropping && !blocked && <div className="hatch-column-drop">{status.name}</div>}
     </section>
   );
 }
@@ -905,7 +906,6 @@ function PhoneColumn({
   const shown = showWaiting ? [...workable, ...waiting] : workable;
 
   const asking = askingCount(cards);
-  const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
 
   return (
     <details
@@ -915,14 +915,7 @@ function PhoneColumn({
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="hatch-column-head">
-        <StatusDot status={status} />
-        <span className="hatch-column-name">{status.name}</span>
-        <span className="hatch-column-count">{workable.length}</span>
-        {asking > 0 && (
-          <span className="hatch-column-asking" role="img" aria-label={askingWords} title={askingWords}>
-            ?{asking}
-          </span>
-        )}
+        <ColumnHead status={status} count={workable.length} asking={asking} />
         {wip && <span className={`hatch-column-wip-note hatch-wip-${wip.tint}`}>{wip.text}</span>}
       </summary>
 

@@ -3519,6 +3519,21 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
+/* A glyph, not a pill: unlike .hatch-column-asking this carries no count, so
+   it is sized like .hatch-card-claim-glyph rather than shaped like a badge. */
+.hatch-column-lock {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.hatch-column-lock-glyph {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
 /* The band down the left edge is what makes this card different from the four
    below it at a glance, without the page having to shout. */
 .hatch-waiting {

@@ -57,3 +57,4 @@ export { isHexColor, safeColor, channels, luminance, contrastInk, INK_ON_LIGHT, 
 /* The closed set of stock icons a project may draw instead of its letters. */
 export { PROJECT_ICONS, PROJECT_ICONS_BY_SLUG } from './icons';
 export type { ProjectIcon } from './icons';
+export { LockIcon } from './icons/LockIcon';
