@@ -27,7 +27,8 @@ public class IssuesController(
     IActorDirectory actors,
     IssueClaims claims,
     ICallerIdentity caller,
-    TimeProvider time) : ControllerBase
+    TimeProvider time,
+    IProjectAccess access) : ControllerBase
 {
     /// <summary>
     /// How many times a create will re-read the project and try again. Five is
@@ -366,8 +367,9 @@ public class IssuesController(
         if (!movingRequested)
         {
             var gate = new WipGate(db, claims, now);
-            var (changed, error, conflict, full, _) = await StageEditAsync(
+            var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
                 issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
             if (full is not null) return Conflict(full);
             if (conflict is not null) return Conflict(conflict);
             if (error is not null) return BadRequest(error);
@@ -389,8 +391,9 @@ public class IssuesController(
             if (issue is null) return NotFound();
 
             var gate = new WipGate(db, claims, now);
-            var (changed, error, conflict, full, _) = await StageEditAsync(
+            var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
                 issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+            if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
             if (full is not null) return Conflict(full);
             if (conflict is not null) return Conflict(conflict);
             if (error is not null) return BadRequest(error);
@@ -516,9 +519,10 @@ public class IssuesController(
 
             foreach (var (key, issue) in resolved)
             {
-                var (moved, error, conflict, full, rekeyedByThis) =
+                var (moved, error, conflict, full, rekeyedByThis, forbidden) =
                     await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
-                if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
+                if (forbidden is not null) failures.Add(new IssueBulkFailureDto(key, forbidden));
+                else if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
                 else if (conflict is not null) failures.Add(new IssueBulkFailureDto(key, conflict));
                 else if (error is not null) failures.Add(new IssueBulkFailureDto(key, error));
                 else if (moved) changed.Add(await KeyOfAsync(issue, ct));
@@ -593,7 +597,7 @@ public class IssuesController(
     /// project move actually moved - the root and every descendant carried with
     /// it, named by the caller or not. Empty unless a move happened.
     /// </returns>
-    private async Task<(bool Changed, string? Error, string? Conflict, WipRefusalDto? Full, IReadOnlyList<(string From, string To)> Rekeyed)> StageEditAsync(
+    private async Task<(bool Changed, string? Error, string? Conflict, WipRefusalDto? Full, IReadOnlyList<(string From, string To)> Rekeyed, string? Forbidden)> StageEditAsync(
         EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms,
         WipGate gate, bool wipOverride, CancellationToken ct)
     {
@@ -609,7 +613,7 @@ public class IssuesController(
         if (edit.ProjectId is { } targetProjectId)
         {
             var found = await db.Projects.FirstOrDefaultAsync(p => p.Id == targetProjectId, ct);
-            if (found is null) return (false, $"there is no project {targetProjectId}", null, null, []);
+            if (found is null) return (false, $"there is no project {targetProjectId}", null, null, [], null);
             if (found.Id != issue.ProjectId) targetProject = found;
         }
 
@@ -636,7 +640,7 @@ public class IssuesController(
             {
                 var names = new List<string>(held.Count);
                 foreach (var h in held) names.Add((await KeyOfAsync(h.Id, ct))!);
-                return (false, null, $"{string.Join(", ", names)} - nothing moved", null, []);
+                return (false, null, $"{string.Join(", ", names)} - nothing moved", null, [], null);
             }
         }
 
@@ -644,7 +648,17 @@ public class IssuesController(
         if (edit.StatusId is { } statusId && statusId != issue.StatusId)
         {
             status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
-            if (status is null) return (false, $"there is no column {statusId}", null, null, []);
+            if (status is null) return (false, $"there is no column {statusId}", null, null, [], null);
+
+            // The project this status change is judged against: the one the issue
+            // is moving into, when this same edit also moves projects, else the
+            // one it already stands in - an issue's approval authority follows
+            // where it is going to live, not where it is leaving.
+            var statusProject = targetProject ?? issue.Project!;
+            if (await ProtectedMoveRefusalAsync(statusProject, status, ct) is { } forbidden)
+                return (false, null, null, null, [], forbidden);
+            if (MergeColumnRefusal(issue, status) is { } mergeRefusal)
+                return (false, mergeRefusal, null, null, [], null);
         }
 
         // Present-but-empty is the clear; absent is no opinion. See
@@ -658,7 +672,7 @@ public class IssuesController(
         {
             var parentProjectId = targetProject?.Id ?? issue.ProjectId;
             parent = await ResolveParentAsync(parentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
-            if (parent.Error is { } parentError) return (false, parentError, null, null, []);
+            if (parent.Error is { } parentError) return (false, parentError, null, null, [], null);
         }
 
         // Asked last, and only when the column is actually changing, so a
@@ -672,7 +686,7 @@ public class IssuesController(
             // rule the type is already judged by just above.
             var parentId = edit.ParentKey is not null ? parent.Issue?.Id : issue.ParentId;
             wip = await gate.AdmitAsync(issue, status.Id, edit.Type ?? issue.Type, parentId, wipOverride, ct);
-            if (wip.Kind == WipVerdictKind.Refused) return (false, null, null, wip.Refusal, []);
+            if (wip.Kind == WipVerdictKind.Refused) return (false, null, null, wip.Refusal, [], null);
         }
 
         // ---- What is written ----
@@ -834,11 +848,11 @@ public class IssuesController(
             }
         }
 
-        if (events.Count == 0 && targetProject is null) return (false, null, null, null, rekeyed);
+        if (events.Count == 0 && targetProject is null) return (false, null, null, null, rekeyed, null);
 
         foreach (var e in events) issue.Events.Add(e);
         issue.UpdatedAt = now;
-        return (true, null, null, null, rekeyed);
+        return (true, null, null, null, rekeyed, null);
     }
 
     /// <summary>
@@ -903,6 +917,10 @@ public class IssuesController(
         var changedColumn = issue.StatusId != status.Id;
         if (changedColumn)
         {
+            if (await ProtectedMoveRefusalAsync(issue.Project!, status, ct) is { } forbidden)
+                return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
+            if (MergeColumnRefusal(issue, status) is { } mergeRefusal) return BadRequest(mergeRefusal);
+
             var now = time.GetUtcNow();
             var gate = new WipGate(db, claims, now);
             var wip = await gate.AdmitAsync(issue, status.Id, issue.Type, issue.ParentId, request.WipOverride, ct);
@@ -1038,6 +1056,30 @@ public class IssuesController(
             {
                 StatusCode = StatusCodes.Status403Forbidden,
             }
+            : null;
+
+    /// <summary>
+    /// A live owner or approver of the project, never a program (docs/hatch.md,
+    /// "Non-goals"). Null when <paramref name="target"/> is not protected, so
+    /// an ordinary move skips both checks.
+    /// </summary>
+    private async Task<string?> ProtectedMoveRefusalAsync(EfHatchProject project, EfHatchStatus target, CancellationToken ct)
+    {
+        if (!target.IsProtected) return null;
+
+        if (await caller.IsProgramAsync(ct))
+            return "moving work into a protected column is an owner's or approver's call, not an agent's";
+
+        if (!await access.CanApproveAsync(project.Id, ct))
+            return $"only an owner or approver of {project.Key} may move work into \"{target.Name}\"";
+
+        return null;
+    }
+
+    /// <summary>400 for a move into a column that merges the pull request, when the issue carries none.</summary>
+    private static string? MergeColumnRefusal(EfHatchIssue issue, EfHatchStatus target) =>
+        target.MergesPullRequest && string.IsNullOrWhiteSpace(issue.PullRequestUrl)
+            ? $"\"{target.Name}\" merges the pull request, and this issue has none recorded"
             : null;
 
     // ---- Mapping ----

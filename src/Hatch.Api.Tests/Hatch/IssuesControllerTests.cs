@@ -3513,7 +3513,7 @@ public class IssuesControllerTests
             Time = time,
             Caller = caller,
             Actors = actors,
-            Issues = new IssuesController(db, ranks, actors, TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, ranks, actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Thread = new IssueThreadController(db, caller, time),
             Questions = new QuestionsController(db),
             Board = new BoardController(db, actors, TestClaims.With(), time),

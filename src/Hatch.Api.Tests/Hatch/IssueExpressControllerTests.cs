@@ -313,7 +313,7 @@ public class IssueExpressControllerTests
         {
             Db = db,
             Express = new IssueExpressController(db, actors, TestClaims.With(), caller, time),
-            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,

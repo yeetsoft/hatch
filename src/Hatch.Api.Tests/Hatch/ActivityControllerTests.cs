@@ -214,10 +214,12 @@ public class ActivityControllerTests
             },
         };
 
+        var actors = new StubActorDirectory();
+
         return new Harness
         {
             Activity = new ActivityController(db),
-            Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Db = db,
             ProjectAId = projectA.Id,
             ProjectBId = projectB.Id,

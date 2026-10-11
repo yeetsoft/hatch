@@ -510,7 +510,7 @@ public class ImportControllerTests
         {
             Db = db,
             Import = new ImportController(db, new PlanImportParser(), ranks, caller, time),
-            Issues = new IssuesController(db, ranks, new StubActorDirectory(), TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, ranks, new StubActorDirectory(), TestClaims.With(), caller, time, new ProjectAccess(db, new StubActorDirectory())),
             ProjectId = hatch.Id,
             Todo = todo.Id,
             InProgress = doing.Id,

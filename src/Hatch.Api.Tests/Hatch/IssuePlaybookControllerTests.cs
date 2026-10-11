@@ -303,7 +303,7 @@ public class IssuePlaybookControllerTests
         return new Harness
         {
             Playbook = new IssuePlaybookController(db, new StubActorDirectory(), TestClaims.With(), caller, time),
-            Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), TestClaims.With(), caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,
             ProjectId = hatch.Id,

@@ -63,104 +63,44 @@ one.
 
 **This is most likely how you got here.** `go-to-work` (or `do-my-work`, the
 same loop narrowed to one person's own tickets) runs increments back to
-back — the next actionable issue, one increment, ask again — so assume nobody is
-reading the terminal, and that the next increment starts the moment yours ends.
+back — the next actionable issue, one increment, ask again — so assume nobody
+is reading the terminal, and that the next increment starts the moment yours
+ends. Most of what used to be said here travels in the prompt itself now,
+since an operator who clones Hatch has no copy of this file — what is left
+below is what the prompt does not carry.
 
-- **The tree is on the issue's branch, or on the trunk with a name to cut, and
-  it is current.** The loop fetches and resets every checkout the ticket's
-  project is bound to onto its default branch, then looks on origin for the
-  one branch named for the key (`<key-lowercased>` or `<key-lowercased>-…`). If
-  there is one, you start on it, at origin's tip, with the trunk already merged
-  in; if there is none, you start on the trunk and are told the name to cut. Do
-  not go looking for a base, and do not cut a branch the prompt did not tell
-  you to: the prompt's `## The branch` section is the state you are in, and it
-  overrides any branching instruction in the playbook. A merge that conflicted
-  is left *in progress* — resolve it and commit it before anything else. Two
-  unmerged branches for one key stop the loop from spawning at all: it asks on
-  the ticket which to use, and you will find the answer under **Decisions
-  already made**.
-- **A hop may have carried the ticket here, with nobody reading it first.**
-  Express, a sub-epic entering the WIP section because the epic above it is
-  already running there, or a story or bug under an epic already running
-  there — the trail on the ticket names which; see "the hop" in
-  [`docs/hatch.md`](docs/hatch.md#the-hop). A top-level epic is never carried
-  this way: its own column is the signal, and only a person moves it in. It is
-  not a session and not a stall: nothing was spent, and the increment you are
-  running now is the first one to actually look at it.
-- **What you leave is put right for you, and said on the ticket.** When you
-  stop, and before the claim is let go, the loop aborts a merge, rebase or
-  cherry-pick you left in progress, stashes what is uncommitted (under a message
-  naming the ticket — recoverable with `git stash pop`, but not where you left
-  it), names any commits on the issue's branch that origin does not have, moves
-  commits left on the local trunk to `<key-lowercased>-rescued-<sha>`, puts every
-  checkout back on the trunk, and merges the trunk into your pull request's
-  branch on origin when it has fallen behind — without your tree, and without a
-  force-push. It never pushes your work for you: *green before pushed* is still
-  yours, so work that matters is committed **and pushed**. A tree that cannot be
-  reset ends the night, so clear a half-finished merge or a conflicted file
-  before you stop rather than leaving it for whoever runs next. A ticket for a
-  repository this loop does not have is folded past, with the reason, rather
-  than dispatched — so nothing here is ever spawned in the wrong checkout.
-  **The one exception is running out of Claude usage mid-session**: you do not
-  get to say whether what you left is fit to publish, so the loop commits it —
-  untracked files included — onto your issue's branch and pushes it for you,
-  then says so on the ticket along with when it expects you back.
-- **Leave the ticket somewhere new.** An increment that ends with the ticket in
-  the column it started in is a *stall* — unless it filed issues under the
-  ticket, which is progress whether or not the ticket moved — and the first
-  one in a row is let go quietly: the loop comments saying why, and moves on —
-  the ticket is free for
-  the very next pass, since most of the time whatever happened is weather and
-  a retry a few minutes later just works. The second stall in a row on the
-  same ticket is flagged the way every stall used to be: the loop comments and
-  marks the ticket stalled, and it sits for fifteen minutes before the board
-  resumes it on its own — until it has stalled that way enough times in a row,
-  at which point it holds for a person instead of resuming again. That guard
-  exists so a ticket that is genuinely stuck costs a bounded run of increments
-  and not a night, but a sentence you wrote about why you stopped is worth more
-  than the one it writes for you.
-- **Asking is a full stop, not a pause.** An open question blocks the ticket
-  from being dispatched at all. Ask and stop — do not ask and keep building.
-- **Record the pull request**: `./scripts/hatch.sh pr AER-12 <url>`. It is a
-  field on the issue, not a URL somebody has to find in a comment.
-- **Name the ticket in the pull request, in two places.** The title is the key,
-  one space, then the subject in house style — `AER-12 Auth: the first Admin`,
-  with no brackets and no second colon. The first line of the description is
-  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
-  line, then the summary. `<origin>` is the address Hatch was reached at
-  (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
-  AER-12 --dry-run` prints the exact line. Never write a relative link.
-- **Say what has to land in order.** The loop takes siblings in whatever order
-  the board puts them in, so work that must land in order says so:
+- **The tree's state is the prompt's `## The branch` section**, not this
+  one — it overrides any branching instruction in the playbook, including
+  cutting a branch it did not name.
+- **A hop may have carried the ticket here unread** — express, a sub-epic or
+  child whose epic is already running (`docs/hatch.md#the-hop`). A top-level
+  epic is never carried this way.
+- **What you leave is put right, but never pushed, for you.** The loop aborts
+  a half-done merge and stashes the rest, recoverably. A tree it cannot
+  reset ends the night, so clear a conflict before you stop.
+- **A ticket that does not move is a stall.** The first in a row is let go
+  quietly, with a comment saying why; the second is marked stalled and sits
+  fifteen minutes before the board resumes it on its own, until it has
+  stalled enough times in a row to hold for a person instead. Filing issues
+  under it counts as progress either way.
+- **Say what has to land in order**, which column order does not:
 
   ```
   ./scripts/hatch.sh depends AER-13 AER-12   # AER-13 waits on AER-12
   ```
 
-  It gates one move — the one into the column where the code gets written — and
-  clears only when the issue it names is merged. Everything left of that keeps
-  moving: a blocked issue is still broken down, still lands in the backlog, and
-  is still analysed.
-- **Read the board before assuming it is empty.** `./scripts/hatch.sh queue`
-  prints every issue a pass would look at, in the order it looks, each with the
-  reason it would be folded past — or the transition it is clear for. It spawns
-  nothing and writes nothing. A column and type nobody has written a playbook
-  for reads as a finished board from outside and is not one.
+  Gates the one move into the column where code gets written; everything
+  left of that still files and still lands in the backlog.
+- **`./scripts/hatch.sh queue`** prints every issue a pass would look at and
+  why, or that it is clear. A column with no playbook looks finished from
+  outside and may not be.
 
-What a session is told, which model it runs on and how much effort it spends are
-a **playbook**: a row per (status transition, issue types), readable by a key and
-writable only by a person — as is a model or effort pinned on a single ticket. If
-a playbook is wrong, say so on the ticket. The API refuses to let you route
-around it, and it refuses on purpose.
-
-Work on the loop itself — `src/Hatch.Cli`, `scripts/hatch.sh`,
-`scripts/hatch.ps1`, `src/Hatch.Contracts` — reaches the next increment rather than the next
-night: when its own source changes on the trunk, the loop rebuilds and comes
-back as the new version.
-
-The conditions that make an issue actionable live on the server, and
-[`docs/hatch.md`](docs/hatch.md#what-makes-an-issue-actionable) lists them with
-the reasoning behind each.
+A playbook edit is refused by the API on purpose — say so on the ticket
+instead. Work on the loop itself (`src/Hatch.Cli`, `scripts/hatch.sh`,
+`scripts/hatch.ps1`, `src/Hatch.Contracts`) restarts the loop rather than
+waiting for the next night.
+[`docs/hatch.md`](docs/hatch.md#what-makes-an-issue-actionable) has what
+makes an issue actionable at all.
 
 ### When a decision is not yours to make
 

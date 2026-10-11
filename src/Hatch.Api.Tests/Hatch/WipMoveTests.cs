@@ -875,7 +875,7 @@ public class WipMoveTests
         {
             Db = db,
             Time = time,
-            Issues = new IssuesController(db, ranks, actors, claims, caller, time),
+            Issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)),
             Thread = new IssueThreadController(db, caller, time),
             Caller = caller,
             ProjectId = project.Id,

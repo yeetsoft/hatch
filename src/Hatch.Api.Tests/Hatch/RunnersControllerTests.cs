@@ -865,7 +865,7 @@ public class RunnersControllerTests
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time),
-            Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time),
+            Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,

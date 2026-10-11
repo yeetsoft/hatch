@@ -68,7 +68,7 @@ public class TrunkBuildBugController(
             .. failingChecks.Select(f => f.Url is { } url ? $"[{f.Name}]({url})" : f.Name),
         ]);
 
-        var issues = new IssuesController(db, ranks, actors, claims, caller, time) { ControllerContext = ControllerContext };
+        var issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)) { ControllerContext = ControllerContext };
         var created = await issues.CreateIssueAsync(
             new IssueCreateRequest(project, "bug", $"Build failing on {row.Trunk}", description, null, null, null),
             PriorityLevels.Expedited, ct);

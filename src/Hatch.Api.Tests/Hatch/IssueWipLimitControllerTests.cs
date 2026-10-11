@@ -302,7 +302,7 @@ public class IssueWipLimitControllerTests
         return new Harness
         {
             Wip = new IssueWipLimitController(db, actors, TestClaims.With(), caller, time),
-            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Thread = new IssueThreadController(db, caller, time),
             Caller = caller,
             Time = time,

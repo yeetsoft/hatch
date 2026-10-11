@@ -366,7 +366,7 @@ public class TrunkBuildControllerTests
         {
             Db = db,
             Build = new TrunkBuildController(db, caller, time),
-            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time),
+            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Time = time,
             ProjectId = hatch.Id,
         };
