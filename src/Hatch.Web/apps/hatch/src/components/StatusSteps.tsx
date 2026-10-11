@@ -24,6 +24,7 @@ export function StatusSteps({
   statusId,
   onMove,
   focus,
+  blocked,
 }: {
   statuses: Status[];
   statusId: number;
@@ -31,6 +32,9 @@ export function StatusSteps({
   /** The column to focus once this mounts - the keyboard's landing spot when
       a picker opens. Left off, nothing is focused. */
   focus?: number | null;
+  /** Why a move into this column is refused, or null where it is allowed.
+      Left off, nothing is blocked - today's behaviour. */
+  blocked?: (status: Status) => string | null;
 }) {
   const { lanes, shelf } = statusChoices(statuses);
   const buttons = useRef(new Map<number, HTMLButtonElement>());
@@ -45,6 +49,7 @@ export function StatusSteps({
 
   const step = (status: Status) => {
     const here = status.id === statusId;
+    const reason = blocked?.(status) ?? null;
     return (
       <button
         key={status.id}
@@ -53,10 +58,11 @@ export function StatusSteps({
           else buttons.current.delete(status.id);
         }}
         type="button"
-        className={`hatch-status-step${here ? ' here' : ''}${status.isDeferred ? ' deferred' : ''}`}
+        className={`hatch-status-step${here ? ' here' : ''}${status.isDeferred ? ' deferred' : ''}${reason ? ' blocked' : ''}`}
         style={statusVars(status.color)}
         aria-pressed={here}
-        disabled={here}
+        disabled={here || reason !== null}
+        title={reason ?? undefined}
         onClick={() => onMove(status.id)}
       >
         {status.name}

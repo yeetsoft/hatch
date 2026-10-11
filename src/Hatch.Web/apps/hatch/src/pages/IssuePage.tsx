@@ -52,6 +52,7 @@ import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
+import { moveBlocked } from '../lib/protectedColumns';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
@@ -555,6 +556,7 @@ export function IssuePage() {
         statuses={board.statuses}
         statusId={issue.statusId}
         onMove={(statusId) => void moveStatus(statusId)}
+        blocked={(status) => moveBlocked(status, project, issue)}
       />
 
       <Card>
@@ -818,10 +820,13 @@ function StatusBar({
   statuses,
   statusId,
   onMove,
+  blocked,
 }: {
   statuses: Status[];
   statusId: number;
   onMove: (statusId: number) => void;
+  /** Why a move into this column is refused, or null where it is allowed. */
+  blocked: (status: Status) => string | null;
 }) {
   const current = statuses.find((s) => s.id === statusId);
 
@@ -832,7 +837,7 @@ function StatusBar({
         {current ? <StatusPill status={current} size="lg" /> : <span className="text-muted">unknown</span>}
       </div>
 
-      <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} />
+      <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} blocked={blocked} />
     </section>
   );
 }

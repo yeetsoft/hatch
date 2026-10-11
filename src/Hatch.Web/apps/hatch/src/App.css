@@ -1831,6 +1831,14 @@ button.hatch-chip {
   border-style: dashed;
 }
 
+/* A refused column - the approval gate or the merge gate - stays in the row
+   rather than vanishing, so the reason (its title) is reachable, but reads as
+   out of reach rather than as a step that could be pressed. */
+.hatch-status-step.blocked {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* What separates the lanes from the shelf. Words rather than a rule, because a
    divider in a wrapping row lands wherever the wrap puts it, and "or park it"
    still reads correctly on the line it ends up on. */

@@ -32,6 +32,7 @@ export function StatusPicker({
   statuses,
   busy,
   onMove,
+  blocked,
 }: {
   issueKey: string;
   /** The column the card is sitting in. */
@@ -42,6 +43,9 @@ export function StatusPicker({
       until the server has answered it. */
   busy: boolean;
   onMove: (statusId: number) => void;
+  /** Why a move into this column is refused, or null where it is allowed.
+      Forwarded to StatusSteps untouched. */
+  blocked?: (status: Status) => string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [landing, setLanding] = useState<number | null | undefined>(undefined);
@@ -102,7 +106,7 @@ export function StatusPicker({
       {open && (
         <div id={bandId} className="hatch-peek-status" style={statusVars(status.color)} onKeyDown={onEscape}>
           <span className="hatch-status-bar-label">Move to</span>
-          <StatusSteps statuses={statuses} statusId={status.id} onMove={handleMove} focus={landing} />
+          <StatusSteps statuses={statuses} statusId={status.id} onMove={handleMove} focus={landing} blocked={blocked} />
         </div>
       )}
     </>

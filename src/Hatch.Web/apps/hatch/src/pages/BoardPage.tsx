@@ -684,6 +684,7 @@ export function BoardPage() {
         statuses={board.statuses}
         directory={directory}
         project={peeked && showProjectMark ? (projectsByKey.get(peeked.projectKey) ?? null) : null}
+        projectsByKey={projectsByKey}
         onExpedited={() => void reload()}
         onMove={send}
         onDelete={remove}

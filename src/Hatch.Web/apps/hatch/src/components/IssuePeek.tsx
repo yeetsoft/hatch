@@ -13,6 +13,7 @@ import { appHref } from '../lib/basename';
 import { askToDelete } from '../lib/deletion';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
+import { moveBlocked } from '../lib/protectedColumns';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { useStandalone } from '../lib/viewport';
 import type { AssigneeDirectory, IssueCard, Project, Status } from '../types';
@@ -93,6 +94,7 @@ export function IssuePeek({
   statuses,
   directory,
   project,
+  projectsByKey,
   onExpedited,
   onMove,
   onDelete,
@@ -113,6 +115,11 @@ export function IssuePeek({
       board and handed down, the same convention as `directory`. Null draws no
       mark, exactly as today. */
   project?: Project | null;
+  /** Every project, keyed, for the move permission check - independent of
+      `project` above, which is display-only and reads null on a single-project
+      board regardless of the real project's `canApprove`. Omitted the same as
+      not found: `moveBlocked` already treats that as fails-closed. */
+  projectsByKey?: Map<string, Project>;
   /** Something on this card changed on the server: the board reloads. */
   onExpedited: () => void;
   /** Move the card to another column, the same path a drag takes. Rejects with
@@ -264,6 +271,8 @@ export function IssuePeek({
   // are an error here.
   if (!card) return <Modal open={false} onClose={onClose} title="" />;
 
+  const moveProject = projectsByKey?.get(card.projectKey) ?? null;
+
   // Shipped or shelved: either way nobody is waiting on the date any more, so
   // the due chip stops warning. The same call the issue page makes.
   const stopped = isSettled(status);
@@ -323,6 +332,7 @@ export function IssuePeek({
               statuses={statuses}
               busy={asked.moving ?? false}
               onMove={(statusId) => void move(statusId)}
+              blocked={(target) => moveBlocked(target, moveProject, card)}
             />
           )}
           {card.parentKey && (
