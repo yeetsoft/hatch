@@ -68,6 +68,7 @@ public class PlanController(
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
+                i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -97,7 +98,8 @@ public class PlanController(
                     Priority: PriorityLevels.Name(c.Priority),
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
-                    Held: c.Held),
+                    Held: c.Held,
+                    PullRequestUrl: c.PullRequestUrl),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
 
@@ -148,6 +150,7 @@ public class PlanController(
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
+                i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -231,7 +234,8 @@ public class PlanController(
                         Priority: PriorityLevels.Name(row.Priority),
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
-                        Held: row.Held),
+                        Held: row.Held,
+                        PullRequestUrl: row.PullRequestUrl),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested

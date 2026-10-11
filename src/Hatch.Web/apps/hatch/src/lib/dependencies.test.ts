@@ -25,6 +25,7 @@ const card = (key: string, parentKey: string | null, projectKey = 'AER'): IssueC
   stalledAt: null,
   stalledWhy: null,
   held: false,
+  pullRequestUrl: null,
 });
 
 const keys = (cards: IssueCard[]) => cards.map((c) => c.key);

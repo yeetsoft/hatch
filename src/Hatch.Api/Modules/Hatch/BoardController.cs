@@ -82,6 +82,7 @@ public class BoardController(
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
+                i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -136,7 +137,8 @@ public class BoardController(
                 effectiveFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
-                Held: i.Held);
+                Held: i.Held,
+                PullRequestUrl: i.PullRequestUrl);
         }).ToList();
 
         return new BoardDto(statusDtos, cards, wip?.ToDto());

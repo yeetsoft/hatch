@@ -220,6 +220,9 @@ export interface IssueCard {
   /** A person has said the loop is to keep off this ticket until they say
       otherwise. See IssueCardDto.Held. */
   held: boolean;
+  /** The pull request recorded on this issue, or null where none is. See
+      IssueCardDto.PullRequestUrl. */
+  pullRequestUrl: string | null;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.

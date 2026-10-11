@@ -37,6 +37,7 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   stalledAt: null,
   stalledWhy: null,
   held: false,
+  pullRequestUrl: null,
 });
 
 const keys = (cards: IssueCard[]) => cards.map((c) => c.key);

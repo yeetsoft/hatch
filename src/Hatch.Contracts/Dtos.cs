@@ -297,7 +297,8 @@ public record IssueCardDto(
     string? PriorityFrom = null,
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
-    bool Held = false);
+    bool Held = false,
+    string? PullRequestUrl = null);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing

@@ -24,6 +24,7 @@ const child = (key: string, waiting: number): ChildRollup => ({
     stalledAt: null,
     stalledWhy: null,
     held: false,
+    pullRequestUrl: null,
   },
   isLeaf: true,
   rollup: { leaves: 1, done: 0, waiting, slices: [] },

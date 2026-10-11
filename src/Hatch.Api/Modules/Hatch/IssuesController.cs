@@ -165,6 +165,7 @@ public class IssuesController(
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
+                i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -201,7 +202,8 @@ public class IssuesController(
                 PriorityFrom: effectiveFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
-                Held: i.Held));
+                Held: i.Held,
+                PullRequestUrl: i.PullRequestUrl));
         }
 
         return cards;

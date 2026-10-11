@@ -60,6 +60,7 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   stalledAt: null,
   stalledWhy: null,
   held: false,
+  pullRequestUrl: null,
   ...over,
 });
 

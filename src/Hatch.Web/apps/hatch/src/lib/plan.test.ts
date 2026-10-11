@@ -33,6 +33,7 @@ const epic = (key: string, leaves: number, done: number, children: PlanEntry[] =
     stalledAt: null,
     stalledWhy: null,
     held: false,
+    pullRequestUrl: null,
   },
   isLeaf: children.length === 0 && leaves === 0,
   rollup: rollup(leaves, done),

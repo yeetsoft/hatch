@@ -585,7 +585,7 @@ public class WorkController(
                 i.Number, i.Type, i.Title, i.StatusId, i.Rank,
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
                 i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.Express,
-                i.StalledAt, i.StalledWhy, i.Held,
+                i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -611,7 +611,8 @@ public class WorkController(
                 Priority: PriorityLevels.Name(c.Priority),
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
-                Held: c.Held));
+                Held: c.Held,
+                PullRequestUrl: c.PullRequestUrl));
 
         var playbook = to is null
             ? null
