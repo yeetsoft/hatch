@@ -75,7 +75,11 @@ public static class Prompt
         {
             lines.Add("## Its children");
             lines.Add("");
-            lines.AddRange(work.Children.Select(c => $"- {c.Key}  [{c.Type}]  {c.Title}"));
+            lines.AddRange(work.Children.Select(c =>
+            {
+                var column = work.Statuses?.FirstOrDefault(s => s.Id == c.StatusId)?.Name ?? c.StatusId.ToString();
+                return $"- {c.Key}  [{c.Type}]  {c.Title}  ({column})";
+            }));
             lines.Add("");
         }
 

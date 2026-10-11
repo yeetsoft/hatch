@@ -1356,6 +1356,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// is set: a ticket held for a person is not being dispatched on at all, so
 /// a stale send-back from before the hold is not this move's reason.
 /// </param>
+/// <param name="Statuses">
+/// Every column on the board, so a client can name the column each of
+/// <paramref name="Children"/> stands in - a child's own <see cref="IssueCardDto.StatusId"/>
+/// is a bare id with no name attached. Null on a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1373,7 +1378,8 @@ public record WorkDto(
     string? HopUnder = null,
     int LetGo = 0,
     bool InReview = false,
-    SentBackDto? SentBack = null);
+    SentBackDto? SentBack = null,
+    IReadOnlyList<StatusDto>? Statuses = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

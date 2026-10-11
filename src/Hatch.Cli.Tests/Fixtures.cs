@@ -49,8 +49,8 @@ public static class Fixtures
             Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
             WipLimit: wipLimit, StalledWhy: stalledWhy);
 
-    public static IssueCardDto Card(string key, string type = "task", string title = "A child") =>
-        new(key, "AER", type, title, 3, 1000, null, null, null);
+    public static IssueCardDto Card(string key, string type = "task", string title = "A child", int statusId = 3) =>
+        new(key, "AER", type, title, statusId, 1000, null, null, null);
 
     public static PlaybookDto Playbook(string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null) =>
         new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, briefLimit, DateTimeOffset.UnixEpoch);
@@ -73,7 +73,8 @@ public static class Fixtures
         string? hopUnder = null,
         int letGo = 0,
         bool inReview = false,
-        SentBackDto? sentBack = null) =>
+        SentBackDto? sentBack = null,
+        IReadOnlyList<StatusDto>? statuses = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -91,7 +92,8 @@ public static class Fixtures
             HopUnder: hop ? hopUnder : null,
             LetGo: letGo,
             InReview: inReview,
-            SentBack: sentBack);
+            SentBack: sentBack,
+            Statuses: statuses ?? [Status(2, "To Do"), Status(3, "In Progress"), Status(4, "In Review")]);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(

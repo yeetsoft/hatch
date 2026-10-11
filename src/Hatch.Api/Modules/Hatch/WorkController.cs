@@ -688,7 +688,8 @@ public class WorkController(
             letGo,
             inReview,
             sentBack is null || blocked is not null ? null : new SentBackDto(
-                sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)));
+                sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
+            statuses.Select(ToStatusDto).ToList());
     }
 
     /// <summary>

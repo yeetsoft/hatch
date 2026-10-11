@@ -79,6 +79,23 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void Each_child_names_its_own_column()
+    {
+        var work = Fixtures.Work("AER-12", children: [Fixtures.Card("AER-13", statusId: 2), Fixtures.Card("AER-14", statusId: 4)]);
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("- AER-13  [task]  A child  (To Do)", prompt, StringComparison.Ordinal);
+        Assert.Contains("- AER-14  [task]  A child  (In Review)", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_child_in_a_column_the_dispatch_did_not_carry_falls_back_to_the_id()
+    {
+        var work = Fixtures.Work("AER-12", children: [Fixtures.Card("AER-13", statusId: 99)]);
+        Assert.Contains("- AER-13  [task]  A child  (99)", Prompt.Compose(work), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Decisions_already_made_are_carried_in_and_open_questions_are_not()
     {
         var work = Fixtures.Work("AER-12", questions:

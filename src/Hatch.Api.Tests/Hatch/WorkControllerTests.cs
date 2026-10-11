@@ -1941,6 +1941,18 @@ public class WorkControllerTests
         Assert.Equal(["first", "second"], work.Children.Select(c => c.Title));
     }
 
+    [Fact]
+    public async Task Work_CarriesTheBoardsColumnsSoAChildsStatusHasAName()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "parent", h.Todo);
+        await h.FileAsync("task", "first", h.InProgress, parentId: story.Id);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Contains(work.Statuses!, s => s.Id == h.InProgress && s.Name == "in progress");
+    }
+
     // ---- The scan ----
     //
     // What a whole pass would do, rather than what its first step is. These
