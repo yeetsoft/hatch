@@ -643,6 +643,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
 
+        if (to.IsProtected)
+            return $"the next column is \"{to.Name}\", and only its approvers move work there";
+
         if (claimed.Held(issue) is { } holder)
             return holder;
 

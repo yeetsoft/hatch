@@ -1373,6 +1373,22 @@ public class WorkControllerTests
         Assert.Equal("the next column is \"shipped\", and only the operator moves work there", work.Blocked);
     }
 
+    [Fact]
+    public async Task Work_RefusesTheProtectedNextColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 50, IsProtected = true };
+        var between = new EfHatchStatus { Name = "between", SortOrder = 45 };
+        h.Db.AddRange(approved, between);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "waiting", between.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("approved", work.ToStatus!.Name);
+        Assert.Equal("the next column is \"approved\", and only its approvers move work there", work.Blocked);
+    }
+
     /// <summary>
     /// On a board with no terminal column the review column is the rightmost
     /// one and is where work ends: it is not dispatched to itself, and there is
@@ -3700,6 +3716,24 @@ public class WorkControllerTests
 
         Assert.Equal(
             "the next column is \"shipped\", and only the operator moves work there",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_IsRefusedWhereTheNextColumnIsProtected()
+    {
+        var h = await NewAsync();
+        h.Db.AddRange(
+            new EfHatchStatus { Name = "between", SortOrder = 45 },
+            new EfHatchStatus { Name = "shipped", SortOrder = 50, IsProtected = true });
+        await h.Db.SaveChangesAsync();
+        var between = await h.Db.Statuses.SingleAsync(s => s.Name == "between");
+        var issue = await h.FileAsync("story", "the last mile", between.Id);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(between.Id);
+
+        Assert.Equal(
+            "the next column is \"shipped\", and only its approvers move work there",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
