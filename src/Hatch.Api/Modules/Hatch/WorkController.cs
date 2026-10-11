@@ -253,9 +253,9 @@ public class WorkController(
     }
 
     /// <summary>
-    /// Every issue in the review column that the caller holds a checkout of, and
-    /// what the board holds about each one's branch - what a runner's poll asks
-    /// before it asks git anything.
+    /// Every issue in the review column or the merges column that the caller
+    /// holds a checkout of, and what the board holds about each one's branch -
+    /// what a runner's poll asks before it asks git anything.
     /// </summary>
     /// <remarks>
     /// <para>It is not the queue. A verdict is a fact about a branch and not
@@ -281,27 +281,38 @@ public class WorkController(
 
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewCheckDto>();
+        var merges = Columns.Merges(statuses);
+        var ids = merges is null ? new List<long> { review.Id } : new List<long> { review.Id, merges.Id };
 
-        var inReview = await db.Issues
-            .Where(i => i.StatusId == review.Id)
+        var rows = await db.Issues
+            .Where(i => ids.Contains(i.StatusId))
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .ToListAsync(ct);
 
-        var held = inReview.Where(i => HoldsCheckout(i, repos)).ToList();
+        var held = rows.Where(i => HoldsCheckout(i, repos)).ToList();
         var verdicts = await _dispatch.MergeChecksAsync(held.Select(i => i.Id).ToList(), ct);
         var builds = await _dispatch.BuildChecksAsync(held.Select(i => i.Id).ToList(), ct);
 
-        return held.Select(i => new ReviewCheckDto(
-            IssueKey.Format(i.Project!.Key, i.Number),
-            i.Project.Repositories
-                .OrderBy(r => r.SortOrder)
-                .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
-                .ToList(),
-            (verdicts.TryGetValue(i.Id, out var found) ? found : []).Select(IssueMergeChecks.Project).ToList(),
-            (builds.TryGetValue(i.Id, out var built) ? built : []).Select(IssueBuildChecks.Project).ToList(),
-            i.PullRequestUrl))
-            .ToList();
+        return held.Select(i =>
+        {
+            var merged = verdicts.TryGetValue(i.Id, out var mv) ? mv : [];
+            var built = builds.TryGetValue(i.Id, out var bv) ? bv : [];
+            var mergeWork = merges is not null && i.StatusId == merges.Id
+                ? MergeWork.Judge(i, merged, built)
+                : (MergeWork.Judgement?)null;
+
+            return new ReviewCheckDto(
+                IssueKey.Format(i.Project!.Key, i.Number),
+                i.Project.Repositories
+                    .OrderBy(r => r.SortOrder)
+                    .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
+                    .ToList(),
+                merged.Select(IssueMergeChecks.Project).ToList(),
+                built.Select(IssueBuildChecks.Project).ToList(),
+                i.PullRequestUrl,
+                mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence) : null);
+        }).ToList();
     }
 
     /// <summary>

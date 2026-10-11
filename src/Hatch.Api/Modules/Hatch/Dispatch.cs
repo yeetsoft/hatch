@@ -122,16 +122,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // whole pass - HA-112's own limit, beside the section-wide one.
         var epics = await Wip.EpicsAsync(db, candidates.Select(i => i.ParentId), ct);
 
-        // What runners have found about the branches of the issues in review,
-        // read once for the pass and grouped, the way `open` is. Only that
-        // column is asked about: it is the only move a verdict gates.
+        // What runners have found about the branches of the issues in review
+        // and the issues waiting to merge, read once for the pass and
+        // grouped, the way `open` is. Only those two columns are asked
+        // about: they are the only moves a verdict gates.
         var review = Columns.AwaitingReview(statuses);
-        var verdicts = review is not null && byColumn.TryGetValue(review.Id, out var inReview)
-            ? await MergeChecksAsync(inReview.Select(i => i.Id).ToList(), ct)
-            : [];
-        var builds = review is not null && byColumn.TryGetValue(review.Id, out var inReviewToo)
-            ? await BuildChecksAsync(inReviewToo.Select(i => i.Id).ToList(), ct)
-            : [];
+        var merges = Columns.Merges(statuses);
+        var checkedIds = (review is not null && byColumn.TryGetValue(review.Id, out var inReview) ? inReview : [])
+            .Concat(merges is not null && byColumn.TryGetValue(merges.Id, out var inMerges) ? inMerges : [])
+            .Select(i => i.Id).ToList();
+        var verdicts = checkedIds.Count > 0 ? await MergeChecksAsync(checkedIds, ct) : [];
+        var builds = checkedIds.Count > 0 ? await BuildChecksAsync(checkedIds, ct) : [];
 
         // Blocked is static and has no db, so the assignees are resolved here
         // and handed in, the way `open` and `gate` already are. One memoized
@@ -449,14 +450,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// exactly the one that starts and ends in the same column, and nothing
     /// compares column names to say so. Which of the two review kinds it is - a
     /// conflict to resolve or a failing build to fix - is what runners have
-    /// reported about the branch, and <see cref="ReviewWork"/> says.
+    /// reported about the branch, and <see cref="ReviewWork"/> says. A column
+    /// ticked <see cref="EfHatchStatus.MergesPullRequest"/> is asked the same
+    /// way, of <see cref="MergeWork"/> instead - it is never itself a review
+    /// dispatch, since nothing claims or works an issue sitting there.
     /// </summary>
     public static string KindOf(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
         IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds) =>
-        to is not null && to.Id == from.Id
-            ? ReviewWork.Judge(issue, merges, builds).Kind
-            : WorkKinds.Advance;
+        from.MergesPullRequest
+            ? MergeWork.Judge(issue, merges, builds).Kind
+            : to is not null && to.Id == from.Id
+                ? ReviewWork.Judge(issue, merges, builds).Kind
+                : WorkKinds.Advance;
 
     /// <summary>
     /// Why an agent should not be spawned for this issue, or null when it
@@ -465,8 +471,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </summary>
     /// <remarks>
     /// <para>The order is what it costs to change the answer, most fundamental
-    /// first: a terminal column, no column after this one, a terminal next
-    /// column, a live claim, a ready date, an assignee, an unanswered question,
+    /// first: a terminal column, no column after this one, a column that
+    /// merges a pull request, a terminal next column, a live claim, a ready
+    /// date, an assignee, an unanswered question,
     /// a repository the caller has no checkout of, an unmet dependency, an open
     /// child, a full WIP section or an epic at its own limit, the verdict on an
     /// issue's branch, and last a missing playbook. A column with nowhere an
@@ -475,9 +482,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// clone; a dependency needs other work to land; an open child needs its
     /// own session or its own close; a full section or a full epic each need
     /// other work to leave; a clean branch with a build that passes, is
-    /// running or has not been read needs nothing at all; and a missing
-    /// playbook needs the operator, which is last because it is only worth
-    /// saying about an issue that is otherwise a candidate.</para>
+    /// running or has not been read needs nothing at all; a column that
+    /// merges a pull request needs whatever <see cref="MergeWork"/> itself
+    /// names, which is never nothing - it is why that fold sits ahead of
+    /// every later one, none of which apply to a column nothing is ever
+    /// claimed or worked in; and a missing playbook needs the operator,
+    /// which is last because it is only worth saying about an issue that is
+    /// otherwise a candidate.</para>
     ///
     /// <para>An epic's own "open child" rule sits beside the generic one and
     /// reads differently in two ways: it ignores a deferred child entirely
@@ -498,6 +509,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// checkout of the repository the branch is in - and dependencies do not: a
     /// pull request that exists is not held back by what its ticket once waited
     /// on.</para>
+    ///
+    /// <para>A column ticked <see cref="EfHatchStatus.MergesPullRequest"/> is
+    /// folded the same way and for the same reason, but ahead of the
+    /// terminal and protected checks rather than in their place: such a
+    /// column is always followed by one of those two, so without this fold
+    /// first its generic sentence would fire and <see cref="MergeWork"/>'s
+    /// own would never be seen. Nothing claims or works an issue sitting
+    /// there either, so every fold below - the claim, the stalled window,
+    /// mine, the assignee, the open question - is short-circuited past the
+    /// same way the terminal check already short-circuits past them.</para>
     ///
     /// <para>The claim sits above all of those and below the column checks, for
     /// a different reason than the rest of the order. It is the only fold that
@@ -639,6 +660,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (to is null)
             return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
+
+        if (from.MergesPullRequest)
+            return MergeWork.Judge(issue, verdicts, builds).Sentence;
 
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";

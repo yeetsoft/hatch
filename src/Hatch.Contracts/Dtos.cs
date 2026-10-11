@@ -1522,12 +1522,21 @@ public record QueueEntryDto(
 /// <param name="MergeChecks">Every verdict the board holds for the issue, one per repository.</param>
 /// <param name="BuildChecks">Every build verdict the board holds for the issue, one per repository. Absent from a board that predates them.</param>
 /// <param name="PullRequestUrl">The pull request recorded on the issue, or null where none is. Absent from a board that predates it.</param>
+/// <param name="MergeWork">
+/// The judge's answer for a row in the merges column, or null for a row in
+/// the review column. The client never re-derives it: the server judges,
+/// and this is the judgement.
+/// </param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<MergeCheckDto> MergeChecks,
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
-    string? PullRequestUrl = null);
+    string? PullRequestUrl = null,
+    MergeWorkDto? MergeWork = null);
+
+/// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
+public record MergeWorkDto(string Kind, string Sentence);
 
 // ---- Rollups ----
 

@@ -5310,6 +5310,56 @@ public class WorkControllerTests
         Assert.Null(row.PullRequestUrl);
     }
 
+    // ---- An issue in the merges column ----
+
+    [Fact]
+    public async Task MergeColumn_WithNoVerdictYet_IsHeld()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("task", "waiting for a runner to check it", approved.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(WorkKinds.Hold, entry.Kind);
+        Assert.Equal("no runner has checked its branch against the trunk yet", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithACleanBranchThatDoesNotHoldTrunk_IsAnUpdate()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "merges cleanly but stale", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(WorkKinds.Update, entry.Kind);
+        Assert.Equal("its branch merges cleanly with main but does not hold its tip yet", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithACleanBranchThatHoldsTrunkAndAPassingBuild_IsAMerge()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(WorkKinds.Merge, entry.Kind);
+        Assert.Equal("its branch holds main and its build passes", entry.Blocked);
+    }
+
     // ---- The review read ----
 
     [Fact]
@@ -5411,6 +5461,29 @@ public class WorkControllerTests
         Assert.Equal(
             [Key(first), Key(second)],
             Value(await h.Work.GetReview(null, true, default)).Select(r => r.Key));
+    }
+
+    [Fact]
+    public async Task ReviewRead_AMergesColumnIssueComesBackWithMergeWorkPopulated()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var inReview = await h.FileAsync("story", "up for review", h.Review);
+        var inMerges = await h.FileAsync("task", "ready to merge", approved.Id);
+        await h.VerdictAsync(inMerges, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(inMerges, BuildVerdicts.Passed);
+
+        var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
+
+        Assert.Equal([Key(inReview), Key(inMerges)], rows.Select(r => r.Key).Order());
+        Assert.Null(rows.Single(r => r.Key == Key(inReview)).MergeWork);
+        Assert.Equal(
+            new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes"),
+            rows.Single(r => r.Key == Key(inMerges)).MergeWork);
     }
 
     // ---- Merged: a runner reporting that the recorded pull request has merged ----
@@ -7173,7 +7246,7 @@ public class WorkControllerTests
         /// </summary>
         public async Task VerdictAsync(
             EfHatchIssue issue, string verdict, string remote = "https://example.com/o/r", string trunk = "main",
-            params string[] files)
+            bool? holdsTrunk = null, params string[] files)
         {
             var (canonical, _) = RemoteIdentity.Canonical(remote);
             Db.MergeChecks.Add(new EfHatchMergeCheck
@@ -7187,6 +7260,7 @@ public class WorkControllerTests
                 Branch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-thing" : null,
                 BranchSha = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
                 Files = files.Length == 0 ? null : string.Join('\n', files),
+                HoldsTrunk = holdsTrunk,
                 CheckedAt = Now,
                 Runner = "host:/checkout",
                 CheckedBy = "runner",
