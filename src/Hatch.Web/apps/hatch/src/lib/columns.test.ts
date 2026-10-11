@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { awaitingReview, implementation, isObviated, landingFocus, statusChoices } from './columns';
+import { awaitingReview, implementation, isObviated, landingFocus, sendBack, statusChoices } from './columns';
 import type { Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -119,6 +119,61 @@ describe('awaitingReview and implementation', () => {
 
     expect(implementation(board)?.id).toBe(todo.id);
     expect(awaitingReview(board)?.id).toBe(review.id);
+  });
+});
+
+describe('sendBack', () => {
+  it('on a plain board, is the column before doing', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20);
+    const review = status(3, 30);
+    const done = status(4, 40, { isTerminal: true });
+    const board = [todo, doing, review, done];
+
+    expect(sendBack(board)?.id).toBe(todo.id);
+  });
+
+  it('feeds the ticked implementation column, not a column ticked elsewhere', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20, { isImplementation: true });
+    const checkA = status(3, 30);
+    const review = status(4, 40);
+    const done = status(5, 50, { isTerminal: true });
+    const board = [todo, doing, checkA, review, done];
+
+    expect(sendBack(board)?.id).toBe(todo.id);
+  });
+
+  it('feeds the measured implementation column through agent checks, not the literal next one', () => {
+    const todo = status(1, 10);
+    const doing = status(2, 20);
+    const checkA = status(3, 30);
+    const checkB = status(4, 40);
+    const review = status(5, 50);
+    const done = status(6, 60, { isTerminal: true });
+    const board = [todo, doing, checkA, checkB, review, done];
+
+    expect(implementation(board)?.id).toBe(checkB.id);
+    expect(sendBack(board)?.id).toBe(checkA.id);
+  });
+
+  it('is null on a board with no implementation column', () => {
+    const review = status(1, 10);
+    const done = status(2, 20, { isTerminal: true });
+    const board = [review, done];
+
+    expect(implementation(board)).toBeNull();
+    expect(sendBack(board)).toBeNull();
+  });
+
+  it('is null where nothing dispatches into the ticked implementation column', () => {
+    const doing = status(1, 10, { isImplementation: true });
+    const review = status(2, 20);
+    const done = status(3, 30, { isTerminal: true });
+    const board = [doing, review, done];
+
+    expect(implementation(board)?.id).toBe(doing.id);
+    expect(sendBack(board)).toBeNull();
   });
 });
 

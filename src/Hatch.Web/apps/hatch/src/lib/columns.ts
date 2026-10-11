@@ -108,6 +108,41 @@ export function implementation(statuses: Status[]): Status | null {
 }
 
 /**
+ * The column a dispatch out of `from` ends in: the next one, except for the
+ * awaiting-review column, which is dispatched to itself - only a person
+ * decides that something shipped, so there is nowhere to advance it to - and
+ * except where the next column is terminal or protected, which a dispatch is
+ * not allowed to land work in.
+ *
+ * Mirrors the server's Columns.Target. Stays unexported, same as advance():
+ * nothing outside this file dispatches, so nothing outside it needs the
+ * self-dispatch rule.
+ */
+function target(statuses: Status[], from: Status): Status | null {
+  const next = advance(statuses, from);
+  if (next && (next.isTerminal || next.isProtected) && awaitingReview(statuses)?.id === from.id) {
+    return from;
+  }
+  return next;
+}
+
+/**
+ * The column that feeds implementation(): the one whose own target() is the
+ * implementation column, measured the same way implementation()'s own
+ * fallback measures the awaiting-review column's feeder - off target(),
+ * since that is what every forward dispatch actually reads, rather than the
+ * structurally-next column. Null on a board with no implementation column,
+ * and null where nothing's target() lands on it.
+ *
+ * Mirrors the server's Columns.SendBack.
+ */
+export function sendBack(statuses: Status[]): Status | null {
+  const impl = implementation(statuses);
+  if (!impl) return null;
+  return statuses.find((s) => target(statuses, s)?.id === impl.id) ?? null;
+}
+
+/**
  * Where the keyboard lands when a picker opens on this column: one lane
  * along the board, in the direction that makes Enter, Enter walk it forward.
  *
