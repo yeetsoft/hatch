@@ -15,8 +15,8 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 public class ColumnsTests
 {
-    static EfHatchStatus S(int id, string name, int sortOrder, bool terminal = false, bool isProtected = false) =>
-        new() { Id = id, Name = name, SortOrder = sortOrder, IsTerminal = terminal, IsProtected = isProtected };
+    static EfHatchStatus S(int id, string name, int sortOrder, bool terminal = false, bool isProtected = false, bool mergesPullRequest = false) =>
+        new() { Id = id, Name = name, SortOrder = sortOrder, IsTerminal = terminal, IsProtected = isProtected, MergesPullRequest = mergesPullRequest };
 
     [Fact]
     public void PlainBoard_AwaitingReviewIsReview_ImplementationIsDoing()
@@ -126,6 +126,31 @@ public class ColumnsTests
 
         Assert.Null(Columns.Implementation(board));
         Assert.Null(Columns.SendBack(board));
+    }
+
+    [Fact]
+    public void NoTickedColumn_MergesIsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var done = S(4, "Done", 40, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, done };
+
+        Assert.Null(Columns.Merges(board));
+    }
+
+    [Fact]
+    public void OneTickedProtectedColumn_MergesNamesIt()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var merges = S(4, "Merges", 40, isProtected: true, mergesPullRequest: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, merges, done };
+
+        Assert.Equal(merges.Id, Columns.Merges(board)?.Id);
     }
 
     [Fact]

@@ -105,6 +105,14 @@ public static class Columns
     }
 
     /// <summary>
+    /// The column a person ticked <see cref="EfHatchStatus.MergesPullRequest"/>
+    /// on - found the same way <see cref="AwaitingReview"/> is, off the board
+    /// rather than off a name.
+    /// </summary>
+    public static EfHatchStatus? Merges(List<EfHatchStatus> statuses) =>
+        Board(statuses).FirstOrDefault(s => s.MergesPullRequest);
+
+    /// <summary>
     /// The column where an agent writes the code: the one a person ticked
     /// <em>Code written here</em> on. Where none is ticked, the one whose own
     /// next move is into the awaiting-review column. Null only on an unticked

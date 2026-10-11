@@ -1412,6 +1412,15 @@ public static class WorkKinds
     /// pushed a new tip, and the build on that tip is judged later, by the board.
     /// </summary>
     public const string Build = "build";
+
+    /// <summary>The merge column's branch holds the trunk and its build passed - an agent merges it.</summary>
+    public const string Merge = "merge";
+
+    /// <summary>The merge column's branch merges cleanly with the trunk but does not hold its tip yet - an agent updates it.</summary>
+    public const string Update = "update";
+
+    /// <summary>The merge column is waiting on a conflict, a build, or a runner - nothing an agent can do about it.</summary>
+    public const string Hold = "hold";
 }
 
 /// <summary>Which of the five reasons carried a hop - see WorkDto.HopKind.</summary>
