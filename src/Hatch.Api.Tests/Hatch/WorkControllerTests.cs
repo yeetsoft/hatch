@@ -1259,7 +1259,7 @@ public class WorkControllerTests
             await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged,
                 new { from = "todo", to = "in progress" }, at.AddMinutes(i * 2));
             await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged,
-                new { from = "in progress", to = "todo", sendback = true }, at.AddMinutes(i * 2 + 1));
+                new { from = "in progress", to = "todo", sendback = true, length = 1001, limit = 1000 }, at.AddMinutes(i * 2 + 1));
         }
     }
 
