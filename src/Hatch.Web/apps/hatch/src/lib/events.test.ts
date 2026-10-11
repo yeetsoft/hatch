@@ -44,6 +44,17 @@ describe('describe', () => {
     ).toBe('Backlog → To Do, under HA-86');
   });
 
+  it('marks a hop sent back for its brief, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({
+          kind: 'status_changed',
+          payload: { from: 'In Progress', to: 'To Do', sendback: true, length: 9000, limit: 8000 },
+        }),
+      ),
+    ).toBe('In Progress → To Do, sent back - brief is 9000 characters, limit 8000');
+  });
+
   it('names a project move that carried its descendants with it', () => {
     expect(
       describeEvent(

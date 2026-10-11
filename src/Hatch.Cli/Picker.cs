@@ -110,12 +110,13 @@ public sealed class Picker(
 
     private readonly bool _clones = workspace is not null;
 
-    /// <summary>The word a hop row prints, naming which of the four reasons carried it.</summary>
+    /// <summary>The word a hop row prints, naming which of the five reasons carried it.</summary>
     public static string HopWord(string? hopKind, string? hopUnder) => hopKind switch
     {
         HopKinds.Parent => "parent pulled",
         HopKinds.Epic => "epic",
         HopKinds.Under => $"under {hopUnder}",
+        HopKinds.SendBack => "sent back",
         _ => "express",
     };
 

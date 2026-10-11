@@ -17,11 +17,14 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
 
   /* The hop: a move the loop made itself, with nobody reading the ticket
-     first - see docs/hatch.md, "The hop". Four kinds now carry it: express,
+     first - see docs/hatch.md, "The hop". Five kinds now carry it: express,
      a child its parent pulled (HA-149's `pulled`, never rendered before this -
      a pre-existing gap this closes rather than opens), an epic entering the
-     WIP section, and a story or bug carried under a running epic. Rendered
-     before the ordinary from/to line, which it is a variant of. */
+     WIP section, a story or bug carried under a running epic, and a childless
+     issue whose brief is over its playbook's BriefLimit, sent back a column
+     (HA-394's `sendback`, carrying the brief's length and the limit it
+     crossed). Rendered before the ordinary from/to line, which it is a
+     variant of. */
   if (event.kind === 'status_changed' && event.payload?.express === true) {
     return `${short(from)} → ${short(to)}, express`;
   }
@@ -33,6 +36,12 @@ export function describe(event: IssueEvent): string {
   }
   if (event.kind === 'status_changed' && typeof event.payload?.under === 'string') {
     return `${short(from)} → ${short(to)}, under ${short(event.payload.under)}`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.sendback === true) {
+    const { length, limit } = event.payload;
+    return typeof length === 'number' && typeof limit === 'number'
+      ? `${short(from)} → ${short(to)}, sent back - brief is ${length} characters, limit ${limit}`
+      : `${short(from)} → ${short(to)}, sent back`;
   }
 
   /* Filed under an express parent, and born express itself - see
