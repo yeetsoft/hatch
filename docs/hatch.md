@@ -2790,7 +2790,7 @@ named a ticket is owed the sentence saying why it cannot move.
 
 ### The hop
 
-**The loop's own write, on the loop's own say-so.** Four kinds, asked in this
+**The loop's own write, on the loop's own say-so.** Five kinds, asked in this
 order:
 
 1. **express** — an issue that is [express](#express) and stands in a column
@@ -2813,15 +2813,35 @@ order:
    whose parent stands in the implementation column and none of whose
    siblings is standing further along, in board order, than the column this
    issue would be pulled into (HA-149).
+5. **sendback** — a childless issue standing in a column, to the right
+   (strictly, in board order) of `Columns.SendBack` — the column whose own
+   `Target` is the implementation column (`Columns.Implementation`),
+   measured off board shape rather than named — whose matched playbook sets
+   a `BriefLimit` the issue's own description is longer than. Asked last,
+   after the other four, so nothing already qualifying for one of them
+   changes meaning (HA-394). Where the issue already stands in that column,
+   or left of it, this is not a hop: going further would cross the Backlog
+   threshold and re-require prioritisation, and the twentieth condition
+   below folds the move instead.
 
-`POST /api/hatch/work/{key}/hop` carries the issue one column right — the
-same column `Columns.Advance` would send a session to for the first three
-kinds — and spawns nothing. No model runs, nothing is spent, and no work-log
-row is written, because a hop is not an increment. None of the first three
-kinds ever fires on a move that ends where it starts: a review self-move —
-resolving a conflict or a failing build — is never a hop, whatever column is
-ticked. The fourth kind, `parent`, does not carry that exclusion; its own gap
-on a `ParentPulls` review column is a separate matter from this one.
+Hatch clears a blocker in this order — deterministic first (the board's own
+shape answers it, and this fifth kind is that), heuristic second (a session
+gets the narrowest brief that can settle it), and a person last, only for
+what is theirs. A fold whose sentence is an imperative aimed at nobody —
+"cut it into tasks first", said to no one — is a bug on its face, which is
+why this kind exists rather than leaving that fold as the only answer.
+
+`POST /api/hatch/work/{key}/hop` carries the issue to the column the kind
+names: the same column `Columns.Advance` would send a session to, for the
+first four kinds, or `Columns.SendBack` itself — a column strictly left of
+where the issue stands — for the fifth. No model runs, nothing is spent, and
+no work-log row is written, because a hop is not an increment. None of the
+first three kinds ever fires on a move that ends where it starts: a review
+self-move — resolving a conflict or a failing build — is never a hop,
+whatever column is ticked. The fourth and fifth kinds do not carry that
+exclusion, each for its own reason: the fourth's own gap on a `ParentPulls`
+review column, and the fifth's own measurement off `Columns.SendBack` rather
+than off `to`.
 
 It takes the same query parameters `GET /api/hatch/work/{key}` takes, and no
 `heldToken`: **a hop takes no claim.** A claim protects a session that runs for
@@ -2839,9 +2859,10 @@ Two answers, both `409`, and each carries the sentence a reader would see on
   column, a top-level epic (its own column is the signal, not a pass), an
   epic whose parent epic is not running, an epic with nothing filed under it,
   or (for a child of a `ParentPulls` column) a parent that has not reached the
-  implementation column, or a sibling already in flight. The sentence is
-  exactly the one `Blocked` already gives for that fold.
-- The issue is clear, but is not a hop — none of the four kinds above applies,
+  implementation column, or a sibling already in flight, or a childless issue
+  over its playbook's `BriefLimit` with no column to send it back to. The
+  sentence is exactly the one `Blocked` already gives for that fold.
+- The issue is clear, but is not a hop — none of the five kinds above applies,
   or the move is a review self-move. A session moves this issue, and a hop
   does not.
 
@@ -3365,10 +3386,11 @@ line naming the two values says which of them the issue chose.
 
 ### What makes an issue actionable
 
-Nineteen conditions, the eighteenth a way out of the seventeenth rather than one
-more gate, and the nineteenth a fact about the walk rather than the issue. An
-issue is the loop's to pick up when it meets every one before it, and the
-sentence saying which one it failed is what `work/queue` reports:
+Twenty conditions, the eighteenth a way out of the seventeenth rather than one
+more gate, the nineteenth a fact about the issue rather than another way out,
+and the twentieth a fact about the walk rather than either. An issue is the
+loop's to pick up when it meets every one before it, and the sentence saying
+which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is not terminal.** For
    most columns that is the column to their right: the end of the board is not a
@@ -3500,7 +3522,7 @@ sentence saying which one it failed is what `work/queue` reports:
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, only from needing a
     playbook, from [economy's or low's own gate](#expedite) — the seventh and
-    eighth conditions — or from the park below — the nineteenth. A clear hop
+    eighth conditions — or from the park below — the twentieth. A clear hop
     is still carried across either way, parked or not; being carried across is
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
@@ -3525,7 +3547,31 @@ sentence saying which one it failed is what `work/queue` reports:
     reached the implementation column, so nothing pulls it forward yet", or "a
     sibling is already in flight, so only one child is pulled through at a
     time".
-19. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+
+    A childless issue whose brief is longer than its matched playbook's own
+    `BriefLimit` is a fifth kind of hop, where `Columns.SendBack` — the
+    column whose own `Target` is the implementation column — stands
+    strictly left, in board order, of the column this issue stands in: a hop
+    back to it needs no playbook and spawns no session, for the same reason
+    the first four need none. Where no such column exists, or the issue
+    already stands in it or left of it, this is not a hop, and condition
+    nineteen, just below, folds the move instead.
+19. **A childless issue's brief is no longer than its matched playbook's own
+    `BriefLimit`, where one is set.** Not asked at all where the matched
+    playbook leaves `BriefLimit` null, or where the issue already has a
+    child — a brief big enough to want breaking down is exactly what children
+    are for, so a parent is never folded by its own length. Tried first as
+    the fifth kind of hop, just above: an over-the-limit, childless issue is
+    carried back to `Columns.SendBack` wherever that column exists and
+    stands strictly left of this one. Failing that — no such column on this
+    board, or the issue already standing in it or further back — the move is
+    folded instead, naming the length and the limit:
+
+    ```
+    its brief is 18,044 characters, and this move is spawned on at most
+    8,000 - cut it into tasks first
+    ```
+20. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
     six levels are walked top down, once each, across every row the walk
     reaches; the first *clear* row the walk sees is remembered, and every row
     in a tier strictly below that one that would otherwise be clear is folded
@@ -3549,12 +3595,12 @@ sentence saying which one it failed is what `work/queue` reports:
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
 
-Thirteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16 and 17 — are facts
-about the issue, and `work/{key}` asks them too. The eighteenth is as well, and
-`work/{key}` answers it the same way `work/queue` does: `WorkDto.Hop`. The
-other four — 6, 7, 8 and 9 — are the loop's policy and are asked only when the
-pass is asking;
-see [one more, on `next` alone](#one-more-on-next-alone). The nineteenth is
+Fourteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17 and 19 — are
+facts about the issue, and `work/{key}` asks them too. The eighteenth is as
+well, and `work/{key}` answers it the same way `work/queue` does:
+`WorkDto.Hop`. The other four — 6, 7, 8 and 9 — are the loop's policy and are
+asked only when the pass is asking;
+see [one more, on `next` alone](#one-more-on-next-alone). The twentieth is
 neither: not a fact about one issue, since it depends on every other row the
 same walk reaches, and not the loop's policy, since it folds `work/queue`
 exactly as it folds `work/next`. It is a fact about the walk itself, asked only
