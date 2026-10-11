@@ -159,6 +159,42 @@ public sealed class PromptTests
             Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
     }
 
+    // ---- HA-395: a ticket sent back for its brief's size ----
+
+    [Fact]
+    public void A_ticket_never_sent_back_gets_no_such_section()
+    {
+        Assert.DoesNotContain("## This ticket was sent back",
+            Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_ticket_sent_back_and_able_to_take_children_is_told_to_cut_it_into_tasks()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "story"),
+            sentBack: new SentBackDto(Length: 5000, Limit: 4000, CanTakeChildren: true));
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket was sent back", prompt, StringComparison.Ordinal);
+        Assert.Contains("5000 characters, over the 4000", prompt, StringComparison.Ordinal);
+        Assert.Contains("Cut it into child tasks", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_ticket_sent_back_and_unable_to_take_children_is_told_to_file_siblings()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "task"),
+            sentBack: new SentBackDto(Length: 5000, Limit: 4000, CanTakeChildren: false));
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket was sent back", prompt, StringComparison.Ordinal);
+        Assert.Contains("file the excess as new sibling tasks under the same parent", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_ticket_says_when_it_chose_the_model_rather_than_the_playbook()
     {

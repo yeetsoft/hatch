@@ -1349,6 +1349,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// as waiting on a pull request, off <c>Columns.AwaitingReview</c> and never
 /// off a column's name. False on a client too old to read it.
 /// </param>
+/// <param name="SentBack">
+/// Set where this issue's most recent move was a send-back for an over-long
+/// brief - see <see cref="SentBackDto"/>. Null where it was not, including on
+/// a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1365,7 +1370,15 @@ public record WorkDto(
     string? HopKind = null,
     string? HopUnder = null,
     int LetGo = 0,
-    bool InReview = false);
+    bool InReview = false,
+    SentBackDto? SentBack = null);
+
+/// <summary>
+/// The two numbers a send-back for an over-long brief carried, and whether
+/// this issue's type can take children at all - see
+/// <c>EfHatchIssue.LegalParentTypes</c>, which decides it.
+/// </summary>
+public record SentBackDto(int Length, int Limit, bool CanTakeChildren);
 
 /// <summary>
 /// What a dispatch is for. Three, and the second and third are the only

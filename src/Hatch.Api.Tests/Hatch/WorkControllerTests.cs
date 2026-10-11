@@ -1246,6 +1246,78 @@ public class WorkControllerTests
         Assert.False(work.Hop);
     }
 
+    // ---- Send-back streak, bounded by StallResumeLimit ----
+    //
+    // A round trip writes two events: the send-back itself (sendback: true),
+    // and - further back - the ordinary advance that put the issue back in
+    // the implementation column (no sendback flag). See HA-397.
+
+    private static async Task RoundTripsAsync(Harness h, EfHatchIssue issue, DateTimeOffset at, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged,
+                new { from = "todo", to = "in progress" }, at.AddMinutes(i * 2));
+            await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged,
+                new { from = "in progress", to = "todo", sendback = true }, at.AddMinutes(i * 2 + 1));
+        }
+    }
+
+    [Fact]
+    public async Task Hop_UnderTheSendBackStreakLimit_IsStillSentBack()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "bounced twice already, still under the limit", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await RoundTripsAsync(h, issue, Now, 2);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+
+        Assert.Equal(h.Todo, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task Work_AtTheSendBackStreakLimit_IsFolded_NotSentBackAgain()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "bounced three times already, at the limit", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await RoundTripsAsync(h, issue, Now, 3);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(
+            "sent back 3 times in a row, at this board's limit of 3 - held for a person now, not sent back again",
+            work.Blocked);
+        Assert.False(work.Hop);
+
+        var before = (await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count;
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+        Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(before, (await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count);
+    }
+
+    [Fact]
+    public async Task Hop_ASendBackStreakBrokenByAnOrdinaryMove_DoesNotCountTheRoundTripsBeforeIt()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "two round trips, then a real advance, then back", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await RoundTripsAsync(h, issue, Now, 2);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "in progress", to = "review" }, Now.AddMinutes(10));
+        await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "review", to = "in progress" }, Now.AddMinutes(11));
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+
+        Assert.Equal(h.Todo, moved.StatusId);
+    }
+
     // ---- Refusals ----
 
     /// <summary>
@@ -1470,6 +1542,77 @@ public class WorkControllerTests
             EfHatchIssueEvent.ClaimReleased,
             new { from = "Nathan on host:/checkout", to = (string?)null, outcome },
             at);
+
+    // ---- HA-395: whether the last move was a send-back, carried to the next session ----
+
+    [Fact]
+    public async Task SentBack_IsNullForAnIssueWithNoTrailAtAll()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "never sent back", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).SentBack);
+    }
+
+    [Fact]
+    public async Task SentBack_ReadsBackTheLengthAndLimitOffASendBackHop()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "too long to spawn on", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var sentBack = Value(await h.Work.GetWork(Key(issue), null, default)).SentBack;
+        Assert.NotNull(sentBack);
+        Assert.Equal(1001, sentBack!.Length);
+        Assert.Equal(1000, sentBack.Limit);
+    }
+
+    [Fact]
+    public async Task SentBack_IsClearedByALaterStatusChange()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "sent back, then moved on", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "Todo", to = "In Progress" }, Now.AddMinutes(1));
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).SentBack);
+    }
+
+    [Fact]
+    public async Task SentBack_CanTakeChildrenIsTrueForATypeLegalParentTypesNamesForATask()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "a story, which can take tasks", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        Assert.True(Value(await h.Work.GetWork(Key(issue), null, default)).SentBack!.CanTakeChildren);
+    }
+
+    [Fact]
+    public async Task SentBack_CanTakeChildrenIsFalseForATaskItself()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("task", "a task, which takes no children", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        Assert.False(Value(await h.Work.GetWork(Key(issue), null, default)).SentBack!.CanTakeChildren);
+    }
 
     [Fact]
     public async Task NextWork_PassesOverAnIssueWaitingOnAnAnswer()

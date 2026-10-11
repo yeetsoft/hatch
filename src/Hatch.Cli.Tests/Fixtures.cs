@@ -72,7 +72,8 @@ public static class Fixtures
         string? hopKind = null,
         string? hopUnder = null,
         int letGo = 0,
-        bool inReview = false) =>
+        bool inReview = false,
+        SentBackDto? sentBack = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -89,7 +90,8 @@ public static class Fixtures
             HopKind: hop ? hopKind ?? HopKinds.Express : null,
             HopUnder: hop ? hopUnder : null,
             LetGo: letGo,
-            InReview: inReview);
+            InReview: inReview,
+            SentBack: sentBack);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(

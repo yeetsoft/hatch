@@ -181,6 +181,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var marked = candidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
         if (marked.Count > 0) letGoCounts = await LetGo.CountsAsync(db, marked, ct);
 
+        // Unconditional on the implementation column existing - nothing as cheap
+        // as StalledAt pre-filters which candidates could be mid-round-trip.
+        Dictionary<long, int>? sendBackStreaks = implementation is null
+            ? null
+            : await SendBackStreak.CountsAsync(db, candidates.Select(i => i.Id).ToList(), implementation.Name, ct);
+
         // Set only after a tier's own loop below has finished, so two clear rows in
         // the same tier never park each other - only a strictly higher tier's clear
         // row, remembered here on a previous iteration, can. Never reassigned once
@@ -209,12 +215,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook);
+                    var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
-                        issue, status, to, playbook, waiting, letGo, loop, pace, gate, family, claimed,
+                        issue, status, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
 
                     var sentence = blocked;
@@ -526,6 +533,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// stalled issue past its own resume window is held rather than resumed
     /// once this reaches <see cref="IssueClaims.StallResumeLimit"/>.
     /// </param>
+    /// <param name="sendBackStreak">
+    /// How many times in a row a send-back hop has bounced this issue - see
+    /// <see cref="SendBackStreak.Count"/>. A send-back is immediate, so unlike
+    /// <paramref name="letGo"/> there is no window to wait out: an issue this
+    /// would otherwise send back is held instead once this reaches
+    /// <see cref="IssueClaims.StallResumeLimit"/>, the same config key the
+    /// stalled fold above already reads.
+    /// </param>
     /// <param name="loop">
     /// The pass's own policy, or null when somebody named this ticket by hand.
     /// The one fold it adds is a decision about what an unattended run may
@@ -595,6 +610,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchPlaybook? playbook,
         int waiting,
         int letGo,
+        int sendBackStreak,
         LoopScope? loop,
         PaceReadings? pace,
         DependencyGate gate,
@@ -788,6 +804,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 : "its parent has not reached the implementation column, so nothing pulls it forward yet";
         }
 
+        if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak >= claimed.Claims!.StallResumeLimit)
+            return $"sent back {sendBackStreak} times in a row, at this board's limit of " +
+                   $"{claimed.Claims!.StallResumeLimit} - held for a person now, not sent back again";
+
         if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0 && issue.Description.Length > limit)
             return $"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
                    $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
@@ -823,7 +843,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
         List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
-        EfHatchPlaybook? playbook)
+        EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit)
     {
         var crosses = to is not null && to.Id != from.Id;
 
@@ -843,13 +863,32 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
 
-        if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0
-            && issue.Description.Length > limit
-            && Columns.SendBack(statuses) is { } sendBack
-            && Columns.Board(statuses).FindIndex(s => s.Id == sendBack.Id) < Columns.Board(statuses).FindIndex(s => s.Id == from.Id))
+        if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
             return HopKinds.SendBack;
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether this issue, standing in <paramref name="from"/>, is the one
+    /// case <see cref="HopKind"/> and <see cref="Blocked"/> must agree on
+    /// exactly: a childless issue whose brief is over its playbook's
+    /// <see cref="EfHatchPlaybook.BriefLimit"/>, with <see cref="Columns.SendBack"/>
+    /// naming a column strictly left of the one it stands in (HA-394). Neither
+    /// caller asks this on its own, so the two cannot drift onto different
+    /// issues as this ticket's send-back limit is checked against it.
+    /// </summary>
+    private static bool SendBackEligible(
+        EfHatchIssue issue, EfHatchStatus from, FamilyGate family,
+        List<EfHatchStatus> statuses, EfHatchPlaybook? playbook)
+    {
+        if (playbook?.BriefLimit is not { } limit) return false;
+        if (family.Children(issue.Id).Count != 0) return false;
+        if (issue.Description.Length <= limit) return false;
+        if (Columns.SendBack(statuses) is not { } sendBack) return false;
+
+        var board = Columns.Board(statuses);
+        return board.FindIndex(s => s.Id == sendBack.Id) < board.FindIndex(s => s.Id == from.Id);
     }
 
     /// <summary>

@@ -408,11 +408,14 @@ public class WorkController(
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var parent = family.ParentOf(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook);
+        var sendBackStreak = Columns.Implementation(statuses) is { } implementation
+            ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
+            : 0;
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, letGo,
+            issue, from, to, playbook, waiting, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
             null,
             await DependencyGate.ForAsync(db, statuses, ct),
@@ -638,11 +641,15 @@ public class WorkController(
             .ToList();
 
         var hopParent = family.ParentOf(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook);
+        var sendBackStreak = Columns.Implementation(statuses) is { } implementation
+            ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
+            : 0;
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
+        var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, letGo, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
+            issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hop, statuses, wip, epics);
         var hopped = hop && blocked is null;
@@ -679,7 +686,9 @@ public class WorkController(
             hopped ? hopKind : null,
             hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
             letGo,
-            inReview);
+            inReview,
+            sentBack is null ? null : new SentBackDto(
+                sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)));
     }
 
     /// <summary>

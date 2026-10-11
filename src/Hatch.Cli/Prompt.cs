@@ -109,6 +109,22 @@ public static class Prompt
             lines.Add("");
         }
 
+        // The newer and more specific of the three server-side "why you're
+        // here" facts - said after LetGo and StalledWhy, and before the
+        // decisions, which are newer still.
+        if (work.SentBack is { } sentBack)
+        {
+            lines.Add("## This ticket was sent back");
+            lines.Add("");
+            lines.Add($"Its brief was {sentBack.Length} characters, over the {sentBack.Limit} a move");
+            lines.Add("here is spawned on, and it was sent back rather than analysed.");
+            lines.Add(sentBack.CanTakeChildren
+                ? "Cut it into child tasks, each under the limit, rather than trimming it in place."
+                : $"A {issue.Type} takes no children, so trim this description to the slice it keeps");
+            if (!sentBack.CanTakeChildren) lines.Add("and file the excess as new sibling tasks under the same parent.");
+            lines.Add("");
+        }
+
         // Decisions that were asked for and given, on this ticket, before now.
         // Carried into the prompt rather than left for the agent to find in the
         // comment thread, because the one thing a session must not do is reopen
