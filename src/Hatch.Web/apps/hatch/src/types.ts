@@ -305,6 +305,15 @@ export interface TrunkBuild {
   bugIssueKey: string | null;
 }
 
+/** The three fields HA-406's modal can set before filing - see
+    TrunkBuildBugRequest. All optional; omitting one files as the route files
+    without a body. */
+export interface TrunkBuildBugRequest {
+  express?: boolean | null;
+  priority?: string | null;
+  statusId?: number | null;
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
