@@ -141,37 +141,16 @@ one loads on every increment. Two rules from it matter enough to repeat:
 
 ### Implementing a ticket
 
-- Move it to **in progress** before starting, so the board says what is being
-  worked on right now. That is the board's whole job.
-- `POST /api/hatch/issues/AER-12/comments` with the commit sha and the branch —
-  the ticket is where somebody looks in six months, and a comment naming a
-  commit is what makes that search short.
-- `./scripts/hatch.sh pr AER-12 <url>` if you opened a pull request. `pr AER-12`
-  with no URL reads back the one that is set, and `--clear` takes it off. That
-  pull request's title begins `AER-12 ` and its description opens with the line
-  `[AER-12](<origin>/apps/hatch/issues/AER-12)`, then a blank line; `<origin>`
-  is `HATCH_BASE` unless the install sets a public address, and the link is
-  never relative.
-- **Never move a ticket to a terminal or a deferred status.** Only the operator
-  decides that something shipped, and only the operator decides that something
-  is not worth doing now. An increment ends in the column its prompt's "Where
-  this increment ends" section names — not a fixed column, since a story or
-  task's target varies — with a comment saying what landed and what did not;
-  work that should be shelved is said on the ticket.
-- **End by saying what you did**, in a fenced block:
-
-  ~~~
-  ```work-log
-  A title naming what this session did
-
-  The summary, under 100 words.
-  ```
-  ~~~
-
-  `hatch` lifts that out of the last thing the session says and posts it,
-  with what the increment cost, as one row of the **work log** on the ticket —
-  the only record anywhere that knows *which* ticket the money went on. Write it
-  last, and write it once: whichever block comes last wins.
+- Move it to **in progress** before starting — that is the board's whole job.
+- `POST /api/hatch/issues/AER-12/comments` with the commit sha and branch —
+  the ticket is where somebody looks in six months.
+- Record a pull request with `./scripts/hatch.sh pr AER-12 <url>`, named the
+  way the prompt's `## Opening a pull request` section says.
+- **Never move a ticket to a terminal or deferred status** — only the
+  operator does. The prompt's "Where this increment ends" section names
+  where this one stops.
+- **End by saying what you did**, in the `work-log` block the prompt's
+  closing section describes — `hatch` lifts it into the work log row.
 
 Every one of those calls writes an event carrying the key's name as the actor,
 so the trail says who did what without anybody being asked to record it.
