@@ -1298,6 +1298,186 @@ public class IssuesControllerTests
         Assert.Equal(eventsBefore, (await h.EventsAsync("AER-1")).Count);
     }
 
+    // ---- Protected columns ----
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MayMoveIntoAProtectedColumn(string role)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, role);
+        h.Actors.Me = owner;
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
+
+        Assert.Equal(h.Approved, Value(result).StatusId);
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MayPatchIntoAProtectedColumn(string role)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, role);
+        h.Actors.Me = owner;
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(statusId: h.Approved), default);
+
+        Assert.Equal(h.Approved, Value(result).StatusId);
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MayBulkEditIntoAProtectedColumn(string role)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, role);
+        h.Actors.Me = owner;
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1"], statusId: h.Approved), default);
+
+        Assert.Equal(["AER-1"], Value(result).Changed);
+    }
+
+    [Fact]
+    public async Task ANonMember_Is403NamingTheProjectMovingIntoAProtectedColumn()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("only an owner or approver of AER may move work into \"approved\"", obj.Value);
+    }
+
+    [Fact]
+    public async Task AKey_Is403WithTheProgramSentenceRegardlessOfMembership()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, ProjectMemberRole.Owner);
+        h.Actors.Me = owner;
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving work into a protected column is an owner's or approver's call, not an agent's", obj.Value);
+    }
+
+    [Fact]
+    public async Task ARunnerHeader_Is403WithTheProgramSentenceRegardlessOfMembership()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, ProjectMemberRole.Owner);
+        h.Actors.Me = owner;
+        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner");
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("moving work into a protected column is an owner's or approver's call, not an agent's", obj.Value);
+    }
+
+    [Fact]
+    public async Task ALocalOperatorWhereTheWallIsOff_MayMoveIntoAProtectedColumn()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var ada = new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada");
+        h.Actors.Live.Add(ada);
+        await h.MemberAsync(ada.Id, ProjectMemberRole.Owner);
+        h.Caller.Local = ada;
+        h.Actors.Me = ada;
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
+
+        Assert.Equal(h.Approved, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AMoveIntoAMergeColumnWithNoPullRequestUrl_Is400AndSucceedsOnceOneIsSet()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, ProjectMemberRole.Owner);
+        h.Actors.Me = owner;
+
+        var refused = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Merges, null, null), default);
+
+        Assert.Contains("merges the pull request, and this issue has none recorded", Reason(refused.Result));
+
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/1"), default);
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Merges, null, null), default);
+
+        Assert.Equal(h.Merges, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task ASameColumnReorderInsideAProtectedColumn_NeedsNoMembership()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "top");
+        await h.CreateAsync("story", "middle");
+        await h.CreateAsync("story", "bottom");
+        await h.SeedStatusAsync("AER-1", h.Approved);
+        await h.SeedStatusAsync("AER-2", h.Approved);
+        await h.SeedStatusAsync("AER-3", h.Approved);
+
+        var result = await h.Issues.MoveIssue("AER-2", new IssueMoveRequest(h.Approved, "AER-1", "AER-3"), default);
+
+        Assert.Equal(h.Approved, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AMoveOutOfAProtectedColumn_NeedsNoMembership()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.SeedStatusAsync("AER-1", h.Approved);
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task ABulkEditMixingAnApprovableKeyWithOneThatIsNot_Is200SplittingChangedAndFailures()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.CreateAsync("story", "the other", projectId: h.OtherProjectId);
+        var owner = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(owner.Id, ProjectMemberRole.Owner, h.ProjectId);
+        h.Actors.Me = owner;
+
+        var result = await h.Issues.BulkEdit(Bulk(["AER-1", "OPS-1"], statusId: h.Approved), default);
+
+        var value = Value(result);
+        Assert.Equal(["AER-1"], value.Changed);
+        var failure = Assert.Single(value.Failures);
+        Assert.Equal("OPS-1", failure.Key);
+        Assert.Equal("only an owner or approver of OPS may move work into \"approved\"", failure.Reason);
+    }
+
     // ---- Deleting ----
 
     /// <summary>
@@ -1928,7 +2108,7 @@ public class IssuesControllerTests
 
         var board = Value(await h.Board.GetBoard(default));
 
-        Assert.Equal(["inbox", "todo", "done"], board.Statuses.Select(s => s.Name));
+        Assert.Equal(["inbox", "todo", "approved", "merges", "done"], board.Statuses.Select(s => s.Name));
         Assert.Equal(["AER-1", "OPS-1", "AER-2"], board.Issues.Select(i => i.Key));
         Assert.Equal("AER-1", board.Issues.Single(i => i.Key == "AER-2").ParentKey);
         Assert.Equal("OPS", board.Issues.Single(i => i.Key == "OPS-1").ProjectKey);
@@ -2054,6 +2234,8 @@ public class IssuesControllerTests
         var h = await NewAsync();
         await h.Statuses.DeleteStatus(h.Done, default);
         await h.Statuses.DeleteStatus(h.Todo, default);
+        await h.Statuses.DeleteStatus(h.Approved, default);
+        await h.Statuses.DeleteStatus(h.Merges, default);
 
         var result = await h.Statuses.DeleteStatus(h.Inbox, default);
 
@@ -2246,7 +2428,7 @@ public class IssuesControllerTests
 
         var created = Created(await h.Statuses.CreateStatus(new StatusCreateRequest("review", null, null), default));
 
-        Assert.Equal(["inbox", "todo", "done", "review"], Value(await h.Statuses.GetStatuses(default)).Select(s => s.Name));
+        Assert.Equal(["inbox", "todo", "approved", "merges", "done", "review"], Value(await h.Statuses.GetStatuses(default)).Select(s => s.Name));
         Assert.False(created.IsTerminal);
         Assert.False(created.IsDeferred);
     }
@@ -2607,7 +2789,7 @@ public class IssuesControllerTests
 
         await h.Statuses.PatchStatus(h.Done, new StatusPatchRequest(null, 5, null), default);
 
-        Assert.Equal(["done", "inbox", "todo"], Value(await h.Statuses.GetStatuses(default)).Select(s => s.Name));
+        Assert.Equal(["done", "inbox", "todo", "approved", "merges"], Value(await h.Statuses.GetStatuses(default)).Select(s => s.Name));
     }
 
     [Fact]
@@ -3378,6 +3560,8 @@ public class IssuesControllerTests
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
         public required int Done { get; init; }
+        public required int Approved { get; init; }
+        public required int Merges { get; init; }
 
         /// <summary>
         /// A lease, written straight onto the row - what the claim endpoints
@@ -3431,6 +3615,33 @@ public class IssuesControllerTests
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
             issue.AssigneePersonId = personId;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A person's role on a project - what <see cref="ProjectAccess"/> reads to answer owner/approver.</summary>
+        public async Task MemberAsync(Guid personId, string role, int? projectId = null)
+        {
+            Db.ProjectMembers.Add(new EfHatchProjectMember
+            {
+                ProjectId = projectId ?? ProjectId,
+                PersonId = personId,
+                Role = role,
+                CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Written straight to the row, the same as <see cref="AssignAsync"/> -
+        /// for a test that needs an issue already standing in a protected
+        /// column without going through the controller, which would itself
+        /// demand membership.
+        /// </summary>
+        public async Task SeedStatusAsync(string key, int statusId)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.StatusId = statusId;
             await Db.SaveChangesAsync();
         }
 
@@ -3498,7 +3709,9 @@ public class IssuesControllerTests
         var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
         var done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
-        db.AddRange(hatch, ops, inbox, todo, done);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 30, IsProtected = true };
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 35, IsProtected = true, MergesPullRequest = true };
+        db.AddRange(hatch, ops, inbox, todo, done, approved, merges);
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
@@ -3524,6 +3737,8 @@ public class IssuesControllerTests
             Inbox = inbox.Id,
             Todo = todo.Id,
             Done = done.Id,
+            Approved = approved.Id,
+            Merges = merges.Id,
         };
     }
 
