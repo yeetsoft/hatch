@@ -52,21 +52,39 @@ mirrored in [`CLAUDE.md`](../CLAUDE.md) because that is where an agent reads it.
 These are absences on purpose, and each one is cheap to add later if the
 absence starts to hurt:
 
-- **No status-transition rules.** Any column to any column; we trust ourselves.
-  The one rule in the whole flow is a speed bump rather than a wall: a move
-  into a full [WIP](#wip) section is refused, and a person may always step over
-  it by saying *move anyway*. The second asymmetry is not a rule in the
-  database either — it is that an agent is never dispatched *into* a terminal
-  column (see [the dispatcher](#the-dispatcher)). The third thing that could be
-  mistaken for one is [closing a subtree](#closing-a-subtree), and it is not a
-  rule either: it is a question the browser asks a person after a move has
-  already committed. Nothing is forbidden by it and nothing is required — the
-  answer is the operator's, and "leave them" is one of the two. Nor is
-  `fromStatusId` on a move: it is a precondition on what the caller last saw,
-  not a rule about which columns may follow which.
-- **No granular permissions.** Reaching Hatch at all means trusted to do
-  everything in it. The one exception is the API key, whose scope is a
-  statement about *which surface*, never about which verb.
+- **One status-transition rule.** A move whose *target* column is protected
+  (`EfHatchStatus.IsProtected`) is refused unless the caller is a live owner or
+  approver of the issue's project — checked by `IProjectAccess.CanApproveAsync`
+  in `IssuesController.cs`'s `MoveIssue`/`StageEditAsync` (shared by
+  `PatchIssue`/`BulkEdit`), folded a second time in `Dispatch.Blocked`
+  (`Dispatch.cs:646-647`) beside the terminal fold so no dispatch or hop ever
+  lands one there, and refused a third time, client-side, in `hatch move`'s
+  speed bump (`IssueCommands.cs:222`). Moving *out* of a protected column, and
+  reordering within one, need no membership — the check only fires when the
+  target column changes and is itself protected. A program (an API key, or the
+  runner header — `ICallerIdentity.IsProgramAsync`) is refused regardless of
+  membership; the local operator with the wall off passes, subject to the same
+  check any other person gets. A narrower, separate refusal rides beside it: a
+  move into a column with `MergesPullRequest` set is `400` for an issue with no
+  `PullRequestUrl` recorded. Beside that one rule, any column to any column; we
+  trust ourselves. The other rule in the whole flow is a speed bump rather than
+  a wall: a move into a full [WIP](#wip) section is refused, and a person may
+  always step over it by saying *move anyway*. The next asymmetry is not a rule
+  in the database either — it is that an agent is never dispatched *into* a
+  terminal column (see [the dispatcher](#the-dispatcher)). The next thing that
+  could be mistaken for one is [closing a subtree](#closing-a-subtree), and it
+  is not a rule either: it is a question the browser asks a person after a
+  move has already committed. Nothing is forbidden by it and nothing is
+  required — the answer is the operator's, and "leave them" is one of the two.
+  Nor is `fromStatusId` on a move: it is a precondition on what the caller last
+  saw, not a rule about which columns may follow which.
+- **One granular permission.** A project's `EfHatchProjectMember` role
+  (`Owner` or `Approver`, from HA-290) grants exactly one additional thing
+  beyond the global role — moving an issue into a protected column, read
+  through `IProjectAccess.CanApproveAsync`/`HasRoleAsync`. Beside that one
+  permission, reaching Hatch at all means trusted to do everything else in it.
+  The API key's scope is still a statement about *which surface*, never about
+  which verb.
 - **No swimlanes or sprints.**
 - **No GitHub integration beyond one read.** A commit sha in a comment is the
   link, and it is written by whoever did the work. What is read is the build on
