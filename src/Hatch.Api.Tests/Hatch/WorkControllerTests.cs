@@ -1294,6 +1294,7 @@ public class WorkControllerTests
             "sent back 3 times in a row, at this board's limit of 3 - held for a person now, not sent back again",
             work.Blocked);
         Assert.False(work.Hop);
+        Assert.Null(work.SentBack);
 
         var before = (await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count;
         var result = await h.Work.HopWork(Key(issue), null, null, null, default);

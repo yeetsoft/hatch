@@ -54,8 +54,11 @@ public static class SentBack
             if (!root.TryGetProperty("sendback", out var sendback) || sendback.ValueKind != JsonValueKind.True)
                 return null;
 
-            var length = root.GetProperty("length").GetInt32();
-            var limit = root.GetProperty("limit").GetInt32();
+            if (!root.TryGetProperty("length", out var lengthEl) || !lengthEl.TryGetInt32(out var length))
+                return null;
+            if (!root.TryGetProperty("limit", out var limitEl) || !limitEl.TryGetInt32(out var limit))
+                return null;
+
             return new Info(length, limit);
         }
         catch (JsonException)
