@@ -40,9 +40,11 @@ public sealed class IssueCommands(Cli cli)
     [
         "usage: hatch move AER-12 <column>",
         "",
-        "  Into any non-terminal column, found by its name on the letters and",
-        "  digits alone. A terminal column is refused: only the operator decides",
-        "  that something shipped (CLAUDE.md).",
+        "  Into any non-terminal, non-protected column, found by its name on the",
+        "  letters and digits alone. A terminal column is refused: only the",
+        "  operator decides that something shipped. A protected column is",
+        "  refused too: only its approvers move work there, in the browser",
+        "  (CLAUDE.md).",
     ];
 
     public static readonly string[] CommentUsage =
@@ -214,6 +216,13 @@ public sealed class IssueCommands(Cli cli)
         {
             cli.Say.Complain(
                 $"hatch: \"{want}\" is a deferred column - only the operator shelves a ticket (CLAUDE.md)");
+            return 1;
+        }
+
+        if (column.IsProtected)
+        {
+            cli.Say.Complain(
+                $"hatch: \"{want}\" is a protected column - only its approvers move a ticket there (CLAUDE.md)");
             return 1;
         }
 

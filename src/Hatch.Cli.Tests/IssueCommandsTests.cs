@@ -15,6 +15,7 @@ public sealed class IssueCommandsTests
                 Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "Done", terminal: true),
                 Fixtures.Status(5, "Shelved", deferred: true),
+                Fixtures.Status(6, "Approved") with { IsProtected = true },
             ],
             []);
 
@@ -405,6 +406,23 @@ public sealed class IssueCommandsTests
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "shelved"], default));
 
         Assert.Contains("is a deferred column - only the operator shelves a ticket", h.Complained);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
+    /// <summary>
+    /// And a protected column on the same footing: the CLI never knows
+    /// whether its own caller is an owner or approver, and this tool runs
+    /// unattended far more often than a person runs it directly.
+    /// </summary>
+    [Fact]
+    public async Task A_protected_column_is_refused_and_nothing_is_written()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "approved"], default));
+
+        Assert.Contains("is a protected column - only its approvers move a ticket there", h.Complained);
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
     }
 
