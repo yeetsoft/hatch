@@ -1352,7 +1352,9 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <param name="SentBack">
 /// Set where this issue's most recent move was a send-back for an over-long
 /// brief - see <see cref="SentBackDto"/>. Null where it was not, including on
-/// a client too old to read it.
+/// a client too old to read it, and null too where <paramref name="Blocked"/>
+/// is set: a ticket held for a person is not being dispatched on at all, so
+/// a stale send-back from before the hold is not this move's reason.
 /// </param>
 public record WorkDto(
     IssueDto Issue,

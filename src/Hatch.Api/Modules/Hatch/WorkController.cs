@@ -687,7 +687,7 @@ public class WorkController(
             hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
             letGo,
             inReview,
-            sentBack is null ? null : new SentBackDto(
+            sentBack is null || blocked is not null ? null : new SentBackDto(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)));
     }
 
