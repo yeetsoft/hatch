@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, TrunkBuild } from '../types';
+import { approvedHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, TrunkBuild } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -51,6 +51,15 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   ...over,
 });
 
+const approvedHeld = (over: Partial<ApprovedHeld> = {}): ApprovedHeld => ({
+  key: 'AER-14',
+  title: 'A story that stopped merging',
+  type: 'story',
+  pullRequestUrl: 'https://forge.example/pulls/14',
+  sentence: 'Its build is failing.',
+  ...over,
+});
+
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
   dialogProps = null;
@@ -62,15 +71,47 @@ describe('AttentionHuman', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
-    expect(headings).toEqual(['Trunk builds that fail', 'Pull requests to review', 'Questions to answer']);
+    expect(headings).toEqual([
+      'Trunk builds that fail',
+      'Pull requests to review',
+      'Approved, not merging',
+      'Questions to answer',
+    ]);
 
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
+    const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
 
     expect(trunkAt).toBeGreaterThan(-1);
     expect(trunkAt).toBeLessThan(reviewAt);
-    expect(reviewAt).toBeLessThan(questionAt);
+    expect(reviewAt).toBeLessThan(approvedHeldAt);
+    expect(approvedHeldAt).toBeLessThan(questionAt);
+  });
+
+  it('shows the empty words when nothing approved has stopped merging', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ approvedHeld: [] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(approvedHeldEmptyWords());
+  });
+
+  it('lists a held row’s key, title and sentence under Approved, not merging', () => {
+    const held = approvedHeld();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ approvedHeld: [held] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(approvedHeldEmptyWords());
+    expect(html).toContain(held.key);
+    expect(html).toContain(held.title);
+    expect(html).toContain(held.sentence);
   });
 
   it('draws no outer heading and no .hatch-attention-group wrapper of its own', () => {

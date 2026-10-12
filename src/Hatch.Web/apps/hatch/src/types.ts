@@ -1076,6 +1076,29 @@ export interface FailingBuild {
   checks: BuildCheck[];
 }
 
+/** The merge column's issues that are stuck - conflicted, ambiguous,
+    branchless, build-broken, or closed without merging - with the judge's own
+    sentence saying why. Mirrors ApprovedHeldDto. */
+export interface ApprovedHeld {
+  key: string;
+  title: string;
+  type: string;
+  pullRequestUrl: string | null;
+  sentence: string;
+}
+
+/** The merge column's issues the loop is still progressing on its own - about
+    to merge, about to update, or waiting on its own next poll. Mirrors
+    ApprovedWaitingDto. */
+export interface ApprovedWaiting {
+  key: string;
+  title: string;
+  type: string;
+  pullRequestUrl: string | null;
+  kind: string;
+  sentence: string;
+}
+
 /** The two things that stop a night, read at one instant. Mirrors AttentionDto.
 
     One shape rather than two reads because the control's loudness is a single
@@ -1116,6 +1139,13 @@ export interface Attention {
       reset first. Not counted towards the badge - it lights a dot instead, see
       `attentionCount`'s remarks. Absent from a board that predates it. */
   exhaustedRunners?: ExhaustedRunner[];
+  /** The merge column's issues that are stuck, with the judge's own sentence
+      saying why - a person's to fix, every time. Absent from a board that
+      predates them. */
+  approvedHeld?: ApprovedHeld[];
+  /** The merge column's issues the loop is still progressing on its own.
+      Absent from a board that predates them. */
+  approvedWaiting?: ApprovedWaiting[];
 }
 
 /** One runner out of Claude usage, for the top of the attention panel. */

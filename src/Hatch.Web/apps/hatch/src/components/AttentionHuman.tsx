@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
 import {
+  approvedHeldEmptyWords,
   buildIconTone,
   buildIconWords,
   questionEmptyWords,
@@ -109,8 +110,9 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 
 /**
  * The Human half of what the loop is waiting on a person for: trunk builds
- * that fail, pull requests to review, questions to answer - in that order,
- * the order somebody would work through them.
+ * that fail, pull requests to review, pull requests approved but not
+ * merging, questions to answer - in that order, the order somebody would
+ * work through them.
  *
  * Exported alone, no outer heading and no `.hatch-attention-group` wrapper, so
  * its caller - the bar's `AttentionPanel`, beside the Agent group it draws
@@ -132,6 +134,7 @@ export function AttentionHuman({
   const reviews = attention?.reviews ?? [];
   const questions = attention?.questions ?? [];
   const trunkBuilds = attention?.trunkBuilds ?? [];
+  const approvedHeld = attention?.approvedHeld ?? [];
 
   return (
     <>
@@ -184,6 +187,30 @@ export function AttentionHuman({
                       no opinion about whose forge an operator uses. */}
                   <span className="hatch-attention-url">{pullRequestWords(r.pullRequestUrl)}</span>
                 </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Approved, not merging</h3>
+
+        {approvedHeld.length === 0 ? (
+          <p className="hatch-attention-empty">{approvedHeldEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {approvedHeld.map((h) => (
+              <li key={h.key}>
+                {/* This tab, and to the issue: the fix - moving it back to
+                    review - happens there, not on the forge. */}
+                <Link className="hatch-attention-row" to={`/issues/${h.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{h.key}</span>
+                    <span className="hatch-attention-title">{h.title}</span>
+                  </span>
+                  <span className="hatch-attention-files">{h.sentence}</span>
+                </Link>
               </li>
             ))}
           </ul>

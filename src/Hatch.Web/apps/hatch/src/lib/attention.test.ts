@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  approvedHeldEmptyWords,
   attentionCount,
   attentionLabel,
   attentionTone,
@@ -295,6 +296,12 @@ describe('trunkBuildHead', () => {
 describe('conflictEmptyWords', () => {
   it('says no branch has stopped merging', () => {
     expect(conflictEmptyWords()).toBe('No branch in review has stopped merging.');
+  });
+});
+
+describe('approvedHeldEmptyWords', () => {
+  it('says nothing approved has stopped merging', () => {
+    expect(approvedHeldEmptyWords()).toBe('Nothing approved has stopped merging.');
   });
 });
 

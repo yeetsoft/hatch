@@ -157,6 +157,9 @@ export const conflictEmptyWords = (): string => 'No branch in review has stopped
 /** The failing builds section's empty state - one wording, like the conflicts'. */
 export const failingBuildEmptyWords = (): string => 'No build in review is failing.';
 
+/** The approved-but-held section's empty state - one wording, like the conflicts' and failing builds'. */
+export const approvedHeldEmptyWords = (): string => 'Nothing approved has stopped merging.';
+
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
 
