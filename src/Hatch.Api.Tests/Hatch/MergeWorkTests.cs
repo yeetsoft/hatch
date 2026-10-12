@@ -59,15 +59,28 @@ public class MergeWorkTests
     }
 
     [Fact]
-    public void AnyConflicted_Holds()
+    public void AnyConflicted_Pushback()
     {
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
 
         var judgement = MergeWork.Judge(bound, merges, [], null, Now);
 
-        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Equal(WorkKinds.Pushback, judgement.Kind);
         Assert.Contains("conflicts", judgement.Sentence);
+        Assert.Contains("review", judgement.Sentence);
+    }
+
+    [Fact]
+    public void AnyConflicted_PushbackNamesTheGivenReviewColumn()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], null, Now, reviewColumn: "code review");
+
+        Assert.Equal(WorkKinds.Pushback, judgement.Kind);
+        Assert.Contains("code review", judgement.Sentence);
     }
 
     [Fact]
@@ -95,7 +108,7 @@ public class MergeWorkTests
     }
 
     [Fact]
-    public void CleanBuildFailed_HoldsRegardlessOfHoldsTrunk()
+    public void CleanBuildFailed_PushbackRegardlessOfHoldsTrunk()
     {
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
@@ -103,8 +116,9 @@ public class MergeWorkTests
 
         var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
 
-        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Equal(WorkKinds.Pushback, judgement.Kind);
         Assert.Contains("failed", judgement.Sentence);
+        Assert.Contains("review", judgement.Sentence);
     }
 
     [Fact]

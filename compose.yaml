@@ -153,6 +153,11 @@ services:
       GIT_AUTHOR_NAME: "${HATCH_GIT_NAME:-}"
       GIT_AUTHOR_EMAIL: "${HATCH_GIT_EMAIL:-}"
       HATCH_GIT_TOKEN: "${HATCH_GIT_TOKEN:-}"
+      # The operator secret gh reads to check builds and merge pull requests.
+      # gh reads GH_TOKEN itself - there is no sign-in step - so this line only
+      # renames the operator value on the way in; HATCH_GIT_TOKEN keeps its own
+      # name because git-askpass.sh, not git itself, is what reads it.
+      GH_TOKEN: "${HATCH_GH_TOKEN:-}"
     volumes:
       # The repository the board is about. Defaults to the directory this file
       # was reached from, which is right for a checkout you brought the stack

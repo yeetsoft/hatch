@@ -467,6 +467,208 @@ public class AttentionControllerTests
         Assert.Equal(1, attention.InReviewWithoutPullRequest);
     }
 
+    // ---- The merges half (HA-438) ----
+
+    [Fact]
+    public async Task Attention_HoldsBackAConflictedApprovedIssue()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "conflicted", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("its branch conflicts with the trunk", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnAmbiguousApprovedIssue()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ambiguous", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Ambiguous);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("more than one branch on origin is named for it - delete the ones that are not its branch", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnApprovedIssueWithNoBranch()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "no branch", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.None);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("no branch on origin is named for it", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnApprovedIssueWhoseBuildFailed()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "build failed", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("its build on 2222222 failed", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnApprovedIssueWhosePullRequestClosedWithoutMerging()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "closed", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("its pull request was closed without merging", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_HoldsBackAnApprovedIssuePastTheSettleWindowWithNoChecks()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "stuck", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("its branch holds main and no checks ran on it", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesAnApprovedIssueWithNoChecksPendingInsideTheSettleWindow()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "still settling", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedWaiting!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("pending", row.Kind);
+        Assert.Equal("its branch holds main and no checks ran on it", row.Sentence);
+        Assert.Empty(attention.ApprovedHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnUncheckedApprovedIssueAsPending()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "untouched", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedWaiting!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("pending", row.Kind);
+        Assert.Equal("no runner has checked its branch against the trunk yet", row.Sentence);
+        Assert.Empty(attention.ApprovedHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnApprovedIssueThatDoesNotHoldTrunkAsAnUpdate()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "stale", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedWaiting!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("update", row.Kind);
+        Assert.Equal("bringing its branch current from main", row.Sentence);
+        Assert.Empty(attention.ApprovedHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAnApprovedIssueReadyToMerge()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedWaiting!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("merge", row.Kind);
+        Assert.Equal("its branch holds main and its build passes", row.Sentence);
+        Assert.Empty(attention.ApprovedHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersEmptyApprovedListsOnABoardWithNoMergesColumn()
+    {
+        var h = await NewAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.ApprovedHeld!);
+        Assert.Empty(attention.ApprovedWaiting!);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -730,6 +932,26 @@ public class AttentionControllerTests
         await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
 
         Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
+    }
+
+    // ---- The merges column half (HA-466) ----
+
+    [Fact]
+    public async Task Attention_AnApprovedIssueWhoseBranchConflicts_IsHeldNotWaiting()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "merging", approved.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Contains("conflicts", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting);
     }
 
     // ---- The gate ----

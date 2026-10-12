@@ -143,6 +143,7 @@ Variables the wrapper and the container read, not the binary:
 | `HATCH_RUNNER_NAME` | `compose.yaml` | The container runner's `HATCH_RUNNER`. Default `hatch-runner`. |
 | `HATCH_GIT_NAME`, `HATCH_GIT_EMAIL` | `compose.yaml` | Become `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` in the container. |
 | `HATCH_GIT_TOKEN` | `compose.yaml`, the entrypoint | An HTTPS push token, answered to git through `GIT_ASKPASS`. |
+| `HATCH_GH_TOKEN` | `compose.yaml`, the entrypoint | The operator secret `gh` reads, as `GH_TOKEN`, to check builds and merge pull requests. |
 | `HATCH_PORT` | `compose.yaml` | The host port for the API. Default `8080`. |
 
 ### Authentication

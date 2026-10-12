@@ -223,10 +223,10 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
                 var j = MergeWork.Judge(
                     issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                    merged, built, issue.PullRequestClosedAt, time.GetUtcNow());
+                    merged, built, issue.PullRequestClosedAt, time.GetUtcNow(), review.Name);
 
                 var key = IssueKey.Format(issue.Project!.Key, issue.Number);
-                if (j.Kind == WorkKinds.Hold)
+                if (j.Kind is WorkKinds.Hold or WorkKinds.Pushback)
                     approvedHeld.Add(new ApprovedHeldDto(key, issue.Title, issue.Type, issue.PullRequestUrl, j.Sentence));
                 else
                     approvedWaiting.Add(new ApprovedWaitingDto(key, issue.Title, issue.Type, issue.PullRequestUrl, j.Kind, j.Sentence));

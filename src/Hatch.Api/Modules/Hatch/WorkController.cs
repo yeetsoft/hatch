@@ -301,7 +301,7 @@ public class WorkController(
             var mergeWork = merges is not null && i.StatusId == merges.Id
                 ? MergeWork.Judge(
                     i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                    merged, built, i.PullRequestClosedAt, time.GetUtcNow())
+                    merged, built, i.PullRequestClosedAt, time.GetUtcNow(), review.Name)
                 : (MergeWork.Judgement?)null;
 
             return new ReviewCheckDto(

@@ -23,7 +23,8 @@ public static class MergeWork
         IReadOnlyList<EfHatchMergeCheck> merges,
         IReadOnlyList<EfHatchBuildCheck> builds,
         DateTimeOffset? pullRequestClosedAt,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? reviewColumn = null)
     {
         if (pullRequestClosedAt is not null)
             return Hold("its pull request was closed without merging");
@@ -34,7 +35,7 @@ public static class MergeWork
             return Pending($"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet");
 
         if (counted.Any(v => v.Verdict == MergeVerdicts.Conflicted))
-            return Hold("its branch conflicts with the trunk");
+            return new Judgement(WorkKinds.Pushback, $"its branch conflicts with the trunk - back to {reviewColumn ?? "review"} to fix it");
 
         if (counted.Any(v => v.Verdict == MergeVerdicts.Ambiguous))
             return Hold("more than one branch on origin is named for it - delete the ones that are not its branch");
@@ -52,7 +53,7 @@ public static class MergeWork
         var about = ReviewWork.AboutTheBranch(clean, builtAt);
 
         if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Failed) is { } failed)
-            return Hold($"its build on {Short(failed.Sha)} failed");
+            return new Judgement(WorkKinds.Pushback, $"its build on {Short(failed.Sha)} failed - back to {reviewColumn ?? "review"} to fix it");
 
         if (clean.Any(m => m.HoldsTrunk != true))
             return new Judgement(WorkKinds.Update, $"bringing its branch current from {trunk}");

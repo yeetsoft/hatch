@@ -74,6 +74,19 @@ if [ -n "${HATCH_GIT_TOKEN:-}" ]; then
     export GIT_ASKPASS=/usr/local/bin/git-askpass.sh
 fi
 
+# ---- Whether gh can read builds and merge pull requests ----
+#
+# Checked once and said once, so a container that will never see a build
+# check pass or a pull request merge says so at the top of its log, rather
+# than a person discovering it only when the first ticket needing either
+# comes up empty. Never a hard exit - the two halves being off is a starting
+# condition GhForge already degrades gracefully from, not a refusal.
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    say "gh is signed in - build checks and merges are on."
+else
+    say "gh is not signed in - build checks and merges are off. Set HATCH_GH_TOKEN to turn them on."
+fi
+
 # ---- The Claude credential (criterion 4) ----
 #
 # Fetched from Hatch rather than configured here, so a friend sets it on the

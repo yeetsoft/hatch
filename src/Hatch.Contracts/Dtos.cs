@@ -1504,6 +1504,9 @@ public static class WorkKinds
     /// <summary>The merge column's branch merges cleanly with the trunk but does not hold its tip yet - an agent updates it.</summary>
     public const string Update = "update";
 
+    /// <summary>The merge column cannot merge this - its branch conflicts, or its build on the tip failed - and the review column is where it is fixed, so the loop carries it back.</summary>
+    public const string Pushback = "pushback";
+
     /// <summary>The merge column is waiting on a conflict, a build, or a runner - nothing an agent can do about it.</summary>
     public const string Hold = "hold";
 

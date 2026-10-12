@@ -67,6 +67,7 @@ public static class IssueProjection
             .ThenBy(s => s.Id)
             .ToListAsync(ct);
         var mergesId = Columns.Merges(statuses)?.Id;
+        var reviewName = Columns.AwaitingReview(statuses)?.Name;
 
         // The repositories each issue's project binds, for MergeWork.Judge's
         // own "counted" rule - grouped rather than ordered, since the only
@@ -172,7 +173,7 @@ public static class IssueProjection
                     bound.TryGetValue(issue.ProjectId, out var repos) ? repos : [],
                     mergeChecksByIssue.TryGetValue(issue.Id, out var mv) ? mv : [],
                     buildChecksByIssue.TryGetValue(issue.Id, out var bv) ? bv : [],
-                    issue.PullRequestClosedAt, now);
+                    issue.PullRequestClosedAt, now, reviewName);
                 mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
             }
 

@@ -666,7 +666,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (from.MergesPullRequest)
             return MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                verdicts, builds, issue.PullRequestClosedAt, claimed.Now).Sentence;
+                verdicts, builds, issue.PullRequestClosedAt, claimed.Now,
+                Columns.AwaitingReview(statuses)?.Name).Sentence;
 
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
