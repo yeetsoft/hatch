@@ -1422,6 +1422,9 @@ public static class WorkKinds
 
     /// <summary>The merge column is waiting on a conflict, a build, or a runner - nothing an agent can do about it.</summary>
     public const string Hold = "hold";
+
+    /// <summary>The merge column is waiting on the poll itself - a branch it has not checked yet, a build still running or not yet read. Not a person's row.</summary>
+    public const string Pending = "pending";
 }
 
 /// <summary>Which of the five reasons carried a hop - see WorkDto.HopKind.</summary>

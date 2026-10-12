@@ -299,7 +299,9 @@ public class WorkController(
             var merged = verdicts.TryGetValue(i.Id, out var mv) ? mv : [];
             var built = builds.TryGetValue(i.Id, out var bv) ? bv : [];
             var mergeWork = merges is not null && i.StatusId == merges.Id
-                ? MergeWork.Judge(i, merged, built)
+                ? MergeWork.Judge(
+                    i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                    merged, built, i.PullRequestClosedAt, time.GetUtcNow())
                 : (MergeWork.Judgement?)null;
 
             return new ReviewCheckDto(
@@ -749,7 +751,7 @@ public class WorkController(
             questions,
             blocked,
             IssueUrl(issueDto.Key),
-            Dispatch.KindOf(issue, from, to, merged, built),
+            Dispatch.KindOf(issue, from, to, merged, built, claimed.Now),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
             hopped ? hopKind : null,

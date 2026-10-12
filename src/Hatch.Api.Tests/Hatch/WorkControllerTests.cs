@@ -5313,7 +5313,7 @@ public class WorkControllerTests
     // ---- An issue in the merges column ----
 
     [Fact]
-    public async Task MergeColumn_WithNoVerdictYet_IsHeld()
+    public async Task MergeColumn_WithNoVerdictYet_IsPending()
     {
         var h = await NewAsync();
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
@@ -5323,7 +5323,7 @@ public class WorkControllerTests
 
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
-        Assert.Equal(WorkKinds.Hold, entry.Kind);
+        Assert.Equal(WorkKinds.Pending, entry.Kind);
         Assert.Equal("no runner has checked its branch against the trunk yet", entry.Blocked);
     }
 

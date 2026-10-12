@@ -244,7 +244,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
                     rows.Add(new ScanRow(
                         issue, status, to, sentence,
-                        KindOf(issue, status, to, merged, built),
+                        KindOf(issue, status, to, merged, built, claimed.Now),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
@@ -457,9 +457,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </summary>
     public static string KindOf(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
-        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now) =>
         from.MergesPullRequest
-            ? MergeWork.Judge(issue, merges, builds).Kind
+            ? MergeWork.Judge(
+                issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                merges, builds, issue.PullRequestClosedAt, now).Kind
             : to is not null && to.Id == from.Id
                 ? ReviewWork.Judge(issue, merges, builds).Kind
                 : WorkKinds.Advance;
@@ -662,7 +664,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
 
         if (from.MergesPullRequest)
-            return MergeWork.Judge(issue, verdicts, builds).Sentence;
+            return MergeWork.Judge(
+                issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                verdicts, builds, issue.PullRequestClosedAt, claimed.Now).Sentence;
 
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
