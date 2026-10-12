@@ -72,6 +72,54 @@ public sealed record Verdict(
         stored.Verdict == Kind && stored.Files.Order(StringComparer.Ordinal).SequenceEqual(Files.Order(StringComparer.Ordinal));
 }
 
+/// <summary>What <see cref="IWorkspace.Sync"/> came to.</summary>
+public enum SyncOutcome
+{
+    /// <summary>This git is too old for <c>merge-tree --write-tree</c>.</summary>
+    OldGit,
+
+    /// <summary>No trunk could be named.</summary>
+    NoTrunk,
+
+    /// <summary>The fetch that makes the answer current did not go.</summary>
+    FetchFailed,
+
+    /// <summary>Origin has no branch for this key.</summary>
+    NoBranch,
+
+    /// <summary>Origin has more than one branch for this key.</summary>
+    Ambiguous,
+
+    /// <summary>The branch already holds the trunk - nothing to merge.</summary>
+    Current,
+
+    /// <summary>The trunk does not merge into the branch.</summary>
+    Conflicted,
+
+    /// <summary><c>merge-tree</c> itself did not answer.</summary>
+    MergeFailed,
+
+    /// <summary>The merge commit would not write.</summary>
+    CommitFailed,
+
+    /// <summary>Pushed to origin.</summary>
+    Pushed,
+
+    /// <summary>Origin refused the push.</summary>
+    Refused,
+}
+
+/// <summary>What <see cref="IWorkspace.Sync"/> found and did, in one of <see cref="SyncOutcome"/>.</summary>
+/// <param name="Branches">Every branch on origin naming the key, for <see cref="SyncOutcome.Ambiguous"/>.</param>
+/// <param name="RefetchFailed">
+/// On <see cref="SyncOutcome.Pushed"/>, whether the remote-tracking ref did not
+/// move on its own and the fetch meant to catch it up also failed.
+/// </param>
+public sealed record Synced(
+    SyncOutcome Outcome, string? Trunk = null, string? Branch = null, string? Sha = null,
+    IReadOnlyList<string>? Files = null, IReadOnlyList<string>? Branches = null,
+    bool RefetchFailed = false, string? Why = null);
+
 /// <summary>
 /// Asking git whether an issue's branch still merges with the trunk, against
 /// origin's refs - the runner's half of the merge check.

@@ -97,7 +97,7 @@ public sealed partial class Workspace
         // gated on a pull request being recorded; the verdict itself does not -
         // Check reads local remote-tracking refs, which are current for a branch
         // this same tree just pushed, pull request or not.
-        if (syncPullRequest) Sync(lower, trunk, Note);
+        if (syncPullRequest) NoteSync(Sync(lower), Note);
         var found = Check(lower);
 
         return new Leaving(root, notes, found);
@@ -134,86 +134,99 @@ public sealed partial class Workspace
     }
 
     /// <summary>
-    /// The trunk into the pull request's branch on origin, when it is not there
+    /// The trunk into the issue's branch on origin, when it is not there
     /// already. A merge git can do without a worktree - <c>merge-tree</c> for the
     /// result, <c>commit-tree</c> for the commit, and a push that is a
     /// fast-forward or nothing.
     /// </summary>
-    /// <returns>
-    /// Whether origin was fetched, which is whether the remote-tracking refs are
-    /// current - false where git is too old or the fetch failed, and nothing is
-    /// known about origin's branch.
-    /// </returns>
-    private bool Sync(string lowerKey, string trunk, Action<string, bool> note)
+    public Synced Sync(string key)
     {
         if (!AtLeast(MergeTree))
         {
             SayOldGit("merging a pull request's branch without a worktree");
-            return false;
+            return new Synced(SyncOutcome.OldGit);
         }
+
+        if (BaseBranch() is not { Length: > 0 } trunk) return new Synced(SyncOutcome.NoTrunk);
+
+        var lowerKey = key.ToLowerInvariant();
 
         // Fetched again: the session may have pushed, and the answer about what
         // origin's branch contains has to be about origin's branch as it is.
         if (!Git("fetch", "--quiet", "--prune", "origin").Ok)
-        {
-            note("could not fetch from origin, so the pull request's branch was not brought up to date", true);
-            return false;
-        }
+            return new Synced(SyncOutcome.FetchFailed, trunk);
 
         var (open, _) = Branched(lowerKey, trunk);
-        if (open.Count != 1)
-        {
-            if (open.Count > 1)
-                note($"more than one branch on origin names this issue ({string.Join(", ", open)}), so which is the pull request's was not guessed", true);
-            return true;
-        }
+        if (open.Count == 0) return new Synced(SyncOutcome.NoBranch, trunk);
+        if (open.Count > 1) return new Synced(SyncOutcome.Ambiguous, trunk, Branches: open);
 
         var branch = open[0];
         var remote = $"refs/remotes/origin/{branch}";
         var trunkRef = $"refs/remotes/origin/{trunk}";
 
-        if (Git("merge-base", "--is-ancestor", trunkRef, remote).Ok) return true;
+        if (Git("merge-base", "--is-ancestor", trunkRef, remote).Ok) return new Synced(SyncOutcome.Current, trunk, branch);
 
         var merge = Git("merge-tree", "--write-tree", "--name-only", trunkRef, remote);
         if (merge.Code == 1)
         {
             var files = ConflictedFiles(merge.Out);
-            note($"{trunk} does not merge into {branch} on origin - conflicts in {string.Join(", ", files)}; nothing was pushed", true);
-            return true;
+            return new Synced(SyncOutcome.Conflicted, trunk, branch, Files: files);
         }
 
-        if (!merge.Ok)
-        {
-            note($"could not work out a merge of {trunk} into {branch}: {merge.Why}", true);
-            return true;
-        }
+        if (!merge.Ok) return new Synced(SyncOutcome.MergeFailed, trunk, branch, Why: merge.Why);
 
         var tree = merge.Out.Split('\n')[0].Trim();
         var commit = Git("commit-tree", tree, "-p", remote, "-p", trunkRef, "-m", $"Merge branch '{trunk}' into {branch}");
-        if (!commit.Ok)
-        {
-            note($"could not commit a merge of {trunk} into {branch}: {commit.Why}", true);
-            return true;
-        }
+        if (!commit.Ok) return new Synced(SyncOutcome.CommitFailed, trunk, branch, Why: commit.Why);
 
         var sha = commit.Out.Trim();
         var push = Git("push", "--quiet", "origin", $"{sha}:refs/heads/{branch}");
-        if (push.Ok)
-        {
-            note($"{trunk} was merged into {branch} on origin, now at {sha[..Math.Min(9, sha.Length)]}", false);
+        if (!push.Ok) return new Synced(SyncOutcome.Refused, trunk, branch, Sha: sha, Why: push.Why);
 
-            // The remote-tracking ref is what the verdict is read from, and a
-            // push by sha to a full ref name is not what every git updates it
-            // on. Asked, and fetched once more only where it did not move.
-            if (FullSha(remote) != sha && !Fetch())
-                note($"could not fetch {branch} after pushing it, so what origin's branch now looks like is not known", true);
-        }
-        else
-        {
-            note($"the push of {trunk} merged into {branch} was refused - {push.Why}; the pull request's branch is as it was", true);
-        }
+        // The remote-tracking ref is what the verdict is read from, and a
+        // push by sha to a full ref name is not what every git updates it
+        // on. Asked, and fetched once more only where it did not move.
+        var refetchFailed = FullSha(remote) != sha && !Fetch();
+        return new Synced(SyncOutcome.Pushed, trunk, branch, Sha: sha, RefetchFailed: refetchFailed);
+    }
 
-        return true;
+    /// <summary>Today's six <c>Leave</c> notes, translated from <see cref="Sync"/>'s outcome.</summary>
+    private static void NoteSync(Synced synced, Action<string, bool> note)
+    {
+        switch (synced.Outcome)
+        {
+            case SyncOutcome.FetchFailed:
+                note("could not fetch from origin, so the pull request's branch was not brought up to date", true);
+                break;
+
+            case SyncOutcome.Ambiguous:
+                note($"more than one branch on origin names this issue ({string.Join(", ", synced.Branches!)}), so which is the pull request's was not guessed", true);
+                break;
+
+            case SyncOutcome.Conflicted:
+                note($"{synced.Trunk} does not merge into {synced.Branch} on origin - conflicts in {string.Join(", ", synced.Files!)}; nothing was pushed", true);
+                break;
+
+            case SyncOutcome.MergeFailed:
+                note($"could not work out a merge of {synced.Trunk} into {synced.Branch}: {synced.Why}", true);
+                break;
+
+            case SyncOutcome.CommitFailed:
+                note($"could not commit a merge of {synced.Trunk} into {synced.Branch}: {synced.Why}", true);
+                break;
+
+            case SyncOutcome.Pushed:
+                note($"{synced.Trunk} was merged into {synced.Branch} on origin, now at {synced.Sha![..Math.Min(9, synced.Sha!.Length)]}", false);
+                if (synced.RefetchFailed)
+                    note($"could not fetch {synced.Branch} after pushing it, so what origin's branch now looks like is not known", true);
+                break;
+
+            case SyncOutcome.Refused:
+                note($"the push of {synced.Trunk} merged into {synced.Branch} was refused - {synced.Why}; the pull request's branch is as it was", true);
+                break;
+
+            // OldGit, NoTrunk, NoBranch, Current: silent, as today.
+        }
     }
 
     /// <summary>

@@ -71,6 +71,13 @@ public interface IWorkspace
     Verdict? Check(string key);
 
     /// <summary>
+    /// The trunk into the issue's branch on origin, when it is not there
+    /// already - fetching first, so the answer is about origin's branch as it
+    /// is now.
+    /// </summary>
+    Synced Sync(string key);
+
+    /// <summary>
     /// Back on the trunk and nothing else - what an increment whose lease went
     /// to another runner is owed, which is not the writes <see cref="Leave"/> makes.
     /// </summary>

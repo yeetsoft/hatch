@@ -164,6 +164,58 @@ public sealed class WorkspaceLeaveTests : RepoFixture
         Assert.Equal("main", Current(_work));
     }
 
+    // ---- Sync ----
+
+    [Fact]
+    public void Syncing_a_branch_behind_the_trunk_pushes_a_merge_commit_with_both_shas_as_parents()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Prepare();
+        var trunkSha = G(_origin, "rev-parse", "main").Trim();
+        var branchSha = G(_origin, "rev-parse", "ha-31-thing").Trim();
+
+        var synced = ws.Sync("HA-31");
+
+        Assert.Equal(SyncOutcome.Pushed, synced.Outcome);
+        var tip = Tip(_origin, "ha-31-thing");
+        Assert.Equal(synced.Sha, tip);
+        var parents = G(_origin, "rev-list", "--parents", "-n1", "ha-31-thing").Trim().Split(' ');
+        Assert.Equal([tip, branchSha, trunkSha], parents);
+        Assert.Equal($"Merge branch 'main' into ha-31-thing", G(_origin, "log", "-1", "--format=%s", "ha-31-thing").Trim());
+    }
+
+    [Fact]
+    public void Syncing_a_conflicting_branch_returns_conflicted_and_pushes_nothing()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var synced = ws.Sync("HA-31");
+
+        Assert.Equal(SyncOutcome.Conflicted, synced.Outcome);
+        Assert.Contains("a.txt", synced.Files!);
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Syncing_a_branch_that_already_holds_the_trunk_touches_nothing()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var synced = ws.Sync("HA-31");
+
+        Assert.Equal(SyncOutcome.Current, synced.Outcome);
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
     [Fact]
     public void Returning_puts_the_tree_on_the_trunk_and_writes_nothing()
     {

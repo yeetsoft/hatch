@@ -146,6 +146,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Check</c> answers for one issue in one checkout. Absent is a check that could not be made.</summary>
     public Dictionary<(string Path, string Key), Verdict?> Verdicts { get; } = [];
 
+    /// <summary>What <c>Sync</c> answers for one issue in one checkout. Absent is a branch already current.</summary>
+    public Dictionary<(string Path, string Key), Synced> SyncedFor { get; } = [];
+
     /// <summary>What <c>Leave</c> hands back as the verdict on origin's branch, per checkout.</summary>
     public Dictionary<string, Verdict?> FoundFor { get; } = [];
 
@@ -235,6 +238,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"check {path} {key}");
             return owner.Verdicts.GetValueOrDefault((path, key));
+        }
+
+        public Synced Sync(string key)
+        {
+            owner.Calls.Add($"sync {path} {key}");
+            return owner.SyncedFor.GetValueOrDefault((path, key), new Synced(SyncOutcome.Current));
         }
 
         public void Return() => owner.Calls.Add($"return {path}");
