@@ -1296,7 +1296,8 @@
    rather than `today`'s: it is the loop's to fix and a person only needs to
    know it is happening, not to do something about it. */
 .hatch-chip-conflict,
-.hatch-chip-build {
+.hatch-chip-build,
+.hatch-chip-merge-hold {
   border-color: var(--warn);
   background: var(--warn-bg);
   color: var(--warn-ink);

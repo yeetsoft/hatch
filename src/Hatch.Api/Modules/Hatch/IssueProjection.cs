@@ -59,6 +59,25 @@ public static class IssueProjection
             .Where(p => projectIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Key, ct);
 
+        // What the merges column is, so the judgement below is only asked of a
+        // row actually sitting there - the same column AttentionController
+        // measures off the board's shape.
+        var statuses = await db.Statuses.AsNoTracking()
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.Id)
+            .ToListAsync(ct);
+        var mergesId = Columns.Merges(statuses)?.Id;
+
+        // The repositories each issue's project binds, for MergeWork.Judge's
+        // own "counted" rule - grouped rather than ordered, since the only
+        // place Judge reads list order off this is the Pending branch neither
+        // surface this field feeds ever draws.
+        var bound = (await db.ProjectRepositories.AsNoTracking()
+                .Where(r => projectIds.Contains(r.ProjectId))
+                .ToListAsync(ct))
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchProjectRepository>)g.ToList());
+
         // The parents of the batch, which are not necessarily in the batch -
         // a story scanned in one column hangs under an epic sitting in another.
         var parentIds = issues.Select(i => i.ParentId).OfType<long>().Distinct().ToList();
@@ -109,19 +128,27 @@ public static class IssueProjection
         // The verdicts of the batch, one query for all of it: a fixed number
         // of reads however many issues are scanned, like the edges above. Ordered
         // by canonical remote so the list a page draws is stable between reads.
-        var mergeChecks = (await db.MergeChecks.AsNoTracking()
-                .Where(m => ids.Contains(m.IssueId))
-                .OrderBy(m => m.Canonical)
-                .ToListAsync(ct))
+        var mergeCheckRows = await db.MergeChecks.AsNoTracking()
+            .Where(m => ids.Contains(m.IssueId))
+            .OrderBy(m => m.Canonical)
+            .ToListAsync(ct);
+        var mergeChecks = mergeCheckRows
             .GroupBy(m => m.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<MergeCheckDto>)g.Select(IssueMergeChecks.Project).ToList());
+        var mergeChecksByIssue = mergeCheckRows
+            .GroupBy(m => m.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchMergeCheck>)g.ToList());
 
-        var buildChecks = (await db.BuildChecks.AsNoTracking()
-                .Where(b => ids.Contains(b.IssueId))
-                .OrderBy(b => b.Canonical)
-                .ToListAsync(ct))
+        var buildCheckRows = await db.BuildChecks.AsNoTracking()
+            .Where(b => ids.Contains(b.IssueId))
+            .OrderBy(b => b.Canonical)
+            .ToListAsync(ct);
+        var buildChecks = buildCheckRows
             .GroupBy(b => b.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<BuildCheckDto>)g.Select(IssueBuildChecks.Project).ToList());
+        var buildChecksByIssue = buildCheckRows
+            .GroupBy(b => b.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchBuildCheck>)g.ToList());
 
         // The directory rather than a join, because the identity is not in this
         // schema and could not be joined to (Modules/README.md). Memoized for
@@ -137,6 +164,17 @@ public static class IssueProjection
         {
             var projectKey = issue.Project?.Key ?? projectKeys[issue.ProjectId];
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
+
+            MergeWorkDto? mergeWork = null;
+            if (issue.StatusId == mergesId)
+            {
+                var j = MergeWork.Judge(
+                    bound.TryGetValue(issue.ProjectId, out var repos) ? repos : [],
+                    mergeChecksByIssue.TryGetValue(issue.Id, out var mv) ? mv : [],
+                    buildChecksByIssue.TryGetValue(issue.Id, out var bv) ? bv : [],
+                    issue.PullRequestClosedAt, now);
+                mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
+            }
 
             return new IssueDto(
                 IssueKey.Format(projectKey, issue.Number),
@@ -172,7 +210,8 @@ public static class IssueProjection
                 issue.StalledAt,
                 issue.StalledWhy,
                 issue.Held,
-                claims.StallResumeSeconds);
+                claims.StallResumeSeconds,
+                mergeWork);
         });
     }
 

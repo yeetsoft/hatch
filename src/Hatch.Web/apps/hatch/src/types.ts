@@ -343,6 +343,13 @@ export interface MergeCheck {
   checkedBy: string;
 }
 
+/** The kind of work an issue in the merges column is, and why it is not work
+    where it is not. Mirrors MergeWorkDto. */
+export interface MergeWork {
+  kind: string;
+  sentence: string;
+}
+
 export interface Issue {
   key: string;
   projectId: number;
@@ -428,6 +435,9 @@ export interface Issue {
       `failedBuilds` - only a failed one is drawn. Absent from a board that
       predates them. */
   buildChecks?: BuildCheck[];
+  /** The judge's answer for a row in the merges column, or null for a row
+      anywhere else. See MergeHoldChip and IssueDto.MergeWork. */
+  mergeWork?: MergeWork | null;
   /** How many of an epic's stories may be in progress at once, or null for
       DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
       Readable by anybody a dispatch reaches and writable only by a person,

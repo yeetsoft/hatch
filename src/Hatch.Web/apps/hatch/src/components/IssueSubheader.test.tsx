@@ -62,4 +62,22 @@ describe('IssueSubheader', () => {
 
     expect(html).not.toContain('↳');
   });
+
+  it('draws the merge-hold chip with its sentence when held', () => {
+    const html = render({ mergeWork: { kind: 'hold', sentence: 'its build on abc1234 failed' } });
+
+    expect(html).toContain('its build on abc1234 failed');
+  });
+
+  it.each(['merge', 'update', 'pending'])('draws nothing for a %s judgement', (kind) => {
+    const html = render({ mergeWork: { kind, sentence: 'should not appear' } });
+
+    expect(html).not.toContain('should not appear');
+  });
+
+  it('draws nothing when there is no judgement at all', () => {
+    const html = render({ mergeWork: undefined });
+
+    expect(html).not.toContain('hatch-chip-merge-hold');
+  });
 });

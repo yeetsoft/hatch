@@ -414,6 +414,11 @@ public record IssueClaimDto(
 /// and hardcoding the shipped default would be true of today's install and
 /// not of every one.
 /// </param>
+/// <param name="MergeWork">
+/// The judge's answer for a row in the merges column, or null for a row
+/// anywhere else - the same judgement <see cref="ReviewCheckDto.MergeWork"/>
+/// carries for the CLI's poll.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -448,7 +453,8 @@ public record IssueDto(
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
     bool Held = false,
-    int StallResumeSeconds = 0);
+    int StallResumeSeconds = 0,
+    MergeWorkDto? MergeWork = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>

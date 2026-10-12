@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ProjectMark } from '@hatch/ui';
 import { BuildCheckChips } from './BuildCheckChips';
 import { MergeConflictChips } from './MergeConflictChips';
+import { MergeHoldChip } from './MergeHoldChip';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
@@ -49,6 +50,7 @@ export function IssueSubheader({
         <PullRequestLink url={issue.pullRequestUrl} />
         <MergeConflictChips checks={issue.mergeChecks} />
         <BuildCheckChips checks={issue.buildChecks} />
+        <MergeHoldChip mergeWork={issue.mergeWork} />
         <span className="text-muted">
           filed by {issue.createdBy} on {new Date(issue.createdAt).toLocaleDateString()}
         </span>
