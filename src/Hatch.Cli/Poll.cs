@@ -63,6 +63,7 @@ public sealed class Poll
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
+    private readonly Dictionary<(string Path, string Key), string> _seenUpdate = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
@@ -126,6 +127,8 @@ public sealed class Poll
         await ReadPullRequestsAsync(runtime, complain, review, ct);
 
         await MergeApprovedAsync(runtime, complain, review, ct);
+
+        await UpdateApprovedAsync(runtime, complain, review, ct);
 
         var targets = new Dictionary<(string Path, string? BaseBranch), List<Target>>();
         foreach (var issue in review)
@@ -623,6 +626,92 @@ public sealed class Poll
         }
     }
 
+    /// <summary>
+    /// The update half: for every issue in the merges column the judge marked
+    /// <see cref="WorkKinds.Update"/>, bring its branch current from the trunk
+    /// by calling <see cref="IWorkspace.Sync"/> - <see cref="WorkKinds.Merge"/>
+    /// and <see cref="WorkKinds.Hold"/> rows, and every row in the review
+    /// column (<c>MergeWork</c> null), are left for whatever else acts on them
+    /// and not asked about here at all.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as <see cref="MergeApprovedAsync"/> right above it:
+    /// per-checkout <c>failed</c>, <c>judgedSha</c> read off the resolved
+    /// checkout's own clean verdict, and <c>_seenUpdate</c> the same dedupe
+    /// idea as <c>_seenMergeRefusal</c> - a push attempt's outcome is reported
+    /// once per judged sha, not every interval. The outer try/catch keeps
+    /// anything unanticipated here from propagating into <see cref="PollAsync"/>
+    /// and aborting the halves that run after it.
+    /// </remarks>
+    private async Task UpdateApprovedAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        var failed = new HashSet<string>();
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.MergeWork?.Kind != WorkKinds.Update) continue;
+                ct.ThrowIfCancellationRequested();
+
+                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
+                    .FirstOrDefault();
+                if (where is null || failed.Contains(where.Path)) continue;
+
+                var judgedSha = issue.MergeChecks
+                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean)?.BranchSha;
+                if (judgedSha is null) continue;
+
+                var dedupeKey = (where.Path, issue.Key);
+                if (_seenUpdate.TryGetValue(dedupeKey, out var seenSha) && seenSha == judgedSha) continue;
+
+                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                var synced = runtime.Workspace(where.Path, where.BaseBranch).Sync(issue.Key);
+
+                switch (synced.Outcome)
+                {
+                    case SyncOutcome.Current:
+                    case SyncOutcome.NoBranch:
+                        break;
+
+                    case SyncOutcome.OldGit:
+                    case SyncOutcome.NoTrunk:
+                    case SyncOutcome.FetchFailed:
+                    case SyncOutcome.Ambiguous:
+                    case SyncOutcome.MergeFailed:
+                    case SyncOutcome.CommitFailed:
+                        failed.Add(where.Path);
+                        complain($"hatch: could not bring {issue.Key}'s branch current in {name} - {synced.Why ?? synced.Outcome.ToString()}");
+                        break;
+
+                    case SyncOutcome.Conflicted:
+                        _seenUpdate[dedupeKey] = judgedSha;
+                        await runtime.QuietBoard.CommentAsync(
+                            issue.Key,
+                            $"Its branch does not merge cleanly with {synced.Trunk} - conflicts in "
+                            + $"{string.Join(", ", synced.Files!)}; nothing was pushed.",
+                            ct);
+                        break;
+
+                    case SyncOutcome.Refused:
+                        complain($"hatch: {issue.Key}'s push of {synced.Trunk} into its branch was refused in {name} - {synced.Why}");
+                        break;
+
+                    case SyncOutcome.Pushed:
+                        _seenUpdate[dedupeKey] = judgedSha;
+                        await runtime.QuietBoard.CommentAsync(
+                            issue.Key, $"Brought its branch current from {synced.Trunk}, now at {synced.Sha}.", ct);
+                        runtime.Say.Line($"hatch: {UpdateWords(issue.Key, synced.Trunk!, synced.Sha!)}");
+                        break;
+                }
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not bring approved branches current - {e.Message}");
+        }
+    }
+
     /// <summary>The column a merged pull request advanced its issue into, by name - <c>"?"</c> where it cannot be read.</summary>
     private static async Task<string> ResolvedColumnNameAsync(Runtime runtime, int statusId, CancellationToken ct)
     {
@@ -639,6 +728,13 @@ public sealed class Poll
 
     /// <summary>A line for the terminal: <c>HA-12 pull request merged -> Done</c>.</summary>
     private static string PullRequestWords(string key, string to) => $"{key} pull request merged -> {to}";
+
+    /// <summary>A line for the terminal: <c>HA-12 branch brought current from main, now at 1a2b3c4</c>.</summary>
+    private static string UpdateWords(string key, string trunk, string sha) =>
+        $"{key} branch brought current from {trunk}, now at {Short(sha)}";
+
+    /// <summary>The first 7 characters of a sha, for a terminal line - unchanged where it is shorter.</summary>
+    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
 
     /// <summary>The trunk equivalent of <see cref="VouchesBuild"/>.</summary>
     private static bool VouchesTrunk(TrunkBuildDto? stored, string sha) =>

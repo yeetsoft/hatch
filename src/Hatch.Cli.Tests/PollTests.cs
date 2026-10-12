@@ -1427,6 +1427,102 @@ public sealed class PollTests
             l => Assert.Equal("hatch: could not read pull requests in checkout - gh is not installed", l));
     }
 
+    // ---- The update half ----
+
+    /// <summary>
+    /// A row in the merges column, judged <paramref name="kind"/> (<see
+    /// cref="WorkKinds.Update"/> unless said otherwise): the project's one
+    /// repository, bound so <c>where.Canonical</c> resolves to <see
+    /// cref="MergeCanonical"/>, and a clean merge check on <paramref name="branch"/>
+    /// whose shas already match origin - so the merge-check half above vouches
+    /// for it and fetches nothing, leaving only this half to call <c>Sync</c>.
+    /// Null <paramref name="kind"/> is an ordinary review row: no <c>MergeWork</c>
+    /// at all. No pull request url, since this half never reads one.
+    /// </summary>
+    private static ReviewCheckDto UpdateRow(string key, string branch, string? kind = WorkKinds.Update, string? judgedSha = null)
+    {
+        var sha = judgedSha ?? Tip;
+        var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = sha,
+        };
+
+        return Fixtures.Review(
+            key, [repo], pullRequestUrl: null,
+            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main but needs the trunk brought in"),
+            checks: [stored]);
+    }
+
+    [Fact]
+    public async Task A_pushed_update_comments_the_new_tip_once_announces_it_and_is_not_re_synced_at_the_same_judged_sha()
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.SyncedFor[(rig.H.Root, "AER-1")] = new Synced(SyncOutcome.Pushed, Trunk: "main", Sha: Tip2);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(1, rig.Count("sync"));
+        var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
+        Assert.Equal($"Brought its branch current from main, now at {Tip2}.", comment);
+        Assert.Contains($"hatch: AER-1 branch brought current from main, now at {Tip2[..7]}", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_conflicted_sync_comments_the_files_once_and_is_not_repeated_at_the_same_judged_sha()
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.SyncedFor[(rig.H.Root, "AER-1")] =
+            new Synced(SyncOutcome.Conflicted, Trunk: "main", Files: ["a.txt", "b.txt"]);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
+        Assert.Equal("Its branch does not merge cleanly with main - conflicts in a.txt, b.txt; nothing was pushed.", comment);
+        Assert.Empty(rig.H.Say.Said.Where(l => l.StartsWith("hatch: AER-1", StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData(WorkKinds.Merge)]
+    [InlineData(WorkKinds.Hold)]
+    [InlineData(null)]
+    public async Task A_row_not_judged_update_is_never_asked_about_by_this_half(string? kind)
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing", kind: kind));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Workspace.Calls.Where(c => c.StartsWith("sync ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_runner_with_no_checkout_of_the_repository_is_silently_skipped_by_the_update_half()
+    {
+        var repo = Fixtures.Repository("https://example.other/repo.git", MergeCanonical);
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.other/repo.git", TrunkSha = Trunk, Branch = "aer-1-thing", BranchSha = Tip,
+        };
+        var review = Fixtures.Review(
+            "AER-1", [repo], pullRequestUrl: null,
+            mergeWork: new MergeWorkDto(WorkKinds.Update, "its branch holds main but needs the trunk brought in"),
+            checks: [stored]);
+        using var rig = new Rig().Board(review);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Workspace.Calls.Where(c => c.StartsWith("sync ", StringComparison.Ordinal)));
+        Assert.Empty(rig.H.Say.Complained);
+    }
+
     [Fact]
     public async Task Cancellation_ends_the_poll_rather_than_being_swallowed_as_a_failure()
     {
