@@ -457,6 +457,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DeniedTools")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Effort")
                         .IsRequired()
                         .HasMaxLength(10)

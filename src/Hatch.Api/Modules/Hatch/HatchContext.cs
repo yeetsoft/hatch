@@ -139,6 +139,12 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // sequential migration run leaves behind, and an INSERT that never
             // names Shape still gets one.
             e.Property(p => p.Shape).HasDefaultValue(EfHatchPlaybook.AnyShape);
+
+            // jsonb rather than text, the same reason EfHatchComment.Options is:
+            // the stored shape is a list, not a scalar, and the day somebody
+            // asks "which rows deny Bash" that is a query against this column
+            // rather than a migration.
+            e.Property(p => p.DeniedTools).HasColumnType("jsonb");
         });
 
         // Cascade from both ends, which is the one place in this module where

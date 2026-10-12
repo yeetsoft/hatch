@@ -1577,6 +1577,8 @@ public class EfHatchPlaybook
     public const int MaxEffortLength = 10;
     public const int MaxShapeLength = 10;
     public const int MaxPromptLength = 20_000;
+    public const int MaxDeniedTools = 50;
+    public const int MaxToolRuleLength = 200;
 
     /// <summary>
     /// The thinking budget, as the Claude Code CLI spells it - what
@@ -1677,6 +1679,15 @@ public class EfHatchPlaybook
     /// </summary>
     public int? BriefLimit { get; set; }
 
+    /// <summary>
+    /// The tool rules this row denies, as a jsonb array - read and written
+    /// through <see cref="ReadDeniedTools"/> and <see cref="WriteDeniedTools"/>
+    /// rather than directly, the way <see cref="EfHatchComment.Options"/> is.
+    /// No <c>[MaxLength]</c> here: the jsonb column holds the length concern,
+    /// via <see cref="MaxDeniedTools"/> and <see cref="MaxToolRuleLength"/>.
+    /// </summary>
+    public string? DeniedTools { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
@@ -1732,6 +1743,37 @@ public class EfHatchPlaybook
 
     public static bool IsValidShape(string? shape) =>
         shape is not null && Shapes.Contains(shape);
+
+    /// <summary>
+    /// The stored list of denied tool rules, or null for none. A row that will
+    /// not parse reads as absent rather than throwing the column away - the
+    /// same rule <see cref="Questions.ReadOptions"/> follows for its own jsonb
+    /// column.
+    /// </summary>
+    public static IReadOnlyList<string>? ReadDeniedTools(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return null;
+
+        try
+        {
+            var tools = JsonSerializer.Deserialize<List<string>>(stored, Json);
+            return tools is { Count: > 0 } ? tools : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What goes in the column, or null when nothing is denied.</summary>
+    public static string? WriteDeniedTools(IReadOnlyList<string>? tools) =>
+        tools is { Count: > 0 } ? JsonSerializer.Serialize(tools, Json) : null;
+
+    /// <summary>
+    /// camelCase, matching the wire - the same reason <see cref="Questions"/>
+    /// keeps its own copy rather than sharing one.
+    /// </summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
 /// <summary>

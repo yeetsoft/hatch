@@ -1138,9 +1138,35 @@ public record ImportResultDto(IReadOnlyList<ImportedEpicDto> Epics, int IssueCou
 
 // ---- Playbooks ----
 
+/// <summary>
+/// Claude Code's own built-in tools, by their canonical names - read off
+/// <c>https://code.claude.com/docs/en/tools-reference</c> (the "Tool" column,
+/// canonical names per <c>docs/en/permissions</c>) and confirmed live against
+/// the installed CLI. A denied-tools list draws from this set; re-pull the
+/// docs page rather than trusting this list if a newer CLI is installed by
+/// the time this is read again - names drift between releases.
+/// </summary>
+public static class ClaudeTools
+{
+    public static readonly string[] BuiltIn =
+    [
+        "Agent", "Artifact", "AskUserQuestion", "Bash", "CronCreate", "CronDelete",
+        "CronList", "Edit", "EndConversation", "EnterPlanMode", "EnterWorktree",
+        "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "ListAgents",
+        "ListMcpResourcesTool", "LSP", "Monitor", "NotebookEdit", "PowerShell",
+        "PushNotification", "Read", "ReadMcpResourceTool", "RemoteTrigger",
+        "ReportFindings", "ScheduleWakeup", "SendFeedback", "SendMessage",
+        "SendUserFile", "ShareOnboardingGuide", "Skill", "SubagentHandback",
+        "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
+        "TaskUpdate", "TodoWrite", "ToolSearch", "WaitForMcpServers", "WebFetch",
+        "WebSearch", "Workflow", "Write",
+    ];
+}
+
 /// <summary>One row of the matrix: a transition, the types and shape it speaks for, and what to spend on them.</summary>
 /// <param name="Types">Empty means every type.</param>
 /// <param name="Shape">One of "any", "leaf" or "parent" - whether the issue's children are consulted.</param>
+/// <param name="DeniedTools">Empty means every tool.</param>
 public record PlaybookDto(
     int Id,
     int FromStatusId,
@@ -1154,6 +1180,7 @@ public record PlaybookDto(
     string Effort,
     int? Budget,
     int? BriefLimit,
+    IReadOnlyList<string> DeniedTools,
     DateTimeOffset UpdatedAt);
 
 /// <summary>
@@ -1167,6 +1194,7 @@ public record PlaybookDto(
 /// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="DeniedTools">Empty means every tool. Null leaves it alone on patch; <c>[]</c> clears it.</param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1176,7 +1204,8 @@ public record PlaybookCreateRequest(
     string? Effort,
     string? Budget = null,
     string? BriefLimit = null,
-    string? Shape = null);
+    string? Shape = null,
+    IReadOnlyList<string>? DeniedTools = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="BriefLimit">
@@ -1184,6 +1213,7 @@ public record PlaybookCreateRequest(
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="DeniedTools">Empty means every tool. Null leaves it alone; <c>[]</c> clears it.</param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -1193,7 +1223,8 @@ public record PlaybookPatchRequest(
     string? Effort,
     string? Budget = null,
     string? BriefLimit = null,
-    string? Shape = null);
+    string? Shape = null,
+    IReadOnlyList<string>? DeniedTools = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
