@@ -1569,7 +1569,7 @@ public class EfHatchIssueEvent
 /// natural end. The operator writes these; agents read them.
 /// </remarks>
 [Table("Playbooks")]
-[Index(nameof(FromStatusId), nameof(ToStatusId), nameof(Types), nameof(Shape), IsUnique = true)]
+[Index(nameof(FromStatusId), nameof(ToStatusId), nameof(Types), nameof(Shape), nameof(ProjectId), IsUnique = true)]
 public class EfHatchPlaybook
 {
     public const int MaxTypesLength = 60;
@@ -1628,6 +1628,13 @@ public class EfHatchPlaybook
     /// <summary>The column it is meant to be in when the agent stops.</summary>
     public required int ToStatusId { get; set; }
     public EfHatchStatus? ToStatus { get; set; }
+
+    /// <summary>
+    /// The one project this row speaks for, or null to speak for every project
+    /// on the board - what every row written before this column existed means.
+    /// </summary>
+    public int? ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
 
     /// <summary>
     /// Which issue types this applies to, comma separated and normalised by

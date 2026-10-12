@@ -1766,12 +1766,15 @@ matter under a hundred lines of tidying.
 ### Playbook
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
-`Model`, `Effort`. Unique on `(from, to, types, shape)`.
+`Model`, `Effort`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
 (the issue's children are not consulted), `leaf` (it has none) or `parent` (it
-has at least one). See [the dispatcher](#the-dispatcher).
+has at least one). `ProjectId` is null on every row written before the column
+existed, and null means the row speaks for every project on the board; a row
+naming one project speaks for that project alone. See
+[the dispatcher](#the-dispatcher).
 
 ## The wall, the roles, and API keys
 
@@ -3263,6 +3266,12 @@ issue's children are not consulted), `leaf` (it has none) or `parent` (it has
 at least one) - so a parent's closeout and a childless issue's implementation,
 both `In Progress → In Review` for the same type, can be two different rows at
 two different prices instead of one row doing both jobs.
+
+On a board running more than one project, a row naming the issue's own project
+is chosen before specificity is even asked, whatever either row names for type
+or shape - a project row never loses to a board-wide row, and a row naming a
+different project is never a candidate at all. Only once that is settled, or
+neither row names a project, does specificity run.
 
 Specificity is one number, 0 through 3, and the ordering it produces is
 type+shape > type-only > shape-only > neither: naming the type is worth more

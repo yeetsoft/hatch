@@ -37,6 +37,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var rows = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
+            .Include(p => p.Project)
             .ToListAsync(ct);
 
         return rows
@@ -54,7 +55,18 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var types = EfHatchPlaybook.NormalizeTypes(request.Types);
         var shape = request.Shape?.Trim() ?? EfHatchPlaybook.DefaultShape;
         if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
-        if (await Refusal(request.FromStatusId, request.ToStatusId, types, shape, id: null, ct) is { } error)
+
+        int? projectId = null;
+        if (request.ProjectId is not null)
+        {
+            var (value, projectIdError) = ParseProjectId(request.ProjectId);
+            if (projectIdError is not null) return BadRequest(projectIdError);
+            projectId = value;
+        }
+        if (projectId is not null && !await db.Projects.AnyAsync(p => p.Id == projectId, ct))
+            return BadRequest($"there is no project {projectId}");
+
+        if (await Refusal(request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
             return BadRequest(error);
 
         var prompt = request.Prompt?.Trim() ?? "";
@@ -92,6 +104,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
+            ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -115,7 +128,17 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var shape = request.Shape?.Trim() ?? playbook.Shape;
         if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
 
-        if (await Refusal(from, to, types, shape, id, ct) is { } error) return BadRequest(error);
+        var projectId = playbook.ProjectId;
+        if (request.ProjectId is not null)
+        {
+            var (value, projectIdError) = ParseProjectId(request.ProjectId);
+            if (projectIdError is not null) return BadRequest(projectIdError);
+            projectId = value;
+        }
+        if (projectId is not null && !await db.Projects.AnyAsync(p => p.Id == projectId, ct))
+            return BadRequest($"there is no project {projectId}");
+
+        if (await Refusal(from, to, types, shape, projectId, id, ct) is { } error) return BadRequest(error);
 
         if (request.Prompt is not null)
         {
@@ -152,6 +175,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.Effort = effort;
         playbook.Budget = budget;
         playbook.BriefLimit = briefLimit;
+        playbook.ProjectId = projectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
         await db.SaveChangesAsync(ct);
@@ -185,7 +209,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     /// Which column that is, is measured off the board as it stands and not
     /// named, the way every other rule about review is.
     /// </remarks>
-    private async Task<string?> Refusal(int from, int to, string types, string shape, int? id, CancellationToken ct)
+    private async Task<string?> Refusal(int from, int to, string types, string shape, int? projectId, int? id, CancellationToken ct)
     {
         var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
         if (!known.Contains(from)) return $"there is no column {from}";
@@ -205,7 +229,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         var clash = await db.Playbooks
             .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types &&
-                           p.Shape == shape && p.Id != id, ct);
+                           p.Shape == shape && p.ProjectId == projectId && p.Id != id, ct);
 
         return clash
             ? "there is already a playbook for that transition, those types and that shape"
@@ -277,6 +301,18 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         return (null, $"a brief limit is a whole number of one or more, in characters - not \"{trimmed}\"");
     }
 
+    /// <summary>The same, for the project this row names - a whole number that still has to name a project, which the caller checks.</summary>
+    private static (int? Value, string? Error) ParseProjectId(string projectId)
+    {
+        var trimmed = projectId.Trim();
+        if (trimmed.Length == 0) return (null, null);
+
+        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
+            return (parsed, null);
+
+        return (null, $"a project is a whole number of one or more - not \"{trimmed}\"");
+    }
+
     // ---- Reading back ----
 
     private async Task<PlaybookDto> LoadDtoAsync(int id, CancellationToken ct)
@@ -284,6 +320,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var row = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
+            .Include(p => p.Project)
             .FirstAsync(p => p.Id == id, ct);
 
         return ToDto(row);
@@ -302,5 +339,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.Effort,
         p.Budget,
         p.BriefLimit,
-        p.UpdatedAt);
+        p.UpdatedAt,
+        p.ProjectId,
+        p.Project?.Key,
+        p.Project?.Name);
 }

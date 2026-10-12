@@ -179,6 +179,36 @@ public class ProjectsControllerTests
         Assert.Empty(await h.Db.ProjectRepositories.ToListAsync());
     }
 
+    /// <summary>A playbook naming the project is a reason to keep it around, the same as an issue - see <see cref="DeletingAProject_TakesItsBindingsWithIt"/> above for what is not.</summary>
+    [Fact]
+    public async Task DeletingAProjectAPlaybookNames_IsRefused()
+    {
+        var h = await NewAsync();
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
+        h.Db.AddRange(todo, doing);
+        await h.Db.SaveChangesAsync();
+        h.Db.Add(new EfHatchPlaybook
+        {
+            FromStatusId = todo.Id,
+            ToStatusId = doing.Id,
+            Types = "",
+            Shape = EfHatchPlaybook.AnyShape,
+            Prompt = "do it",
+            Model = "sonnet",
+            Effort = "high",
+            ProjectId = h.ProjectId,
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Projects.DeleteProject(h.ProjectId, default);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.NotNull(await h.Db.Projects.FindAsync(h.ProjectId));
+    }
+
     [Fact]
     public async Task GetProjects_CarriesTheListInOrder()
     {

@@ -133,6 +133,15 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .HasForeignKey(p => p.ToStatusId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Same argument as FromStatus/ToStatus above: a project is deleted
+            // through an endpoint that refuses while a playbook still names it,
+            // and cascade here would let that deletion quietly take the row
+            // with it instead.
+            e.HasOne(p => p.Project)
+                .WithMany()
+                .HasForeignKey(p => p.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // Matches the PlaybookShape migration's own defaultValue, so a
             // database built straight from this model - EnsureCreated, as the
             // test suite's own database does - gets the same column default a

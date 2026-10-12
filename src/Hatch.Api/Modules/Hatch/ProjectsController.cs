@@ -229,6 +229,10 @@ public class ProjectsController(
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         if (count > 0) return Conflict($"{project.Key} still has {count} issue{(count == 1 ? "" : "s")} in it");
 
+        var playbookCount = await db.Playbooks.CountAsync(p => p.ProjectId == id, ct);
+        if (playbookCount > 0)
+            return Conflict($"{project.Key} still has {playbookCount} playbook{(playbookCount == 1 ? "" : "s")} naming it");
+
         db.Projects.Remove(project);
         await db.SaveChangesAsync(ct);
         return NoContent();

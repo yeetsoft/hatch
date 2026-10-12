@@ -1154,7 +1154,10 @@ public record PlaybookDto(
     string Effort,
     int? Budget,
     int? BriefLimit,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    int? ProjectId,
+    string? ProjectKey,
+    string? ProjectName);
 
 /// <summary>
 /// How many millions of tokens this row budgets. Null means no budget (on
@@ -1167,6 +1170,13 @@ public record PlaybookDto(
 /// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="ProjectId">
+/// The one project this row speaks for, named despite its type - a string,
+/// not an int, for the same three-state shape <paramref name="Budget"/>
+/// carries. Null means board-wide (on create) or leaves it alone (on patch);
+/// <c>""</c> or whitespace hands it back to the whole board; a parsed
+/// positive integer names a project.
+/// </param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1176,13 +1186,19 @@ public record PlaybookCreateRequest(
     string? Effort,
     string? Budget = null,
     string? BriefLimit = null,
-    string? Shape = null);
+    string? Shape = null,
+    string? ProjectId = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="BriefLimit">
 /// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="ProjectId">
+/// The one project this row speaks for. Null leaves it alone; <c>""</c> or
+/// whitespace hands it back to the whole board; a parsed positive integer
+/// names a project - the same three states <paramref name="Budget"/> carries.
 /// </param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
@@ -1193,7 +1209,8 @@ public record PlaybookPatchRequest(
     string? Effort,
     string? Budget = null,
     string? BriefLimit = null,
-    string? Shape = null);
+    string? Shape = null,
+    string? ProjectId = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and

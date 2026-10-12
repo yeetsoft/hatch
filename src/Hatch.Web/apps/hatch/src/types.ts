@@ -858,6 +858,10 @@ export interface Playbook {
   budget: number | null;
   briefLimit: number | null;
   updatedAt: string;
+  /** The one project this row speaks for, or null to speak for every project. */
+  projectId: number | null;
+  projectKey: string | null;
+  projectName: string | null;
 }
 
 export interface PlaybookCreateRequest {
@@ -870,6 +874,7 @@ export interface PlaybookCreateRequest {
   budget?: string;
   briefLimit?: string;
   shape?: PlaybookShape;
+  projectId?: string;
 }
 
 /** Null or absent leaves a field alone, as everywhere else in Hatch. */
@@ -883,6 +888,7 @@ export interface PlaybookPatchRequest {
   budget?: string;
   briefLimit?: string;
   shape?: PlaybookShape;
+  projectId?: string;
 }
 
 // ---- Work ----

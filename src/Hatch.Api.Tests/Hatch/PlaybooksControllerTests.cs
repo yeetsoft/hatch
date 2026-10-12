@@ -225,6 +225,95 @@ public class PlaybooksControllerTests
             Reason(refusal.Result));
     }
 
+    // ---- Project ----
+
+    [Fact]
+    public async Task ABoardWideRow_AndAProjectRow_OnTheSameTransitionTypesAndShape_AreBothAccepted()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync();
+
+        var created = await h.CreateAsync(projectId: h.ProjectA.ToString());
+
+        Assert.Equal(h.ProjectA, created.ProjectId);
+    }
+
+    [Fact]
+    public async Task TwoRows_ForTheSameProject_OnTheSameTransitionTypesAndShape_AreRefused()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync(projectId: h.ProjectA.ToString());
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", ProjectId: h.ProjectA.ToString()), default);
+
+        Assert.Equal(
+            "there is already a playbook for that transition, those types and that shape",
+            Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task ANullProjectIdOnPatch_LeavesItAlone()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync(projectId: h.ProjectA.ToString());
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal(h.ProjectA, patched.ProjectId);
+    }
+
+    [Fact]
+    public async Task AnEmptyProjectId_ClearsItBackToBoardWide()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync(projectId: h.ProjectA.ToString());
+
+        var cleared = await h.SetAsync(row.Id, projectId: "");
+
+        Assert.Null(cleared.ProjectId);
+    }
+
+    [Fact]
+    public async Task AParsedProjectId_SetsIt()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, projectId: h.ProjectA.ToString());
+
+        Assert.Equal(h.ProjectA, patched.ProjectId);
+    }
+
+    [Fact]
+    public async Task ANonexistentProjectId_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, ProjectId: "999"), default);
+
+        Assert.Equal("there is no project 999", Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).ProjectId);
+    }
+
+    [Fact]
+    public async Task ABadProjectId_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, ProjectId: "abc"), default);
+
+        Assert.Equal(
+            "a project is a whole number of one or more - not \"abc\"",
+            Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).ProjectId);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -234,14 +323,15 @@ public class PlaybooksControllerTests
         public required PlaybooksController Playbooks { get; init; }
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
+        public required int ProjectA { get; init; }
 
-        public async Task<PlaybookDto> CreateAsync(string? budget = null, string? briefLimit = null) =>
+        public async Task<PlaybookDto> CreateAsync(string? budget = null, string? briefLimit = null, string? projectId = null) =>
             Created(await Playbooks.CreatePlaybook(
-                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit), default));
+                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit, ProjectId: projectId), default));
 
-        public async Task<PlaybookDto> SetAsync(int id, string? budget = null, string? briefLimit = null) =>
+        public async Task<PlaybookDto> SetAsync(int id, string? budget = null, string? briefLimit = null, string? projectId = null) =>
             Value(await Playbooks.PatchPlaybook(
-                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit), default));
+                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit, ProjectId: projectId), default));
 
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);
@@ -254,7 +344,8 @@ public class PlaybooksControllerTests
 
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
         var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
-        db.AddRange(todo, doing);
+        var projectA = new EfHatchProject { Key = "A", Name = "A", CreatedAt = Now };
+        db.AddRange(todo, doing, projectA);
         await db.SaveChangesAsync();
 
         return new Harness
@@ -262,6 +353,7 @@ public class PlaybooksControllerTests
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             Todo = todo.Id,
             InProgress = doing.Id,
+            ProjectA = projectA.Id,
         };
     }
 

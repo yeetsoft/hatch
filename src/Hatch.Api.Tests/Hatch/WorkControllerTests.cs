@@ -1819,6 +1819,88 @@ public class WorkControllerTests
         Assert.Equal("parent-model", Value(await h.Work.GetWork(Key(closedOut), null, default)).Playbook!.Model);
     }
 
+    // ---- Matching, by project (HA-424) ----
+
+    [Fact]
+    public async Task Work_APlaybookNamingAProject_IsUsedForThatProjectsIssue_AndNeverForAnothers()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "a-only", shape: "any", projectId: h.ProjectId));
+        await h.Db.SaveChangesAsync();
+
+        var ownTask = await h.FileAsync("task", "in the named project", h.Todo);
+        var otherTask = await h.FileAsync("task", "in the other project", h.Todo, projectId: other);
+
+        Assert.Equal("a-only", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.Model);
+        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_AnIssueInAProjectWithNoProjectRow_FallsBackToTheBoardWideRow()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "a-only", shape: "any", projectId: h.ProjectId));
+        await h.Db.SaveChangesAsync();
+
+        var otherTask = await h.FileAsync("task", "no row names this project", h.Todo, projectId: other);
+
+        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_AProjectRowWithNoType_BeatsABoardWideRowThatNamesTheIssuesType()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "", "project-wins", shape: "any", projectId: h.ProjectId));
+        await h.Db.SaveChangesAsync();
+
+        var task = await h.FileAsync("task", "the board-wide row names this type, the project row names no type", h.Todo);
+
+        Assert.Equal("project-wins", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.Model);
+    }
+
+    /// <summary>
+    /// The fold has no <c>Playbook</c> field to read a model off, so the project
+    /// scoping is read the way <see cref="Work_ALeafsOverLongBriefIsFoldedBeforeASessionIsSpawned"/>
+    /// reads any other playbook field through the fold: a <c>BriefLimit</c> only
+    /// project A's row carries folds project A's over-long story and nothing
+    /// about project B's identical one, which falls back to the board-wide row
+    /// that carries no limit at all.
+    /// </summary>
+    [Fact]
+    public async Task Queue_ABriefLimitOnAProjectsOwnRow_FoldsOnlyThatProjectsIssue()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000, projectId: h.ProjectId));
+        await h.Db.SaveChangesAsync();
+
+        var ownStory = await h.FileAsync("story", "in the project with the limit", h.Todo);
+        ownStory.Description = new string('x', 1001);
+        var otherStory = await h.FileAsync("story", "in the project with no limit of its own", h.Todo, projectId: other);
+        otherStory.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetQueue(0, null, default));
+        Assert.NotNull(rows.Single(r => r.Issue.Key == Key(ownStory)).Blocked);
+        Assert.Null(rows.Single(r => r.Issue.Key == Key("OTH", otherStory)).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_APlaybookNamingAProject_IsUsedForThatProjectsIssueAndNeverForAnothers()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "a-only", shape: "any", projectId: h.ProjectId));
+        await h.Db.SaveChangesAsync();
+
+        var otherTask = await h.FileAsync("task", "the only issue, in the other project", h.Todo, projectId: other);
+
+        Assert.Equal("sonnet", Value(await h.Work.GetNextWork(ct: default)).Playbook!.Model);
+    }
+
     // ---- The issue's own model and effort ----
 
     [Fact]
@@ -6931,11 +7013,11 @@ public class WorkControllerTests
         /// </summary>
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int statusId,
-            long rank = 1024, DateTimeOffset? readyAt = null, long? parentId = null)
+            long rank = 1024, DateTimeOffset? readyAt = null, long? parentId = null, int? projectId = null)
         {
             var issue = new EfHatchIssue
             {
-                ProjectId = ProjectId,
+                ProjectId = projectId ?? ProjectId,
                 Number = next++,
                 Type = type,
                 Title = title,
@@ -6953,6 +7035,15 @@ public class WorkControllerTests
             Db.Issues.Add(issue);
             await Db.SaveChangesAsync();
             return issue;
+        }
+
+        /// <summary>A second project on the same board, for a test about a playbook that names one project and not the other.</summary>
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
         }
 
         /// <summary>
@@ -7539,8 +7630,11 @@ public class WorkControllerTests
     /// <summary>The display key of an issue these tests filed directly.</summary>
     private static string Key(EfHatchIssue issue) => IssueKey.Format("AER", issue.Number);
 
+    /// <summary>The same, for an issue filed in a second project - see <see cref="Harness.AddProjectAsync"/>.</summary>
+    private static string Key(string projectKey, EfHatchIssue issue) => IssueKey.Format(projectKey, issue.Number);
+
     private static EfHatchPlaybook Playbook(
-        int from, int to, string types, string model, string shape = "any", int? briefLimit = null) => new()
+        int from, int to, string types, string model, string shape = "any", int? briefLimit = null, int? projectId = null) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -7550,6 +7644,7 @@ public class WorkControllerTests
         Model = model,
         Effort = "high",
         BriefLimit = briefLimit,
+        ProjectId = projectId,
         CreatedAt = Now,
         UpdatedAt = Now,
     };
