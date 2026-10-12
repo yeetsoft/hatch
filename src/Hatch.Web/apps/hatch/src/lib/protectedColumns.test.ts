@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnBlocked, moveBlocked } from './protectedColumns';
+import { bulkBlocked, columnBlocked, moveBlocked } from './protectedColumns';
 import type { IssueCard, Project, Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -124,5 +124,59 @@ describe('columnBlocked', () => {
   it('blocks a dragging card whose project is absent from the map, the same as a non-approver', () => {
     const projectsByKey = new Map<string, Project>();
     expect(columnBlocked(PROTECTED_ONLY, card(), projectsByKey)).toMatch(/approver/i);
+  });
+});
+
+describe('bulkBlocked', () => {
+  it('is null for every status when there is nothing to check', () => {
+    const projectsByKey = new Map([['AER', project({ canApprove: false })]]);
+    expect(bulkBlocked(PROTECTED_ONLY, [], projectsByKey)).toBeNull();
+    expect(bulkBlocked(PROTECTED_MERGING, [], projectsByKey)).toBeNull();
+    expect(bulkBlocked(PLAIN, [], projectsByKey)).toBeNull();
+  });
+
+  it('blocks on a protected column when one result among others cannot approve, naming that result first', () => {
+    const projectsByKey = new Map([
+      ['AER', project({ key: 'AER', canApprove: true })],
+      ['HA', project({ key: 'HA', canApprove: false })],
+    ]);
+    const issues = [
+      card({ key: 'AER-1', projectKey: 'AER', statusId: 99, pullRequestUrl: 'https://example.com/pr/1' }),
+      card({ key: 'HA-1', projectKey: 'HA', statusId: 99, pullRequestUrl: 'https://example.com/pr/2' }),
+    ];
+    expect(bulkBlocked(PROTECTED_ONLY, issues, projectsByKey)).toMatch(/^HA-1:.*approver/i);
+    expect(bulkBlocked(PROTECTED_MERGING, issues, projectsByKey)).toMatch(/^HA-1:.*approver/i);
+  });
+
+  it('blocks on a merge-only column when one result among others has no pull request', () => {
+    const projectsByKey = new Map([['AER', project({ canApprove: true })]]);
+    const mergeOnly = status(4, 3, { mergesPullRequest: true });
+    const issues = [
+      card({ key: 'AER-1', statusId: 99, pullRequestUrl: 'https://example.com/pr/1' }),
+      card({ key: 'AER-2', statusId: 99, pullRequestUrl: null }),
+    ];
+    expect(bulkBlocked(mergeOnly, issues, projectsByKey)).toMatch(/^AER-2:.*pull request/i);
+  });
+
+  it('stays unblocked when every result passes both gates', () => {
+    const projectsByKey = new Map([['AER', project({ canApprove: true })]]);
+    const issues = [
+      card({ key: 'AER-1', statusId: 99, pullRequestUrl: 'https://example.com/pr/1' }),
+      card({ key: 'AER-2', statusId: 99, pullRequestUrl: 'https://example.com/pr/2' }),
+    ];
+    expect(bulkBlocked(PLAIN, issues, projectsByKey)).toBeNull();
+    expect(bulkBlocked(PROTECTED_MERGING, issues, projectsByKey)).toBeNull();
+  });
+
+  it('does not count a result already standing in the target column against that column, only against others', () => {
+    const projectsByKey = new Map([['AER', project({ canApprove: false })]]);
+    const already = card({ key: 'AER-1', statusId: PROTECTED_ONLY.id, pullRequestUrl: null });
+    expect(bulkBlocked(PROTECTED_ONLY, [already], projectsByKey)).toBeNull();
+    expect(bulkBlocked(PROTECTED_MERGING, [already], projectsByKey)).toMatch(/approver/i);
+  });
+
+  it('blocks on a protected column when a result project is absent from the map, the same as a non-approver', () => {
+    const projectsByKey = new Map<string, Project>();
+    expect(bulkBlocked(PROTECTED_ONLY, [card({ statusId: 99 })], projectsByKey)).toMatch(/approver/i);
   });
 });

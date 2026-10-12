@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { bulkEditIssues, getBoard, getProjects, searchIssues } from '../api/client';
@@ -9,6 +9,7 @@ import { TypeBadge } from '../components/TypeBadge';
 import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, summarize } from '../lib/bulk';
 import type { BulkForm } from '../lib/bulk';
 import { message } from '../lib/errors';
+import { bulkBlocked } from '../lib/protectedColumns';
 import { truncate } from '../lib/text';
 import { ISSUE_TYPES } from '../types';
 import type { Board, IssueBulkResult, IssueCard, IssueSearch, IssueType, Project } from '../types';
@@ -40,6 +41,7 @@ const NO_FILTERS: Filters = { projectId: '', type: '', statusId: '', parentKey: 
 export function BulkPage() {
   const [board, setBoard] = useState<Board | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const projectsByKey = useMemo(() => new Map(projects.map((p) => [p.key, p])), [projects]);
 
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [results, setResults] = useState<IssueCard[] | null>(null);
@@ -114,6 +116,9 @@ export function BulkPage() {
   const statuses = board.statuses;
   const issues = board.issues;
   const request = buildBulkEdit([...chosen], form);
+  const selected = (results ?? []).filter((issue) => chosen.has(issue.key));
+  const selectedStatus = form.statusId === '' ? null : statuses.find((s) => s.id === form.statusId) ?? null;
+  const statusBlockedReason = selectedStatus ? bulkBlocked(selectedStatus, selected, projectsByKey) : null;
 
   return (
     <div className="hatch-page hatch-bulk-page">
@@ -220,17 +225,20 @@ export function BulkPage() {
                 </select>
               </Field>
 
-              <Field label="Status">
+              <Field label="Status" error={statusBlockedReason}>
                 <select
                   value={form.statusId}
                   onChange={(e) => setForm({ ...form, statusId: e.target.value === '' ? '' : Number(e.target.value) })}
                 >
                   <option value="">— leave alone —</option>
-                  {statuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  {statuses.map((s) => {
+                    const reason = bulkBlocked(s, selected, projectsByKey);
+                    return (
+                      <option key={s.id} value={s.id} disabled={reason !== null} title={reason ?? undefined}>
+                        {s.name}
+                      </option>
+                    );
+                  })}
                 </select>
               </Field>
 

@@ -46,3 +46,28 @@ export function columnBlocked(
 ): string | null {
   return dragging ? moveBlocked(target, projectsByKey.get(dragging.projectKey), dragging) : null;
 }
+
+/** Why a batch move of every selected result into `target` would be refused for
+    at least one of them, or null where none would be. A batch is heterogeneous -
+    each result can carry its own project and pull request - so a column is
+    blocked for the whole control the moment any one *affected* result's own
+    moveBlocked is non-null. A result already standing in `target` is not
+    affected by a move there - IssuesController.StageEditAsync only runs either
+    refusal when the status patch would actually change the status (`statusId
+    != issue.StatusId`) - so it is skipped, the same no-op the server would make
+    of it. The reason names the first blocking result's key, the same
+    `<code>{key}</code> — {reason}` shape BulkPage's own outcome.failures list
+    already uses, since a composed reason naming nobody would leave the caller
+    guessing which of up to fifty results is the problem one. */
+export function bulkBlocked(
+  target: Status,
+  issues: IssueCard[],
+  projectsByKey: Map<string, Project>,
+): string | null {
+  for (const issue of issues) {
+    if (issue.statusId === target.id) continue;
+    const reason = moveBlocked(target, projectsByKey.get(issue.projectKey), issue);
+    if (reason) return `${issue.key}: ${reason}`;
+  }
+  return null;
+}
