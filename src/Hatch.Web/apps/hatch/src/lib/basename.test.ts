@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_BASENAME, hrefWithin, routerBasename } from './basename';
+import { APP_BASENAME, fullHref, hrefWithin, routerBasename } from './basename';
 
 describe('routerBasename', () => {
   it('is the prefix when served under it on the house hostname', () => {
@@ -27,5 +27,19 @@ describe('hrefWithin', () => {
 
   it('changes nothing on the hatch hostname', () => {
     expect(hrefWithin('/', '/issues/AER-12')).toBe('/issues/AER-12');
+  });
+});
+
+describe('fullHref', () => {
+  it('is origin plus path on the hatch hostname, where the pathname carries no app prefix', () => {
+    expect(fullHref('https://hatch.example', '/issues/HA-446', '/issues/HA-446')).toBe(
+      'https://hatch.example/issues/HA-446'
+    );
+  });
+
+  it('is origin plus the app-prefixed href on the house hostname', () => {
+    expect(fullHref('https://home.example', '/apps/hatch/issues/HA-446', '/issues/HA-446')).toBe(
+      'https://home.example/apps/hatch/issues/HA-446'
+    );
   });
 });

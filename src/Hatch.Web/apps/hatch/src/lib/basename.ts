@@ -51,3 +51,8 @@ export function hrefWithin(basename: string, path: string): string {
 /** The same, against whatever address this document was actually served at. */
 export const appHref = (path: string): string =>
   hrefWithin(routerBasename(window.location.pathname), path);
+
+/** A full, copyable address for an in-app route, against a given origin and pathname. */
+export function fullHref(origin: string, pathname: string, path: string): string {
+  return `${origin}${hrefWithin(routerBasename(pathname), path)}`;
+}
