@@ -219,6 +219,12 @@ public class AdminSurfaceTests
         // operator already agreed it may go.
         "WorkController.MergedWork",
 
+        // The review column's other direction: a merge column judged
+        // "pushback" by MergeWork itself, carried back for a person - or the
+        // next session - to fix. Hatch-scoped like MergedWork beside it: a
+        // runner's poll is exactly who reads this verdict.
+        "WorkController.PushbackWork",
+
         // The merge column's own counterpart to MergedWork above: a pull
         // request read as closed rather than merged, for the same board
         // row and the same reason a key may report it - a runner's poll
