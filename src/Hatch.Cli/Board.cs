@@ -149,6 +149,27 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Reports a pull request closed without merging, against the one recorded
+    /// on an issue in a column that merges it - see
+    /// <see cref="PullRequestClosedRequest"/>. A <c>409</c> is not a fault, the
+    /// same as <see cref="MergedAsync"/> documents: the column stopped merging
+    /// its pull request, or the url no longer matches, between the poll's read
+    /// and this write, and the caller walks on rather than treating it as a
+    /// refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> ClosedAsync(
+        string key, PullRequestClosedRequest request, CancellationToken ct)
+    {
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/closed", request, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/closed"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
     /// What a pass would take, without taking it.
     /// </summary>
     /// <remarks>
