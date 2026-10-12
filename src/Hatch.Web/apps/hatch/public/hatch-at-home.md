@@ -798,8 +798,8 @@ it is the loop it started as and these three flags do nothing there. The
 supervisor is Hatch's own `scripts/hatch.sh`, or `scripts\hatch.ps1` in
 PowerShell on Windows, which catches the 75, compiles the new source and runs it
 again. The container runner is a third case: it
-carries the binary its image was built with, so `docker compose pull` is how it
-becomes a newer one.
+carries the binary its image was built with, so it becomes a newer one when
+the stack is brought up again after a `git pull` (see *Upgrading*).
 
 Windows client editions refuse scripts by default (execution policy
 `Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
@@ -973,12 +973,14 @@ loop with no end.
 
 ```
 git pull
-docker compose up -d --build
+docker compose up -d
 ```
 
-`git pull` brings the source up to date; `--build` is what makes `up -d`
-rebuild the image from it rather than reusing the one you started with. **Your
-data is untouched** — it is in a volume, and a volume is not part of an image.
+`git pull` brings the source up to date, and `up -d` rebuilds the images from
+it: every service Hatch builds says `pull_policy: build` in `compose.yaml`, so
+`up` never reuses an image built from older source. With nothing changed the
+rebuild is all cache and takes seconds. A `down` between the two is not needed
+and does no harm. **Your data is untouched** — it is in a volume, and a volume is not part of an image.
 The migration re-runs on every start and does nothing when there is nothing to
 do.
 
@@ -1048,8 +1050,8 @@ docker compose down
 ```
 
 **`down` keeps your data.** The containers go; the volume outlives them, so
-`down` and then `up -d` again — even after pulling newer images — brings back
-the same board. `down` takes the runner container with it whether or not you
+`down` and then `up -d` again — even after an upgrade has rebuilt the images —
+brings back the same board. `down` takes the runner container with it whether or not you
 name its profile, because it removes everything in the project.
 
 ```

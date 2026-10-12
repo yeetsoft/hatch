@@ -28,12 +28,14 @@ log says why.
 
 ```
 git pull
-docker compose up -d --build
+docker compose up -d
 ```
 
-`git pull` brings the source up to date; `--build` makes `up -d` rebuild the
-image from it rather than reusing the one you started with. Your data is
-untouched. It is in a volume, and a volume is not part of an image. The
+`git pull` brings the source up to date, and `up -d` rebuilds the images from
+it. Every service Hatch builds says `pull_policy: build` in `compose.yaml`, so
+`up` never reuses an image built from older source. With nothing changed the
+rebuild is all cache and takes seconds. A `down` between the two is not needed
+and does no harm. Your data is untouched. It is in a volume, and a volume is not part of an image. The
 migration re-runs on every start and does nothing when there is nothing to do.
 
 Two things to do after an upgrade:

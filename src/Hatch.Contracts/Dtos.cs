@@ -1181,7 +1181,10 @@ public record PlaybookDto(
     int? Budget,
     int? BriefLimit,
     IReadOnlyList<string> DeniedTools,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    int? ProjectId,
+    string? ProjectKey,
+    string? ProjectName);
 
 /// <summary>
 /// How many millions of tokens this row budgets. Null means no budget (on
@@ -1195,6 +1198,13 @@ public record PlaybookDto(
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone on patch; <c>[]</c> clears it.</param>
+/// <param name="ProjectId">
+/// The one project this row speaks for, named despite its type - a string,
+/// not an int, for the same three-state shape <paramref name="Budget"/>
+/// carries. Null means board-wide (on create) or leaves it alone (on patch);
+/// <c>""</c> or whitespace hands it back to the whole board; a parsed
+/// positive integer names a project.
+/// </param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1205,7 +1215,8 @@ public record PlaybookCreateRequest(
     string? Budget = null,
     string? BriefLimit = null,
     string? Shape = null,
-    IReadOnlyList<string>? DeniedTools = null);
+    IReadOnlyList<string>? DeniedTools = null,
+    string? ProjectId = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="BriefLimit">
@@ -1214,6 +1225,11 @@ public record PlaybookCreateRequest(
 /// states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone; <c>[]</c> clears it.</param>
+/// <param name="ProjectId">
+/// The one project this row speaks for. Null leaves it alone; <c>""</c> or
+/// whitespace hands it back to the whole board; a parsed positive integer
+/// names a project - the same three states <paramref name="Budget"/> carries.
+/// </param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -1224,7 +1240,8 @@ public record PlaybookPatchRequest(
     string? Budget = null,
     string? BriefLimit = null,
     string? Shape = null,
-    IReadOnlyList<string>? DeniedTools = null);
+    IReadOnlyList<string>? DeniedTools = null,
+    string? ProjectId = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and

@@ -211,7 +211,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 {
                     if (effective[issue.Id].Level != level) continue;
 
-                    var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0);
+                    var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
                     var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
@@ -931,29 +931,33 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         "aeiou".Contains(char.ToLowerInvariant(type[0])) ? $"an {type}" : $"a {type}";
 
     /// <summary>
-    /// The playbook that speaks for this move. A row naming the issue's type
-    /// beats a row naming only its shape, which beats a bare row naming
+    /// The playbook that speaks for this move. A row naming the issue's own
+    /// project beats a row naming every project, whatever either names for
+    /// type or shape; only once that is settled does a row naming the issue's
+    /// type beat a row naming only its shape, which beats a bare row naming
     /// neither, and ties go to the older row - so adding a specific rule never
     /// requires editing the general one.
     /// </summary>
-    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, bool isParent, CancellationToken ct) =>
+    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct) =>
         Match(
             await db.Playbooks.AsNoTracking()
                 .Include(p => p.FromStatus)
                 .Include(p => p.ToStatus)
                 .Where(p => p.FromStatusId == from && p.ToStatusId == to)
                 .ToListAsync(ct),
-            from, to, type, isParent);
+            from, to, type, isParent, projectId);
 
     /// <summary>
     /// The same rule against rows already in hand, which is how a scan matches
     /// a whole board's worth of transitions without a query a row. The matrix
     /// is small enough to read whole and the tie-break is arithmetic.
     /// </summary>
-    public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent) =>
+    public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
         playbooks
-            .Where(p => p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent))
-            .OrderByDescending(p => p.Specificity)
+            .Where(p => p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
             .ThenBy(p => p.Id)
             .FirstOrDefault();
 

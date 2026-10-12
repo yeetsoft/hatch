@@ -76,6 +76,10 @@ The rules:
 - **Specificity wins.** A row naming the issue's type beats a row naming every
   type, so "Breakdown to Backlog, epics" can say something different from
   "Breakdown to Backlog, anything else".
+- **A playbook may name one project, and a board-wide row still speaks for
+  every project that has none of its own.** On a board running more than one
+  project, a row naming the issue's own project is chosen ahead of specificity,
+  whatever either row names for type or shape.
 - **Seven rows ship with the board**, covering every transition an agent owns,
   so a fresh install works with no configuration beyond an origin. Nothing
   re-seeds them afterwards. What you edit stays edited, and what you delete

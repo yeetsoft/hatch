@@ -33,10 +33,24 @@ export type AttentionTone = 'rest' | 'asking';
  * a failing one has no agent already on it the way a failing branch build
  * does - it sits until a person presses *File a bug*, which is exactly what
  * the badge exists to surface.
+ *
+ * `approvedHeld` counts too, unlike `conflicts` and `failingBuilds`: nothing in
+ * the merge column is an agent's to fix (HA-289), so every row there is a
+ * person's, every time - there is no loop already on it the way there is for
+ * a review-column conflict or a failing build.
+ *
+ * `approvedWaiting` is deliberately left out: the loop is still progressing
+ * those on its own, and a row it cannot clear becomes `approvedHeld`, already
+ * counted above.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
-  return attention.reviews.length + attention.questions.length + (attention.trunkBuilds?.length ?? 0);
+  return (
+    attention.reviews.length +
+    attention.questions.length +
+    (attention.trunkBuilds?.length ?? 0) +
+    (attention.approvedHeld?.length ?? 0)
+  );
 }
 
 /** Loud only when there is something a person can act on. Nothing read yet is

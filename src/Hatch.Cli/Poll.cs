@@ -65,6 +65,7 @@ public sealed class Poll
     private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
     private readonly Dictionary<(string Path, string Key), string> _seenUpdate = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
+    private readonly HashSet<string> _seenClosed = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
@@ -494,6 +495,29 @@ public sealed class Poll
                     continue;
                 }
 
+                if (issue.MergeWork is not null && state == PullRequestStates.Closed)
+                {
+                    (IssueDto? Issue, string? WalkOn) closed;
+                    try
+                    {
+                        closed = await runtime.QuietBoard.ClosedAsync(
+                            issue.Key, new PullRequestClosedRequest(url, runtime.RunnerName), ct);
+                    }
+                    catch (HatchException e)
+                    {
+                        complain($"hatch: {issue.Key} - the board would not take the closed pull request - {e.Message}");
+                        continue;
+                    }
+
+                    if (closed.WalkOn is null && _seenClosed.Add(issue.Key))
+                    {
+                        await runtime.QuietBoard.CommentAsync(
+                            issue.Key, "Its pull request was closed without merging.", ct);
+                    }
+
+                    continue;
+                }
+
                 if (state != PullRequestStates.Merged) continue;
 
                 (IssueDto? Issue, string? WalkOn) result;
@@ -570,6 +594,8 @@ public sealed class Poll
                     if (pr.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
                     continue;
                 }
+
+                if (state == PullRequestStates.Closed) continue;
 
                 var dedupeKey = (where.Path, issue.Key);
                 var alreadySeen = _seenMergeRefusal.TryGetValue(dedupeKey, out var seenSha) && seenSha == judgedSha;

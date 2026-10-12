@@ -16,6 +16,11 @@ services:
     build:
       context: ./containers/hatch-db
       dockerfile: Dockerfile.db
+    # Rebuild on every `up`, not only when no image exists yet. Without it,
+    # `git pull` and `up -d` - with or without a `down` between them - starts
+    # the image the first `up` built, and the pull changes nothing anybody can
+    # see. With nothing changed the build is all cache, so this costs seconds.
+    pull_policy: build
     ports:
       # Published, unlike a shipped-image deployment would publish it: this is
       # the developer's stack, and tests (`make test-api-db`) reach Postgres on
@@ -41,6 +46,8 @@ services:
     build:
       context: .
       dockerfile: src/Hatch.Api/Dockerfile.api
+    # Rebuilt on every `up`, for the reason given on `db`.
+    pull_policy: build
     depends_on:
       db:
         condition: service_healthy
@@ -61,6 +68,8 @@ services:
     build:
       context: .
       dockerfile: src/Hatch.Api/Dockerfile.api
+    # Rebuilt on every `up`, for the reason given on `db`.
+    pull_policy: build
     # Not `depends_on: db` - the API does not retry a schema that is not there
     # yet, it exits (AERIE-931). Waiting for the migration to *finish* is the
     # difference between a stack that comes up and one that races.
@@ -118,6 +127,8 @@ services:
     build:
       context: .
       dockerfile: containers/hatch-runner/Dockerfile
+    # Rebuilt on every `up`, for the reason given on `db`.
+    pull_policy: build
     profiles: ["runner"]
     depends_on:
       - api

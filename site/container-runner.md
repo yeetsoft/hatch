@@ -204,11 +204,12 @@ everything else the board binds is still cloned into the workspace as needed.
 
 The container carries the binary its image was built with, so it does not
 rebuild itself between increments the way the bare runner does. Bring it
-forward with the stack:
+forward with the stack. `up` rebuilds it from the pulled source every time,
+because the service says `pull_policy: build` in `compose.yaml`:
 
 ```
 git pull
-docker compose --profile runner up -d --build
+docker compose --profile runner up -d
 ```
 
 Published images are also pushed to the GitHub container registry under the

@@ -473,6 +473,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Prompt")
                         .IsRequired()
                         .HasMaxLength(20000)
@@ -498,9 +501,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProjectId");
+
                     b.HasIndex("ToStatusId");
 
-                    b.HasIndex("FromStatusId", "ToStatusId", "Types", "Shape")
+                    b.HasIndex("FromStatusId", "ToStatusId", "Types", "Shape", "ProjectId")
                         .IsUnique();
 
                     b.ToTable("Playbooks", "hatch");
@@ -1046,6 +1051,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchStatus", "ToStatus")
                         .WithMany()
                         .HasForeignKey("ToStatusId")
@@ -1053,6 +1063,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("FromStatus");
+
+                    b.Navigation("Project");
 
                     b.Navigation("ToStatus");
                 });

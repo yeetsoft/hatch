@@ -18,7 +18,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { Attention, Conflict, ExhaustedRunner, Question, Review, TrunkBuild } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, ExhaustedRunner, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -53,6 +53,25 @@ const conflict = (over: Partial<Conflict> = {}): Conflict => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/14',
   checks: [],
+  ...over,
+});
+
+const approvedHeld = (over: Partial<ApprovedHeld> = {}): ApprovedHeld => ({
+  key: 'AER-17',
+  title: 'A story the merge column cannot land',
+  type: 'story',
+  pullRequestUrl: 'https://forge.example/pulls/17',
+  sentence: 'Conflicts with main.',
+  ...over,
+});
+
+const approvedWaiting = (over: Partial<ApprovedWaiting> = {}): ApprovedWaiting => ({
+  key: 'AER-18',
+  title: 'A story the loop is still merging',
+  type: 'story',
+  pullRequestUrl: 'https://forge.example/pulls/18',
+  kind: 'merge',
+  sentence: 'Merging.',
   ...over,
 });
 
@@ -125,6 +144,14 @@ describe('attentionCount', () => {
     // `reviews.length` is, however inconsistent a caller's data might be.
     expect(attentionCount(attention({ reviews: [], reviewsHeldBack: 3 }))).toBe(0);
     expect(attentionCount(attention({ reviews: [review()], reviewsHeldBack: 3 }))).toBe(1);
+  });
+
+  it('counts an approvedHeld row and excludes an approvedWaiting row on the same fixture', () => {
+    // approvedHeld is a person's to fix, every time; approvedWaiting is the
+    // loop's own and does not light the badge.
+    expect(
+      attentionCount(attention({ approvedHeld: [approvedHeld()], approvedWaiting: [approvedWaiting()] })),
+    ).toBe(1);
   });
 
   it('does not count a runner out of Claude usage, and stays resting for it', () => {
