@@ -177,12 +177,29 @@ jobs:
         working-directory: src/Hatch.Web
         run: npm run build -w apps/${{ matrix.app }}
 
+  # Proves the image `publish.yml` builds after every merge to main actually
+  # builds, and that gh - the thing src/Hatch.Cli/Forge.cs shells out to
+  # inside it - is really on PATH and runs, on a PR rather than only after one
+  # lands.
+  hatch-runner-image:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build the runner image
+        run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
+
+      - name: gh is on PATH and runs
+        run: docker run --rm --entrypoint gh hatch-runner:ci --version
+
   # One job that depends on every other, so a merge gate has exactly one
   # check to name instead of one per job (and one per matrix leg).
   ci:
     name: CI
     if: always()
-    needs: [api, hatch-cli, web]
+    needs: [api, hatch-cli, web, hatch-runner-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check that every job succeeded

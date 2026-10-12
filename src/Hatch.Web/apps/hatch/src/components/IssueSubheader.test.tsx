@@ -1,8 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { IssueSubheader } from './IssueSubheader';
 import type { Issue } from '../types';
+
+// IssueSubheader now reads window.location unconditionally (for the copy-link
+// control's full address), the same as appHref and IssuePeek.tsx/
+// Confirmations.tsx already do - so, same fix as Confirmations.test.tsx:16-22,
+// this stubs window rather than guarding the component. Command.tsx reads the
+// bare `navigator` identifier (not window.navigator), which in a real browser
+// is the same object window.navigator is - so both are stubbed to the same
+// value here to keep that true in the test too.
+function stubWindow(pathname: string, navigator: Record<string, unknown> = {}) {
+  vi.stubGlobal('window', { location: { pathname, origin: 'https://example.test' }, navigator });
+  vi.stubGlobal('navigator', navigator);
+}
+
+beforeEach(() => stubWindow('/apps/hatch/'));
+afterEach(() => vi.unstubAllGlobals());
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
   key: 'AER-1',
@@ -79,5 +94,35 @@ describe('IssueSubheader', () => {
     const html = render({ mergeWork: undefined });
 
     expect(html).not.toContain('hatch-chip-merge-hold');
+  });
+
+  it('builds the full address against the hatch. subdomain path shape', () => {
+    stubWindow('/issues/HA-446');
+    const html = render({ key: 'HA-446' });
+
+    expect(html).toContain('https://example.test/issues/HA-446');
+  });
+
+  it('builds the full address against the house-hostname path shape', () => {
+    stubWindow('/apps/hatch/issues/HA-446');
+    const html = render({ key: 'HA-446' });
+
+    expect(html).toContain('https://example.test/apps/hatch/issues/HA-446');
+  });
+
+  it('draws no copy button when there is no clipboard on navigator, but still shows the address', () => {
+    stubWindow('/issues/HA-446', {});
+    const html = render({ key: 'HA-446' });
+
+    expect(html).toContain('https://example.test/issues/HA-446');
+    expect(html).not.toContain('<button');
+  });
+
+  it("draws the 'Copy link' button when a clipboard is present", () => {
+    stubWindow('/issues/HA-446', { clipboard: { writeText: async () => undefined } });
+    const html = render({ key: 'HA-446' });
+
+    expect(html).toContain('Copy link');
+    expect(html).toContain('<button');
   });
 });

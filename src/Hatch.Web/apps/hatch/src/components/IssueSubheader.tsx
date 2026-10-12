@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
 import { ProjectMark } from '@hatch/ui';
 import { BuildCheckChips } from './BuildCheckChips';
+import { Command } from './Command';
 import { MergeConflictChips } from './MergeConflictChips';
 import { MergeHoldChip } from './MergeHoldChip';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
+import { fullHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
 import type { Issue, Project } from '../types';
 
@@ -41,6 +43,10 @@ export function IssueSubheader({
           title={project?.name ?? issue.projectKey}
         />
         <span className="hatch-issue-key">{issue.key}</span>
+        <Command
+          command={fullHref(window.location.origin, window.location.pathname, `/issues/${issue.key}`)}
+          label="Copy link"
+        />
         <TypeBadge type={issue.type} />
         {issue.parentKey && <Link to={`/issues/${issue.parentKey}`}>↳ {issue.parentKey}</Link>}
       </span>

@@ -1111,6 +1111,7 @@ public sealed class PollTests
     private const string Statuses = "/api/hatch/statuses";
 
     private static string Merged(string key) => $"/api/hatch/work/{key}/merged";
+    private static string Closed(string key) => $"/api/hatch/work/{key}/closed";
 
     [Fact]
     public async Task A_merged_pull_request_advances_the_issue_with_the_url_that_was_read_and_is_announced()
@@ -1303,14 +1304,12 @@ public sealed class PollTests
         Assert.Contains("test:/checkout", comment, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(PullRequestStates.Open, false)]
-    [InlineData(PullRequestStates.Closed, true)]
-    public async Task A_moved_head_is_not_merged_and_comments_once(string state, bool headMatches)
+    [Fact]
+    public async Task A_moved_head_is_not_merged_and_comments_once()
     {
         using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
-        rig.H.Forge.PullRequestAnswer = new(state, null, HeadSha: headMatches ? Tip : Moved);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Moved);
         rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
         await rig.RunAsync();
@@ -1318,6 +1317,49 @@ public sealed class PollTests
 
         Assert.Empty(rig.H.Forge.MergeCalls);
         Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_closed_pull_request_on_a_merge_row_comments_once_and_is_never_merged()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Closed, null);
+        rig.H.Wire.Json("POST", Closed("AER-1"), Fixtures.Issue("AER-1"));
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
+        Assert.Equal("Its pull request was closed without merging.", comment);
+        Assert.Empty(rig.H.Forge.MergeCalls);
+    }
+
+    [Fact]
+    public async Task A_409_from_the_closed_route_is_not_a_fault_and_comments_nothing()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Closed, null);
+        rig.H.Wire.Reply("POST", Closed("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Empty(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task A_review_row_s_closed_pull_request_is_never_posted_to_the_closed_route()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, kind: null));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Closed, null);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Closed("AER-1")));
     }
 
     [Fact]

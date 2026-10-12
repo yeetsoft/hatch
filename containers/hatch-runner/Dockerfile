@@ -69,6 +69,33 @@ RUN apt-get update \
       openssh-client \
  && rm -rf /var/lib/apt/lists/*
 
+# gh (src/Hatch.Cli/Forge.cs) from GitHub's own apt repo, not Debian's: Debian
+# ships gh too, but on its own release cadence, trailing GitHub's by whatever
+# margin that distribution happens to be at. The key is already a binary
+# OpenPGP key, not an ASCII-armored one, so there is no `gpg --dearmor` step
+# here the way there would be for a key distributed armored.
+#
+# Pinned to major version 2 rather than installed as a bare `gh`: a later
+# build of this image should not silently pick up a new major version with
+# different flags or output `src/Hatch.Cli/Forge.cs` was not written against.
+# `apt-cache madison gh` is what resolves the pin to a concrete, installable
+# version string - `apt-get install gh=2.*` is not something apt can expand
+# itself. Note that `madison` lists more than this one repo: Ubuntu's own
+# universe repos carry a same-named `gh` package on an independent version
+# number, also currently a `2.*`, so the filter below is relying on GitHub's
+# own releases staying numerically ahead of Ubuntu's backport, not on telling
+# the two repos apart by identity.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+ && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && gh_version=$(apt-cache madison gh | awk '{print $3}' | grep '^2\.' | sort -V | tail -1) \
+ && apt-get install -y --no-install-recommends gh=$gh_version \
+ && rm -rf /var/lib/apt/lists/*
+
 # The native standalone installer rather than the npm one: there is no Node in
 # this image and adding one to install a program that does not need it would
 # double the image to buy nothing. `stable` rather than `latest` - an image
