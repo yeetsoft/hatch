@@ -242,7 +242,7 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.Kind != WorkKinds.Merge) continue;
+                if (issue.MergeWork?.Kind != WorkKinds.Merge || issue.MergeWork?.IsHead != true) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
@@ -353,7 +353,7 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.Kind != WorkKinds.Update) continue;
+                if (issue.MergeWork?.Kind != WorkKinds.Update || issue.MergeWork?.IsHead != true) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 

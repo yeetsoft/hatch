@@ -205,7 +205,8 @@ public sealed class MergeTrainTests
     /// Null <paramref name="kind"/> is an ordinary review row: no <c>MergeWork</c> at all.
     /// </summary>
     private static ReviewCheckDto MergeRow(
-        string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null)
+        string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null,
+        bool isHead = true)
     {
         var sha = judgedSha ?? Tip;
         var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
@@ -216,7 +217,7 @@ public sealed class MergeTrainTests
 
         return Fixtures.Review(
             key, [repo], pullRequestUrl: pullRequestUrl,
-            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes"),
+            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes", isHead),
             checks: [stored]);
     }
 
@@ -339,6 +340,43 @@ public sealed class MergeTrainTests
         Assert.Contains("hatch: AER-2 pull request merged -> Done", rig.H.Say.Said);
     }
 
+    [Fact]
+    public async Task A_merge_row_behind_the_head_is_left_untouched_this_tick()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl),
+            MergeRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2, isHead: false));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestFor[PrUrl] = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null, HeadSha: Tip2);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+    }
+
+    [Fact]
+    public async Task A_held_row_ahead_of_the_head_does_not_suppress_it()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl, kind: WorkKinds.Hold),
+            MergeRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2, isHead: true));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null, HeadSha: Tip2);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("AER-2"), Fixtures.Issue("AER-2") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-2"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl2, Tip2)], rig.H.Forge.MergeCalls);
+    }
+
     [Theory]
     [InlineData(WorkKinds.Update, 2)]
     [InlineData(WorkKinds.Hold, 1)]
@@ -421,7 +459,8 @@ public sealed class MergeTrainTests
     /// at all.
     /// </summary>
     private static ReviewCheckDto UpdateRow(
-        string key, string branch, string? pullRequestUrl = PrUrl, string? kind = WorkKinds.Update, string? judgedSha = null)
+        string key, string branch, string? pullRequestUrl = PrUrl, string? kind = WorkKinds.Update, string? judgedSha = null,
+        bool isHead = true)
     {
         var sha = judgedSha ?? Tip;
         var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
@@ -432,7 +471,7 @@ public sealed class MergeTrainTests
 
         return Fixtures.Review(
             key, [repo], pullRequestUrl: pullRequestUrl,
-            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main but needs the trunk brought in"),
+            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main but needs the trunk brought in", isHead),
             checks: [stored]);
     }
 
@@ -569,6 +608,28 @@ public sealed class MergeTrainTests
         Assert.All(
             rig.H.Say.Complained,
             l => Assert.Equal("hatch: could not read pull requests in checkout - gh is not installed", l));
+    }
+
+    [Fact]
+    public async Task Two_projects_heads_both_act_in_the_same_tick()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl, isHead: true),
+            UpdateRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2, isHead: true));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestFor[PrUrl] = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null, HeadSha: Tip2, Number: 7);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+        rig.H.Wire.Json("POST", Comments("AER-2"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+        Assert.Equal([(rig.H.Root, 7L, Tip2)], rig.H.Forge.UpdateCalls);
     }
 
     [Fact]
