@@ -395,7 +395,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     public static readonly string[] GoToWorkUsage =
     [
         "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]",
-        "                        [--interval <seconds>] [--max-runs <n>]",
+        "                        [--interval <seconds>] [--merge-interval <seconds>]",
+        "                        [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
         "                        [--stop-file <path>] [--no-keys]",
         "                        [--restart-after <minutes> | --no-restart]",
@@ -418,6 +419,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  --once             one pass, and out",
         "  --quiet            no per-increment stream, only what each one ended as",
         "  --interval         seconds to wait when there was nothing to do (default 60)",
+        "  --merge-interval   seconds between the merge train's own checks of what is",
+        "                     in review (default 5)",
         "  --repo <path>      also serve this checkout, repeatable - the whole list for",
         "                     this run, beside the standing checkout if there is one;",
         "                     HATCH_REPOS is not consulted when this is given",
@@ -460,6 +463,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         string? key = null, under = null, until = null, stopFile = null;
         var interval = 60;
+        var mergeInterval = 5;
         var once = false;
         var quiet = false;
         var mine = false;
@@ -483,6 +487,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         // fast as possible" and means a board asked the same
                         // question thousands of times a minute.
                         runtime.Say.Complain("hatch: --interval takes a number of seconds, at least one");
+                        return 1;
+                    }
+
+                    break;
+                case "--merge-interval" when i + 1 < args.Length:
+                    if (!int.TryParse(args[++i], out mergeInterval) || mergeInterval < 1)
+                    {
+                        runtime.Say.Complain("hatch: --merge-interval takes a number of seconds, at least one");
                         return 1;
                     }
 
@@ -699,7 +711,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             try
             {
-                restarting = await LoopAsync(under, quiet, mine, once, interval, tally, restart, ct);
+                restarting = await LoopAsync(under, quiet, mine, once, interval, mergeInterval, tally, restart, ct);
 
                 // A restart that could not hand the night's totals over would be
                 // a fresh night: the budget back to nothing, the streak cleared,
@@ -784,14 +796,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
-        string? under, bool quiet, bool mine, bool once, int interval, Tally tally, Restarts restart,
-        CancellationToken ct)
+        string? under, bool quiet, bool mine, bool once, int interval, int mergeInterval, Tally tally,
+        Restarts restart, CancellationToken ct)
     {
         var idle = new SaidOnce();
         var busy = new SaidOnce();
         var paused = new SaidOnce();
         var exhausted = new SaidOnce();
         var poll = new Poll();
+
+        // Its own clock, independent of --interval - the three halves it
+        // drives are cheap enough, and worth running often enough, to deserve
+        // one of their own. Stopped by every exit this method has, since
+        // every one of them sits inside this `await using` scope.
+        await using var train = MergeTrain.Start(runtime, TimeSpan.FromSeconds(mergeInterval));
 
         // When the loop's own checkout was last made current while waiting out
         // a usage limit - never, at first, so the first pass through the wait
@@ -924,6 +942,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // reason this loop is paused.
                 if (!await NapAsync(interval, tally, ct, wake: () => !boardPaused && tally.Controls?.Snapshot() is { Paused: false }))
                     return false;
+
+                // train is not on this path and keeps ticking regardless - the
+                // epic's own decision (HA-463) is that the merge train runs
+                // while the runner is paused, unlike the poll below.
                 continue;
             }
 
@@ -968,6 +990,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
 
                 if (!await NapAsync(interval, tally, ct)) return false;
+
+                // Same as the paused branch above: train is not on this path
+                // either, and keeps ticking through exhaustion too.
                 continue;
             }
 

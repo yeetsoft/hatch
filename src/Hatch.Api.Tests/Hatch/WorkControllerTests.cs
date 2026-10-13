@@ -1834,6 +1834,7 @@ public class WorkControllerTests
 
         Assert.Equal("a-only", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.Model);
         Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+        Assert.Equal("AER", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.ProjectKey);
     }
 
     [Fact]
@@ -1846,7 +1847,10 @@ public class WorkControllerTests
 
         var otherTask = await h.FileAsync("task", "no row names this project", h.Todo, projectId: other);
 
-        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+        var work = Value(await h.Work.GetWork(Key("OTH", otherTask), null, default));
+        Assert.Equal("sonnet", work.Playbook!.Model);
+        Assert.Null(work.Playbook!.ProjectKey);
+        Assert.Null(work.Playbook!.ProjectName);
     }
 
     [Fact]
@@ -5442,6 +5446,126 @@ public class WorkControllerTests
         Assert.Equal("its branch holds main and its build passes", entry.Blocked);
     }
 
+    [Fact]
+    public async Task MergeColumn_WithAnExpeditedRowAheadOfANormalOne_OnlyTheNormalOneNamesTheWait()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var normal = await h.FileAsync("task", "normal, ranked behind", approved.Id, rank: 2048);
+        var expedited = await h.FileAsync("task", "expedited, ready to merge", approved.Id, rank: 1024);
+        await h.ExpediteAsync(expedited);
+        foreach (var issue in new[] { normal, expedited })
+        {
+            await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+            await h.BuildAsync(issue, BuildVerdicts.Passed);
+        }
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(expedited)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(expedited)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key(normal)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithAHeldRowAheadOfACleanOne_TheCleanOneIsTheHeadAndNamesNoWait()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var held = await h.FileAsync("task", "no branch named for it", approved.Id, rank: 1024);
+        await h.VerdictAsync(held, MergeVerdicts.None);
+        var clean = await h.FileAsync("task", "ready to merge, behind the held one", approved.Id, rank: 2048);
+        await h.VerdictAsync(clean, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clean, BuildVerdicts.Passed);
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "no branch on origin is named for it",
+            entries.Single(e => e.Issue.Key == Key(held)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(clean)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithAClosedPullRequestAheadOfTwoCleanRows_TheFirstCleanRowIsHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var closed = await h.FileAsync("task", "its pull request closed without merging", approved.Id, rank: 1024);
+        closed.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var first = await h.FileAsync("task", "ready to merge, first in line", approved.Id, rank: 2048);
+        await h.VerdictAsync(first, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(first, BuildVerdicts.Passed);
+
+        var second = await h.FileAsync("task", "ready to merge, waits behind the first", approved.Id, rank: 3072);
+        await h.VerdictAsync(second, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(second, BuildVerdicts.Passed);
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its pull request was closed without merging",
+            entries.Single(e => e.Issue.Key == Key(closed)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(first)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(first)}, position 3 in the train",
+            entries.Single(e => e.Issue.Key == Key(second)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_InTwoProjects_EachWaitingRowNamesItsOwnProjectsHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var other = await h.AddProjectAsync("OTH");
+
+        var headA = await h.FileAsync("task", "ready to merge, project AER", approved.Id, rank: 1024);
+        var waitingA = await h.FileAsync("task", "waits behind AER's own head", approved.Id, rank: 2048);
+        var headB = await h.FileAsync("task", "ready to merge, project OTH", approved.Id, rank: 1024, projectId: other);
+        var waitingB = await h.FileAsync("task", "waits behind OTH's own head", approved.Id, rank: 2048, projectId: other);
+
+        foreach (var issue in new[] { headA, waitingA, headB, waitingB })
+        {
+            await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+            await h.BuildAsync(issue, BuildVerdicts.Passed);
+        }
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(headA)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key("OTH", headB)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(headA)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key(waitingA)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key("OTH", headB)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key("OTH", waitingB)).Blocked);
+    }
+
     // ---- The review read ----
 
     [Fact]
@@ -5566,6 +5690,47 @@ public class WorkControllerTests
         Assert.Equal(
             new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes"),
             rows.Single(r => r.Key == Key(inMerges)).MergeWork);
+    }
+
+    [Fact]
+    public async Task ReviewRead_AMergesColumnsFirstClearRowIsHead_ItsWaitingSiblingIsNot()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var head = await h.FileAsync("task", "ready to merge", approved.Id, rank: 1024);
+        await h.VerdictAsync(head, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(head, BuildVerdicts.Passed);
+        var waiting = await h.FileAsync("task", "waits behind the head", approved.Id, rank: 2048);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(head)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(waiting)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task ReviewRead_OneProjectsHeldHeadDecidesNothingForAnotherProjectsClearOne()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var other = await h.AddProjectAsync("OTH");
+
+        var held = await h.FileAsync("task", "no branch named for it", approved.Id, rank: 1024);
+        await h.VerdictAsync(held, MergeVerdicts.None);
+
+        var clear = await h.FileAsync("task", "ready to merge, other project", approved.Id, rank: 1024, projectId: other);
+        await h.VerdictAsync(clear, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clear, BuildVerdicts.Passed);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.False(rows.Single(r => r.Key == Key(held)).MergeWork!.IsHead);
+        Assert.True(rows.Single(r => r.Key == Key("OTH", clear)).MergeWork!.IsHead);
     }
 
     // ---- Merged: a runner reporting that the recorded pull request has merged ----

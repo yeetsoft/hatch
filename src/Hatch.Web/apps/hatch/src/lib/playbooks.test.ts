@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { briefLimitDraft, briefLimitRequest, budgetDraft, budgetRequest, isReviewPlaybook, transitionLabel } from './playbooks';
+import {
+  briefLimitDraft,
+  briefLimitRequest,
+  budgetDraft,
+  budgetRequest,
+  isReviewPlaybook,
+  matchesProjectFilter,
+  projectLabel,
+  transitionLabel,
+} from './playbooks';
 
 const move = { fromStatusId: 3, toStatusId: 4, fromStatusName: 'In Progress', toStatusName: 'In Review' };
 const review = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
@@ -57,5 +66,33 @@ describe('the brief limit field', () => {
 
   it('a blank field clears the brief limit', () => {
     expect(briefLimitRequest('  ')).toBe('');
+  });
+});
+
+describe('projectLabel', () => {
+  it('reads a board-wide row as "All projects"', () => {
+    expect(projectLabel({ projectKey: null, projectName: null })).toBe('All projects');
+  });
+
+  it('reads a project row as "KEY — Name"', () => {
+    expect(projectLabel({ projectKey: 'AB', projectName: 'Alphabet' })).toBe('AB — Alphabet');
+  });
+});
+
+describe('matchesProjectFilter', () => {
+  const boardWide = { projectKey: null };
+  const projectA = { projectKey: 'A' };
+  const projectB = { projectKey: 'B' };
+
+  it('keeps every row when the filter is cleared', () => {
+    expect(matchesProjectFilter(boardWide, '')).toBe(true);
+    expect(matchesProjectFilter(projectA, '')).toBe(true);
+    expect(matchesProjectFilter(projectB, '')).toBe(true);
+  });
+
+  it('keeps the board-wide row and the matching project, and drops the other', () => {
+    expect(matchesProjectFilter(boardWide, 'A')).toBe(true);
+    expect(matchesProjectFilter(projectA, 'A')).toBe(true);
+    expect(matchesProjectFilter(projectB, 'A')).toBe(false);
   });
 });

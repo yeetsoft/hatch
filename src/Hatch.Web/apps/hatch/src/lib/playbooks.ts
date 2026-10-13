@@ -45,3 +45,16 @@ export function briefLimitDraft(briefLimit: number | null): string {
 export function briefLimitRequest(draft: string): string {
   return draft.trim();
 }
+
+/** What a row's project reads as: "All projects" for a board-wide row, "KEY — Name" otherwise. */
+export function projectLabel(p: Pick<Playbook, 'projectKey' | 'projectName'>): string {
+  return p.projectKey === null || p.projectName === null
+    ? 'All projects'
+    : `${p.projectKey} — ${p.projectName}`;
+}
+
+/** Whether the page's project filter keeps this row: every row when cleared, every
+    board-wide row regardless, otherwise only a row naming that project. */
+export function matchesProjectFilter(p: Pick<Playbook, 'projectKey'>, projectKey: string): boolean {
+  return projectKey === '' || p.projectKey === null || p.projectKey === projectKey;
+}

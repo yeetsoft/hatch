@@ -389,9 +389,10 @@ one names the ticket, the other narrows which one is picked. Any other
 Reads `GET /api/hatch/work/<key>` for a named ticket, or
 `GET /api/hatch/work/next?offsetMinutes=…[&ancestorKey=…]` otherwise, and
 never the claim walk. Prints a header of `# <KEY> <From> -> <To>`,
-`# model <m>, effort <e>`, optionally `# <model and/or effort> from <KEY>,
-not the playbook`, and then the whole composed prompt. Nothing to do or
-blocked: exit 2.
+`# model <m>, effort <e>`, `# playbook: <key>'s own` or
+`# playbook: board-wide`, `# tools: denied <…>` or `# tools: all`,
+optionally `# <model and/or effort> from <KEY>, not the playbook`, and then
+the whole composed prompt. Nothing to do or blocked: exit 2.
 
 ### The increment, in order
 

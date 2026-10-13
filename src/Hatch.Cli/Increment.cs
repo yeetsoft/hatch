@@ -717,7 +717,7 @@ public sealed class Increment(
         }
 
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
-        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings);
+        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings, work.Playbook?.DeniedTools ?? []);
         var render = new StreamRender(root, facts);
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a

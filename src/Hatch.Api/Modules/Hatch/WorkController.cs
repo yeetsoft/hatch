@@ -291,8 +291,31 @@ public class WorkController(
             .ToListAsync(ct);
 
         var held = rows.Where(i => HoldsCheckout(i, repos)).ToList();
-        var verdicts = await _dispatch.MergeChecksAsync(held.Select(i => i.Id).ToList(), ct);
-        var builds = await _dispatch.BuildChecksAsync(held.Select(i => i.Id).ToList(), ct);
+
+        // The true head of a project's train may be a row this runner holds
+        // no checkout of, so the train is read over every merges-column row
+        // in a project held touches - not only held itself.
+        var heldProjectIds = held.Select(h => h.ProjectId).ToHashSet();
+        var merging = merges is null
+            ? []
+            : rows.Where(i => i.StatusId == merges.Id && heldProjectIds.Contains(i.ProjectId)).ToList();
+
+        var checkIds = held.Select(i => i.Id).Union(merging.Select(i => i.Id)).ToList();
+        var verdicts = await _dispatch.MergeChecksAsync(checkIds, ct);
+        var builds = await _dispatch.BuildChecksAsync(checkIds, ct);
+
+        IReadOnlyDictionary<long, Dispatch.TrainSlot> trainSlots = new Dictionary<long, Dispatch.TrainSlot>();
+        if (merging.Count > 0)
+        {
+            var gate = await DependencyGate.ForAsync(db, statuses, ct);
+            var effective = merging.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
+            var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
+                i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
+                builds.TryGetValue(i.Id, out var bv) ? bv : [],
+                i.PullRequestClosedAt, time.GetUtcNow()));
+            trainSlots = Dispatch.Train(merging, judged, effective);
+        }
 
         return held.Select(i =>
         {
@@ -313,7 +336,7 @@ public class WorkController(
                 merged.Select(IssueMergeChecks.Project).ToList(),
                 built.Select(IssueBuildChecks.Project).ToList(),
                 i.PullRequestUrl,
-                mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence) : null);
+                mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence, trainSlots.GetValueOrDefault(i.Id)?.IsHead ?? true) : null);
         }).ToList();
     }
 

@@ -1626,7 +1626,12 @@ public record ReviewCheckDto(
     MergeWorkDto? MergeWork = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
-public record MergeWorkDto(string Kind, string Sentence);
+/// <param name="IsHead">
+/// Whether this row is the one the merges column's train is acting on next.
+/// Defaulted true: a row with no siblings in its project's merges column is
+/// already the head.
+/// </param>
+public record MergeWorkDto(string Kind, string Sentence, bool IsHead = true);
 
 // ---- Rollups ----
 

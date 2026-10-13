@@ -11,6 +11,7 @@ namespace Hatch.Cli.Tests;
 public sealed class GoToWorkTests
 {
     private const string Queue = "/api/hatch/work/queue";
+    private const string Review = "/api/hatch/work/review";
 
     private static string Held(string runner) =>
         $"\"hatch is working this from {runner}, last heard from 8 seconds ago\"";
@@ -102,6 +103,27 @@ public sealed class GoToWorkTests
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>The playbook's limit reaches the session a go-to-work pass spawns - HA-453.</summary>
+    [Fact]
+    public async Task A_pass_carries_the_playbooks_denied_tools_to_the_spawned_session()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json(
+            "GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Spawned).DeniedTools);
     }
 
     [Fact]
@@ -567,8 +589,11 @@ public sealed class GoToWorkTests
 
         // Nothing was read and nothing was claimed: the question is asked before
         // the board, because a night that cannot spend should not take a ticket
-        // off it to find that out.
-        Assert.Empty(h.Wire.Calls);
+        // off it to find that out. The merge train starts before this check and
+        // is no exception to it - merging an approved pull request needs no
+        // Claude CLI - so its own independent read of review is not this
+        // invariant's concern.
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
     }
 
     [Fact]

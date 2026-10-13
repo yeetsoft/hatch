@@ -115,7 +115,7 @@ public sealed class ConflictIncrementTests
 
     private static async Task<(IncrementReport Report, Harness H)> RunAsync(
         Func<Harness, ConflictRun> conflict, string endsIn = "In Review", bool lost = false, bool questionsOpen = false,
-        int letGo = 0)
+        int letGo = 0, IReadOnlyList<string>? deniedTools = null)
     {
         var h = new Harness();
         h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -132,8 +132,9 @@ public sealed class ConflictIncrementTests
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
+        var work = Fixtures.ConflictWork(Key, letGo: letGo) with { Playbook = Fixtures.Playbook(deniedTools: deniedTools) };
         var report = await h.Runtime.Increment().RunAsync(
-            Fixtures.ConflictWork(Key, letGo: letGo), h.Root, "sonnet", "high", quiet: false, claim!, default, conflict: conflict(h));
+            work, h.Root, "sonnet", "high", quiet: false, claim!, default, conflict: conflict(h));
 
         await claim!.ReleaseAsync();
         return (report, h);
@@ -287,6 +288,18 @@ public sealed class ConflictIncrementTests
         var prompt = Assert.Single(h.Sessions.Spawned).Prompt;
         Assert.Contains("## The conflict", prompt, StringComparison.Ordinal);
         Assert.Contains("fresh.txt", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>The playbook's limit reaches the session a conflict dispatch spawns, same as any other dispatch - HA-453.</summary>
+    [Fact]
+    public async Task A_conflict_dispatch_carries_the_playbooks_denied_tools_to_the_spawned_session()
+    {
+        var (_, h) = await RunAsync(
+            _ => new ConflictRun(Found(Conflicted("fresh.txt")), _ => Task.FromResult(Found(Clean()))),
+            deniedTools: ["Bash", "WebFetch"]);
+        using var _h = h;
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Spawned).DeniedTools);
     }
 
     // ---- The recheck and the judgement, over the fake tree ----

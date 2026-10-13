@@ -159,7 +159,8 @@ public sealed class BuildIncrementTests
     // ---- Judging the increment ----
 
     private static async Task<(IncrementReport Report, Harness H)> RunAsync(
-        Func<Harness, BuildRun> build, string endsIn = "In Review", bool lost = false, int letGo = 0)
+        Func<Harness, BuildRun> build, string endsIn = "In Review", bool lost = false, int letGo = 0,
+        IReadOnlyList<string>? deniedTools = null)
     {
         var h = new Harness();
         h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -176,8 +177,9 @@ public sealed class BuildIncrementTests
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
+        var work = Fixtures.BuildWork(Key, letGo: letGo) with { Playbook = Fixtures.Playbook(deniedTools: deniedTools) };
         var report = await h.Runtime.Increment().RunAsync(
-            Fixtures.BuildWork(Key, letGo: letGo), h.Root, "sonnet", "high", quiet: false, claim!, default, build: build(h));
+            work, h.Root, "sonnet", "high", quiet: false, claim!, default, build: build(h));
 
         await claim!.ReleaseAsync();
         return (report, h);
@@ -285,6 +287,18 @@ public sealed class BuildIncrementTests
         var prompt = Assert.Single(h.Sessions.Spawned).Prompt;
         Assert.Contains("## The failing build", prompt, StringComparison.Ordinal);
         Assert.Contains("boom", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>The playbook's limit reaches the session a build dispatch spawns, same as any other dispatch - HA-453.</summary>
+    [Fact]
+    public async Task A_build_dispatch_carries_the_playbooks_denied_tools_to_the_spawned_session()
+    {
+        var (_, h) = await RunAsync(
+            _ => new BuildRun(Found(), _ => Task.FromResult(new BuildJudged(true, false))),
+            deniedTools: ["Bash", "WebFetch"]);
+        using var _h = h;
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Spawned).DeniedTools);
     }
 
     // ---- The recheck and the judgement, over the fake tree and the fake forge ----

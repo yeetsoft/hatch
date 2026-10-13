@@ -17,10 +17,12 @@ import {
   budgetDraft,
   budgetRequest,
   isReviewPlaybook,
+  matchesProjectFilter,
   transitionLabel,
 } from '../lib/playbooks';
 import { normalizeEol } from '../lib/text';
 import { useLoaded } from '../lib/useLoaded';
+import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import {
   ISSUE_TYPES,
   PLAYBOOK_EFFORTS,
@@ -33,6 +35,7 @@ import {
   type Playbook,
   type PlaybookCreateRequest,
   type PlaybookShape,
+  type Project,
   type Status,
 } from '../types';
 
@@ -49,6 +52,8 @@ import {
 export function PlaybooksPage() {
   const { data: playbooks, error, setError, reload } = useLoaded<Playbook[]>(getPlaybooks);
   const { data: statuses } = useLoaded<Status[]>(getStatuses);
+  const { projects } = useProjects();
+  const [projectFilter, setProjectFilter] = useState('');
 
   async function act(action: () => Promise<unknown>) {
     try {
@@ -60,16 +65,34 @@ export function PlaybooksPage() {
     }
   }
 
+  const visible = playbooks?.filter((p) => matchesProjectFilter(p, projectFilter));
+
   return (
     <div className="hatch-page">
       <PageHeader
         title="Playbooks"
         description="What an agent is told, and how much thought to spend, when it moves an issue one column along - and, for the review column to itself, when a pull request there has stopped merging with the trunk."
+        actions={
+          hasMultipleProjects(projects) && (
+            <Field label="Project">
+              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+                <option value="">All projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.key}>
+                    {project.key} — {project.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )
+        }
       />
 
       {error && <p className="text-danger">{error}</p>}
 
-      {statuses && <NewPlaybook statuses={statuses} onCreate={(r) => void act(() => createPlaybook(r))} />}
+      {statuses && (
+        <NewPlaybook statuses={statuses} projects={projects} onCreate={(r) => void act(() => createPlaybook(r))} />
+      )}
 
       {playbooks?.length === 0 && (
         <EmptyState message="No playbooks yet. Without one, a transition dispatches nothing at all - hatch.sh work says so rather than guessing." />
@@ -81,6 +104,7 @@ export function PlaybooksPage() {
             <thead>
               <tr>
                 <th>Transition</th>
+                {hasMultipleProjects(projects) && <th>Project</th>}
                 <th>Types</th>
                 <th>Shape</th>
                 <th>Model</th>
@@ -91,10 +115,11 @@ export function PlaybooksPage() {
               </tr>
             </thead>
             <tbody>
-              {playbooks.map((playbook) => (
+              {visible?.map((playbook) => (
                 <Row
                   key={playbook.id}
                   playbook={playbook}
+                  projects={projects}
                   onPatch={(request) => void act(() => patchPlaybook(playbook.id, request))}
                   onDelete={() => void act(() => deletePlaybook(playbook.id))}
                 />
@@ -116,10 +141,12 @@ export function PlaybooksPage() {
  */
 function Row({
   playbook,
+  projects,
   onPatch,
   onDelete,
 }: {
   playbook: Playbook;
+  projects: Project[];
   onPatch: (request: {
     types?: IssueType[];
     shape?: PlaybookShape;
@@ -128,6 +155,7 @@ function Row({
     effort?: string;
     budget?: string;
     briefLimit?: string;
+    projectId?: string;
   }) => void;
   onDelete: () => void;
 }) {
@@ -147,6 +175,15 @@ function Row({
             </>
           )}
         </td>
+        {hasMultipleProjects(projects) && (
+          <td>
+            <ProjectCell
+              playbook={playbook}
+              projects={projects}
+              onPatch={(projectId) => onPatch({ projectId })}
+            />
+          </td>
+        )}
         <td>
           <TypesCell types={playbook.types} onChange={(types) => onPatch({ types })} />
         </td>
@@ -191,7 +228,7 @@ function Row({
       </tr>
       {open && (
         <tr>
-          <td colSpan={7}>
+          <td colSpan={hasMultipleProjects(projects) ? 9 : 8}>
             <PromptCell prompt={playbook.prompt} onSave={(prompt) => onPatch({ prompt })} />
           </td>
         </tr>
@@ -251,6 +288,35 @@ function TypesCell({ types, onChange }: { types: IssueType[]; onChange: (types: 
       ))}
       {types.length === 0 && <Text tone="muted">any</Text>}
     </div>
+  );
+}
+
+/** Which project a row is scoped to - "All projects" for a board-wide row,
+    binding straight to the server value and committing on every change like
+    the Shape/Model/Effort `<Choice>` cells, since a project is picked whole
+    from a fixed list rather than typed digit by digit. */
+function ProjectCell({
+  playbook,
+  projects,
+  onPatch,
+}: {
+  playbook: Playbook;
+  projects: Project[];
+  onPatch: (projectId: string) => void;
+}) {
+  return (
+    <select
+      aria-label={`${transitionLabel(playbook)} project`}
+      value={playbook.projectId === null ? '' : String(playbook.projectId)}
+      onChange={(e) => onPatch(e.target.value)}
+    >
+      <option value="">All projects</option>
+      {projects.map((project) => (
+        <option key={project.id} value={String(project.id)}>
+          {project.key} — {project.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -320,9 +386,11 @@ function BriefLimitCell({ briefLimit, onPatch }: { briefLimit: number | null; on
  */
 function NewPlaybook({
   statuses: every,
+  projects,
   onCreate,
 }: {
   statuses: Status[];
+  projects: Project[];
   onCreate: (request: PlaybookCreateRequest) => void;
 }) {
   const statuses = boardColumns(every);
@@ -339,6 +407,7 @@ function NewPlaybook({
   const [shape, setShape] = useState<PlaybookShape>(PLAYBOOK_SHAPE_DEFAULT);
   const [budget, setBudget] = useState('');
   const [briefLimit, setBriefLimit] = useState('');
+  const [projectId, setProjectId] = useState('');
 
   return (
     <Card>
@@ -383,6 +452,18 @@ function NewPlaybook({
         <Field label="Brief limit (chars)" hint="Leave blank for no cap.">
           <input inputMode="numeric" value={briefLimit} onChange={(e) => setBriefLimit(e.target.value)} />
         </Field>
+        {hasMultipleProjects(projects) && (
+          <Field label="Project">
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">All projects</option>
+              {projects.map((project) => (
+                <option key={project.id} value={String(project.id)}>
+                  {project.key} — {project.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
       </div>
       <Field label="Prompt" as="div" hint="What the agent is told before it is shown the ticket.">
         <MarkdownEditor
@@ -412,6 +493,7 @@ function NewPlaybook({
               budget: budget || undefined,
               briefLimit: briefLimit || undefined,
               shape,
+              projectId: projectId || undefined,
             });
             setPrompt('');
             setTypes([]);

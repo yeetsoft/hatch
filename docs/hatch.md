@@ -2696,7 +2696,10 @@ In place rather than in a second pair of fields beside them, deliberately: a
 client that had to remember to check the second pair is a client that will one
 day spawn `sonnet` on a ticket set to `opus`, and that failure is silent.
 Nothing is hidden by it — `issue.modelOverride` rides the same payload, and is
-what a printed line reads to say where the value came from.
+what a printed line reads to say where the value came from. The payload also
+names whose project chose it — `projectKey`/`projectName` ride the same
+playbook record, null where a board-wide row spoke, the issue's own
+project's key where a project-specific row won.
 
 An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its

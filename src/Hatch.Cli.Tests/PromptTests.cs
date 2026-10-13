@@ -227,6 +227,18 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void The_dry_run_names_the_playbook_and_whose_it_was()
+    {
+        var owned = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(projectKey: "AER") };
+        var boardWide = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook() };
+        var hop = Fixtures.Work("AER-12", hop: true);
+
+        Assert.Equal("playbook: AER's own", Prompt.PlaybookLine(owned));
+        Assert.Equal("playbook: board-wide", Prompt.PlaybookLine(boardWide));
+        Assert.Null(Prompt.PlaybookLine(hop));
+    }
+
+    [Fact]
     public void Both_overrides_read_as_one_sentence()
     {
         var pinned = Fixtures.Work("AER-12",

@@ -169,6 +169,22 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var rows = new List<ScanRow>();
         var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
 
+        // The merges column's own order and head, named once for the whole
+        // pass - see Train. MergeWork.Judge is asked again inside Blocked
+        // below for its own sentence; that is not a second opinion about the
+        // order, since both calls read the same verdicts and builds fetched
+        // above.
+        IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
+        if (merges is not null && byColumn.TryGetValue(merges.Id, out var merging))
+        {
+            var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
+                i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                verdicts.TryGetValue(i.Id, out var v) ? v : [],
+                builds.TryGetValue(i.Id, out var b) ? b : [],
+                i.PullRequestClosedAt, now));
+            trainSlots = Train(merging, judged, effective);
+        }
+
         // Resolved only when some candidate actually reads at economy or low
         // level - a pass with nothing at either tier has no reason to read an
         // account's usage at all. One read, judged twice - see PaceReadingsAsync.
@@ -223,7 +239,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
                         issue, status, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
-                        implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics);
+                        implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics,
+                        trainSlots.GetValueOrDefault(issue.Id));
 
                     var sentence = blocked;
 
@@ -312,6 +329,70 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     {
         var minutes = seconds / 60;
         return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+    }
+
+    // ---- The train ----
+
+    /// <summary>
+    /// One project's merges column, in order: where a row sits, whether it is
+    /// the one the train is acting on next, and if not, the key of the one
+    /// that is.
+    /// </summary>
+    public sealed record TrainSlot(int Position, bool IsHead, string? HeadKey);
+
+    /// <summary>
+    /// The order of a project's merges-column rows, and which one each
+    /// project's train is acting on next - named once per pass rather than
+    /// asked per row, so two rows in the same column never disagree about
+    /// whose turn it is. One dictionary however many projects
+    /// <paramref name="merging"/> spans, so a caller holding two projects'
+    /// worth of rows calls this once, not once per project.
+    /// </summary>
+    /// <remarks>
+    /// Ordered within each project the same way every tier in <see cref="ScanAsync"/>
+    /// already is: <paramref name="effective"/>'s own level, descending, then
+    /// <c>Rank</c>, then <c>Id</c>. The head is the first row in that order
+    /// whose <see cref="MergeWork.Judgement.Kind"/> is not
+    /// <see cref="WorkKinds.Hold"/> or <see cref="WorkKinds.Pushback"/>; every
+    /// other slot in its project carries that head's key, and a project with
+    /// no eligible row gets every slot <c>IsHead: false</c> and every
+    /// <c>HeadKey</c> null - the honest answer for a merges column that is
+    /// all holds.
+    ///
+    /// <paramref name="judged"/> is the same judgement <see cref="Blocked"/>
+    /// asks <see cref="MergeWork.Judge"/> for again below, on the same
+    /// verdicts and builds - not a second opinion about the order, which is
+    /// precisely the thing the comment on <see cref="ScanAsync"/>'s own six
+    /// passes warns against. The duplication is deliberate: threading the
+    /// judgement through instead would make this method's answer depend on
+    /// which row <see cref="Blocked"/> happened to be judging at the time.
+    /// </remarks>
+    public static IReadOnlyDictionary<long, TrainSlot> Train(
+        IReadOnlyList<EfHatchIssue> merging,
+        IReadOnlyDictionary<long, MergeWork.Judgement> judged,
+        IReadOnlyDictionary<long, (int Level, string? FromKey)> effective)
+    {
+        var slots = new Dictionary<long, TrainSlot>();
+
+        foreach (var project in merging.GroupBy(i => i.ProjectId))
+        {
+            var ordered = project
+                .OrderByDescending(i => effective[i.Id].Level)
+                .ThenBy(i => i.Rank)
+                .ThenBy(i => i.Id)
+                .ToList();
+
+            var head = ordered.FirstOrDefault(i => judged[i.Id].Kind is not (WorkKinds.Hold or WorkKinds.Pushback));
+            var headKey = head is null ? null : IssueKey.Format(head.Project!.Key, head.Number);
+
+            for (var position = 0; position < ordered.Count; position++)
+            {
+                var isHead = head is not null && ordered[position].Id == head.Id;
+                slots[ordered[position].Id] = new TrainSlot(position + 1, isHead, isHead ? null : headKey);
+            }
+        }
+
+        return slots;
     }
 
     // ---- The loop's own policy ----
@@ -626,6 +707,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// whichever parent ids the candidates hold, once per named dispatch over
     /// this issue's own.
     /// </param>
+    /// <param name="train">
+    /// This row's place in its project's merges column, or null - see
+    /// <see cref="Train"/>. Trailing and defaulted so the two single-issue
+    /// callers (a hop, or a named dispatch) need no change: neither ever
+    /// loads a merges-column row's siblings, since a merges-column row is
+    /// never a hop or a session target. Only <see cref="ScanAsync"/>'s own
+    /// call passes it.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -647,7 +736,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         bool hop,
         List<EfHatchStatus> statuses,
         WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics)
+        IReadOnlyDictionary<long, EpicLimit> epics,
+        TrainSlot? train = null)
     {
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
@@ -664,10 +754,23 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
 
         if (from.MergesPullRequest)
-            return MergeWork.Judge(
+        {
+            var judgement = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts, builds, issue.PullRequestClosedAt, claimed.Now,
-                Columns.AwaitingReview(statuses)?.Name).Sentence;
+                Columns.AwaitingReview(statuses)?.Name);
+
+            // A held or pushed-back row already explains itself, and so does
+            // the head's own row - its kind word (merge/update/pending) says
+            // it is the one being acted on. Only a row that would otherwise
+            // read as actionable but is not the head gains the clause.
+            if (train is { IsHead: false } slot
+                && judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
+                return $"{judgement.Sentence} - waiting its turn behind {slot.HeadKey}, " +
+                       $"position {slot.Position} in the train";
+
+            return judgement.Sentence;
+        }
 
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
@@ -944,6 +1047,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             await db.Playbooks.AsNoTracking()
                 .Include(p => p.FromStatus)
                 .Include(p => p.ToStatus)
+                .Include(p => p.Project)
                 .Where(p => p.FromStatusId == from && p.ToStatusId == to)
                 .ToListAsync(ct),
             from, to, type, isParent, projectId);

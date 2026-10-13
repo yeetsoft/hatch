@@ -572,6 +572,19 @@ public static class Prompt
     }
 
     /// <summary>
+    /// Which playbook spoke for this move, and whose it was - a board-wide
+    /// row, or the issue's own project's. Null exactly when nothing matched,
+    /// which never reaches a caller that has already refused the move.
+    /// </summary>
+    public static string? PlaybookLine(WorkDto work) =>
+        work.Playbook switch
+        {
+            null => null,
+            { ProjectKey: { Length: > 0 } key } => $"playbook: {key}'s own",
+            _ => "playbook: board-wide",
+        };
+
+    /// <summary>
     /// What to write into a pull request, if this increment opens one. The link
     /// is only ever an absolute http(s) one; without it the first line is the
     /// bare key, and the session is told not to make a link up.

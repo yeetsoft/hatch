@@ -18,11 +18,18 @@ namespace Hatch.Cli;
 /// message sent while the session works into its context. Null where nobody is
 /// to be spoken to that way - an attached session has a person at the keyboard.
 /// </param>
+/// <param name="DeniedTools">
+/// The playbook's own limit on what the session may reach for, carried to the
+/// spawned process as one <c>--disallowedTools</c> rule per entry. Empty where
+/// the playbook denies nothing.
+/// </param>
 public sealed record SessionRequest(
     string Root, string Model, string Effort, string Prompt, bool Quiet,
-    IReadOnlyList<string>? AddDirs = null, string? HookSettings = null)
+    IReadOnlyList<string>? AddDirs = null, string? HookSettings = null,
+    IReadOnlyList<string>? DeniedTools = null)
 {
     public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
+    public IReadOnlyList<string> DeniedTools { get; init; } = DeniedTools ?? [];
 }
 
 /// <param name="Output">Everything the CLI wrote, on a quiet run. Empty on a streamed one, which was rendered as it arrived.</param>
@@ -272,7 +279,7 @@ public sealed class ClaudeSessionRunner(string? configured = null, Action<string
     private string Bin => _bin
         ?? throw new InvalidOperationException("CanSpawn was never asked, so there is no claude CLI to spawn");
 
-    private ProcessStartInfo Base(SessionRequest request)
+    internal ProcessStartInfo Base(SessionRequest request)
     {
         var start = new ProcessStartInfo
         {
@@ -295,6 +302,12 @@ public sealed class ClaudeSessionRunner(string? configured = null, Action<string
         {
             start.ArgumentList.Add("--add-dir");
             start.ArgumentList.Add(dir);
+        }
+
+        foreach (var rule in request.DeniedTools)
+        {
+            start.ArgumentList.Add("--disallowedTools");
+            start.ArgumentList.Add(rule);
         }
 
         return start;

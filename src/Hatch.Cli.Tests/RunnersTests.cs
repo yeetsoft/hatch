@@ -14,6 +14,7 @@ namespace Hatch.Cli.Tests;
 public sealed class RunnersTests
 {
     private const string Queue = "/api/hatch/work/queue";
+    private const string Review = "/api/hatch/work/review";
 
     /// <summary>Where the harness's own runner name lands, escaped as a runner name has to be.</summary>
     private const string Beat = "/api/hatch/runners/test%3A%2Fcheckout";
@@ -54,8 +55,10 @@ public sealed class RunnersTests
 
         // The order is the point: the board knows this runner exists before it
         // holds a ticket, so a row that is working something can never be a row
-        // nobody has seen.
-        var calls = h.Wire.Calls;
+        // nobody has seen. The merge train reads review independently, on its
+        // own background clock with no ordering promise relative to the
+        // heartbeat, so its calls are not this invariant's concern.
+        var calls = h.Wire.Calls.Where(c => c.Path != Review).ToList();
         Assert.Equal(Beat, calls[0].Path);
         Assert.True(
             calls.TakeWhile(c => c.Path != "/api/hatch/issues/AER-1/claim").Any(c => c.Path == Beat),
