@@ -217,6 +217,10 @@ public sealed class WorkCommand(Runtime runtime)
             : work.Kind == WorkKinds.Build ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
+        runtime.Say.Line(
+            work.Playbook?.DeniedTools is { Count: > 0 } denied
+                ? $"# tools: denied {string.Join(", ", denied)}"
+                : "# tools: all");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
 
         // What the branch step would do, read from the refs as they stand - so
@@ -649,6 +653,10 @@ public sealed class WorkCommand(Runtime runtime)
             work.Kind == WorkKinds.Conflicts ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Conflicts.Words(work.Issue)}"
             : work.Kind == WorkKinds.Build ? $"hatch: {model}, effort {effort}, {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"hatch: {model}, effort {effort}, {work.FromStatus.Name} -> {work.ToStatus?.Name}");
+        var rules = work.Playbook?.DeniedTools;
+        runtime.Say.Line(rules is { Count: > 0 }
+            ? $"hatch:   tools: denied {string.Join(", ", rules)}"
+            : "hatch:   tools: all");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"hatch:   {chose}");
         runtime.Say.Line("");
 
@@ -658,7 +666,8 @@ public sealed class WorkCommand(Runtime runtime)
         await runtime.Increment().MarkSaidAsync(work, ct);
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs),
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs,
+                DeniedTools: work.Playbook?.DeniedTools ?? []),
             ct);
     }
 

@@ -222,6 +222,41 @@ public sealed class WorkCommandTests
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
 
+    /// <summary>The playbook's limit reaches the spawned session, the same as any other dispatch - HA-453.</summary>
+    [Fact]
+    public async Task A_spawned_session_carries_the_playbooks_denied_tools()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Spawned).DeniedTools);
+    }
+
+    /// <summary>
+    /// A playbook that denies nothing leaves the spawned session's own argv
+    /// untouched, same as before this field existed - HA-453.
+    /// </summary>
+    [Fact]
+    public async Task A_spawned_session_carries_no_denied_tools_when_the_playbook_names_none()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(Assert.Single(h.Sessions.Spawned).DeniedTools);
+    }
+
     [Fact]
     public async Task A_session_that_fails_still_gives_the_ticket_back()
     {
@@ -369,6 +404,67 @@ public sealed class WorkCommandTests
         Assert.Single(h.Sessions.Attached);
         Assert.Empty(h.Sessions.Spawned);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    /// <summary>
+    /// An attached session (`work &lt;key&gt; -i`) carries the same limit a
+    /// spawned one does - the criterion the original pass at this ticket
+    /// missed - HA-453.
+    /// </summary>
+    [Fact]
+    public async Task An_attached_session_carries_the_playbooks_denied_tools_and_prints_them()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["-i", "AER-1"], default));
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Attached).DeniedTools);
+        Assert.Contains(h.Say.Said, l => l == "hatch:   tools: denied Bash, WebFetch");
+    }
+
+    [Fact]
+    public async Task An_attached_session_with_no_denied_tools_carries_none_and_prints_all()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["-i", "AER-1"], default));
+
+        Assert.Empty(Assert.Single(h.Sessions.Attached).DeniedTools);
+        Assert.Contains(h.Say.Said, l => l == "hatch:   tools: all");
+    }
+
+    [Fact]
+    public async Task A_dry_run_prints_the_playbooks_denied_tools()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/next",
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# tools: denied Bash, WebFetch");
+    }
+
+    [Fact]
+    public async Task A_dry_run_with_no_denied_tools_prints_all()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# tools: all");
     }
 
     [Fact]

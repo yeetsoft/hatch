@@ -104,6 +104,27 @@ public sealed class GoToWorkTests
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
+    /// <summary>The playbook's limit reaches the session a go-to-work pass spawns - HA-453.</summary>
+    [Fact]
+    public async Task A_pass_carries_the_playbooks_denied_tools_to_the_spawned_session()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json(
+            "GET", "/api/hatch/work/AER-1",
+            Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Equal(["Bash", "WebFetch"], Assert.Single(h.Sessions.Spawned).DeniedTools);
+    }
+
     [Fact]
     public async Task A_tree_that_will_not_reset_ends_the_night_and_gives_the_ticket_back()
     {
