@@ -46,6 +46,19 @@ export function briefLimitRequest(draft: string): string {
   return draft.trim();
 }
 
+/** What the denied tools field shows: one rule per line, blank for none. */
+export function deniedToolsDraft(rules: string[]): string {
+  return rules.join('\n');
+}
+
+/** The field, split into rules for the wire: one per line, trimmed, blanks dropped. */
+export function deniedToolsRequest(draft: string): string[] {
+  return draft
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+}
+
 /** What a row's project reads as: "All projects" for a board-wide row, "KEY — Name" otherwise. */
 export function projectLabel(p: Pick<Playbook, 'projectKey' | 'projectName'>): string {
   return p.projectKey === null || p.projectName === null

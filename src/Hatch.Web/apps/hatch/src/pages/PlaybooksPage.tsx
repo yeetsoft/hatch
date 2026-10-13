@@ -16,6 +16,8 @@ import {
   briefLimitRequest,
   budgetDraft,
   budgetRequest,
+  deniedToolsDraft,
+  deniedToolsRequest,
   isReviewPlaybook,
   matchesProjectFilter,
   transitionLabel,
@@ -111,6 +113,7 @@ export function PlaybooksPage() {
                 <th>Effort</th>
                 <th>Budget (M tokens)</th>
                 <th>Brief limit (chars)</th>
+                <th>Denied tools</th>
                 <th />
               </tr>
             </thead>
@@ -155,6 +158,7 @@ function Row({
     effort?: string;
     budget?: string;
     briefLimit?: string;
+    deniedTools?: string[];
     projectId?: string;
   }) => void;
   onDelete: () => void;
@@ -218,6 +222,9 @@ function Row({
           <BriefLimitCell briefLimit={playbook.briefLimit} onPatch={(briefLimit) => onPatch({ briefLimit })} />
         </td>
         <td>
+          <DeniedToolsCell deniedTools={playbook.deniedTools} onPatch={(deniedTools) => onPatch({ deniedTools })} />
+        </td>
+        <td>
           <div className="hatch-reorder">
             <Button onClick={() => setOpen(!open)}>{open ? 'Hide prompt' : 'Prompt'}</Button>
             <Button variant="danger" onClick={onDelete}>
@@ -228,7 +235,7 @@ function Row({
       </tr>
       {open && (
         <tr>
-          <td colSpan={hasMultipleProjects(projects) ? 9 : 8}>
+          <td colSpan={hasMultipleProjects(projects) ? 10 : 9}>
             <PromptCell prompt={playbook.prompt} onSave={(prompt) => onPatch({ prompt })} />
           </td>
         </tr>
@@ -369,6 +376,42 @@ function BriefLimitCell({ briefLimit, onPatch }: { briefLimit: number | null; on
       onBlur={() => {
         const next = briefLimitRequest(draft);
         if (next !== briefLimitDraft(briefLimit)) onPatch(next);
+      }}
+    />
+  );
+}
+
+/**
+ * The denied tools, one rule per line - blur-commit, re-sync when the row's
+ * own value changes underneath, the same pattern as BudgetCell/BriefLimitCell.
+ *
+ * `BudgetCell`'s re-sync compares the raw value because `number | null` is a
+ * primitive. `deniedTools` is an array, freshly parsed from JSON on every
+ * `reload()`, so two reads carrying identical rules are never `===` - comparing
+ * the raw arrays would re-sync, and stomp an in-progress, not-yet-blurred edit,
+ * on every reload the page does for any row's unrelated patch. Comparing
+ * drafted strings instead avoids that.
+ */
+function DeniedToolsCell({ deniedTools, onPatch }: { deniedTools: string[]; onPatch: (deniedTools: string[]) => void }) {
+  const serverDraft = deniedToolsDraft(deniedTools);
+  const [draft, setDraft] = useState(serverDraft);
+  const [known, setKnown] = useState(serverDraft);
+
+  if (serverDraft !== known) {
+    setKnown(serverDraft);
+    setDraft(serverDraft);
+  }
+
+  return (
+    <textarea
+      rows={2}
+      className="hatch-grows"
+      aria-label="Denied tools"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = deniedToolsRequest(draft);
+        if (deniedToolsDraft(next) !== serverDraft) onPatch(next);
       }}
     />
   );

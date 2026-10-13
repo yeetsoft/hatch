@@ -4,6 +4,8 @@ import {
   briefLimitRequest,
   budgetDraft,
   budgetRequest,
+  deniedToolsDraft,
+  deniedToolsRequest,
   isReviewPlaybook,
   matchesProjectFilter,
   projectLabel,
@@ -66,6 +68,28 @@ describe('the brief limit field', () => {
 
   it('a blank field clears the brief limit', () => {
     expect(briefLimitRequest('  ')).toBe('');
+  });
+});
+
+describe('the denied tools field', () => {
+  it('shows no rules as a blank box', () => {
+    expect(deniedToolsDraft([])).toBe('');
+  });
+
+  it('shows each rule on its own line', () => {
+    expect(deniedToolsDraft(['Bash', 'WebFetch'])).toBe('Bash\nWebFetch');
+  });
+
+  it('a blank field clears the rules', () => {
+    expect(deniedToolsRequest('')).toEqual([]);
+  });
+
+  it('splits the field into rules for the wire', () => {
+    expect(deniedToolsRequest('Bash\nWebFetch')).toEqual(['Bash', 'WebFetch']);
+  });
+
+  it('drops blank lines and trims the rest', () => {
+    expect(deniedToolsRequest('Bash\n\n  WebFetch  \n')).toEqual(['Bash', 'WebFetch']);
   });
 });
 

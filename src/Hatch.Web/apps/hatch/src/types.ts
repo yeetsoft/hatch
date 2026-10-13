@@ -857,6 +857,8 @@ export interface Playbook {
   /** Millions of tokens, or null for no cap. */
   budget: number | null;
   briefLimit: number | null;
+  /** Empty means every tool. */
+  deniedTools: string[];
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
@@ -874,6 +876,7 @@ export interface PlaybookCreateRequest {
   budget?: string;
   briefLimit?: string;
   shape?: PlaybookShape;
+  deniedTools?: string[];
   projectId?: string;
 }
 
@@ -888,6 +891,7 @@ export interface PlaybookPatchRequest {
   budget?: string;
   briefLimit?: string;
   shape?: PlaybookShape;
+  deniedTools?: string[];
   projectId?: string;
 }
 
