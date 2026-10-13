@@ -483,7 +483,7 @@ public class AttentionControllerTests
 
         var row = Assert.Single(attention.ApprovedHeld!);
         Assert.Equal(Key(issue), row.Key);
-        Assert.Equal("its branch conflicts with the trunk", row.Sentence);
+        Assert.Equal("its branch conflicts with the trunk - back to review to fix it", row.Sentence);
         Assert.Empty(attention.ApprovedWaiting!);
     }
 
@@ -538,7 +538,7 @@ public class AttentionControllerTests
 
         var row = Assert.Single(attention.ApprovedHeld!);
         Assert.Equal(Key(issue), row.Key);
-        Assert.Equal("its build on 2222222 failed", row.Sentence);
+        Assert.Equal("its build on 2222222 failed - back to review to fix it", row.Sentence);
         Assert.Empty(attention.ApprovedWaiting!);
     }
 

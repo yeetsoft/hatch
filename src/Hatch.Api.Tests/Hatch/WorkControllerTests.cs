@@ -5819,6 +5819,310 @@ public class WorkControllerTests
             "AER-404", new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
     }
 
+    // ---- Pushback: a runner reporting the merge column judged this a pushback ----
+
+    [Fact]
+    public async Task PushbackWork_ForAConflictedBranch_MovesToReviewRankedAtItsBottomWithACommentAndAnEvent()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var already = await h.FileAsync("task", "already up for review", h.Review, rank: 1024);
+        var issue = await h.FileAsync("task", "its branch conflicts", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted);
+
+        var moved = Value(await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Review, moved.StatusId);
+        Assert.Equal(h.Review, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("approved", payload.GetProperty("from").GetString());
+        Assert.Equal("review", payload.GetProperty("to").GetString());
+        Assert.True(payload.GetProperty("pushback").GetBoolean());
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Its branch conflicts with the trunk - back to review to fix it.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task PushbackWork_ForAFailedBuild_MovesToReviewRankedAtItsBottomWithACommentAndAnEvent()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var already = await h.FileAsync("task", "already up for review", h.Review, rank: 1024);
+        var issue = await h.FileAsync("task", "its build failed", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Failed);
+
+        var moved = Value(await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Review, moved.StatusId);
+        Assert.Equal(h.Review, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("approved", payload.GetProperty("from").GetString());
+        Assert.Equal("review", payload.GetProperty("to").GetString());
+        Assert.True(payload.GetProperty("pushback").GetBoolean());
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Its build on bbbbbbb failed - back to review to fix it.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesAnIssueNotInAMergeColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "still being written", h.InProgress);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"in progress\" does not merge the pull request - a pushback only matters to the merge column",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenNoPullRequestIsRecorded()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "nothing recorded", approved.Id);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "no pull request is recorded on this issue, so there is nothing for a pushback to confirm",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheUrlDoesNotMatchTheRecordedOne()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "a different pull request", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"https://example.com/o/r/pull/2\" is not the pull request recorded on this issue",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheJudgeReadsHold()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "no branch named for it", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.None);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "no branch on origin is named for it",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheJudgeReadsPending()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "waiting for a runner to check it", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "no runner has checked its branch against the trunk yet",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheJudgeReadsMerge()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheJudgeReadsUpdate()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "merges cleanly but stale", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "bringing its branch current from main",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_RefusesAClaimedIssue()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "its branch conflicts, but claimed", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted);
+        await h.ClaimAsync(issue);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    /// <summary>
+    /// A board with only the merge column, protected - <see cref="Columns.AwaitingReview"/>
+    /// finds no terminal column at all, steps left over the one protected
+    /// column it has, and runs off the front of the board. No merge check is
+    /// needed: the destination is measured before the branch is judged.
+    /// </summary>
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheBoardHasNoReviewColumn()
+    {
+        var h = await NewAsync();
+        foreach (var id in new[] { h.Inbox, h.Todo, h.InProgress, h.Review, h.Done })
+            (await h.Db.Statuses.SingleAsync(s => s.Id == id)).IsDeferred = true;
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "nowhere to go back to", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "there is no review column on this board, so there is nowhere for this to go back to",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    /// <summary>
+    /// The same empty board, but the merge column itself is not protected -
+    /// <see cref="Columns.AwaitingReview"/>'s walk never steps off it, so it
+    /// names the merge column as the review column, and there is nowhere
+    /// left to send the issue back to.
+    /// </summary>
+    [Fact]
+    public async Task PushbackWork_RefusesWhenTheReviewColumnIsTheMergeColumnItself()
+    {
+        var h = await NewAsync();
+        foreach (var id in new[] { h.Inbox, h.Todo, h.InProgress, h.Review, h.Done })
+            (await h.Db.Statuses.SingleAsync(s => s.Id == id)).IsDeferred = true;
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = false, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "nowhere to go back to", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"approved\" is the merge column and the review column at once, so there is nowhere to send this back to",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PushbackWork_Is404ForAKeyThatDoesNotParse()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.PushbackWork(
+            "nonsense", new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
+    }
+
+    [Fact]
+    public async Task PushbackWork_Is404ForAKeyThatDoesNotExist()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.PushbackWork(
+            "AER-404", new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
+    }
+
     // ---- Closed: a runner reporting that the recorded pull request closed without merging ----
 
     [Fact]

@@ -2036,6 +2036,14 @@ public record PullRequestMergedRequest(string Url, string Runner);
 /// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
 public record PullRequestClosedRequest(string Url, string Runner);
 
+/// <summary>
+/// A runner reporting that the merge column has judged the issue's branch a
+/// pushback - a conflict or a failed build the review column must fix.
+/// </summary>
+/// <param name="Url">The pull request the runner read, compared against the one recorded on the issue.</param>
+/// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record PullRequestPushbackRequest(string Url, string Runner);
+
 /// <summary>One stored verdict: the issue's branch against one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
 /// <param name="Canonical">The remote's canonical form - the verdict's identity within its issue.</param>

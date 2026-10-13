@@ -541,6 +541,94 @@ public class WorkController(
     }
 
     /// <summary>
+    /// Carries an issue in the merge column back to the review column, for a
+    /// branch <see cref="MergeWork.Judge"/> reads as a conflict or a failed
+    /// build - work the merge column itself cannot do anything about, since
+    /// no agent runs there (see <see cref="MergeWork"/>'s own remark).
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="MergedWork"/>, this takes no verdict from its
+    /// caller: it reads the issue's own stored checks and judges them itself,
+    /// and acts only where that judgement is <see cref="WorkKinds.Pushback"/>.
+    /// There is no sha to hand the forge the way a merge has one to compare,
+    /// so the judgement is the whole guard against a stale poll.
+    ///
+    /// <para>Takes no claim, and refuses a claimed issue the same way
+    /// <see cref="MergedWork"/> does - a session running on the row must not
+    /// have it moved out from under it. No WIP gate: the issue is already on
+    /// the board, and holding it in a column nothing protects a limit on
+    /// leaves it stuck and silent.</para>
+    /// </remarks>
+    [HttpPost("{key}/pushback")]
+    public async Task<ActionResult<IssueDto>> PushbackWork(
+        string key, PullRequestPushbackRequest request, CancellationToken ct)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+
+        if (!from.MergesPullRequest)
+            return Conflict(
+                $"\"{from.Name}\" does not merge the pull request - a pushback only matters to the merge column");
+
+        var recorded = issue.PullRequestUrl?.Trim();
+        if (string.IsNullOrEmpty(recorded))
+            return Conflict("no pull request is recorded on this issue, so there is nothing for a pushback to confirm");
+
+        var url = request.Url?.Trim() ?? "";
+        if (!string.Equals(url, recorded, StringComparison.Ordinal))
+            return Conflict($"\"{url}\" is not the pull request recorded on this issue");
+
+        var review = Columns.AwaitingReview(statuses);
+        if (review is null)
+            return Conflict("there is no review column on this board, so there is nowhere for this to go back to");
+        if (review.Id == from.Id)
+            return Conflict(
+                $"\"{from.Name}\" is the merge column and the review column at once, so there is nowhere to send this back to");
+
+        var now = time.GetUtcNow();
+        var merges = (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []);
+        var builds = (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []);
+        var judgement = MergeWork.Judge(
+            issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+            merges, builds, issue.PullRequestClosedAt, now, review.Name);
+
+        if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
+
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        if (claimed.Held(issue) is { } holder) return Conflict(holder);
+
+        var actor = await caller.ActorNameAsync(ct);
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = actor,
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = JsonSerializer.Serialize(new { from = from.Name, to = review.Name, pushback = true }),
+            At = now,
+        });
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = issue.Id,
+            Author = actor,
+            Body = $"{char.ToUpper(judgement.Sentence[0])}{judgement.Sentence[1..]}.",
+            CreatedAt = now,
+        });
+
+        issue.Rank = await ranks.BottomAsync(review.Id, ct);
+        issue.StatusId = review.Id;
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
+    /// <summary>
     /// A runner reporting that the pull request recorded on an issue closed
     /// without merging. Unlike <see cref="MergedWork"/> this does not move the
     /// issue - a closed pull request is not a decision the forge made for the
