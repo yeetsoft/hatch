@@ -654,20 +654,28 @@ public sealed class Poll
 
     /// <summary>
     /// The update half: for every issue in the merges column the judge marked
-    /// <see cref="WorkKinds.Update"/>, bring its branch current from the trunk
-    /// by calling <see cref="IWorkspace.Sync"/> - <see cref="WorkKinds.Merge"/>
-    /// and <see cref="WorkKinds.Hold"/> rows, and every row in the review
-    /// column (<c>MergeWork</c> null), are left for whatever else acts on them
-    /// and not asked about here at all.
+    /// <see cref="WorkKinds.Update"/>, bring its branch current with the trunk
+    /// by asking the forge to update it - <see cref="WorkKinds.Merge"/> and
+    /// <see cref="WorkKinds.Hold"/> rows, and every row in the review column
+    /// (<c>MergeWork</c> null), are left for whatever else acts on them and
+    /// not asked about here at all.
     /// </summary>
     /// <remarks>
-    /// The same shape as <see cref="MergeApprovedAsync"/> right above it:
-    /// per-checkout <c>failed</c>, <c>judgedSha</c> read off the resolved
-    /// checkout's own clean verdict, and <c>_seenUpdate</c> the same dedupe
-    /// idea as <c>_seenMergeRefusal</c> - a push attempt's outcome is reported
-    /// once per judged sha, not every interval. The outer try/catch keeps
-    /// anything unanticipated here from propagating into <see cref="PollAsync"/>
-    /// and aborting the halves that run after it.
+    /// The same shape as <see cref="MergeApprovedAsync"/> right above it, and
+    /// for the same reason: a pull request's head is read first and compared
+    /// against <c>judgedSha</c>, so a branch that moved under the board is
+    /// never handed to the forge at all - the forge's own
+    /// <c>expected_head_sha</c> guard (see <see cref="GhForge.UpdateAsync"/>)
+    /// is only the race between that read and this call, not the whole of the
+    /// check. <c>_seenUpdate</c> is the same dedupe idea as
+    /// <c>_seenMergeRefusal</c> - a head that has moved, or an update that
+    /// conflicts, is reported once per judged sha, not every interval. A
+    /// generic failure (the forge unreachable, or the account refused) is
+    /// never remembered, so it is retried next interval the way a transient
+    /// one should be - <c>complain</c>'s own dedupe is what stops it being
+    /// said more than once for as long as it persists. The outer try/catch
+    /// keeps anything unanticipated here from propagating into
+    /// <see cref="PollAsync"/> and aborting the halves that run after it.
     /// </remarks>
     private async Task UpdateApprovedAsync(
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
@@ -678,56 +686,64 @@ public sealed class Poll
             foreach (var issue in review)
             {
                 if (issue.MergeWork?.Kind != WorkKinds.Update) continue;
+                if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
                 var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
                     .FirstOrDefault();
                 if (where is null || failed.Contains(where.Path)) continue;
 
-                var judgedSha = issue.MergeChecks
-                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean)?.BranchSha;
-                if (judgedSha is null) continue;
-
-                var dedupeKey = (where.Path, issue.Key);
-                if (_seenUpdate.TryGetValue(dedupeKey, out var seenSha) && seenSha == judgedSha) continue;
+                var judged = issue.MergeChecks
+                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean);
+                if (judged?.BranchSha is not { } judgedSha) continue;
 
                 var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
-                var synced = runtime.Workspace(where.Path, where.BaseBranch).Sync(issue.Key);
-
-                switch (synced.Outcome)
+                var pr = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                if (pr.State is not { } state)
                 {
-                    case SyncOutcome.Current:
-                    case SyncOutcome.NoBranch:
-                        break;
+                    failed.Add(where.Path);
+                    if (pr.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
+                    continue;
+                }
 
-                    case SyncOutcome.OldGit:
-                    case SyncOutcome.NoTrunk:
-                    case SyncOutcome.FetchFailed:
-                    case SyncOutcome.Ambiguous:
-                    case SyncOutcome.MergeFailed:
-                    case SyncOutcome.CommitFailed:
-                        failed.Add(where.Path);
-                        complain($"hatch: could not bring {issue.Key}'s branch current in {name} - {synced.Why ?? synced.Outcome.ToString()}");
-                        break;
+                if (state == PullRequestStates.Closed) continue;
 
-                    case SyncOutcome.Conflicted:
+                var dedupeKey = (where.Path, issue.Key);
+                var alreadySeen = _seenUpdate.TryGetValue(dedupeKey, out var seenSha) && seenSha == judgedSha;
+
+                if (state != PullRequestStates.Open || pr.HeadSha != judgedSha)
+                {
+                    if (alreadySeen) continue;
+                    _seenUpdate[dedupeKey] = judgedSha;
+                    await runtime.QuietBoard.CommentAsync(
+                        issue.Key,
+                        $"Its pull request's head is now {pr.HeadSha ?? "unknown"}, not the {judgedSha} this "
+                        + "runner approved to bring current - skipping until a fresh verdict says it is clean again.",
+                        ct);
+                    continue;
+                }
+
+                if (alreadySeen || pr.Number is not { } number) continue;
+
+                var updated = await runtime.Forge(where.Path, where.Canonical).UpdateAsync(number, judgedSha, ct);
+
+                switch (updated.Outcome)
+                {
+                    case UpdateOutcomes.Updated:
                         _seenUpdate[dedupeKey] = judgedSha;
                         await runtime.QuietBoard.CommentAsync(
-                            issue.Key,
-                            $"Its branch does not merge cleanly with {synced.Trunk} - conflicts in "
-                            + $"{string.Join(", ", synced.Files!)}; nothing was pushed.",
-                            ct);
+                            issue.Key, $"Brought its branch current with {judged.Trunk}, as {runtime.RunnerName}.", ct);
+                        runtime.Say.Line($"hatch: {UpdateWords(issue.Key, judged.Trunk)}");
                         break;
 
-                    case SyncOutcome.Refused:
-                        complain($"hatch: {issue.Key}'s push of {synced.Trunk} into its branch was refused in {name} - {synced.Why}");
-                        break;
-
-                    case SyncOutcome.Pushed:
+                    case UpdateOutcomes.Conflicted:
                         _seenUpdate[dedupeKey] = judgedSha;
                         await runtime.QuietBoard.CommentAsync(
-                            issue.Key, $"Brought its branch current from {synced.Trunk}, now at {synced.Sha}.", ct);
-                        runtime.Say.Line($"hatch: {UpdateWords(issue.Key, synced.Trunk!, synced.Sha!)}");
+                            issue.Key, $"Its branch does not merge cleanly with {judged.Trunk} - nothing was pushed.", ct);
+                        break;
+
+                    default:
+                        complain($"hatch: could not bring {issue.Key}'s branch current in {name} - {updated.Why}");
                         break;
                 }
             }
@@ -755,9 +771,8 @@ public sealed class Poll
     /// <summary>A line for the terminal: <c>HA-12 pull request merged -> Done</c>.</summary>
     private static string PullRequestWords(string key, string to) => $"{key} pull request merged -> {to}";
 
-    /// <summary>A line for the terminal: <c>HA-12 branch brought current from main, now at 1a2b3c4</c>.</summary>
-    private static string UpdateWords(string key, string trunk, string sha) =>
-        $"{key} branch brought current from {trunk}, now at {Short(sha)}";
+    /// <summary>A line for the terminal: <c>HA-12 branch brought current with main</c>.</summary>
+    private static string UpdateWords(string key, string trunk) => $"{key} branch brought current with {trunk}";
 
     /// <summary>The first 7 characters of a sha, for a terminal line - unchanged where it is shorter.</summary>
     private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
