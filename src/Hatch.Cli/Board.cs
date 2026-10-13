@@ -170,6 +170,25 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Reports that the merge column has judged an issue's branch a pushback -
+    /// see <see cref="PullRequestPushbackRequest"/>. A <c>409</c> is not a fault,
+    /// the same as <see cref="MergedAsync"/> documents: the issue left the merge
+    /// column, or its judgement changed, between the poll's read and this write,
+    /// and the caller walks on rather than treating it as a refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> PushbackAsync(
+        string key, PullRequestPushbackRequest request, CancellationToken ct)
+    {
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/pushback", request, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/pushback"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
     /// What a pass would take, without taking it.
     /// </summary>
     /// <remarks>

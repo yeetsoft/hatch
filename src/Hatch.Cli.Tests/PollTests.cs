@@ -1565,6 +1565,77 @@ public sealed class PollTests
         Assert.Empty(rig.H.Say.Complained);
     }
 
+    // ---- The pushback half ----
+
+    private static string Pushback(string key) => $"/api/hatch/work/{key}/pushback";
+
+    /// <summary>
+    /// A row in the merges column, judged <paramref name="kind"/> (<see
+    /// cref="WorkKinds.Pushback"/> unless said otherwise). This half itself reads
+    /// nothing from git or <c>gh</c> - only <c>issue.MergeWork</c> and
+    /// <c>issue.PullRequestUrl</c> - but the row still needs a repository and a
+    /// clean, up to date merge check the same as <see cref="MergeRow"/> gives,
+    /// so the merge-check half above vouches for it and leaves this half as the
+    /// only thing with anything to say. Null <paramref name="kind"/> is an
+    /// ordinary review row: no <c>MergeWork</c> at all.
+    /// </summary>
+    private static ReviewCheckDto PushbackRow(string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Pushback)
+    {
+        var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = Tip,
+        };
+
+        return Fixtures.Review(
+            key, [repo], pullRequestUrl: pullRequestUrl,
+            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch conflicts with main - back to review to fix it"),
+            checks: [stored]);
+    }
+
+    [Fact]
+    public async Task A_pushback_row_is_asked_about_once_and_the_issue_leaves_the_column()
+    {
+        using var rig = new Rig().Board(PushbackRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Wire.Json("POST", Pushback("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "In Review") });
+
+        await rig.RunAsync();
+
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Pushback("AER-1"))).Read<PullRequestPushbackRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request pushed back -> In Review", rig.H.Say.Said);
+    }
+
+    [Theory]
+    [InlineData(WorkKinds.Merge)]
+    [InlineData(WorkKinds.Update)]
+    [InlineData(WorkKinds.Hold)]
+    [InlineData(null)]
+    public async Task A_row_not_judged_pushback_is_never_asked_about_by_this_half(string? kind)
+    {
+        using var rig = new Rig().Board(PushbackRow("AER-1", "aer-1-thing", PrUrl, kind: kind));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+
+        await rig.RunAsync();
+
+        // kind: null also covers a review row with no MergeWork at all.
+        Assert.Empty(rig.H.Wire.To("POST", Pushback("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_409_from_the_pushback_route_is_a_silent_walk_on()
+    {
+        using var rig = new Rig().Board(PushbackRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Wire.Reply("POST", Pushback("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Say.Complained);
+        Assert.Empty(rig.H.Say.Said);
+    }
+
     [Fact]
     public async Task Cancellation_ends_the_poll_rather_than_being_swallowed_as_a_failure()
     {
