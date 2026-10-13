@@ -5692,6 +5692,47 @@ public class WorkControllerTests
             rows.Single(r => r.Key == Key(inMerges)).MergeWork);
     }
 
+    [Fact]
+    public async Task ReviewRead_AMergesColumnsFirstClearRowIsHead_ItsWaitingSiblingIsNot()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var head = await h.FileAsync("task", "ready to merge", approved.Id, rank: 1024);
+        await h.VerdictAsync(head, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(head, BuildVerdicts.Passed);
+        var waiting = await h.FileAsync("task", "waits behind the head", approved.Id, rank: 2048);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(head)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(waiting)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task ReviewRead_OneProjectsHeldHeadDecidesNothingForAnotherProjectsClearOne()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var other = await h.AddProjectAsync("OTH");
+
+        var held = await h.FileAsync("task", "no branch named for it", approved.Id, rank: 1024);
+        await h.VerdictAsync(held, MergeVerdicts.None);
+
+        var clear = await h.FileAsync("task", "ready to merge, other project", approved.Id, rank: 1024, projectId: other);
+        await h.VerdictAsync(clear, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clear, BuildVerdicts.Passed);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.False(rows.Single(r => r.Key == Key(held)).MergeWork!.IsHead);
+        Assert.True(rows.Single(r => r.Key == Key("OTH", clear)).MergeWork!.IsHead);
+    }
+
     // ---- Merged: a runner reporting that the recorded pull request has merged ----
 
     [Fact]
