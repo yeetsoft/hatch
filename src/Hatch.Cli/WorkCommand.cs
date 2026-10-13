@@ -217,6 +217,7 @@ public sealed class WorkCommand(Runtime runtime)
             : work.Kind == WorkKinds.Build ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
+        if (Prompt.PlaybookLine(work) is { } playbookLine) runtime.Say.Line($"# {playbookLine}");
         runtime.Say.Line(
             work.Playbook?.DeniedTools is { Count: > 0 } denied
                 ? $"# tools: denied {string.Join(", ", denied)}"

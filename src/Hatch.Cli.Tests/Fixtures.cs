@@ -54,8 +54,9 @@ public static class Fixtures
 
     public static PlaybookDto Playbook(
         string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null,
-        IReadOnlyList<string>? deniedTools = null) =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, briefLimit, deniedTools ?? [], DateTimeOffset.UnixEpoch, null, null, null);
+        IReadOnlyList<string>? deniedTools = null,
+        int? projectId = null, string? projectKey = null, string? projectName = null) =>
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, briefLimit, deniedTools ?? [], DateTimeOffset.UnixEpoch, projectId, projectKey, projectName);
 
     public static WorkDto Work(
         string key,

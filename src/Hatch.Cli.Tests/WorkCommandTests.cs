@@ -457,6 +457,32 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_names_the_playbook_and_whose_it_was()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/next",
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(projectKey: "AER") });
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# playbook: AER's own");
+    }
+
+    [Fact]
+    public async Task A_dry_run_names_a_board_wide_playbook()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/next",
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook() });
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# playbook: board-wide");
+    }
+
+    [Fact]
     public async Task A_dry_run_with_no_denied_tools_prints_all()
     {
         using var h = new Harness();

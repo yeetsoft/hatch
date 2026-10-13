@@ -944,6 +944,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             await db.Playbooks.AsNoTracking()
                 .Include(p => p.FromStatus)
                 .Include(p => p.ToStatus)
+                .Include(p => p.Project)
                 .Where(p => p.FromStatusId == from && p.ToStatusId == to)
                 .ToListAsync(ct),
             from, to, type, isParent, projectId);

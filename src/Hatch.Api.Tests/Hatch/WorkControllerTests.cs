@@ -1834,6 +1834,7 @@ public class WorkControllerTests
 
         Assert.Equal("a-only", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.Model);
         Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+        Assert.Equal("AER", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.ProjectKey);
     }
 
     [Fact]
@@ -1846,7 +1847,10 @@ public class WorkControllerTests
 
         var otherTask = await h.FileAsync("task", "no row names this project", h.Todo, projectId: other);
 
-        Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
+        var work = Value(await h.Work.GetWork(Key("OTH", otherTask), null, default));
+        Assert.Equal("sonnet", work.Playbook!.Model);
+        Assert.Null(work.Playbook!.ProjectKey);
+        Assert.Null(work.Playbook!.ProjectName);
     }
 
     [Fact]
