@@ -28,12 +28,31 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// <param name="State">One of <see cref="PullRequestStates"/>.</param>
 /// <param name="Why">One line, for a sentence. Null where <paramref name="State"/> was read.</param>
 /// <param name="HeadSha">The pull request's own head sha. Null where it was not read.</param>
-public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null);
+/// <param name="Number">The pull request's own number. Null where it was not read.</param>
+public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null, long? Number = null);
 
 /// <summary>What a forge answered about a merge attempt: whether it took, or why it did not.</summary>
 /// <param name="Merged">True where the merge went through.</param>
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Merged"/> is true.</param>
 public sealed record MergeAnswer(bool Merged, string? Why);
+
+/// <summary>One of <see cref="UpdateOutcomes"/>, or the reason no outcome was reached - see <see cref="UpdateAnswer"/>.</summary>
+public static class UpdateOutcomes
+{
+    /// <summary>The branch now holds the trunk, by a merge commit the forge made.</summary>
+    public const string Updated = "updated";
+
+    /// <summary>The branch conflicts with the trunk - nothing was pushed, and this is not a reason to retry.</summary>
+    public const string Conflicted = "conflicted";
+}
+
+/// <summary>
+/// What a forge answered about bringing a pull request's branch current:
+/// updated, conflicting, or why neither - see <see cref="UpdateOutcomes"/>.
+/// </summary>
+/// <param name="Outcome">One of <see cref="UpdateOutcomes"/>, or null where neither was reached.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Outcome"/> is <see cref="UpdateOutcomes.Updated"/>.</param>
+public sealed record UpdateAnswer(string? Outcome, string? Why);
 
 /// <summary>
 /// Where a runner reads the build on a branch's tip from. A seam so a test can
@@ -58,6 +77,13 @@ public interface IForge
 
     /// <summary>Merges the pull request at <paramref name="url"/>, provided its head is still <paramref name="sha"/>.</summary>
     Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct);
+
+    /// <summary>
+    /// Brings pull request <paramref name="number"/>'s branch current with the
+    /// trunk by a merge commit, on the forge - provided its head is still
+    /// <paramref name="sha"/>.
+    /// </summary>
+    Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct);
 }
 
 /// <summary>
@@ -143,14 +169,15 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try
         {
             using var doc = JsonDocument.Parse(ran.Out);
             var state = Text(doc.RootElement, "state");
-            return new PullRequestAnswer(ClassifyState(state), null, Text(doc.RootElement, "headRefOid"));
+            var number = doc.RootElement.TryGetProperty("number", out var n) && n.TryGetInt64(out var num) ? num : (long?)null;
+            return new PullRequestAnswer(ClassifyState(state), null, Text(doc.RootElement, "headRefOid"), number);
         }
         catch (JsonException)
         {
@@ -166,6 +193,36 @@ public sealed class GhForge(
 
         var ran = await _run(path, Env(), ["pr", "merge", url, "--merge", "--admin", "--match-head-commit", sha], ct);
         return ran.Code == 0 ? new MergeAnswer(true, null) : new MergeAnswer(false, Why(ran));
+    }
+
+    /// <summary>
+    /// <c>gh pr update-branch</c> itself always reconciles against whichever
+    /// head it has just read, which leaves no room to name an older one - so
+    /// this calls the REST route it wraps directly, with <paramref name="sha"/>
+    /// as <c>expected_head_sha</c>, the same role <c>--match-head-commit</c>
+    /// plays for <see cref="MergeAsync"/>. The route answers <c>202</c> and
+    /// updates in the background, but a conflict or a stale head answers
+    /// <c>422</c> synchronously, before this returns - confirmed against a real
+    /// pull request rather than assumed from the documentation, which only
+    /// states the latter and not the former.
+    /// </summary>
+    public async Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new UpdateAnswer(null, "its repository is a local path, so there is no forge to update a pull request's branch on");
+
+        var ran = await _run(path, Env(), [
+            "api", "--method", "PUT", .. HostArgs(),
+            $"repos/{{owner}}/{{repo}}/pulls/{number}/update-branch",
+            "-f", $"expected_head_sha={sha}",
+        ], ct);
+        if (ran.Code == 0) return new UpdateAnswer(UpdateOutcomes.Updated, null);
+
+        var why = Why(ran);
+        return why.Contains("merge conflict between base and head", StringComparison.Ordinal)
+            ? new UpdateAnswer(UpdateOutcomes.Conflicted, why)
+            : new UpdateAnswer(null, why);
     }
 
     /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
