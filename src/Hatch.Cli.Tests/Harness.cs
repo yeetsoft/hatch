@@ -314,6 +314,15 @@ public sealed class FakeForge
     /// <summary>What a merge of one pull request's url answers.</summary>
     public Dictionary<string, MergeAnswer> MergeFor { get; } = [];
 
+    /// <summary>Every update asked for, with the number and sha it carried, in order.</summary>
+    public List<(string Path, long Number, string Sha)> UpdateCalls { get; } = [];
+
+    /// <summary>What every update attempt answers, unless <see cref="UpdateFor"/> says otherwise.</summary>
+    public UpdateAnswer UpdateAnswer { get; set; } = new(null, null);
+
+    /// <summary>What an update of one pull request's number answers.</summary>
+    public Dictionary<long, UpdateAnswer> UpdateFor { get; } = [];
+
     public IForge For(string path, string? canonical)
     {
         Canonicals.Add(canonical);
@@ -345,6 +354,12 @@ public sealed class FakeForge
         {
             owner.MergeCalls.Add((path, url, sha));
             return Task.FromResult(owner.MergeFor.GetValueOrDefault(url, owner.MergeAnswer));
+        }
+
+        public Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct)
+        {
+            owner.UpdateCalls.Add((path, number, sha));
+            return Task.FromResult(owner.UpdateFor.GetValueOrDefault(number, owner.UpdateAnswer));
         }
     }
 }

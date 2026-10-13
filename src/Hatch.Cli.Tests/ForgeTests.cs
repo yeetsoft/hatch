@@ -386,7 +386,7 @@ public sealed class ForgeTests
         Assert.Equal("abc123", answer.HeadSha);
         Assert.Null(answer.Why);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid,number"], call.Args);
         Assert.DoesNotContain("--hostname", call.Args);
         Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
     }
@@ -485,5 +485,102 @@ public sealed class ForgeTests
         Assert.False(answer.Merged);
         Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
         Assert.Empty(runs.Calls);
+    }
+
+    // ---- UpdateAsync ----
+
+    [Fact]
+    public async Task It_asks_the_update_branch_route_by_number_with_the_expected_head_sha_and_the_host_the_board_named()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "", "") };
+
+        var answer = await runs.Forge().UpdateAsync(7, "abc123", default);
+
+        Assert.Equal(UpdateOutcomes.Updated, answer.Outcome);
+        Assert.Null(answer.Why);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(
+            [
+                "api", "--method", "PUT", "--hostname", "forge.example",
+                "repos/{owner}/{repo}/pulls/7/update-branch", "-f", "expected_head_sha=abc123",
+            ],
+            call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task A_project_that_binds_nothing_asks_the_update_branch_route_with_no_hostname()
+    {
+        var runs = new Runs();
+
+        await runs.Forge(canonical: null).UpdateAsync(7, "abc123", default);
+
+        Assert.DoesNotContain("--hostname", runs.Calls[0].Args);
+        Assert.DoesNotContain("GH_REPO", runs.Calls[0].Env.Keys);
+    }
+
+    [Fact]
+    public async Task A_merge_conflict_from_the_update_branch_route_answers_conflicted()
+    {
+        var runs = new Runs
+        {
+            Answer = _ => new GhForge.Ran(1, "", "\ngh: merge conflict between base and head (HTTP 422)\n"),
+        };
+
+        var answer = await runs.Forge().UpdateAsync(7, "abc123", default);
+
+        Assert.Equal(UpdateOutcomes.Conflicted, answer.Outcome);
+        Assert.Contains("merge conflict between base and head", answer.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stale_expected_head_sha_from_the_update_branch_route_answers_no_outcome_and_the_reason()
+    {
+        var runs = new Runs
+        {
+            Answer = _ => new GhForge.Ran(1, "", "\ngh: expected head sha didn't match current head ref. (HTTP 422)\n"),
+        };
+
+        var answer = await runs.Forge().UpdateAsync(7, "abc123", default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Contains("expected head sha didn't match current head ref.", answer.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_missing_gh_is_said_in_one_line_for_an_update_too()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(-1, "", "") };
+
+        var answer = await runs.Forge().UpdateAsync(7, "abc123", default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Equal("gh is not installed", answer.Why);
+    }
+
+    [Fact]
+    public async Task A_local_path_asks_gh_nothing_for_an_update()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: "/srv/git/repo.git").UpdateAsync(7, "abc123", default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
+
+    // ---- ReadPullRequestAsync's number ----
+
+    [Fact]
+    public async Task A_pull_request_read_carries_its_own_number()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"OPEN","headRefOid":"abc123","number":42}""", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/42", default);
+
+        Assert.Equal(42, answer.Number);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/42", "--json", "state,headRefOid,number"], call.Args);
     }
 }
