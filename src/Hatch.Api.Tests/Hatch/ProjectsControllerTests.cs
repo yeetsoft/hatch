@@ -683,6 +683,90 @@ public class ProjectsControllerTests
         Assert.Equal(countBefore, result.Count);
     }
 
+    // ---- Landing ----
+
+    [Fact]
+    public async Task AnOwnerSettingLandingAndChecksRequired_RoundTripsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default));
+        Assert.Equal(Landings.Trunk, written.Landing);
+        Assert.False(written.ChecksRequired);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(Landings.Trunk, read.Landing);
+        Assert.False(read.ChecksRequired);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutLandingNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.Equal(Landings.PullRequest, (await h.Db.Projects.FindAsync(created.Id))!.Landing);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPutLanding()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(Landings.Trunk, false), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task AnUnknownLandingValue_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest("carrier-pigeon", false), default);
+
+        Assert.Contains("landing", Reason(result.Result));
+        var project = await h.Db.Projects.FindAsync(created.Id);
+        Assert.Equal(Landings.PullRequest, project!.Landing);
+        Assert.True(project.ChecksRequired);
+    }
+
+    [Fact]
+    public async Task ResendingTheLandingAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default);
+        var countBefore = await h.Db.Projects.CountAsync();
+
+        var result = Value(await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default));
+
+        Assert.Equal(countBefore, await h.Db.Projects.CountAsync());
+        Assert.Equal(Landings.Trunk, result.Landing);
+        Assert.False(result.ChecksRequired);
+    }
+
+    [Fact]
+    public async Task PatchProject_LeavesLandingAndChecksRequiredAlone()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default);
+
+        var patched = Value(await h.Projects.PatchProject(created.Id, new ProjectPatchRequest("Renamed"), default));
+
+        Assert.Equal(Landings.Trunk, patched.Landing);
+        Assert.False(patched.ChecksRequired);
+    }
+
     // ---- Harness ----
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01];

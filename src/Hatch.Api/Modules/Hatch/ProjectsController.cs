@@ -466,6 +466,47 @@ public class ProjectsController(
         return await LiveMembersAsync(id, ct);
     }
 
+    /// <summary>
+    /// How a project expects its work to land - <see cref="EfHatchProject.Landing"/>
+    /// and <see cref="EfHatchProject.ChecksRequired"/>. Only an owner may call this;
+    /// unlike <see cref="PatchProject"/>, which never reads either field, this is the
+    /// only route that writes them.
+    /// </summary>
+    [HttpPut("{id:int}/landing")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutLanding(int id, ProjectLandingWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change how its work lands") { StatusCode = StatusCodes.Status403Forbidden };
+
+        var landing = request.Landing;
+        if (landing is not null && landing != Landings.PullRequest && landing != Landings.Trunk)
+            return BadRequest($"landing is \"{Landings.PullRequest}\" or \"{Landings.Trunk}\" - not \"{request.Landing}\"");
+
+        var unchanged = (landing is null || landing == project.Landing) &&
+            (request.ChecksRequired is null || request.ChecksRequired == project.ChecksRequired);
+
+        if (!unchanged)
+        {
+            if (landing is not null) project.Landing = landing;
+            if (request.ChecksRequired is { } checksRequired) project.ChecksRequired = checksRequired;
+
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} landing set to {Landing}/{ChecksRequired} by {Actor}", project.Key, project.Landing, project.ChecksRequired, await caller.ActorNameAsync(ct));
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -530,7 +571,7 @@ public class ProjectsController(
         EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt,
         IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister) =>
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
-            members, canApprove, canAdminister);
+            members, canApprove, canAdminister, project.Landing, project.ChecksRequired);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
