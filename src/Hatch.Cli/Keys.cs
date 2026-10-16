@@ -22,50 +22,54 @@ public sealed record ControlsSnapshot(bool KeysOn, bool StopArmed, bool Paused, 
 /// </summary>
 public static class Keys
 {
-    public static (bool StopArmed, bool Paused, bool LongLegend, Confirming Confirming, bool CancelNow, bool SkipNow, string? Log) Decide(
-        char key, bool stopArmed, bool paused, bool longLegend, Confirming confirming, bool incrementRunning)
+    public static (bool StopArmed, bool Paused, bool LongLegend, Confirming Confirming, bool CancelNow, bool SkipNow, bool CheckNow, string? Log) Decide(
+        char key, bool stopArmed, bool paused, bool longLegend, Confirming confirming, bool incrementRunning, bool napping)
     {
         if (confirming == Confirming.Cancel)
         {
             return key is 'y' or 'Y'
-                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: true, SkipNow: false, Log: "cancel now — confirmed (c, y)")
-                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, Log: null);
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: true, SkipNow: false, CheckNow: false, Log: "cancel now — confirmed (c, y)")
+                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
         }
 
         if (confirming == Confirming.Skip)
         {
             return key is 'y' or 'Y'
-                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: true, Log: "skip confirmed — this increment ends now (k, y)")
-                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, Log: null);
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: true, CheckNow: false, Log: "skip confirmed — this increment ends now (k, y)")
+                : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
         }
 
         if (key is 's' or 'S')
         {
             var armed = !stopArmed;
-            return (armed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false,
+            return (armed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, CheckNow: false,
                 Log: armed
                     ? "stop armed — the night ends after this increment (s to undo)"
                     : "stop undone — the night carries on (s)");
         }
 
-        if (key is 'c' or 'C') return (stopArmed, paused, longLegend, Confirming.Cancel, CancelNow: false, SkipNow: false, Log: null);
+        if (key is 'c' or 'C') return (stopArmed, paused, longLegend, Confirming.Cancel, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
 
         if (key is 'p' or 'P')
         {
             var armed = !paused;
-            return (stopArmed, armed, longLegend, confirming, CancelNow: false, SkipNow: false,
+            return (stopArmed, armed, longLegend, confirming, CancelNow: false, SkipNow: false, CheckNow: false,
                 Log: armed
                     ? "paused from the keyboard (p to resume)"
                     : "resumed from the keyboard (p to pause)");
         }
 
         if ((key is 'k' or 'K') && incrementRunning)
-            return (stopArmed, paused, longLegend, Confirming.Skip, CancelNow: false, SkipNow: false, Log: null);
+            return (stopArmed, paused, longLegend, Confirming.Skip, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
+
+        if ((key is 'n' or 'N') && napping && !paused)
+            return (stopArmed, paused, longLegend, confirming, CancelNow: false, SkipNow: false, CheckNow: true,
+                Log: "checking the board now — skipping the rest of the wait (n)");
 
         if (key == '?')
-            return (stopArmed, paused, !longLegend, confirming, CancelNow: false, SkipNow: false, Log: null);
+            return (stopArmed, paused, !longLegend, confirming, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
 
-        return (stopArmed, paused, longLegend, confirming, CancelNow: false, SkipNow: false, Log: null);
+        return (stopArmed, paused, longLegend, confirming, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
     }
 }
 
@@ -93,6 +97,14 @@ public sealed class Controls(bool keysOn)
     /// </summary>
     private bool _incrementRunning;
 
+    /// <summary>
+    /// Whether <see cref="GoToWork"/> is in its idle nap - read only by <see
+    /// cref="Press"/>, to gate <c>n</c>, and written by the nap itself. Not part
+    /// of <see cref="ControlsSnapshot"/>, for the same reason as <see
+    /// cref="_incrementRunning"/>.
+    /// </summary>
+    private bool _napping;
+
     /// <summary>Set once at construction and never mutated after - readable with no lock.</summary>
     public bool KeysOn => keysOn;
 
@@ -105,6 +117,12 @@ public sealed class Controls(bool keysOn)
     /// </summary>
     public event Action? Skipped;
 
+    /// <summary>
+    /// Raised by <see cref="Press"/>, after its lock is released, when <c>n</c>
+    /// lands during the idle nap - the nap subscribes for as long as it sleeps.
+    /// </summary>
+    public event Action? CheckNow;
+
     public ControlsSnapshot Snapshot()
     {
         lock (_gate) return new ControlsSnapshot(keysOn, _stopArmed, _paused, _longLegend, _confirming);
@@ -114,6 +132,12 @@ public sealed class Controls(bool keysOn)
     public void SetIncrementRunning(bool running)
     {
         lock (_gate) _incrementRunning = running;
+    }
+
+    /// <summary>Written the same moment the idle nap begins and ends - see <see cref="_napping"/>.</summary>
+    public void SetNapping(bool napping)
+    {
+        lock (_gate) _napping = napping;
     }
 
     /// <summary>
@@ -126,21 +150,24 @@ public sealed class Controls(bool keysOn)
         string? log;
         bool cancelNow;
         bool skipNow;
+        bool checkNow;
 
         lock (_gate)
         {
-            var (stopArmed, paused, longLegend, confirming, cancel, skip, decided) =
-                Keys.Decide(key, _stopArmed, _paused, _longLegend, _confirming, _incrementRunning);
+            var (stopArmed, paused, longLegend, confirming, cancel, skip, check, decided) =
+                Keys.Decide(key, _stopArmed, _paused, _longLegend, _confirming, _incrementRunning, _napping);
             _stopArmed = stopArmed;
             _paused = paused;
             _longLegend = longLegend;
             _confirming = confirming;
             cancelNow = cancel;
             skipNow = skip;
+            checkNow = check;
             log = decided;
         }
 
         if (skipNow) Skipped?.Invoke();
+        if (checkNow) CheckNow?.Invoke();
         return (log, cancelNow, skipNow);
     }
 }

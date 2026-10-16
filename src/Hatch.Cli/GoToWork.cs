@@ -1056,7 +1056,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // interval is what to do when there was nothing to do. A hop reads
             // the board again straight away, the same as a cleared conflict.
             if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
-            if (!await NapAsync(interval, tally, ct)) return false;
+            if (!await NapAsync(interval, tally, ct, checkNow: true)) return false;
         }
 
         if (ct.IsCancellationRequested) tally.StopWhy ??= "interrupted";
@@ -1650,32 +1650,58 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// then rather than an interval later, and an <c>--until</c> at three in the
     /// morning lands at three in the morning however long the interval is.
     /// </summary>
-    private async Task<bool> NapAsync(int seconds, Tally tally, CancellationToken ct, Func<bool>? wake = null)
+    private async Task<bool> NapAsync(
+        int seconds, Tally tally, CancellationToken ct, Func<bool>? wake = null, bool checkNow = false)
     {
-        var left = seconds;
-        while (left > 0)
+        // The keyboard's n cancels only this linked source, never ct - so a
+        // stop is still told apart from a wake below. Only the idle nap opts
+        // in: a pause is left by p alone, and an exhausted runner has nothing
+        // to gain from asking again early.
+        using var woken = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        void OnCheck() => woken.Cancel();
+        if (checkNow)
         {
-            var slice = Math.Min(5, left);
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(slice), runtime.Clock, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return false;
-            }
-
-            left -= slice;
-            if (tally.ShouldStop()) return false;
-
-            // Finished waiting, go around again - the same answer an ordinary
-            // completed nap gives, which is what lets the loop re-evaluate
-            // everything from the top rather than only the one condition that
-            // just cleared.
-            if (wake?.Invoke() == true) return true;
+            runtime.Controls.CheckNow += OnCheck;
+            runtime.Controls.SetNapping(true);
         }
 
-        return true;
+        try
+        {
+            var left = seconds;
+            while (left > 0)
+            {
+                var slice = Math.Min(5, left);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(slice), runtime.Clock, woken.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Woken by n rather than stopped: go around again, the same
+                    // answer a finished nap gives.
+                    return !ct.IsCancellationRequested;
+                }
+
+                left -= slice;
+                if (tally.ShouldStop()) return false;
+
+                // Finished waiting, go around again - the same answer an ordinary
+                // completed nap gives, which is what lets the loop re-evaluate
+                // everything from the top rather than only the one condition that
+                // just cleared.
+                if (wake?.Invoke() == true) return true;
+            }
+
+            return true;
+        }
+        finally
+        {
+            if (checkNow)
+            {
+                runtime.Controls.CheckNow -= OnCheck;
+                runtime.Controls.SetNapping(false);
+            }
+        }
     }
 
     /// <summary>

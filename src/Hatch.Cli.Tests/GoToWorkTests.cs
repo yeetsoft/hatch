@@ -1055,6 +1055,78 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task N_ends_the_idle_nap_at_once_and_the_next_pass_claims_without_the_clock_moving()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        var runtime = h.Runtime with { Clock = clock };
+
+        // The first pass finds nothing, so the loop settles into its idle nap.
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, "[]");
+
+        var running = new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1", "--interval", "3600"], default);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("waiting, and asking again", StringComparison.Ordinal)),
+            "the idle line");
+
+        h.Wire.Replace(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1") }, Fixtures.Json));
+
+        // An n before the nap begins is a no-op, so pressing until the claim
+        // lands cannot race the moment the nap says it is napping. The clock
+        // never moves: only n can have ended the hour.
+        await Harness.Eventually(
+            () =>
+            {
+                runtime.Controls.Press('n');
+                return h.Wire.To("POST", "/api/hatch/issues/AER-1/claim").Count > 0;
+            },
+            "the claim after n");
+
+        await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task N_does_not_end_a_keyboard_pause()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        var runtime = h.Runtime with { Clock = clock };
+
+        runtime.Controls.Press('p');
+
+        var running = new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1", "--interval", "3600"], default);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("paused from the keyboard", StringComparison.Ordinal)),
+            "the paused line");
+
+        for (var i = 0; i < 3; i++)
+        {
+            runtime.Controls.Press('n');
+            await Task.Delay(20);
+        }
+
+        // A paused loop never runs a pass, so the queue is never read.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("GET", Queue));
+
+        runtime.Controls.Press('p');
+        clock.Advance(TimeSpan.FromSeconds(5));
+
+        await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    [Fact]
     public async Task A_board_pause_outranks_a_local_resume_and_the_idle_line_still_names_the_board()
     {
         using var h = new Harness();
