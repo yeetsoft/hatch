@@ -1296,6 +1296,27 @@
   gap: var(--sp-2);
 }
 
+/* ---- Editing a project's landing ----
+
+   The Landing section's radio pair in ProjectEditDialog - own class rather
+   than sharing .hatch-move-descendants, matching this file's one-class-per-
+   feature convention. */
+
+.hatch-landing-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-landing-choice label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
 /* ---- Dates ----
 
    The two chips a card can carry: `Ready`, drawn only while an issue is still

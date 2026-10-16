@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
 import {
   claimProject,
@@ -6,12 +6,19 @@ import {
   deleteProjectMember,
   getPeople,
   patchProject,
+  putProjectLanding,
   putProjectLogo,
   putProjectMember,
   putProjectRepositories,
 } from '../api/client';
 import { message } from '../lib/errors';
-import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, type ProjectDraft } from '../lib/projectDraft';
+import {
+  openProjectDraft,
+  projectDraftDiff,
+  projectDraftKeyObjection,
+  projectLandingDiff,
+  type ProjectDraft,
+} from '../lib/projectDraft';
 import {
   hasOwner,
   openProjectMembersDraft,
@@ -60,6 +67,7 @@ export function ProjectEditDialog({
   const [saving, setSaving] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const landingName = useId();
 
   const { data: people } = useLoaded(getPeople);
 
@@ -110,10 +118,12 @@ export function ProjectEditDialog({
 
   async function save() {
     const diff = projectDraftDiff(draft!);
+    const landingDiff = projectLandingDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
       diff.patch === null &&
       diff.repositories === null &&
+      landingDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
       membersDiff.deletes.length === 0
@@ -126,6 +136,7 @@ export function ProjectEditDialog({
     try {
       if (diff.patch !== null) await patchProject(project!.id, diff.patch);
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
+      if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
@@ -264,6 +275,46 @@ export function ProjectEditDialog({
             Add
           </Button>
         </div>
+
+        <h2 className="hatch-section-title">Landing</h2>
+        {project.canAdminister ? (
+          <>
+            <fieldset className="hatch-landing-choice">
+              <label>
+                <input
+                  type="radio"
+                  name={landingName}
+                  checked={draft.landing === 'pull-request'}
+                  onChange={() => setDraft((d) => d && { ...d, landing: 'pull-request' })}
+                />
+                By pull request
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={landingName}
+                  checked={draft.landing === 'trunk'}
+                  onChange={() => setDraft((d) => d && { ...d, landing: 'trunk' })}
+                />
+                On the trunk
+              </label>
+            </fieldset>
+            <p className="hatch-section-hint text-muted">
+              Trunk landing pushes the session's commits straight to the trunk branch - no branch, no pull request -
+              and the loop carries the ticket to Done once the trunk is green.
+            </p>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.checksRequired}
+                onChange={(e) => setDraft((d) => d && { ...d, checksRequired: e.target.checked })}
+              />
+              Checks are required
+            </label>
+          </>
+        ) : (
+          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}.`}</p>
+        )}
 
         <h2 className="hatch-section-title">Members</h2>
         {!hasOwner(project.members) && (
