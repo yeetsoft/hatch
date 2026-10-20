@@ -21,7 +21,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// hierarchy, for the leaderboard's graph, and ranked rather than added, for its
 /// table - and all three share their row projection and their arithmetic on
 /// purpose: a bucket's headline figure, a ranked range's and an epic's are one
-/// piece of code and cannot come to mean different things.
+/// piece of code and cannot come to mean different things. A fourth, by the
+/// playbook a session ran under, groups rather than buckets and adds up the same
+/// way.
 /// </summary>
 public static class WorkLogRollup
 {
@@ -193,6 +195,61 @@ public static class WorkLogRollup
             await FirstEndedAsync(db, scope, ascending: true, ct),
             await FirstEndedAsync(db, scope, ascending: false, ct),
             ordered);
+    }
+
+    /// <summary>
+    /// The sessions in a range, folded by the playbook they ran under - one row
+    /// per distinct playbook, transition, issue type, model and effort.
+    /// </summary>
+    /// <remarks>
+    /// The range is used as given and is half-open, the same rule
+    /// <see cref="SessionsAsync"/> states. <paramref name="projectId"/> narrows to
+    /// one project's issues; an id that matches none answers no rows rather than
+    /// a refusal, the convention the issue search already uses.
+    ///
+    /// The status names are the board's <em>current</em> ones, looked up by the
+    /// stored id. The label never re-reads the playbook, so a deleted or
+    /// reworded playbook leaves its sessions labelled by the transition they
+    /// ran - and a column since deleted is a null name beside an id that stays.
+    /// </remarks>
+    public static async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
+        HatchContext db, DateTimeOffset from, DateTimeOffset to, int? projectId, CancellationToken ct)
+    {
+        var entries = db.WorkLog.AsNoTracking().Where(w => w.EndedAt >= from && w.EndedAt < to);
+        if (projectId is { } project) entries = entries.Where(w => w.Issue!.ProjectId == project);
+
+        var rows = await entries
+            .Select(w => new ByPlaybookRow(
+                w.PlaybookKey,
+                w.PlaybookFromStatusId,
+                w.PlaybookToStatusId,
+                w.IssueType,
+                w.PlaybookModel,
+                w.PlaybookEffort,
+                w.IsError,
+                w.Described,
+                w.Turns,
+                w.InputTokens,
+                w.OutputTokens,
+                w.CacheCreationTokens,
+                w.CacheReadTokens,
+                w.CostUsd,
+                w.PeakContextTokens,
+                w.PromptChars))
+            .ToListAsync(ct);
+
+        var names = (await db.Statuses.AsNoTracking().ToListAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
+
+        return new WorkLogByPlaybookDto(
+            from,
+            to,
+            FoldByPlaybook(rows)
+                .Select(r => r with
+                {
+                    FromStatusName = r.FromStatusId is { } f ? names.GetValueOrDefault(f) : null,
+                    ToStatusName = r.ToStatusId is { } t ? names.GetValueOrDefault(t) : null,
+                })
+                .ToList());
     }
 
     /// <summary>
@@ -390,6 +447,99 @@ public static class WorkLogRollup
             // the sum and is reported beside it, so the total reads as a floor.
             rows.Sum(r => r.CostUsd ?? 0m),
             rows.Count(r => r.CostUsd is null));
+    }
+
+    /// <summary>
+    /// One session as the by-playbook fold reads it: the six fields it groups on,
+    /// and the figures it adds up.
+    /// </summary>
+    internal readonly record struct ByPlaybookRow(
+        string? PlaybookKey,
+        int? PlaybookFromStatusId,
+        int? PlaybookToStatusId,
+        string? IssueType,
+        string? PlaybookModel,
+        string? PlaybookEffort,
+        bool IsError,
+        bool Described,
+        int Turns,
+        long InputTokens,
+        long OutputTokens,
+        long CacheCreationTokens,
+        long CacheReadTokens,
+        decimal? CostUsd,
+        long? PeakContextTokens,
+        int? PromptChars);
+
+    /// <summary>
+    /// Folds sessions into one row per distinct playbook, transition, issue
+    /// type, model and effort. Pure: no database, so it is tested directly.
+    /// </summary>
+    /// <remarks>
+    /// A plain <c>GroupBy</c> on the six-tuple already treats an all-null tuple as
+    /// one group, so every row an older runner wrote folds into a single
+    /// "unknown" row with no special case. The status names are left null for
+    /// the caller to resolve - they come from the board, not from the rows.
+    ///
+    /// Rows come back heaviest first (total tokens, descending), then by the
+    /// grouping fields so two reads of one window agree on their order. The
+    /// arithmetic is <see cref="Fold"/>'s: an errored session's spend counts, and
+    /// an unpriced one adds nothing and is counted beside the sum.
+    /// </remarks>
+    internal static IReadOnlyList<WorkLogByPlaybookRowDto> FoldByPlaybook(IReadOnlyList<ByPlaybookRow> rows) =>
+        rows
+            .GroupBy(r => (r.PlaybookKey, r.PlaybookFromStatusId, r.PlaybookToStatusId, r.IssueType,
+                r.PlaybookModel, r.PlaybookEffort))
+            .Select(g =>
+            {
+                var input = g.Sum(r => r.InputTokens);
+                var output = g.Sum(r => r.OutputTokens);
+                var cacheCreation = g.Sum(r => r.CacheCreationTokens);
+                var cacheRead = g.Sum(r => r.CacheReadTokens);
+                var peaks = g.Where(r => r.PeakContextTokens is not null).Select(r => r.PeakContextTokens!.Value).ToList();
+                var prompts = g.Where(r => r.PromptChars is not null).Select(r => (double)r.PromptChars!.Value).ToList();
+
+                return new WorkLogByPlaybookRowDto(
+                    g.Key.PlaybookKey,
+                    g.Key.PlaybookFromStatusId,
+                    null,
+                    g.Key.PlaybookToStatusId,
+                    null,
+                    g.Key.IssueType,
+                    g.Key.PlaybookModel,
+                    g.Key.PlaybookEffort,
+                    g.Count(),
+                    g.Count(r => r.IsError),
+                    g.Count(r => !r.Described),
+                    g.Sum(r => r.Turns),
+                    input,
+                    output,
+                    cacheCreation,
+                    cacheRead,
+                    input + output + cacheCreation + cacheRead,
+                    g.Sum(r => r.CostUsd ?? 0m),
+                    g.Count(r => r.CostUsd is null),
+                    Median(peaks.ConvertAll(p => (double)p)),
+                    peaks.Count == 0 ? null : peaks.Max(),
+                    Median(prompts));
+            })
+            .OrderByDescending(r => r.TotalTokens)
+            .ThenBy(r => r.PlaybookKey, StringComparer.Ordinal)
+            .ThenBy(r => r.FromStatusId)
+            .ThenBy(r => r.ToStatusId)
+            .ThenBy(r => r.IssueType, StringComparer.Ordinal)
+            .ThenBy(r => r.Model, StringComparer.Ordinal)
+            .ThenBy(r => r.Effort, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>The middle value, or the mean of the two middle ones; null for no values.</summary>
+    private static double? Median(List<double> values)
+    {
+        if (values.Count == 0) return null;
+
+        values.Sort();
+        var mid = values.Count / 2;
+        return values.Count % 2 == 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
     }
 
     /// <summary>

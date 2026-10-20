@@ -221,6 +221,36 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     }
 
     /// <summary>
+    /// The sessions in a range, folded by the playbook they ran under: one row
+    /// per distinct playbook, transition, issue type, model and effort.
+    /// </summary>
+    /// <remarks>
+    /// The range is used as given, half-open, as <see cref="GetSessions"/> reads
+    /// it. Every group in the window is answered - there is no sort, no limit and
+    /// no <c>ancestorKey</c> here. Rows come back heaviest first (total tokens,
+    /// descending), ties broken on the grouping fields, so two reads agree.
+    ///
+    /// Sessions an older runner wrote carry none of the grouping fields and fold
+    /// into one row with every field null. Status names are the board's current
+    /// ones, null where the stored id no longer names a column.
+    /// </remarks>
+    /// <param name="projectId">
+    /// Narrows to one project's issues. An id that matches no project answers no
+    /// rows rather than a refusal.
+    /// </param>
+    [HttpGet("by-playbook")]
+    public async Task<ActionResult<WorkLogByPlaybookDto>> GetByPlaybook(
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        [FromQuery] int? projectId = null,
+        CancellationToken ct = default)
+    {
+        if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
+
+        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectId, ct);
+    }
+
+    /// <summary>
     /// The range both reads take, or the sentence refusing it.
     /// </summary>
     /// <remarks>
