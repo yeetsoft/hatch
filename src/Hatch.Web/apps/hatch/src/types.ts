@@ -1427,6 +1427,15 @@ export interface LandingHeld {
   sentence: string;
 }
 
+/** An issue the board has deadlocked, with the judge's own sentence saying
+    why. Mirrors DeadlockedDto. */
+export interface Deadlocked {
+  key: string;
+  title: string;
+  type: string;
+  sentence: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1487,6 +1496,9 @@ export interface Attention {
       the judge's own sentence saying why - a person's to fix, every time.
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
+  /** The issues the board has deadlocked, with the judge's own sentence saying
+      why - a person's to fix, every time. Absent from a board that predates it. */
+  deadlocked?: Deadlocked[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];

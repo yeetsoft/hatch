@@ -42,6 +42,9 @@ export type AttentionTone = 'rest' | 'asking';
  * `landingHeld` counts for the same reason: nothing dispatches at an issue
  * whose work already reached the trunk, so every row is a person's to finish.
  *
+ * `deadlocked` counts for the same reason: nothing dispatches into a ring, so
+ * every row is a person's to break.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -53,7 +56,8 @@ export function attentionCount(attention: Attention | null): number {
     attention.questions.length +
     (attention.trunkBuilds?.length ?? 0) +
     (attention.approvedHeld?.length ?? 0) +
-    (attention.landingHeld?.length ?? 0)
+    (attention.landingHeld?.length ?? 0) +
+    (attention.deadlocked?.length ?? 0)
   );
 }
 
@@ -76,8 +80,10 @@ export function attentionLabel(attention: Attention | null): string {
   if (attention === null) return 'Nothing is waiting on you';
 
   const trunkBuilds = attention.trunkBuilds?.length ?? 0;
+  const deadlocked = attention.deadlocked?.length ?? 0;
 
   const parts: string[] = [];
+  if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
   if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
   if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
@@ -180,6 +186,9 @@ export const approvedHeldEmptyWords = (): string => 'Nothing approved has stoppe
 
 /** The empty state of the "Landed, not done" section. */
 export const landingHeldEmptyWords = (): string => 'Nothing landed has stopped short of done.';
+
+/** The empty state of the "Deadlocked" section. */
+export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
 
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';

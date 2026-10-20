@@ -5222,6 +5222,11 @@ button.hatch-option.chosen {
   background: var(--danger);
 }
 
+/* A deadlock is red in the queue too, so it is red here. */
+.hatch-attention-pill-deadlocked {
+  background: var(--danger);
+}
+
 /* The overnight control, beside this one in the bar's trailing slot - a
    thing to go and look at, not to do. Mirrors .hatch-attention-control for
    its three carried-over decisions: on the desk quiet and loud share one
