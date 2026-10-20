@@ -110,6 +110,9 @@ public sealed class IncrementReport
     /// <summary>Whether <see cref="UsageLimitResetAt"/> came from what the session said, or is the one-hour backstop.</summary>
     public bool UsageLimitResetKnown { get; set; } = true;
 
+    /// <summary>Whether the reset the session named had already passed, so <see cref="UsageLimitResetAt"/> is a short retry rather than the named time.</summary>
+    public bool UsageLimitPassed { get; set; }
+
     /// <summary>"session" or "weekly" - which window the limit named in <see cref="UsageLimitResetAt"/> belongs to.</summary>
     public string? UsageLimitWindow { get; set; }
 
@@ -269,7 +272,7 @@ public sealed class IncrementReport
     public string Outcome =>
         Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
-        : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
+        : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitPassed ? " (the named reset had just passed)" : UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -320,8 +323,10 @@ public sealed class Increment(
     Board board, ISessionRunner sessions, IAgentAdapter adapter, Settings settings, Terminal say,
     IReadOnlyList<CheckoutEntry> checkouts,
     ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null,
-    Func<string, string?, IWorkspace>? workspace = null, Board? quietBoard = null)
+    Func<string, string?, IWorkspace>? workspace = null, Board? quietBoard = null,
+    TimeProvider? clock = null)
 {
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ReadoutState _readout = readout ?? new();
     private readonly string _temp = tempDirectory ?? Path.GetTempPath();
     private readonly Controls? _controls = controls;
@@ -529,15 +534,18 @@ public sealed class Increment(
                 : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
                 : null;
 
-            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, DateTimeOffset.UtcNow) is { } hit)
+            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, _clock.GetUtcNow()) is { } hit)
             {
                 report.UsageLimitResetAt = hit.ResetAt;
                 report.UsageLimitResetKnown = hit.ResetKnown;
+                report.UsageLimitPassed = hit.Passed;
                 report.UsageLimitWindow = hit.Window;
                 report.AgentDisplayName = adapter.DisplayName;
 
                 say.Line("");
-                say.Line(hit.ResetKnown
+                say.Line(hit.Passed
+                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, the reset it named has just passed - trying again at {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
+                    : hit.ResetKnown
                     ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, resets {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
                     : $"hatch: {report.Key} - out of {adapter.DisplayName} usage, and the reset time could not be read - treating it as an hour away");
             }

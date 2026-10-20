@@ -1685,6 +1685,51 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_refusal_a_minute_after_the_named_reset_retries_in_minutes_and_not_a_day()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        // 7:41pm in New York: the wait cleared at 7:40pm and the account's own
+        // reset trailed it, so the sentence names a minute already gone.
+        var start = DateTimeOffset.Parse("2026-09-28T23:41:00+00:00");
+        var clock = new FakeTimeProvider(start);
+
+        var calls = 0;
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        fake.Inner.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            if (++calls == 1)
+            {
+                onLine?.Invoke(Fixtures.Result(
+                    error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+                return Task.FromResult(new SessionResult(1, ""));
+            }
+
+            onLine?.Invoke(Fixtures.Result());
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        // A minute a tick, not the quarter hour the clamp tests use: every real
+        // tick moves the clock a whole step, so a coarse one lets the run's own
+        // async work eat the hour this asserts it stays inside.
+        var run = new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "2", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(0, await run);
+
+        // Rolled to tomorrow it would be 23h out and only the five-hour clamp
+        // would free the runner; read as just passed it is back in minutes.
+        Assert.Equal(2, fake.Inner.Spawned.Count);
+        Assert.True(clock.GetUtcNow() - start < TimeSpan.FromHours(1), "the retry waited as long as a day's roll would");
+        Assert.Contains(h.Say.Said, l => l.Contains("just passed", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_weekly_limits_seven_day_window_is_not_clamped_to_the_sessions_five_hours()
     {
         using var h = new Harness();

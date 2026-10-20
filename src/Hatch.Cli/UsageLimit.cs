@@ -16,6 +16,13 @@ namespace Hatch.Cli;
 /// tomorrow. A weekly limit is the same sentence with a date in front of the
 /// time, and that date is taken as given rather than rolled forward.</para>
 ///
+/// <para>A session limit is never more than its own window away, so an
+/// undated session time that rolls further than the window and an hour of
+/// slack is not tomorrow's: it is a reset that has just passed, read at a
+/// minute after the account's own reset trailed it. That is
+/// <see cref="Recognised.Passed"/>, and the answer is a short retry instead
+/// of a wait the length of a day.</para>
+///
 /// <para>An unknown zone id degrades to the runner's own zone rather than
 /// giving up - a wrong offset on a reset time nobody would have read exactly
 /// anyway is better than throwing the sentence away. The shipped binary is
@@ -30,10 +37,21 @@ public static partial class UsageLimit
     /// <param name="ResetAt">When the account resets - parsed from the sentence, or the one-hour backstop.</param>
     /// <param name="ResetKnown">Whether <see cref="ResetAt"/> came from the sentence, or is the backstop.</param>
     /// <param name="Window">"session" or "weekly", read off the sentence itself.</param>
-    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown, string Window);
+    /// <param name="Passed">
+    /// Whether the reset the sentence named had already passed, so
+    /// <see cref="ResetAt"/> is <see cref="PassedRetry"/> after the session
+    /// ended rather than the named time.
+    /// </param>
+    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown, string Window, bool Passed = false);
 
     /// <summary>The backstop for a limit whose reset time could not be read.</summary>
     public static readonly TimeSpan UnknownWindow = TimeSpan.FromHours(1);
+
+    /// <summary>How long after the session ended a reset that has already passed is tried again.</summary>
+    public static readonly TimeSpan PassedRetry = TimeSpan.FromMinutes(5);
+
+    /// <summary>The slack past a session window that still reads as that window, for a sentence that rounds to the hour.</summary>
+    public static readonly TimeSpan WindowSlack = TimeSpan.FromHours(1);
 
     /// <summary>
     /// How long a limit's own window runs - the CLI's own copy, since it does
@@ -73,6 +91,7 @@ public static partial class UsageLimit
         var local = TimeZoneInfo.ConvertTime(endedAt, zone);
 
         DateOnly date;
+        var rolled = false;
         if (match.Groups["month"].Success && TryDate(match, local, out var named))
         {
             date = named;
@@ -82,11 +101,16 @@ public static partial class UsageLimit
             date = DateOnly.FromDateTime(local.DateTime);
             var todayAt = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0);
             if (todayAt <= local.DateTime) date = date.AddDays(1);
+            rolled = true;
         }
 
         var wall = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0, DateTimeKind.Unspecified);
         var utc = TimeZoneInfo.ConvertTimeToUtc(wall, zone);
         var offset = zone.GetUtcOffset(utc);
+
+        if (rolled && window == "session" && new DateTimeOffset(utc, TimeSpan.Zero) - endedAt > WindowLengths["session"] + WindowSlack)
+            return new Recognised(TimeZoneInfo.ConvertTime(endedAt + PassedRetry, zone), ResetKnown: true, window, Passed: true);
+
         return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true, window);
     }
 

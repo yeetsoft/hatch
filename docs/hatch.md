@@ -6593,6 +6593,17 @@ still-spent account refuses costs one session, not the rest of the window;
 the three-in-a-row stall machinery is what catches a spawn that keeps
 being refused.
 
+A session reset further away than its own window is the same guess gone the
+other way. A session never resets more than five hours out, so a sentence with
+no date whose next occurrence is more than the window plus an hour away - a
+`resets 7:40pm` read at 7:41pm, the account's own reset trailing the minute it
+names - is read as *just passed*, not as tomorrow. The wait then ends five
+minutes after the session ended, in the zone the sentence named, and the
+console line, the outcome and the ticket's comment all say that the named reset
+had just passed and when the runner tries again. A dated sentence is taken as
+given, so a weekly limit is unchanged; an undated per-model weekly sentence
+lands here too, which costs one refused spawn every five minutes.
+
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see
 [what a runner does, in order](#what-a-runner-does-in-order), where the `200`
