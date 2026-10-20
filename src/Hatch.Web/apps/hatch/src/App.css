@@ -3409,6 +3409,21 @@ input.hatch-inline-title-input {
   height: auto;
 }
 
+.hatch-docs-mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.hatch-docs-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.hatch-docs-mermaid-error {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 .hatch-docs-body a:not(.hatch-docs-anchor) {
   color: var(--primary-ink);
 }
