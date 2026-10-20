@@ -509,3 +509,6 @@ $RECYCLE.BIN/
 site/_site/
 site/.jekyll-cache/
 site/Gemfile.lock
+
+# apps/site's build output - not served by Hatch.Api, so not under wwwroot/
+src/Hatch.Web/apps/site/dist/
