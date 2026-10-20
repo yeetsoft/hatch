@@ -7,9 +7,9 @@ summary: Getting the runner onto your machine, pointing it at a board, where its
 
 The board is a board; the **runner** is what works the tickets. It is one
 binary, `hatch`, it runs on your machine, and it talks to this Hatch over HTTP.
-It works tickets, one increment or a loop of them (*One increment and the
-loop*), and it reads and drives the board from a terminal. The same runner as a
-container is *The container runner*.
+It works tickets, one increment or a loop of them ([one increment and the
+loop](one-increment-and-the-loop)), and it reads and drives the board from a
+terminal. The same runner as a container is *The container runner*.
 
 ## Getting it
 
@@ -235,7 +235,6 @@ in full.
 
 Pages this one names that are not written yet:
 
-- `one-increment-and-the-loop`
 - `watching-the-loop`
 - `people-roles-and-keys`
 - `environment-variables`

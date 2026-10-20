@@ -437,8 +437,8 @@ describe('docPage', () => {
 describe('pageForAnchor', () => {
   it.each([
     ['letting-the-loop-merge-for-you', '/docs/letting-the-loop-merge-for-you'],
-    ['one-increment-hatch-work', '/docs/the-hatch-cli-command-by-command#one-increment-hatch-work'],
-    ['one-pass-in-order', '/docs/the-hatch-cli-command-by-command#one-pass-in-order'],
+    ['one-increment-hatch-work', '/docs/one-increment-and-the-loop#one-increment-hatch-work'],
+    ['one-pass-in-order', '/docs/one-increment-and-the-loop#one-pass-in-order'],
     ['what-ios-cannot-do', '/docs/hatch-on-your-phone#what-ios-cannot-do'],
     ['prerequisites', '/docs/getting-started#prerequisites'],
     ['the-one-line', '/docs/getting-started#the-one-line'],

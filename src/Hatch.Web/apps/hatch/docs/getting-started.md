@@ -168,9 +168,9 @@ inside a checkout of the repository the project is about. To see what it would
 do first, `hatch work --dry-run` prints the prompt and claims and spawns
 nothing.
 
-The rest is in [the `hatch` CLI, command by command](the-hatch-cli-command-by-command):
-[one increment, `hatch work`](the-hatch-cli-command-by-command#one-increment-hatch-work),
-and [the loop, `hatch go-to-work`](the-hatch-cli-command-by-command#the-loop-hatch-go-to-work),
+The rest is in [one increment and the loop](one-increment-and-the-loop):
+[one increment, `hatch work`](one-increment-and-the-loop#one-increment-hatch-work),
+and [the loop, `hatch go-to-work`](one-increment-and-the-loop#the-loop-hatch-go-to-work),
 which runs increments back to back. How the binary gets onto a machine and finds
 its board is in [the runner](the-runner).
 
@@ -178,7 +178,7 @@ its board is in [the runner](the-runner).
 
 - [Welcome](welcome), for what Hatch is and the one rule behind it, if you want that first.
 - [How work flows](how-work-flows), for a ticket's path across the board, end to end (until `the-lifecycle-of-a-ticket` replaces it).
-- [The hatch CLI, command by command](the-hatch-cli-command-by-command), for every command, flag and exit code the runner has.
+- [One increment and the loop](one-increment-and-the-loop), for what `hatch work` and `hatch go-to-work` do, every flag they take, and how a night ends.
 - [Putting a front door on it](putting-a-front-door-on-it), for signing in and running this somewhere more than one person reaches.
 - [Letting the loop merge for you](letting-the-loop-merge-for-you), for what has to be true before an approved pull request merges with nobody watching.
 - [Hatch on your phone](hatch-on-your-phone), for installing it as an app, and what it can and cannot do there.
