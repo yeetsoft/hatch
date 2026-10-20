@@ -187,7 +187,7 @@ internal static class MinimalDatabases
     }
 
     /// <summary>Found by walking up for the solution file, so this works from wherever the test binary is run.</summary>
-    private static string RepositoryRoot()
+    internal static string RepositoryRoot()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
             if (File.Exists(Path.Combine(d.FullName, "src", "Hatch.slnx")))
