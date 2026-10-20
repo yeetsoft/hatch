@@ -43,17 +43,17 @@ public sealed class UsageLimitTests
     [Fact]
     public void An_unknown_zone_still_gives_an_instant_by_falling_back_to_the_runners_zone()
     {
-        var hit = UsageLimit.Recognise("You've hit your session limit · resets 7:40pm (Mars/Colony)", EndedAt);
-
-        // The next 7:40pm on this machine's own clock after EndedAt, whatever zone that is.
-        var local = TimeZoneInfo.Local;
-        var today = TimeZoneInfo.ConvertTime(EndedAt, local).Date.AddHours(19).AddMinutes(40);
-        if (today <= TimeZoneInfo.ConvertTime(EndedAt, local).DateTime) today = today.AddDays(1);
-        var expected = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(today, DateTimeKind.Unspecified), local);
+        // A fixed runner zone, not TimeZoneInfo.Local: on a runner whose own
+        // zone is UTC, 7:40pm is 21h40m after EndedAt - past the session's own
+        // window plus slack - which would read as a reset already passed
+        // rather than exercising the fallback this test is about.
+        var runner = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        var hit = UsageLimit.Recognise("You've hit your session limit · resets 7:40pm (Mars/Colony)", EndedAt, runner);
 
         Assert.NotNull(hit);
         Assert.True(hit!.Value.ResetKnown);
-        Assert.Equal(new DateTimeOffset(expected, TimeSpan.Zero), hit.Value.ResetAt);
+        Assert.False(hit.Value.Passed);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"), hit.Value.ResetAt);
     }
 
     [Fact]
