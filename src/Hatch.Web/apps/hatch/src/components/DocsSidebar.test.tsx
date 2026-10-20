@@ -68,4 +68,14 @@ describe('DocsSidebar', () => {
     expect(html).toContain('<details class="hatch-docs-sidebar-phone">');
     expect([...html.matchAll(/<details[^>]*\sopen/g)].length).toBe(sections.length);
   });
+
+  it('puts the search field ahead of the Docs home link, on the desk and inside the phone fold', () => {
+    const desk = renderAt(`/docs/${current.slug}`);
+    expect(desk.indexOf('role="combobox"')).toBeGreaterThan(-1);
+    expect(desk.indexOf('role="combobox"')).toBeLessThan(desk.indexOf('href="/docs"'));
+
+    const phone = renderAt(`/docs/${current.slug}`, true);
+    expect(phone.indexOf('role="combobox"')).toBeGreaterThan(-1);
+    expect(phone.indexOf('role="combobox"')).toBeLessThan(phone.indexOf('href="/docs"'));
+  });
 });

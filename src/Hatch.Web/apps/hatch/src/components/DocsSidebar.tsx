@@ -1,18 +1,21 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { DocsSearch } from './DocsSearch';
 import { DOC_PAGES, docSections } from '../lib/docs';
 import { usePhone } from '../lib/viewport';
 
-/** The docs sidebar: a link back to the landing, then every docSections(DOC_PAGES)
-    section as its own fold with its pages as links. Desk: sticky, each section
-    open on its own. Phone: the whole thing starts under one closed "Pages" fold,
-    keyed on pathname so picking a page leaves it closed again rather than however
-    the reader last left it. */
+/** The docs sidebar: a search field, a link back to the landing, then every
+    docSections(DOC_PAGES) section as its own fold with its pages as links. Desk:
+    sticky, each section open on its own. Phone: the whole thing starts under one
+    closed "Pages" fold, keyed on pathname so picking a page leaves it closed again
+    rather than however the reader last left it - the search field goes with it,
+    inside the same fold, so there is no second render path for either. */
 export function DocsSidebar() {
   const isPhone = usePhone();
   const { pathname } = useLocation();
 
   const nav = (
     <nav className="hatch-docs-sidebar" aria-label="Docs">
+      <DocsSearch />
       <NavLink to="/docs" end className="hatch-docs-sidebar-home">
         Docs
       </NavLink>
