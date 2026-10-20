@@ -2112,6 +2112,37 @@ public class WorkControllerTests
         Assert.Equal("parent-model", Value(await h.Work.GetWork(Key(closedOut), null, default)).Playbook!.Model);
     }
 
+    /// <summary>
+    /// The stock in progress -> review verification row names only "epic", so
+    /// Covers lets it run for an epic that is a parent and folds a reflection
+    /// that is a parent with the no-playbook sentence, though both sit on the
+    /// same transition. The harness's catch-all is cleared first: its empty
+    /// type list would cover a reflection and mask the gap this pins.
+    /// </summary>
+    [Fact]
+    public async Task Work_TheStockEpicVerificationRowCoversAnEpicButNotAReflectionThatIsAParent()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.FromStatusId == h.InProgress));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "epic", "opus"));
+        await h.Db.SaveChangesAsync();
+
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.FileAsync("task", "its only child, already done", h.Done, parentId: epic.Id);
+
+        var reflection = await h.FileAsync("reflection", "the reflection", h.InProgress);
+        await h.FileAsync("task", "its only child, already done", h.Done, parentId: reflection.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+
+        var reflectionWork = Value(await h.Work.GetWork(Key(reflection), null, default));
+        Assert.Equal(
+            "no playbook covers \"in progress\" to \"review\" for a reflection - add one on the Playbooks page",
+            reflectionWork.Blocked);
+        Assert.Null(reflectionWork.Playbook);
+    }
+
     // ---- Matching, by project (HA-424) ----
 
     [Fact]
