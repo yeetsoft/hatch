@@ -1198,6 +1198,13 @@ public record ReviewDto(
 /// an agent's to fix, so a row here is a person's, every time. Defaults to null
 /// so an older client still reads.
 /// </param>
+/// <param name="Deadlocked">
+/// Every issue the work queue marks deadlocked - a ring of dependency edges,
+/// or a wait on a parent's gate, that can never clear without a person - judged
+/// board-wide and listed in the queue's own order, with the queue's own
+/// sentence. Empty, not null, when there is none, on every board shape. Defaults
+/// to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1209,7 +1216,8 @@ public record AttentionDto(
     IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null,
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
-    IReadOnlyList<LandingHeldDto>? LandingHeld = null);
+    IReadOnlyList<LandingHeldDto>? LandingHeld = null,
+    IReadOnlyList<DeadlockedDto>? Deadlocked = null);
 
 /// <summary>
 /// One runner out of Claude usage, for the top of the attention panel.
@@ -1262,6 +1270,13 @@ public record ApprovedWaitingDto(string Key, string Title, string Type, string? 
 /// </summary>
 /// <param name="Sentence">The judge's own words for why it is held.</param>
 public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One issue the work queue marks deadlocked: waiting, directly or through a
+/// chain, on something that is itself waiting on it.
+/// </summary>
+/// <param name="Sentence">The queue's own words, starting <c>deadlocked - </c>.</param>
+public record DeadlockedDto(string Key, string Title, string Type, string Sentence);
 
 // ---- The board ----
 
@@ -1778,6 +1793,14 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// for this transition. Null for a project that is not repo-sourced, or for
 /// one where no good copy was found at all.
 /// </param>
+/// <param name="AsksReleaseNote">
+/// True where this dispatch is the one HA-659 means by a release note being
+/// due: the issue has no parent, the dispatch is not a hop, <paramref name="Kind"/>
+/// is <see cref="WorkKinds.Advance"/>, and it moves into
+/// <c>Columns.AwaitingReview</c> - a parentless leaf's own move into review,
+/// or a parentless epic's closeout. False for a child, whose release note is
+/// its story's or epic's to write, and false for any other dispatch.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1804,7 +1827,8 @@ public record WorkDto(
     string? BranchTitle = null,
     string? LastCheckFindings = null,
     string? FailStatusName = null,
-    PlaybookFileReferenceDto? PlaybookFile = null);
+    PlaybookFileReferenceDto? PlaybookFile = null,
+    bool AsksReleaseNote = false);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -2543,6 +2567,45 @@ public record OvernightRowDto(
     DateTimeOffset LandedAt,
     int DescendantCount);
 
+// ---- Changelog ----
+
+/// <summary>
+/// The newest window of days that shipped something - see
+/// <c>Changelog.ResolveWindow</c> for how the window is cut.
+/// </summary>
+/// <param name="Days">Newest day first; empty when nothing has ever closed in range.</param>
+/// <param name="HasOlder">Whether a day older than <c>Days</c>' oldest exists at all.</param>
+/// <param name="Oldest">That oldest day's own date, as <c>?before=</c> takes it; null when <c>Days</c> is empty.</param>
+/// <param name="Months">Every closed month, newest first - not only the window's.</param>
+public record ChangelogDto(
+    IReadOnlyList<ChangelogDayDto> Days,
+    bool HasOlder,
+    string? Oldest,
+    IReadOnlyList<ChangelogMonthDto> Months);
+
+/// <summary>One day's worth of closes - every parentless issue that closed that day, split in two.</summary>
+/// <param name="Date">That day, in UTC, as <c>yyyy-MM-dd</c>.</param>
+/// <param name="Features">The epics that closed that day.</param>
+/// <param name="Fixes">Every other parentless issue that closed that day - stories, bugs, tasks.</param>
+public record ChangelogDayDto(
+    string Date,
+    IReadOnlyList<ChangelogEntryDto> Features,
+    IReadOnlyList<ChangelogEntryDto> Fixes);
+
+/// <summary>One parentless, closed issue, as a day draws it.</summary>
+/// <param name="DescendantCount">Every issue below this one, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
+public record ChangelogEntryDto(
+    string Key,
+    string Title,
+    string Type,
+    string ProjectKey,
+    string? ReleaseNote,
+    DateTimeOffset ClosedAt,
+    int DescendantCount);
+
+/// <summary>One calendar month and how many issues closed in it - the jump control's own count.</summary>
+public record ChangelogMonthDto(string Month, int Count);
+
 // ---- Runners ----
 
 /// <summary>
@@ -3245,22 +3308,26 @@ public record RunnerPatchRequest(
     string? UntilAt = null);
 
 /// <summary>
-/// The Claude token this Hatch holds, wrapped for the wire.
+/// An agent's credential as this Hatch holds it, wrapped for the wire.
 /// </summary>
 /// <remarks>
 /// <para>The one place in Hatch where a live secret is handed back out of the
 /// API on purpose, and it exists for one caller: the container runner's
-/// entrypoint, which has to authenticate a <c>claude</c> CLI it starts itself
-/// and has nowhere else to read the token from. Every other secret-valued
-/// setting is redacted on read, and the route that answers this one refuses
-/// outright wherever the wall is up - see docs/hatch.md, "API surface".</para>
+/// entrypoint, which has to authenticate an agent CLI it starts itself and has
+/// nowhere else to read the credential from. Every other secret-valued setting
+/// is redacted on read, and the route that answers this one refuses outright
+/// wherever the wall is up - see docs/hatch.md, "API surface".</para>
 ///
 /// <para>Wrapped rather than plain because it crosses a network, over the
 /// scheme the store already uses (<c>SecretProtector</c>). That is a courtesy
 /// and not a lock: the algorithm is a fixed XOR key both sides carry, which is
 /// exactly what lets a container holding nothing but <c>git</c> and this
-/// binary reverse it without a second round trip. A token that has to be safe
-/// in transit needs TLS, which is the operator's to put in front of Hatch.</para>
+/// binary reverse it without a second round trip. A credential that has to be
+/// safe in transit needs TLS, which is the operator's to put in front of Hatch.</para>
+///
+/// <para><c>credentials/{agent}</c> answers it for each supported agent, and
+/// the older <c>claude-token</c> route answers the same record for Claude, so
+/// a container built before the first still reads it.</para>
 /// </remarks>
-/// <param name="ProtectedToken">The token as <c>SecretProtector.Protect</c> wrote it: <c>v1:&lt;base64&gt;</c>.</param>
-public record ClaudeTokenDto(string ProtectedToken);
+/// <param name="ProtectedToken">The credential as <c>SecretProtector.Protect</c> wrote it: <c>v1:&lt;base64&gt;</c>.</param>
+public record CredentialDto(string ProtectedToken);

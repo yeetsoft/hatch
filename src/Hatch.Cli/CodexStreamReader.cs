@@ -170,6 +170,7 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
         }
 
         var (title, summary) = StreamRender.WorkLog(facts.LastAssistantText ?? "");
+        facts.ReleaseNote = StreamRender.ReleaseNote(facts.LastAssistantText ?? "");
         facts.Result = new WorkLogEntryRequest(
             SessionId: facts.SessionId ?? "",
             StartedAt: default,

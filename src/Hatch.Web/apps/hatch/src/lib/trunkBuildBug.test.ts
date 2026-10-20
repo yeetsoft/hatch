@@ -45,6 +45,7 @@ const ISSUE: Issue = {
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  releaseNote: null,
   modelOverride: null,
   effortOverride: null,
   assignee: null,

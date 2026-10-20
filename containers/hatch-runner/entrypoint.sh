@@ -87,23 +87,38 @@ else
     say "gh is not signed in - build checks and merges are off. Set HATCH_GH_TOKEN to turn them on."
 fi
 
-# ---- The Claude credential (criterion 4) ----
+# ---- The agent's credential (criterion 4) ----
 #
-# Fetched from Hatch rather than configured here, so a friend sets it on the
-# Settings page and in exactly one place. Waiting rather than exiting is the
-# whole of criterion 4: a stack brought up before anybody has pasted a token is
-# the ordinary first five minutes, and a container that died over it would be a
-# restart loop in the logs instead of one sentence.
+# Which agent this container's loop spawns is HATCH_AGENT, claude when unset or
+# empty. Checked before anything is waited on: an agent this image does not
+# carry is a mistake no amount of waiting fixes, so it is a hard exit that
+# names the ones it does.
+#
+# The credential is fetched from Hatch rather than configured here, so a friend
+# sets it on the Settings page and in exactly one place. Waiting rather than
+# exiting is the whole of criterion 4: a stack brought up before anybody has
+# pasted a credential is the ordinary first five minutes, and a container that
+# died over it would be a restart loop in the logs instead of one sentence.
 #
 # Two states are waited out and they say different things, each said once: no
-# token saved yet (exit 2), and a call that did not get an answer at all - an
-# API still starting, a wall that has since gone up (any other exit).
-errors=/tmp/hatch-runner-token.err
+# credential saved yet (exit 2), and a call that did not get an answer at all -
+# an API still starting, a wall that has since gone up (any other exit).
+agent="${HATCH_AGENT:-claude}"
+
+case "$agent" in
+    claude|codex|grok) ;;
+    *)
+        say "unknown HATCH_AGENT \"$agent\" - known: claude, codex, grok."
+        exit 1
+        ;;
+esac
+
+errors=/tmp/hatch-runner-credential.err
 told=""
 
 while true; do
     code=0
-    token=$(hatch runner-claude-token 2>"$errors") || code=$?
+    credential=$(hatch runner-credential "$agent" 2>"$errors") || code=$?
 
     if [ "$code" -eq 0 ]; then
         break
@@ -117,10 +132,10 @@ while true; do
 
     if [ "$state" != "$told" ]; then
         if [ "$state" = none ]; then
-            say "no Claude token saved on Hatch's Settings page yet - waiting, and looking again every minute."
+            say "no $agent credential saved on Hatch's Settings page yet - waiting, and looking again every minute."
         else
             cat "$errors" >&2
-            say "could not read the Claude token - waiting, and looking again every minute."
+            say "could not read the $agent credential - waiting, and looking again every minute."
         fi
         told="$state"
     fi
@@ -128,8 +143,10 @@ while true; do
     sleep 60
 done
 
-export CLAUDE_CODE_OAUTH_TOKEN="$token"
-unset token
+# One NAME=value line. `export "$credential"` is POSIX and does no re-parsing,
+# where an eval would, so a value with spaces or quotes arrives as it was saved.
+export "$credential"
+unset credential
 
 # exec, so the loop is pid 1 and gets the signal a `docker stop` sends: an
 # increment interrupted mid-ticket lets go of its claim on the way out, and

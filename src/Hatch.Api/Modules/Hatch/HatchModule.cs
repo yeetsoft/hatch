@@ -65,7 +65,7 @@ public static class HatchModule
         // class rather than a decision spread through a reader, and it reads
         // through ISiteSettingsService, which is a singleton with its own
         // cache.
-        services.AddSingleton<IClaudeCredential, SiteSettingClaudeCredential>();
+        services.AddSingleton<IAgentCredential, SiteSettingAgentCredential>();
 
         return services;
     }

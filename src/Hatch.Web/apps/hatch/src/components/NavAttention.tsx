@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { attentionLabel, attentionTone } from '../lib/attention';
+import { attentionLabel, attentionTone, closesOnPress } from '../lib/attention';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useAttentionNow } from '../lib/useAttentionNow';
 import { AttentionPanel } from './AttentionPanel';
@@ -34,6 +34,7 @@ export function NavAttention() {
   const questions = attention?.questions.length ?? 0;
   const exhausted = attention?.exhaustedRunners?.length ?? 0;
   const trunkBuilds = attention?.trunkBuilds?.length ?? 0;
+  const deadlocked = attention?.deadlocked?.length ?? 0;
 
   /* A pointer outside it closes it. Clicking a non-focusable area of the page
      fires no blur at all, which is why this exists as well as the focusout
@@ -56,6 +57,15 @@ export function NavAttention() {
          no Tab handling and no preventDefault anywhere near it. */
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
+      /* A row followed closes it, as `Menu.Item` does: nothing else would, since
+         the link is inside the container (no outside press) and keeps focus (no
+         blur), and on a phone the panel would sit over the page it just loaded.
+         One handler here rather than a callback through every row. The click
+         is not stopped, so the link navigates as it was going to. */
+      onClick={(e) => {
+        const link = (e.target as Element).closest('.hatch-attention-panel a');
+        if (closesOnPress(link as HTMLAnchorElement | null, e.nativeEvent)) setOpen(false);
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape' || !open) return;
@@ -92,6 +102,9 @@ export function NavAttention() {
                 legible without colour, and the accessible name above says the
                 same thing in words. A pill per non-empty section, so an empty
                 half takes no room rather than showing a zero. */}
+            {deadlocked > 0 && (
+              <span className="hatch-attention-pill hatch-attention-pill-deadlocked">{deadlocked}</span>
+            )}
             {trunkBuilds > 0 && <span className="hatch-attention-pill hatch-attention-pill-trunk">{trunkBuilds}</span>}
             {reviews > 0 && <span className="hatch-attention-pill hatch-attention-pill-review">{reviews}</span>}
             {questions > 0 && <span className="hatch-attention-pill hatch-attention-pill-question">{questions}</span>}

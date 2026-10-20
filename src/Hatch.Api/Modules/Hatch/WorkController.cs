@@ -1144,7 +1144,8 @@ public class WorkController(
 
         // What runners reported about the branch, for an issue in review: the
         // fold and the kind are decided from the same two lists, in one place.
-        var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
+        var review = Columns.AwaitingReview(statuses);
+        var inReview = from.Id == review?.Id;
         IReadOnlyList<EfHatchMergeCheck> merged = inReview
             ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
             : [];
@@ -1182,6 +1183,9 @@ public class WorkController(
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, landing: landing);
         var hopped = hop && blocked is null;
+        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
+        var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
+            && rowTo is not null && rowTo.Id == review?.Id;
 
         // The values the increment will actually run on, in place rather than
         // beside them. An issue's own model and effort beat whichever playbook
@@ -1219,7 +1223,7 @@ public class WorkController(
             questions,
             blocked,
             IssueUrl(issueDto.Key),
-            Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing),
+            kind,
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
             hopped ? hopKind : null,
@@ -1238,7 +1242,8 @@ public class WorkController(
             branchTitle,
             lastCheckFindings,
             implementationStatus?.Name,
-            match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash));
+            match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash),
+            asksReleaseNote);
     }
 
     /// <summary>

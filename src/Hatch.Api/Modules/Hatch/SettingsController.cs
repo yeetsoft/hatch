@@ -10,18 +10,21 @@ using Microsoft.Extensions.Options;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// The two settings a Hatch install of its own configures: the Claude
-/// subscription token that drives the battery, and what to call whoever is
+/// The settings a Hatch install of its own configures: the Claude
+/// subscription token that drives the battery, the OpenAI and xAI API keys the
+/// other agents' containers authenticate with, and what to call whoever is
 /// sitting at this machine.
 ///
 /// Here rather than on the admin app's Settings page because an install with no
 /// admin app - which is every install that is only somebody's tracker - still
 /// has to be able to set them. They are the same site settings the admin page
 /// wrote, under the same keys, stored the same way, so an operator who set the
-/// token before this existed finds it already set here.
+/// token before this existed finds it already set here. The agent keys are
+/// held exactly as the token is: protected at rest, dots on read, <c>""</c>
+/// clears.
 ///
-/// Both of those routes carry plain <c>[RequireAdmin]</c> with no
-/// <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
+/// The two routes that read and write them carry plain <c>[RequireAdmin]</c>
+/// with no <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
 /// <see cref="LocalPersonController"/> beside them: those are reads an agent has
 /// a use for, and these are not. An API key that could write here could set the
 /// name every event in the house is signed with, or swap the credential the
@@ -29,19 +32,20 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// No class-level attribute even so, and that is the third time this split has
 /// been drawn (<see cref="RunnersController"/>, <see cref="AssigneeController"/>,
-/// <see cref="IssuePlaybookController"/>): <see cref="GetClaudeToken"/> below is
-/// cut the other way - a keyless runner is its ordinary caller - and
-/// <c>RequireAdminAttribute</c> is <c>AllowMultiple = false</c>, so a
-/// method-level attribute silently *replaces* a class-level one rather than
-/// tightening it. Decorating every action explicitly is what keeps the two
-/// person-only routes person-only whatever is added beside them.
+/// <see cref="IssuePlaybookController"/>): <see cref="GetCredential"/> below, and
+/// <see cref="GetClaudeToken"/> with it, are cut the other way - a keyless
+/// runner is their ordinary caller - and <c>RequireAdminAttribute</c> is
+/// <c>AllowMultiple = false</c>, so a method-level attribute silently
+/// *replaces* a class-level one rather than tightening it. Decorating every
+/// action explicitly is what keeps the two person-only routes person-only
+/// whatever is added beside them.
 /// </summary>
 [ApiController]
 [Route("api/hatch/settings")]
 public class SettingsController(
     AppDbContext db,
     ISiteSettingsService siteSettings,
-    IClaudeCredential claudeCredential,
+    IAgentCredential credentials,
     IOptions<AuthOptions> authOptions) : ControllerBase
 {
     /// <summary>What is stood in for a secret that is set. The admin app's SettingsController redacts to the same string, because it is the same answer.</summary>
@@ -52,31 +56,45 @@ public class SettingsController(
     public async Task<HatchSettingsDto> GetHatchSettings(CancellationToken ct) => await ReadAsync(ct);
 
     /// <summary>
-    /// The token itself, wrapped, for the one caller that has to have it: the
-    /// container runner's entrypoint (containers/hatch-runner/entrypoint.sh),
-    /// which starts a <c>claude</c> CLI of its own and has nowhere else to read
-    /// a credential from. So a friend configures theirs on the Settings page and
-    /// in no second place.
+    /// An agent's credential itself, wrapped, for the one caller that has to
+    /// have it: the container runner's entrypoint, which starts an agent CLI of
+    /// its own and has nowhere else to read a credential from. So a friend
+    /// configures theirs on the Settings page and in no second place.
+    /// <c>claude</c>, <c>codex</c> and <c>grok</c> are answered; anything else
+    /// is a 404, and one that is unset or blank is a 204.
     /// </summary>
     /// <remarks>
     /// <para>Two gates, and they are independent on purpose. The attribute
     /// accepts a Hatch-scoped key or a keyless runner, unlike the two routes
     /// above it - a dispatcher is the ordinary caller here, and a person at a
     /// browser is the unusual one. Then the first line refuses everybody,
-    /// caller and credential alike, wherever the wall is up: a token that
-    /// crosses a network Hatch does not own is a different question from a
-    /// token handed to a container on the same laptop, and this route only
-    /// answers the second one. An install with its wall on has enrolled
-    /// devices, TLS and somewhere to put a secret properly, and should.</para>
+    /// caller and credential alike, wherever the wall is up: a credential that
+    /// crosses a network Hatch does not own is a different question from one
+    /// handed to a container on the same laptop, and this route only answers
+    /// the second one. An install with its wall on has enrolled devices, TLS
+    /// and somewhere to put a secret properly, and should.</para>
     ///
     /// <para><c>AuthErrorDto</c> and a bare 403 rather than <c>Forbid()</c>,
     /// which expects an authentication scheme this app does not register - the
     /// same shape <c>RequireAdminAttribute</c> itself refuses with, so both
     /// gates read alike from outside.</para>
     /// </remarks>
+    [HttpGet("credentials/{agent}")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    public async Task<ActionResult<CredentialDto>> GetCredential(string agent, CancellationToken ct) =>
+        await CredentialAsync(agent, ct);
+
+    /// <summary>
+    /// The Claude token, kept for an older container; new callers use
+    /// <c>credentials/{agent}</c>. Answers exactly what it always did, through
+    /// the same gates, because it is the same method.
+    /// </summary>
     [HttpGet("claude-token")]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-    public async Task<ActionResult<ClaudeTokenDto>> GetClaudeToken(CancellationToken ct)
+    public async Task<ActionResult<CredentialDto>> GetClaudeToken(CancellationToken ct) =>
+        await CredentialAsync("claude", ct);
+
+    private async Task<ActionResult<CredentialDto>> CredentialAsync(string agent, CancellationToken ct)
     {
         if (authOptions.Value.Enabled)
         {
@@ -88,13 +106,15 @@ public class SettingsController(
             };
         }
 
+        if (!SiteSettingAgentCredential.Agents.Contains(agent, StringComparer.Ordinal)) return NotFound();
+
         // Through the credential rather than reading the setting again: it is
         // the one interface that produces this plaintext, and "not set" and
         // "set to blank" are already the same answer there.
-        var token = await claudeCredential.GetTokenAsync(ct);
-        if (token is null) return NoContent();
+        var credential = await credentials.GetAsync(agent, ct);
+        if (credential is null) return NoContent();
 
-        return new ClaudeTokenDto(SecretProtector.Protect(token));
+        return new CredentialDto(SecretProtector.Protect(credential));
     }
 
     /// <summary>
@@ -105,7 +125,7 @@ public class SettingsController(
     /// That is what makes "clearing the token removes it" a value rather than a
     /// second verb - <see cref="SecretProtector.Protect"/> answers <c>""</c>
     /// for an empty input and stores it untagged, so a cleared token reads back
-    /// exactly like one nobody ever set and <see cref="IClaudeCredential"/>
+    /// exactly like one nobody ever set and <see cref="IAgentCredential"/>
     /// answers null for both.
     /// </summary>
     [HttpPut]
@@ -114,9 +134,18 @@ public class SettingsController(
     {
         var wrote = false;
 
-        if (request.ClaudeSubscriptionToken is { } token)
+        (string Key, string? Value)[] secrets =
+        [
+            (SiteSettingKeys.ClaudeSubscriptionToken, request.ClaudeSubscriptionToken),
+            (SiteSettingKeys.CodexApiKey, request.CodexApiKey),
+            (SiteSettingKeys.XaiApiKey, request.XaiApiKey),
+        ];
+
+        foreach (var (key, value) in secrets)
         {
-            await UpsertAsync(SiteSettingKeys.ClaudeSubscriptionToken, SecretProtector.Protect(token), ct);
+            if (value is not { } secret) continue;
+
+            await UpsertAsync(key, SecretProtector.Protect(secret), ct);
             wrote = true;
         }
 
@@ -166,10 +195,14 @@ public class SettingsController(
             // is asked of the plaintext rather than of SecretProtector.HasValue,
             // which expects the stored form. Same answer, one query fewer - and
             // the value itself never leaves this method.
-            ClaudeSubscriptionToken: string.IsNullOrWhiteSpace(settings.ClaudeSubscriptionToken) ? "" : Redacted,
+            ClaudeSubscriptionToken: RedactedIfSet(settings.ClaudeSubscriptionToken),
             LocalPersonNameApplies: !authOptions.Value.Enabled,
-            LocalPersonName: settings.LocalPersonName ?? "");
+            LocalPersonName: settings.LocalPersonName ?? "",
+            CodexApiKey: RedactedIfSet(settings.CodexApiKey),
+            XaiApiKey: RedactedIfSet(settings.XaiApiKey));
     }
+
+    private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
 }
 
 /// <summary>
@@ -184,10 +217,22 @@ public class SettingsController(
 /// agree by construction.
 /// </param>
 /// <param name="LocalPersonName">The name as stored, or empty. Not a secret, so it is handed back to be edited.</param>
-public record HatchSettingsDto(string ClaudeSubscriptionToken, bool LocalPersonNameApplies, string LocalPersonName);
+/// <param name="CodexApiKey">Dots when one is set, empty when none is - the same answer as the token, for the same reason.</param>
+/// <param name="XaiApiKey">Dots when one is set, empty when none is.</param>
+public record HatchSettingsDto(
+    string ClaudeSubscriptionToken,
+    bool LocalPersonNameApplies,
+    string LocalPersonName,
+    string CodexApiKey,
+    string XaiApiKey);
 
 /// <summary>
-/// An edit to either setting, or both. Null - or omitted - leaves one alone;
-/// <c>""</c> clears it.
+/// An edit to any of the settings, or several. Null - or omitted - leaves one
+/// alone; <c>""</c> clears it. The two agent keys trail with defaults, so a
+/// request that names only the first two behaves as it did before they existed.
 /// </summary>
-public record HatchSettingsWriteRequest(string? ClaudeSubscriptionToken, string? LocalPersonName);
+public record HatchSettingsWriteRequest(
+    string? ClaudeSubscriptionToken,
+    string? LocalPersonName,
+    string? CodexApiKey = null,
+    string? XaiApiKey = null);

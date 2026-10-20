@@ -339,6 +339,11 @@ public class AdminSurfaceTests
         // see OvernightController.PostSeen.
         "OvernightController.PostSeen",
 
+        // What shipped, a window at a time - Hatch-scoped and open to a
+        // person the same way OvernightController's read is. See
+        // ChangelogController.
+        "ChangelogController.GetChangelog",
+
         // Playbooks are guarded twice over. Reading one is Hatch-scoped like
         // the rest; writing one names no scope at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its
@@ -561,6 +566,10 @@ public class AdminSurfaceTests
         // that from being a widening is a second gate the attribute cannot
         // express: the action refuses everyone, key or person, wherever the
         // wall is up. See Hatch.Api.Modules.Hatch.SettingsController.
+        // GetCredential answers the same for any supported agent, and
+        // GetClaudeToken is the older route kept for an older container: both
+        // are cut the same way.
+        "SettingsController.GetCredential",
         "SettingsController.GetClaudeToken",
 
         // The runner the image hands out, cut the same way as the settings

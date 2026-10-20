@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
 import source from '../../public/hatch-at-home.md?raw';
-import { createSlugger, docLinkTarget, hashId, isPlainPrimaryClick, parseDocPage, renderDocs } from './docs';
+import {
+  createSlugger,
+  docLinkTarget,
+  type DocPage,
+  DOC_PAGES,
+  docNeighbours,
+  docPage,
+  docSections,
+  DOC_SECTIONS,
+  hashId,
+  isPlainPrimaryClick,
+  orderDocPages,
+  pageForAnchor,
+  parseDocPage,
+  renderDocs,
+  resolveDocHref,
+} from './docs';
 
 /** The document's lines outside fenced blocks, which is where its headings are. */
 function proseLines(): string[] {
@@ -77,15 +93,57 @@ describe('renderDocs on fixtures', () => {
   });
 
   it('keeps #### out of the outline but gives it an id', () => {
-    const { html, outline } = renderDocs('#### d\n');
+    const { html, outline, ids } = renderDocs('#### d\n');
     expect(html).toContain('<h4 id="d">');
     expect(outline).toEqual([]);
+    expect(ids).toEqual(['d']);
   });
 
   it('does not treat a # line in a fence as a heading', () => {
     const { html, outline } = renderDocs('```sh\n## not a heading\n```\n');
     expect(outline).toEqual([]);
     expect(ids(html)).toEqual([]);
+  });
+
+  it('renders a mermaid fence as a placeholder carrying its source', () => {
+    const { html, outline, ids: headingIds, mermaidCount } = renderDocs('```mermaid\ngraph TD\n  A --> B\n```\n');
+    const m = html.match(/<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">([\s\S]*?)<\/pre><\/div>/);
+    expect(m).not.toBeNull();
+    expect(m![1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).toBe('graph TD\n  A --> B');
+    expect(outline).toEqual([]);
+    expect(headingIds).toEqual([]);
+    expect(mermaidCount).toBe(1);
+  });
+
+  it('counts two mermaid fences in one source', () => {
+    expect(renderDocs('```mermaid\na\n```\n\n```mermaid\nb\n```\n').mermaidCount).toBe(2);
+  });
+
+  it('counts no mermaid fence at all as zero', () => {
+    expect(renderDocs('no fence here\n').mermaidCount).toBe(0);
+  });
+
+  it('escapes a mermaid fence that carries markup', () => {
+    const source = '<script>alert(1)</script>\n< > &';
+    const { html } = renderDocs('```mermaid\n' + source + '\n```\n');
+    expect(html).not.toContain('<script>');
+    const m = html.match(/<pre class="hatch-docs-mermaid-source">([\s\S]*?)<\/pre>/);
+    expect(m![1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).toBe(source);
+  });
+
+  it('leaves every non-mermaid fence to the default renderer', () => {
+    for (const fenced of ['```sh\necho hi\n```\n', '```ts\nconst x = 1;\n```\n', '```\nplain\n```\n']) {
+      const { html, mermaidCount } = renderDocs(fenced);
+      expect(html).not.toContain('hatch-docs-mermaid');
+      expect(mermaidCount).toBe(0);
+    }
+    expect(renderDocs('    indented\n').html).not.toContain('hatch-docs-mermaid');
+  });
+
+  it('matches mermaid case-insensitively and past trailing space, not mermaidjs', () => {
+    expect(renderDocs('```Mermaid\nx\n```\n').html).toContain('hatch-docs-mermaid');
+    expect(renderDocs('```mermaid \nx\n```\n').html).toContain('hatch-docs-mermaid');
+    expect(renderDocs('```mermaidjs\nx\n```\n').html).not.toContain('hatch-docs-mermaid');
   });
 
   it('numbers nested headings in document order', () => {
@@ -145,6 +203,54 @@ describe('docLinkTarget', () => {
       expect(['fragment', 'app', 'external']).toContain(kind);
       if (href.startsWith('/apps/hatch/')) expect(kind).toBe('app');
     }
+  });
+});
+
+describe('resolveDocHref', () => {
+  it('resolves the four page-link forms', () => {
+    for (const slug of ['upgrading', 'hatch-at-home']) {
+      for (const form of [slug, `${slug}.md`, `./${slug}`, `./${slug}.md`]) {
+        expect(resolveDocHref(form)).toBe(`/apps/hatch/docs/${slug}`);
+        expect(resolveDocHref(`${form}#rolling-back`)).toBe(`/apps/hatch/docs/${slug}#rolling-back`);
+      }
+    }
+  });
+
+  it('keeps a bare # as written', () => {
+    expect(resolveDocHref('upgrading#')).toBe('/apps/hatch/docs/upgrading#');
+  });
+
+  it('returns everything else exactly as given', () => {
+    for (const href of [
+      '',
+      '#x',
+      '/abs',
+      '//host/x',
+      'https://cli.github.com/',
+      'mailto:a@b.c',
+      '../x',
+      'a/b.md',
+      'Upgrading.md',
+      'a_b',
+      'a.md.md',
+      '.md',
+      '././a',
+      'upgrading.md?x=1',
+      'upgrading?x=1#y',
+      '/apps/hatch/runner',
+    ]) {
+      expect(resolveDocHref(href)).toBe(href);
+    }
+  });
+
+  it('rewrites a page link in rendered output', () => {
+    const { html } = renderDocs('[a](./upgrading.md#x)');
+    expect(html).toContain('href="/apps/hatch/docs/upgrading#x"');
+    expect(docLinkTarget('/apps/hatch/docs/upgrading#x')).toEqual({ kind: 'app', to: '/docs/upgrading#x' });
+  });
+
+  it('leaves an image source alone', () => {
+    expect(renderDocs('![a](./upgrading.md)').html).toContain('src="./upgrading.md"');
   });
 });
 
@@ -261,5 +367,124 @@ describe('parseDocPage', () => {
 
   it('throws on a path that is not .md', () => {
     expect(() => parseDocPage('../../docs/x.txt', page())).toThrow('x.txt');
+  });
+});
+
+/** A `DocPage` with everything but slug, section, order and body fixed. */
+function dp(slug: string, section: string, order: number, body = 'Body.\n'): DocPage {
+  return { slug, title: slug, section, order, summary: slug, body };
+}
+
+describe('orderDocPages', () => {
+  it('sorts by section in DOC_SECTIONS order, then by order, without mutating the input', () => {
+    const concepts2 = dp('concepts-2', 'Concepts', 2);
+    const start1 = dp('start-1', 'Start here', 1);
+    const concepts1 = dp('concepts-1', 'Concepts', 1);
+    const input = [concepts2, start1, concepts1];
+    expect(orderDocPages(input)).toEqual([start1, concepts1, concepts2]);
+    expect(input).toEqual([concepts2, start1, concepts1]);
+  });
+
+  it('throws on a section outside DOC_SECTIONS, naming the file, the section and the five allowed', () => {
+    const bad = dp('x', 'Nope', 1);
+    expect(() => orderDocPages([bad])).toThrow('x.md');
+    expect(() => orderDocPages([bad])).toThrow('Nope');
+    for (const section of DOC_SECTIONS) {
+      expect(() => orderDocPages([bad])).toThrow(section);
+    }
+  });
+
+  it('throws on two pages sharing a section and an order, naming both files', () => {
+    const a = dp('a', 'Concepts', 1);
+    const b = dp('b', 'Concepts', 1);
+    expect(() => orderDocPages([a, b])).toThrow('a.md');
+    expect(() => orderDocPages([a, b])).toThrow('b.md');
+  });
+
+  it('allows two pages to share an order across different sections', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Concepts', 1);
+    expect(orderDocPages([a, b])).toEqual([a, b]);
+  });
+});
+
+describe('docSections', () => {
+  it('omits an empty section and keeps DOC_SECTIONS order', () => {
+    const start = dp('start', 'Start here', 1);
+    const reference = dp('reference', 'Reference', 1);
+    const concepts = dp('concepts', 'Concepts', 1);
+    expect(docSections([start, concepts, reference])).toEqual([
+      { section: 'Start here', pages: [start] },
+      { section: 'Concepts', pages: [concepts] },
+      { section: 'Reference', pages: [reference] },
+    ]);
+  });
+});
+
+describe('docPage', () => {
+  const a = dp('a', 'Start here', 1);
+  const b = dp('b', 'Concepts', 1);
+
+  it('finds the page with the slug', () => {
+    expect(docPage([a, b], 'b')).toEqual(b);
+  });
+
+  it('is undefined for an unknown slug', () => {
+    expect(docPage([a, b], 'c')).toBeUndefined();
+  });
+});
+
+describe('pageForAnchor', () => {
+  it.each([
+    ['letting-the-loop-merge-for-you', '/docs/letting-the-loop-merge-for-you'],
+    ['one-increment-hatch-work', '/docs/the-hatch-cli-command-by-command#one-increment-hatch-work'],
+    ['one-pass-in-order', '/docs/the-hatch-cli-command-by-command#one-pass-in-order'],
+    ['what-ios-cannot-do', '/docs/hatch-on-your-phone#what-ios-cannot-do'],
+  ])('resolves %s to %s against the real pages', (id, to) => {
+    expect(pageForAnchor(DOC_PAGES, id)).toBe(to);
+  });
+
+  it.each(['no-such-heading', ''])('is null for %s against the real pages', (id) => {
+    expect(pageForAnchor(DOC_PAGES, id)).toBeNull();
+  });
+
+  it('finds a heading id the outline omits - a #### heading', () => {
+    const a = dp('a', 'Start here', 1, '## Other\n');
+    const b = dp('b', 'Concepts', 1, '#### Deep\n');
+    expect(pageForAnchor([a, b], 'deep')).toBe('/docs/b#deep');
+  });
+
+  it('prefers the page whose slug is the id over a page with that heading', () => {
+    const slugPage = dp('shared', 'Start here', 1, '## Other\n');
+    const headingPage = dp('other', 'Concepts', 1, '## Shared\n');
+    expect(pageForAnchor([slugPage, headingPage], 'shared')).toBe('/docs/shared');
+  });
+});
+
+describe('docNeighbours', () => {
+  it('crosses a section boundary, even over one with no pages', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Running agents', 1);
+    expect(docNeighbours([a, b], 'a')).toEqual({ previous: null, next: b });
+    expect(docNeighbours([a, b], 'b')).toEqual({ previous: a, next: null });
+  });
+
+  it('gives null at both ends of the list', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Start here', 2);
+    const c = dp('c', 'Start here', 3);
+    expect(docNeighbours([a, b, c], 'a')).toEqual({ previous: null, next: b });
+    expect(docNeighbours([a, b, c], 'c')).toEqual({ previous: b, next: null });
+  });
+
+  it('gives null both ways for an unknown slug', () => {
+    const a = dp('a', 'Start here', 1);
+    expect(docNeighbours([a], 'nope')).toEqual({ previous: null, next: null });
+  });
+});
+
+describe('DOC_PAGES', () => {
+  it('is an array - empty until a page lands under apps/hatch/docs/', () => {
+    expect(Array.isArray(DOC_PAGES)).toBe(true);
   });
 });

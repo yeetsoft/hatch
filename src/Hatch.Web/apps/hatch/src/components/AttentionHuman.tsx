@@ -5,6 +5,7 @@ import {
   approvedHeldEmptyWords,
   buildIconTone,
   buildIconWords,
+  deadlockedEmptyWords,
   landingHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
@@ -138,9 +139,32 @@ export function AttentionHuman({
   const trunkBuilds = attention?.trunkBuilds ?? [];
   const approvedHeld = attention?.approvedHeld ?? [];
   const landingHeld = attention?.landingHeld ?? [];
+  const deadlocked = attention?.deadlocked ?? [];
 
   return (
     <>
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Deadlocked</h3>
+
+        {deadlocked.length === 0 ? (
+          <p className="hatch-attention-empty">{deadlockedEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {deadlocked.map((d) => (
+              <li key={d.key}>
+                <Link className="hatch-attention-row" to={`/issues/${d.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{d.key}</span>
+                    <span className="hatch-attention-title">{d.title}</span>
+                  </span>
+                  <span className="hatch-attention-files">{d.sentence}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="hatch-attention-section">
         <h3 className="hatch-attention-heading">Trunk builds that fail</h3>
 

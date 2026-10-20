@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/attention")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class AttentionController(HatchContext db, Runners runners, TimeProvider time) : ControllerBase
+public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -61,11 +61,20 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .Select(t => TrunkBuildProjection.Project(t, projectKey: null))
             .ToList();
 
+        // The queue's own verdict, unnarrowed, so the scan runs the fixpoint over
+        // its own rows and this list and the queue's marked rows cannot disagree.
+        // Whatever the board's shape: a ring needs no review column to be read.
+        var deadlocked = (await dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct, markDeadlocks: true))
+            .Rows
+            .Where(r => r.Deadlocked)
+            .Select(r => new DeadlockedDto(IssueKey.Format(r.Issue.Project!.Key, r.Issue.Number), r.Issue.Title, r.Issue.Type, r.Blocked!))
+            .ToList();
+
         // A board too short to have a review column has nothing in review, and
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -320,7 +329,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld);
+            approvedHeld, approvedWaiting, landingHeld, deadlocked);
     }
 
     /// <summary>
