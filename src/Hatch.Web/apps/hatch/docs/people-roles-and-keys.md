@@ -58,8 +58,42 @@ The last `admin` cannot be demoted or deleted. The refusal is a `409`, and the
 **Role** select and **Delete** button on that row are disabled. Make someone
 else an `admin` first.
 
+## Owners and approvers
+
+A project carries a second permission beside the three roles above, held per
+project rather than globally.
+
+- **Where it is set.** Per project, on **Manage → Projects**, **Edit**,
+  **Members**. Each member there holds `owner` or `approver`.
+- **Who becomes an owner.** Whoever creates a project owns it. A project
+  with no owner at all may be claimed by any user with **Claim**. Only an
+  owner adds, removes or changes the role of a member, and the last owner
+  cannot be dropped or demoted — the write is refused with a `409`.
+- **An admin is not an owner.** The check a project runs reads only its own
+  membership, never the signed-in person's role, so an `admin` who is not a
+  member of a project cannot move its work into a Protected column either,
+  and has to be added by one of the project's owners like anybody else.
+- **Owner or approver.** The one permission membership grants: moving an
+  issue into a [Protected](the-board-and-its-columns#column-flags) column by
+  hand, and setting [pre-approval](issues#pre-approval) to or from
+  *pre-approved*. Every other change to pre-approval follows whichever rule
+  governs moving into the board's send-back column — the same owner-or-
+  approver test, but only where that column is itself Protected.
+- **Owner alone.** A project's landing and auto-heal settings, and whether
+  its playbooks come from its repository or the board, are an owner's call;
+  an approver has no say in either.
+- **Keys and runners never count.** A program — an API key, or a runner
+  naming itself with a header — is refused a Protected move regardless of
+  membership. With the wall off, the one local person is a real person
+  rather than a program, and may move work into a Protected column from the
+  browser the same as anyone else; a key or a runner still may not.
+- **The approve hop** carries a pre-approved issue into a Protected column
+  with no session and nobody pressing anything by hand: the pre-approval was
+  that owner's or approver's own permission, given in advance.
+
 ## Coming
 
 Pages this one links to that are not written yet:
 
 - `the-wall-off-on-and-required`
+- `review-pull-requests-and-the-merge-train`
