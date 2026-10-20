@@ -1962,6 +1962,12 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// name="Blocked"/> is, or null exactly where <paramref name="Blocked"/> is
 /// null. Lets a client group the queue without parsing the sentence.
 /// </param>
+/// <param name="Deadlocked">
+/// True on a row no pass will ever clear on its own: it waits, through the
+/// board's own folds, on rows that wait on it. Its <paramref name="Blocked"/>
+/// sentence starts <c>deadlocked - </c>; <paramref name="BlockedKind"/> is
+/// what the fold said and is unchanged.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1974,7 +1980,8 @@ public record QueueEntryDto(
     string? ClearNote = null,
     string? Model = null,
     IReadOnlyList<string>? DeniedTools = null,
-    string? BlockedKind = null);
+    string? BlockedKind = null,
+    bool Deadlocked = false);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what

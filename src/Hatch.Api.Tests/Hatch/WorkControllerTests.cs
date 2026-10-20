@@ -550,6 +550,94 @@ public class WorkControllerTests
     // finishes, and satisfied means terminal - a blocker in review still
     // blocks, or the second story starts on the first one's unmerged branch.
 
+    // A waits on B, B on its open child B1, B1 on A: every move the board would
+    // make waits on another that waits on it. Written straight to the table,
+    // because the controller's ring check walks dependency edges only and
+    // refuses A <- B1 <- ... never; the parent edge is what closes this one.
+    private static async Task<(EfHatchIssue A, EfHatchIssue B, EfHatchIssue B1)> DeadlockedRingAsync(Harness h)
+    {
+        var a = await h.FileAsync("story", "story a", h.Todo, rank: 1024);
+        var b = await h.FileAsync("story", "story b", h.InProgress, rank: 2048);
+        var b1 = await h.FileAsync("task", "task b1", h.Todo, parentId: b.Id);
+        await h.DependsAsync(a, b);
+        await h.DependsAsync(b1, a);
+        return (a, b, b1);
+    }
+
+    private static void AssertDeadlocked(QueueEntryDto entry)
+    {
+        Assert.True(entry.Deadlocked);
+        Assert.StartsWith("deadlocked - ", entry.Blocked);
+        Assert.NotNull(entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_ADeadlockedRing_MarksEveryRowAndKeepsItsKind()
+    {
+        var h = await NewAsync();
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+        var bystander = await h.FileAsync("story", "bystander", h.Todo, rank: 4096);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        foreach (var issue in new[] { a, b, b1 }) AssertDeadlocked(queue.Single(e => e.Issue.Key == Key(issue)));
+        Assert.Equal(BlockedKinds.Dependency, queue.Single(e => e.Issue.Key == Key(a)).BlockedKind);
+        var clear = queue.Single(e => e.Issue.Key == Key(bystander));
+        Assert.False(clear.Deadlocked);
+        Assert.DoesNotContain("deadlocked", clear.Blocked ?? "");
+    }
+
+    [Fact]
+    public async Task Queue_ADeadlockedRing_StillMarksTheSubtreeWhenScopedToIt()
+    {
+        var h = await NewAsync();
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+
+        var queue = Value(await h.Work.GetQueue(0, Key(b), default));
+
+        // The subtree is the descendants: neither A nor B itself is in it, yet
+        // B1 is still judged by the ring they close.
+        Assert.DoesNotContain(queue, e => e.Issue.Key == Key(a) || e.Issue.Key == Key(b));
+        AssertDeadlocked(queue.Single(e => e.Issue.Key == Key(b1)));
+    }
+
+    [Fact]
+    public async Task Queue_ADeadlockedRing_StillMarksItForAKeyThatOwnsNothing()
+    {
+        var h = await NewAsync();
+        h.Actors.Principal = h.Actors.AddPerson("Nathan");
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+
+        var queue = Value(await h.Work.GetQueue(0, null, null, null, null, true, default));
+
+        foreach (var issue in new[] { a, b, b1 }) AssertDeadlocked(queue.Single(e => e.Issue.Key == Key(issue)));
+    }
+
+    [Fact]
+    public async Task Queue_ADeadlockedRing_IsStillMarkedWhereTheCheckoutIsWrong()
+    {
+        var h = await NewAsync();
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+
+        var queue = Value(await h.Work.GetQueue(0, null, ["https://example.com/other.git"], false, ct: default));
+
+        foreach (var issue in new[] { a, b, b1 }) AssertDeadlocked(queue.Single(e => e.Issue.Key == Key(issue)));
+    }
+
+    [Fact]
+    public async Task Queue_ABrokenRing_MarksNothing()
+    {
+        var h = await NewAsync();
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+        await h.AskAsync(b1, "which way?");
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.All(queue, e => Assert.False(e.Deadlocked));
+        Assert.DoesNotContain(queue, e => e.Blocked is not null && e.Blocked.StartsWith("deadlocked - "));
+        Assert.Contains(queue, e => e.Issue.Key == Key(a));
+    }
+
     [Fact]
     public async Task NextWork_PassesOverAnIssueWaitingOnUnfinishedWork()
     {
