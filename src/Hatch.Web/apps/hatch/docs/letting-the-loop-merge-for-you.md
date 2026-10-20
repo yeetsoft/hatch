@@ -1,7 +1,7 @@
 ---
 title: Letting the loop merge for you
 section: Running agents
-order: 30
+order: 70
 summary: Turning on a column the runner merges approved pull requests from, with no session.
 ---
 

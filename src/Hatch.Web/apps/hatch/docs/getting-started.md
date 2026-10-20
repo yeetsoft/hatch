@@ -172,8 +172,7 @@ The rest is in [the `hatch` CLI, command by command](the-hatch-cli-command-by-co
 [one increment, `hatch work`](the-hatch-cli-command-by-command#one-increment-hatch-work),
 and [the loop, `hatch go-to-work`](the-hatch-cli-command-by-command#the-loop-hatch-go-to-work),
 which runs increments back to back. How the binary gets onto a machine and finds
-its board is in
-[getting the runner and pointing it at the board](getting-the-runner-and-pointing-it-at-the-board).
+its board is in [the runner](the-runner).
 
 ## What to read next
 
