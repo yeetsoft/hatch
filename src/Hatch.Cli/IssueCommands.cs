@@ -235,7 +235,7 @@ public sealed class IssueCommands(Cli cli)
 
         if (Columns.Find(board.Statuses, want) is not { } column)
         {
-            cli.Say.Complain($"hatch: no column called \"{want}\" - there is {Columns.Named(board.Statuses)}");
+            cli.Say.Complain($"hatch: {Columns.Missing(board.Statuses, want)}");
             return 1;
         }
 

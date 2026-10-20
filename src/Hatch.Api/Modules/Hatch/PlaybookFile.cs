@@ -211,20 +211,24 @@ public static class PlaybookFile
 
     private static EfHatchStatus? FindColumn(IReadOnlyList<EfHatchStatus> statuses, string name)
     {
-        var wanted = Normalise(name);
-        var matches = statuses.Where(s => Normalise(s.Name) == wanted).ToList();
+        var matches = Matching(statuses, name);
         return matches.Count == 1 ? matches[0] : null;
     }
 
-    private static string ColumnProblem(IReadOnlyList<EfHatchStatus> statuses, string name)
+    private static string ColumnProblem(IReadOnlyList<EfHatchStatus> statuses, string name) =>
+        Matching(statuses, name).Count > 1
+            ? $"two columns are both called \"{name}\""
+            : $"there is no column named \"{name}\"";
+
+    /// <summary>Every column the name folds onto. A name with no letters or digits in it names none.</summary>
+    private static List<EfHatchStatus> Matching(IReadOnlyList<EfHatchStatus> statuses, string name)
     {
         var wanted = Normalise(name);
-        var matches = statuses.Count(s => Normalise(s.Name) == wanted);
-        return matches > 1 ? $"two columns are both called \"{name}\"" : $"there is no column named \"{name}\"";
+        return wanted.Length == 0 ? [] : statuses.Where(s => Normalise(s.Name) == wanted).ToList();
     }
 
     /// <summary>
-    /// The letters and the digits, lowercased - the same fold
+    /// The letters and the digits, in any alphabet, lowercased - the same fold
     /// <c>Hatch.Cli</c>'s <c>Columns.Normalise</c> runs, copied rather than
     /// shared: <c>Hatch.Api</c> does not reference <c>Hatch.Cli</c>, and the
     /// file speaks the names the board's own CLI already folds this way.
@@ -236,7 +240,7 @@ public static class PlaybookFile
 
         foreach (var c in name)
         {
-            if (char.IsAsciiLetterOrDigit(c)) buffer[written++] = char.ToLowerInvariant(c);
+            if (char.IsLetterOrDigit(c)) buffer[written++] = char.ToLowerInvariant(c);
         }
 
         return new string(buffer[..written]);

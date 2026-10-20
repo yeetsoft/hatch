@@ -231,6 +231,55 @@ public class PlaybookFileTests
     }
 
     [Fact]
+    public void ColumnsInAnotherAlphabet_AreMatchedOnTheirOwnLetters()
+    {
+        var statuses = new List<EfHatchStatus>
+        {
+            new() { Id = 1, Name = "В работе", SortOrder = 10 },
+            new() { Id = 2, Name = "Готово", SortOrder = 20 },
+            new() { Id = 3, Name = "faire", SortOrder = 30 },
+            new() { Id = 4, Name = "À faire", SortOrder = 40 },
+        };
+
+        const string yaml = """
+            playbooks:
+              - from: в работе
+                to: Готово
+                prompt: hi
+              - from: à faire
+                to: faire
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml, statuses);
+
+        Assert.Null(problem);
+        Assert.Equal([(1, 2), (4, 3)], rows!.Select(r => (r.FromStatusId, r.ToStatusId)));
+    }
+
+    [Fact]
+    public void AColumnNamedOnlyInPunctuation_NamesNoColumn()
+    {
+        var statuses = new List<EfHatchStatus>
+        {
+            new() { Id = 1, Name = "Breakdown", SortOrder = 10 },
+            new() { Id = 2, Name = "***", SortOrder = 20 },
+        };
+
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: "--"
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml, statuses);
+
+        Assert.Null(rows);
+        Assert.Contains("there is no column named \"--\"", problem);
+    }
+
+    [Fact]
     public void FromEqualsTo_OutsideTheReviewColumn_IsRefused()
     {
         const string yaml = """

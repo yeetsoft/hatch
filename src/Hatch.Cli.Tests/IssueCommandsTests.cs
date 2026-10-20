@@ -493,6 +493,20 @@ public sealed class IssueCommandsTests
         Assert.Contains("no column called \"elsewhere\" - there is To Do, In Progress, Done, Shelved", h.Complained);
     }
 
+    [Fact]
+    public async Task Moving_to_a_name_two_columns_answer_to_moves_nothing_and_names_both()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", new BoardDto(
+            [Fixtures.Status(2, "To-Do"), Fixtures.Status(3, "ToDo"), Fixtures.Status(4, "Done", terminal: true)],
+            []));
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "todo"], default));
+
+        Assert.Contains("\"todo\" could be any of To-Do, ToDo", h.Complained);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
     // ---- comment ----
 
     [Fact]
