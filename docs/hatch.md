@@ -6545,7 +6545,7 @@ read now covers every spelling a limit comes back under (session, weekly, Opus,
 Sonnet and Fable), as well as the pay-as-you-go phrasing that never says "limit"
 at all (`You're out of usage credits · resets ...`); it handles a dated reset
 given either with "at" or with a bare comma, an hour with no minutes, an unknown
-zone (falls back to UTC rather than giving up), and a reset naming no zone at
+zone (falls back to the runner's own zone rather than giving up), and a reset naming no zone at
 all, read against the runner's own zone rather than falling to the one-hour-away
 treatment. A time with no date is the next occurrence of that clock time after
 the session ended, in the named zone; a limit the session named but whose time
