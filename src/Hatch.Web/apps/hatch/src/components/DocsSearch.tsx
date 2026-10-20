@@ -1,8 +1,9 @@
 /* The docs sidebar's search field: typing lists pages and headings under it,
    the keyboard drives the list, and taking a result opens that page at that
-   heading. The query is this component's own state - HA-1062 moves it into
-   the address, and nothing here should make that harder than replacing one
-   useState.
+   heading. The query is `?q=` on whatever docs address the reader is on, so a
+   search is a link; the field itself holds a draft and the address follows it
+   (SearchPage's shape, for its reason: react-router wraps a navigation's state
+   update in a transition, and an input fed from it late drops characters).
 
    Not a <OmniBar>: that is a dialog with a scrim, a focus guard and a
    dismissal that gives focus back. This is an ordinary control in the
@@ -12,24 +13,21 @@
    Every search and keyboard decision is lib/docsSearch.ts's (HA-1063); what is
    here is state and events, the same split OmniBar draws against lib/goTo.ts. */
 
-import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   docSearchStatus,
+  docTarget,
   keepDocHighlight,
   moveDocHighlight,
   resultId,
   searchDocs,
+  withDocQuery,
   type DocResult,
 } from '../lib/docsSearch';
 import type { Mark } from '../lib/goTo';
 
-export interface DocsSearchProps {
-  /** Renders already open with this query, for a test (and for HA-1062, which
-      will drive it from the address instead of a bare useState) - the app
-      itself never passes it. */
-  initialQuery?: string;
-}
+const DEBOUNCE_MS = 300;
 
 /** The text with its matched runs lit. Copied from OmniBar's own `Marked`
     rather than imported: that one is local to its file on purpose. */
@@ -45,32 +43,55 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
   return parts;
 }
 
-function docPath(result: DocResult): string {
-  return result.anchor ? `/docs/${result.slug}#${result.anchor}` : `/docs/${result.slug}`;
-}
+export function DocsSearch() {
+  const [params, setParams] = useSearchParams();
+  const urlQ = params.get('q') ?? '';
 
-export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
-  const [query, setQuery] = useState(initialQuery);
+  const [draft, setDraft] = useState(urlQ);
+  const [lastQ, setLastQ] = useState(urlQ);
   /* A result id, not an index, and null for "the first row" - keepDocHighlight's
      reason (docsSearch.ts): a result list that changed under the highlight
      must not leave it pointing at a row that is gone. */
   const [highlight, setHighlight] = useState<string | null>(null);
-  /* Set once a result is taken, so the list closes while the field keeps its
-     text; cleared on the next keystroke rather than the query, which would
-     lose it instead. */
-  const [taken, setTaken] = useState(false);
+  // The address's q changed from outside (Back, a pasted link) - adjusted
+  // during render, the way SearchPage re-syncs its own draft.
+  if (urlQ !== lastQ) {
+    setLastQ(urlQ);
+    setDraft(urlQ);
+    setHighlight(null);
+  }
+
+  useEffect(() => {
+    if (draft === urlQ) return;
+    const timer = setTimeout(() => {
+      setParams((current) => withDocQuery(current, draft), { replace: true });
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // urlQ, not params: params is a new object every render, so depending on it
+    // would restart the timer on any re-render and could starve it. The write
+    // takes the current params from the updater instead, so it is never stale.
+  }, [draft, urlQ, setParams]);
+
+  /* A result was taken: carried in the navigation's own state rather than
+     this component's, since three parents render it (DocsLanding, DocsArticle,
+     DocsNotFound) and a phone's <details key={pathname}> remounts it on every
+     navigation - a remounted useState would reopen the list on the page the
+     reader just landed on. Closed only while the field still shows what was
+     taken: the first keystroke makes the draft differ and reopens it, and the
+     address write that follows carries no state, clearing the flag. A shared
+     link or a cold load has no state, and opens. */
+  const taken = (useLocation().state as { docsSearchTaken?: boolean } | null)?.docsSearchTaken === true;
 
   const navigate = useNavigate();
   const base = useId();
   const listId = `${base}-list`;
 
-  const { results, total } = useMemo(() => searchDocs(query), [query]);
+  const { results, total } = useMemo(() => searchDocs(draft), [draft]);
   const active = keepDocHighlight(results, highlight);
-  const open = query.trim() !== '' && !taken;
+  const open = draft.trim() !== '' && !(taken && draft === urlQ);
 
   function take(result: DocResult) {
-    setTaken(true);
-    navigate(docPath(result));
+    navigate(docTarget(result, params, draft), { state: { docsSearchTaken: true } });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -86,7 +107,7 @@ export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
       if (result) take(result);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setQuery('');
+      setDraft('');
     }
   }
 
@@ -100,7 +121,7 @@ export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
         autoComplete="off"
         autoCapitalize="off"
         spellCheck={false}
-        value={query}
+        value={draft}
         aria-label="Search docs"
         role="combobox"
         aria-expanded={open}
@@ -108,8 +129,7 @@ export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
         aria-autocomplete="list"
         aria-activedescendant={open && active !== null ? active : undefined}
         onChange={(e) => {
-          setQuery(e.target.value);
-          setTaken(false);
+          setDraft(e.target.value);
           setHighlight(null);
         }}
         onKeyDown={onKeyDown}
@@ -130,7 +150,7 @@ export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
                 className={`hatch-docs-search-row${isActive ? ' is-active' : ''}`}
               >
                 <a
-                  href={docPath(result)}
+                  href={docTarget(result, params, draft)}
                   tabIndex={-1}
                   // The press must not take focus off the field - a blur here
                   // has nothing to undo, but the next keystroke is one query
@@ -154,7 +174,7 @@ export function DocsSearch({ initialQuery = '' }: DocsSearchProps = {}) {
       )}
 
       <span className="hatch-docs-search-status" aria-live="polite">
-        {docSearchStatus(query, results.length, total)}
+        {docSearchStatus(draft, results.length, total)}
       </span>
     </div>
   );

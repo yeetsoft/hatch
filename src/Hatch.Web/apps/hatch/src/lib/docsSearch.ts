@@ -308,3 +308,25 @@ export function docSearchStatus(query: string, shown: number, total: number): st
   if (shown < total) return `${shown} of ${total} — keep typing`;
   return total === 1 ? '1 page' : `${total} results`;
 }
+
+/** A copy of `params` with `q` set to `q` as typed (not trimmed: `?q=%20` is a
+    legal address and the field shows it), or removed when `q` is empty rather
+    than left as `?q=`. Every other param is kept; the input is never mutated. */
+export function withDocQuery(params: URLSearchParams, q: string): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (q === '') next.delete('q');
+  else next.set('q', q);
+
+  return next;
+}
+
+/** Where taking `result` goes: its page, `params` with `q` set to `q` (so the
+    field still holds the query on the page the reader lands on, and any other
+    param stays), then its anchor. URLSearchParams writes a space as `+` and
+    `#` as `%23` and reads both back exactly, so a query cannot end the search
+    early or corrupt the fragment. */
+export function docTarget(result: DocResult, params: URLSearchParams, q: string): string {
+  const search = withDocQuery(params, q).toString();
+
+  return `/docs/${result.slug}${search ? `?${search}` : ''}${result.anchor ? `#${result.anchor}` : ''}`;
+}

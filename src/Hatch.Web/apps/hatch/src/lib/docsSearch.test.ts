@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DOC_PAGES, renderDocs, type DocPage } from './docs';
 import {
   docIndex,
+  docTarget,
   DOC_SEARCH_LIMIT,
   docSearchStatus,
   foldText,
@@ -9,6 +10,7 @@ import {
   moveDocHighlight,
   resultId,
   searchDocs,
+  withDocQuery,
   type DocResult,
 } from './docsSearch';
 
@@ -294,5 +296,67 @@ describe('docsSearch: keyboard helpers', () => {
     it('clamps at the first row rather than wrapping', () => {
       expect(moveDocHighlight(results, resultId(results[0]), -1)).toBe(resultId(results[0]));
     });
+  });
+});
+
+describe('withDocQuery', () => {
+  it('sets q on params that have none', () => {
+    expect(withDocQuery(new URLSearchParams(), 'go').get('q')).toBe('go');
+  });
+
+  it('replaces an existing q', () => {
+    expect(withDocQuery(new URLSearchParams('q=old'), 'new').getAll('q')).toEqual(['new']);
+  });
+
+  it('removes q for an empty query, leaving no "q=" behind', () => {
+    const out = withDocQuery(new URLSearchParams('flow=1&q=old'), '');
+    expect(out.has('q')).toBe(false);
+    expect(out.toString()).toBe('flow=1');
+    expect(withDocQuery(new URLSearchParams('q=old'), '').toString()).toBe('');
+  });
+
+  it('keeps every other param and their order', () => {
+    expect(withDocQuery(new URLSearchParams('a=1&q=old&b=2'), 'new').toString()).toBe('a=1&q=new&b=2');
+    expect(withDocQuery(new URLSearchParams('a=1&b=2'), 'new').toString()).toBe('a=1&b=2&q=new');
+  });
+
+  it('does not mutate its input', () => {
+    const input = new URLSearchParams('a=1&q=old');
+    withDocQuery(input, 'new');
+    withDocQuery(input, '');
+    expect(input.toString()).toBe('a=1&q=old');
+  });
+
+  it('keeps whitespace as typed rather than trimming it', () => {
+    expect(withDocQuery(new URLSearchParams(), '  ').get('q')).toBe('  ');
+  });
+
+  it('round-trips a value holding &, #, a space and %', () => {
+    const q = 'a&b #c %20 d';
+    const out = withDocQuery(new URLSearchParams('flow=1'), q);
+    const back = new URLSearchParams(out.toString());
+    expect(back.get('q')).toBe(q);
+    expect(back.get('flow')).toBe('1');
+    expect(out.toString()).not.toContain('#');
+  });
+});
+
+describe('docTarget', () => {
+  const withAnchor: DocResult = { slug: 'page', title: 'P', heading: 'H', anchor: 'h', where: 'heading', snippet: '', marks: [] };
+  const bare: DocResult = { ...withAnchor, heading: null, anchor: null, where: 'title' };
+
+  it('puts the query between the page and its anchor', () => {
+    expect(docTarget(withAnchor, new URLSearchParams(), 'go')).toBe('/docs/page?q=go#h');
+  });
+
+  it('keeps other params and writes no "?" when there is nothing to carry', () => {
+    expect(docTarget(bare, new URLSearchParams('flow=1'), 'go')).toBe('/docs/page?flow=1&q=go');
+    expect(docTarget(bare, new URLSearchParams(), '')).toBe('/docs/page');
+  });
+
+  it('cannot let a query end the search or corrupt the fragment', () => {
+    const target = docTarget(withAnchor, new URLSearchParams(), 'a#b&c');
+    expect(target.split('#')).toHaveLength(2);
+    expect(target.endsWith('#h')).toBe(true);
   });
 });
