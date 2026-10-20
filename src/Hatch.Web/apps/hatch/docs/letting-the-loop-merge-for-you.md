@@ -112,22 +112,23 @@ HA-12, position 2 in the train"`.
 
 Only one runner acts on a given project's train at a time — not every
 runner you have pointed at the board, but the one the control plane elected
-to drive it. See which on the Runners page, beside that runner's own row:
-`driving HA, AER`, or `driving nothing` if nothing of yours has a driver
-right now. You do not configure this yourself, even running two or more
-runners against the same board — it is the election's own call to make.
+to drive it. See which on the **Agents → Runners** page, beside that
+runner's own row: `driving HA, AER`, or `driving nothing` if nothing of yours
+has a driver right now. You do not configure this yourself, even running two
+or more runners against the same board — it is the election's own call to make.
 
 Whose runner may drive a project depends on the project. With sign-in on, a
 project that has an owner is driven only by a runner working for one of its
 owners or approvers, since theirs are the forge credentials that can make the
 merge; a runner on anyone else's key, or on a key nobody owns, never drives it,
 however long it has run. When none of a project's owners' or approvers' runners
-is up, the project reads `driving nothing` on the Runners page and the work
-queue says "no runner is driving it", and its approved pull requests wait for
-one rather than pass to a runner that cannot merge them. Make somebody an
-owner or approver, or give a runner's key a different owner, and the change
-takes effect on the runners' next heartbeat; nothing restarts. A project with no
-owner, or a Hatch with sign-in off, lets any runner holding a checkout drive.
+is up, the project reads `driving nothing` on the **Agents → Runners** page
+and the work queue says "no runner is driving it", and its approved pull
+requests wait for one rather than pass to a runner that cannot merge them.
+Make somebody an owner or approver, or give a runner's key a different owner,
+and the change takes effect on the runners' next heartbeat; nothing restarts.
+A project with no owner, or a Hatch with sign-in off, lets any runner holding
+a checkout drive.
 
 **7. What to do when a row holds.** Some things stop an approved pull
 request from merging, and they show up rather than sit silent: the nav
