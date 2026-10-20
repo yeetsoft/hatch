@@ -6573,9 +6573,12 @@ other way round: room left in that window clears
 the wait outright, this same pass, whatever instant the sentence gave; a reset
 instant that disagrees with the one carried in replaces it, in either
 direction; and a probe with no session window at all - or no answer at all -
-touches nothing, leaving the sentence standing. A correction says itself once,
-the same "out of Claude usage until ..." line the sentence itself prints, and
-not again merely because a later probe lands on the same corrected reading.
+touches nothing, leaving the sentence standing. The probe's own instant
+carries no zone of its own, so the correction converts it into the runner's
+own local clock as it replaces the carried one - the same "out of Claude
+usage until ..." line the sentence itself prints is shown in the runner's own
+clock either way. A correction says itself once, and not again merely because
+a later probe lands on the same corrected reading.
 
 **The wait cannot outlast the window.** The reset instant above is only
 ever a guess, and the "next occurrence of that clock time" rule it is

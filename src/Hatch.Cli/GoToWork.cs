@@ -110,7 +110,7 @@ public sealed class Tally
 
         if (session.ResetsAt is { } resetsAt && resetsAt != ExhaustedUntil)
         {
-            ExhaustedUntil = resetsAt;
+            ExhaustedUntil = TimeZoneInfo.ConvertTime(resetsAt, _clock.LocalTimeZone);
             ExhaustedKnown = true;
         }
     }
