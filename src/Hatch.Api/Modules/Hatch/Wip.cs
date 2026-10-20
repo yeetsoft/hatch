@@ -187,7 +187,7 @@ public static class Wip
         if (ids.Count == 0) return new Dictionary<long, EpicLimit>();
 
         var rows = await db.Issues.AsNoTracking()
-            .Where(i => ids.Contains(i.Id) && i.Type == "epic")
+            .Where(i => ids.Contains(i.Id) && IssueTypeKinds.RunsChildren(i.Type))
             .Select(i => new { i.Id, i.Project!.Key, i.Number, i.WipLimit })
             .ToListAsync(ct);
 

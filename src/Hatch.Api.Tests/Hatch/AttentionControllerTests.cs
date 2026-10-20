@@ -191,6 +191,21 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_LeavesOutAPreApprovedReflectionRowWhoseOnlyChildIsDeferred_TheSameAsAnEpic()
+    {
+        var h = await NewAsync();
+        var shelf = await h.ShelfAsync(37);
+        var issue = await h.FileAsync("reflection", "a reflection whose only child is shelved", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "a deferred child", shelf, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
     public async Task Attention_CountsAPreApprovedStoryRowWhoseOnlyChildIsDeferred()
     {
         var h = await NewAsync();
