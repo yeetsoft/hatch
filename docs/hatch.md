@@ -610,9 +610,12 @@ The display key `AER-12` is **computed** (`Project.Key + "-" + Number`) and
 never stored, so there is exactly one fact about a key anywhere and no chance of
 two copies disagreeing after a rename.
 
-Types are `epic | story | task | bug`. Parentage is optional and validated
-server-side: the parent must exist, be in the same project, form no cycle, and
-be a legal type — epic→epic, story→epic, task→story, bug or epic, bug→epic or story.
+Types are `epic | reflection | story | task | bug`. Parentage is optional and
+validated server-side: the parent must exist, be in the same project, form no
+cycle, and be a legal type — epic→epic or reflection, reflection→epic,
+story→epic or reflection, task→story, bug, epic or reflection, bug→epic, story
+or reflection. A reflection with children answers [the hop](#the-hop) and [an
+epic's own limit](#an-epics-own-limit) exactly the way an epic does.
 
 `Description` is markdown, stored exactly as typed and rendered by the client
 (`marked` + `dompurify`, the pair the docs app already bundles). What the
