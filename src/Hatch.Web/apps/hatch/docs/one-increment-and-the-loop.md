@@ -418,6 +418,5 @@ the prompt section by section.
 
 Pages this one names that are not written yet:
 
-- `watching-the-loop`
 - `flow-wip-and-the-battery`
 - `the-container-runner`
