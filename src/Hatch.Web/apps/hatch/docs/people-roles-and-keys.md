@@ -91,6 +91,38 @@ project rather than globally.
   with no session and nobody pressing anything by hand: the pre-approval was
   that owner's or approver's own permission, given in advance.
 
+## API keys
+
+The credential a program carries instead of a person: `Authorization: Bearer
+hatch_ak_…`.
+
+- **Where it is minted.** **Manage → API keys**, admin only — no key may
+  mint, revoke or re-own a key, only a person at that screen. The form takes
+  **Name** ("What the audit trail will call it"), **Scopes** ("What the key
+  may reach. A key with none reaches nothing.") and **Belongs to** ("Whose
+  tickets this key's `--mine` will reach"), then **Mint key**. The secret is
+  shown once, on the page, and never again.
+- **One scope, `hatch`.** Everything under `/api/hatch`, less the routes that
+  take a person only. Those refuse a key outright — on a walled Hatch with
+  `key_not_accepted`, and with the wall off they refuse any program the same
+  way. Among them: a ticket's assignee, priority, hold and pre-approval; its
+  WIP limit and the WIP section; playbooks, per project and per ticket; a
+  column's settings; a project's repositories, logo, landing and auto-heal
+  settings, playbook source and members; Hatch's own settings; a runner's
+  record; image upload; marking the overnight view seen.
+- **Whose name an event carries.** The signed-in person's, if there is one;
+  else the key's **Name**; else, with the wall off, the local name. A key's
+  request carries no person, so on a walled Hatch an event it causes is
+  attributed to that **Name** — which is why the mint form's hint calls it
+  what the audit trail will call the key. A revoked key's row stays, so an
+  old event still has a name to point to.
+- **Revoking takes effect from the next call.** It stamps the moment
+  revoked, and every call after is checked against that fresh — nothing
+  about a key is cached — so the next call the key makes is a `401`.
+  Revoking an already-revoked key changes nothing.
+- **Where the key goes:** never into the artifact — [the runner](the-runner#where-the-key-never-goes)
+  says where it stays instead.
+
 ## Coming
 
 Pages this one links to that are not written yet:
