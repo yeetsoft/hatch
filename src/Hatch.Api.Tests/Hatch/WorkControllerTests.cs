@@ -11300,7 +11300,7 @@ public class WorkControllerTests
             Actors = actors,
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
-                new RankService(db), caller, new Runners(Options.Create(new HatchOptions()))),
+                new RankService(db), caller, new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()))),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             Caller = caller,
             ProjectId = project.Id,

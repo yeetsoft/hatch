@@ -1660,7 +1660,7 @@ public class AttentionControllerTests
         await db.SaveChangesAsync();
 
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
-        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()));
 
         return new Harness
         {
@@ -1691,7 +1691,7 @@ public class AttentionControllerTests
         await db.SaveChangesAsync();
 
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
-        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+        var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()));
 
         return new Harness
         {
