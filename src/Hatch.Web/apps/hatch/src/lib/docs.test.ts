@@ -105,6 +105,36 @@ describe('renderDocs on fixtures', () => {
     expect(ids(html)).toEqual([]);
   });
 
+  it('renders a mermaid fence as a placeholder carrying its source', () => {
+    const { html, outline, ids: headingIds } = renderDocs('```mermaid\ngraph TD\n  A --> B\n```\n');
+    const m = html.match(/<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">([\s\S]*?)<\/pre><\/div>/);
+    expect(m).not.toBeNull();
+    expect(m![1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).toBe('graph TD\n  A --> B');
+    expect(outline).toEqual([]);
+    expect(headingIds).toEqual([]);
+  });
+
+  it('escapes a mermaid fence that carries markup', () => {
+    const source = '<script>alert(1)</script>\n< > &';
+    const { html } = renderDocs('```mermaid\n' + source + '\n```\n');
+    expect(html).not.toContain('<script>');
+    const m = html.match(/<pre class="hatch-docs-mermaid-source">([\s\S]*?)<\/pre>/);
+    expect(m![1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).toBe(source);
+  });
+
+  it('leaves every non-mermaid fence to the default renderer', () => {
+    for (const fenced of ['```sh\necho hi\n```\n', '```ts\nconst x = 1;\n```\n', '```\nplain\n```\n']) {
+      expect(renderDocs(fenced).html).not.toContain('hatch-docs-mermaid');
+    }
+    expect(renderDocs('    indented\n').html).not.toContain('hatch-docs-mermaid');
+  });
+
+  it('matches mermaid case-insensitively and past trailing space, not mermaidjs', () => {
+    expect(renderDocs('```Mermaid\nx\n```\n').html).toContain('hatch-docs-mermaid');
+    expect(renderDocs('```mermaid \nx\n```\n').html).toContain('hatch-docs-mermaid');
+    expect(renderDocs('```mermaidjs\nx\n```\n').html).not.toContain('hatch-docs-mermaid');
+  });
+
   it('numbers nested headings in document order', () => {
     const { outline } = renderDocs('## a\n\n> ## a\n\n- ## a\n');
     expect(outline.map((e) => e.id)).toEqual(['a', 'a-1', 'a-2']);

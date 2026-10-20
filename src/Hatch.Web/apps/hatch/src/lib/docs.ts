@@ -80,6 +80,11 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
           `<a class="hatch-docs-anchor" href="#${id}" aria-label="Link to ${label}">#</a></h${depth}>\n`
         );
       },
+      code({ text, lang }: Tokens.Code) {
+        const word = (lang ?? '').trim().split(/\s+/)[0]?.toLowerCase();
+        if (word !== 'mermaid') return false;
+        return `<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">${escapeAttr(text)}</pre></div>`;
+      },
     },
   });
   const html = marked.parse(source, { async: false });
