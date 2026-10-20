@@ -133,7 +133,19 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
 
     public string ResumeCommand(string sessionId) => $"codex exec resume {sessionId}";
 
-    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => CodexHooks.Write(temp, key, hatch, rtk);
+    /// <summary>
+    /// No door: confirmed against a real, logged-in CLI on 2026-10-20 (HA-910's
+    /// proof) that <c>codex exec</c> silently skips every hook in a
+    /// <c>CODEX_HOME</c> overlay's <c>hooks.json</c> unless the spawn also
+    /// carries <c>--dangerously-bypass-hook-trust</c> - a flag this adapter will
+    /// not send, the same stance <see cref="BuildHeadless"/> already takes on
+    /// <c>--dangerously-bypass-approvals-and-sandbox</c>. <see cref="CodexHooks"/>
+    /// still builds a correct overlay (proven by the same session, with the
+    /// bypass flag, in isolation) - it is simply never reached from here, so a
+    /// session runs with no hooks and no <c>CODEX_HOME</c>, which
+    /// <see cref="BuildHeadless"/> already degrades to cleanly.
+    /// </summary>
+    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => null;
 
     public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         UsageLimit.RecogniseCodex(said, endedAt, runnerZone);

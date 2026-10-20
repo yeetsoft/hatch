@@ -242,6 +242,12 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     [Fact]
+    public void WriteHooks_answers_null_because_exec_skips_an_overlay_without_the_bypass_flag()
+    {
+        Assert.Null(new CodexAdapter().WriteHooks(Path.GetTempPath(), "AER-1", "hatch", null));
+    }
+
+    [Fact]
     public void CreateReader_hands_the_stream_reader_the_mapped_model()
     {
         var facts = new RunFacts();
