@@ -96,6 +96,43 @@ that name forever afterwards, and a board where half the trail says `friend` is
 a board that cannot answer "who did this." The field appears only on a Hatch
 with its wall off.
 
+## Your first project
+
+Open **Manage → Projects** ([`/apps/hatch/projects`](/apps/hatch/projects)). The
+**New project** card asks for two things:
+
+- **Key** — two to six characters, e.g. `HOME`. It is what every issue number is
+  made of: `HOME-1`, `HOME-2`, and so on.
+- **Name** — what the project is called to a person.
+
+Press **Add project**. A project is a key namespace, not a container: one board
+holds every project, and a project only says which numbers its tickets carry.
+
+Then find the project's row and press **Edit**. The dialog's **Repositories**
+part is where you bind it to a git repository: add a remote and, if you want
+one, a base branch; use the arrows to reorder them (the first is the primary);
+**Remove** takes one off. Nothing is stored until **Save**. Binding is how the
+board knows which repository a project's tickets are about.
+
+## Your first epic
+
+Press **New issue** on the board, set **Type** to *epic* — it opens on *task* —
+and **Project** to the one you just made, give it a **Title**, and press **File
+it**. The server puts it in the leftmost column, **Draft**, and it crosses three
+columns before anything is chosen to be built:
+
+- **Draft** is yours, and nothing reads it. Write what you want in the
+  description, then drag the epic to **Breakdown**.
+- **Breakdown** is a session's. The stock *breakdown (epic)* playbook rewrites
+  the description as the epic's overview, files stories under it and moves it
+  on to **Backlog**. That session is the first `hatch work`, in the next part.
+- **Backlog** is yours again, and it is the gate: specified work waiting to be
+  chosen. The stories a session files are born here too.
+
+That is where this page stops. Choosing what to start — Backlog to the column
+after it — is the first decision that is yours; `the-board-and-its-columns` and
+`the-lifecycle-of-a-ticket` take it from there.
+
 ## Getting the runner
 
 The board is a board; the **runner** is what works the tickets. It is one
