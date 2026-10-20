@@ -195,7 +195,8 @@ public static class Prompt
             key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory,
             sharesPullRequest: issue.Type == "story" && issue.OnePr,
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
-            trunkLanding: trunkLanding));
+            trunkLanding: trunkLanding,
+            asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type));
         return string.Join('\n', lines);
     }
 
@@ -500,7 +501,8 @@ public static class Prompt
     internal static IEnumerable<string> Tail(
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
-        bool isCheck = false, string? failStatus = null, bool trunkLanding = false) =>
+        bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
+        bool asksReleaseNote = false, string? issueType = null) =>
     [
         "## Reaching Hatch",
         "",
@@ -573,6 +575,7 @@ public static class Prompt
         "an agent that could widen its own instructions and its own budget is a loop",
         "with no end. If a playbook is wrong, say so on the ticket and stop.",
         "",
+        ..(asksReleaseNote ? ReleaseNote(key, issueType) : Array.Empty<string>()),
         "Last of all, say what you did, in a fenced block:",
         "",
         "```work-log",
@@ -618,6 +621,42 @@ public static class Prompt
         ],
         _ => [],
     };
+
+    /// <summary>
+    /// The ask handed to a session carrying a parentless issue into review, in
+    /// the words HA-659's acceptance criterion settled on - a feature
+    /// announcement for an epic, one line and no body for anything else.
+    /// </summary>
+    private static string[] ReleaseNote(string key, string? issueType) => issueType == "epic"
+        ?
+        [
+            $"{key} is an epic, so write its release note too, as a feature announcement:",
+            "",
+            "```release-note",
+            "One sentence announcing what shipped.",
+            "",
+            "A short paragraph beneath it, which may link into the docs as",
+            "`/apps/hatch/docs/...` - a path, never an origin.",
+            "```",
+            "",
+            "It shows on the changelog and the issue page, where a person may edit or correct",
+            "it. The last such block wins, and writing none is fine - the changelog then falls",
+            "back to the title.",
+            "",
+        ]
+        :
+        [
+            $"{key} is moving into review, so write its release note too: one line, no body.",
+            "",
+            "```release-note",
+            "One sentence a user would read in a changelog.",
+            "```",
+            "",
+            "It shows on the changelog and the issue page, where a person may edit or correct",
+            "it. The last such block wins, and writing none is fine - the changelog then falls",
+            "back to the title.",
+            "",
+        ];
 
     /// <summary>
     /// Which checkout "the repository root" means, said only once there is more

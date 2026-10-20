@@ -86,7 +86,8 @@ public static class Fixtures
         string? lastCheckFindings = null,
         string? failStatusName = null,
         string? landing = null,
-        PlaybookFileReferenceDto? playbookFile = null) =>
+        PlaybookFileReferenceDto? playbookFile = null,
+        bool asksReleaseNote = false) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -109,7 +110,8 @@ public static class Fixtures
             LastCheckFindings: lastCheckFindings,
             FailStatusName: failStatusName,
             Landing: landing,
-            PlaybookFile: playbookFile);
+            PlaybookFile: playbookFile,
+            AsksReleaseNote: asksReleaseNote);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(

@@ -474,6 +474,46 @@ public sealed class PromptTests
             < prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal));
     }
 
+    // ---- HA-1036: the release-note ask ----
+
+    [Fact]
+    public void A_parentless_ticket_moving_into_review_is_asked_for_a_release_note()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", asksReleaseNote: true));
+
+        Assert.Contains("```release-note", prompt, StringComparison.Ordinal);
+        Assert.Contains("one line, no body", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("feature announcement", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_epic_asked_for_a_release_note_uses_the_feature_announcement_wording()
+    {
+        var work = Fixtures.Work("AER-12", asksReleaseNote: true, issue: Fixtures.Issue("AER-12", type: "epic"));
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("feature announcement", prompt, StringComparison.Ordinal);
+        Assert.Contains("/apps/hatch/docs/...", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void With_the_flag_false_there_is_no_release_note_ask()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.DoesNotContain("```release-note", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_release_note_ask_sits_before_the_work_log_block()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", asksReleaseNote: true));
+
+        Assert.True(
+            prompt.IndexOf("```release-note", StringComparison.Ordinal)
+            < prompt.IndexOf("```work-log", StringComparison.Ordinal));
+    }
+
     // ---- HA-118: the ending says a stall is recorded as having done nothing ----
 
     [Fact]
