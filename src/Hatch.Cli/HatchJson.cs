@@ -51,6 +51,11 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 [JsonSerializable(typeof(PlaybookFilesDto))]
 [JsonSerializable(typeof(PlaybookFileDto))]
+[JsonSerializable(typeof(ChangelogDto))]
+[JsonSerializable(typeof(ChangelogDayDto))]
+[JsonSerializable(typeof(ChangelogEntryDto))]
+[JsonSerializable(typeof(ChangelogMonthDto))]
+[JsonSerializable(typeof(List<ProjectDto>))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]

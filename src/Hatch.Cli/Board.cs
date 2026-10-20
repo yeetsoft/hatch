@@ -49,6 +49,27 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// What shipped, a window at a time - built the way <see cref="QueueAsync"/>
+    /// is, leaving out every filter nobody set. <paramref name="projectId"/> is
+    /// the id <c>changelog</c> resolved a <c>--project</c> key against; the
+    /// route itself knows no key, only every other route's own <c>projectId</c>.
+    /// </summary>
+    public Task<ChangelogDto?> ChangelogAsync(int days, string? before, int? projectId, CancellationToken ct) =>
+        Client.GetAsync<ChangelogDto>(ChangelogPath(days, before, projectId), ct);
+
+    /// <summary>The query string <see cref="ChangelogAsync"/> sends - named out so a raw <c>--json</c> read can send the same one without going through a typed parse.</summary>
+    public static string ChangelogPath(int days, string? before, int? projectId)
+    {
+        var beforeQ = string.IsNullOrEmpty(before) ? "" : $"&before={Uri.EscapeDataString(before)}";
+        var projectQ = projectId is { } id ? $"&projectId={id}" : "";
+        return $"/api/hatch/changelog?days={days}{beforeQ}{projectQ}";
+    }
+
+    /// <summary>Every project in the house - what <c>--project &lt;KEY&gt;</c> resolves a key against, since the changelog route itself takes only an id.</summary>
+    public async Task<IReadOnlyList<ProjectDto>> ProjectsAsync(CancellationToken ct) =>
+        await Client.GetAsync<List<ProjectDto>>("/api/hatch/projects", ct) ?? [];
+
+    /// <summary>
     /// Every runner that has spoken to this Hatch lately - what
     /// <see cref="Checkout.RunnerAsync"/> reads to skip a name a live runner
     /// elsewhere already holds. Throws on a Hatch too old to have the route,
