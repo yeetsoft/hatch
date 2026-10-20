@@ -2551,6 +2551,62 @@ public class IssuesControllerTests
         Assert.Contains("at least one column", Reason(result));
     }
 
+    /// <summary>
+    /// An empty column a playbook still names is refused with a 409, at either
+    /// end of the playbook. The foreign key would refuse it too, but as a 500 -
+    /// and the in-memory store these tests use cannot see foreign keys at all.
+    /// </summary>
+    [Fact]
+    public async Task AColumnAPlaybookNames_CannotBeDeleted()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(isCheck: false);
+
+        Assert.Contains("still has 1 playbook naming it", Reason(await h.Statuses.DeleteStatus(h.Todo, default)));
+        Assert.Contains("still has 1 playbook naming it", Reason(await h.Statuses.DeleteStatus(h.Done, default)));
+    }
+
+    [Fact]
+    public async Task AProjectsAutoHealColumn_CannotBeDeleted()
+    {
+        var h = await NewAsync();
+        var project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        project.AutoHealBugStatusId = h.Approved;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Statuses.DeleteStatus(h.Approved, default);
+
+        Assert.Contains("is where AER files auto-heal bugs", Reason(result));
+    }
+
+    /// <summary>
+    /// A verdict keeps the column its check ran in after the issue has moved on,
+    /// so a column can be empty of issues and still be pointed at by one.
+    /// </summary>
+    [Fact]
+    public async Task AColumnAVerdictWasRecordedIn_CannotBeDeleted()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        var issue = await h.Db.Issues.SingleAsync();
+        var playbookId = await h.AddPlaybookAsync(isCheck: true);
+        h.Db.Verdicts.Add(new EfHatchVerdict
+        {
+            IssueId = issue.Id,
+            PlaybookId = playbookId,
+            StatusId = h.Merges,
+            Verdict = "pass",
+            Author = "hatch-agent",
+            ClaimToken = Guid.NewGuid(),
+            CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Statuses.DeleteStatus(h.Merges, default);
+
+        Assert.Contains("still has 1 verdict recorded against it", Reason(result));
+    }
+
     // ---- Projects and statuses ----
 
     [Theory]
