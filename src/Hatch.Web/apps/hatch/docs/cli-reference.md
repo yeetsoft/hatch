@@ -352,6 +352,114 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 What a call writes is whatever the route does, and the actor is the key's name
 as always. `api-reference` has the routes.
 
+## The three that spawn an agent
+
+`work`, `go-to-work` and `do-my-work` are the only commands that start an agent
+session, and so the only ones that need a checkout, or a workspace to clone
+into. Outside one they refuse and exit 1:
+
+```
+hatch: this is not a git repository, and a ticket is about a codebase.
+hatch:   run it inside a checkout, name one with --repo, set HATCH_REPOS, or give a --workspace to clone into.
+```
+
+### work
+
+```
+hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]
+           [--model <model>] [--effort <effort>] [--agent <id>] [--dry-run]
+           [--no-keys] [--repo <path>]... [--workspace <dir>]
+```
+
+One increment: claims a ticket, spawns one headless agent session with the
+prompt, model and effort its column and type call for, and exits when that
+session ends. With no key it takes the next actionable issue; a key names one
+outright. [One increment: `hatch work`](one-increment-and-the-loop#one-increment-hatch-work)
+has what it prints and every exit code.
+
+- `--mine` picks only the caller's own tickets, as `do-my-work` would. It is
+  refused together with a key, since one names the ticket and the other narrows
+  which ticket is picked:
+  ```
+  hatch: work takes a key or --mine, not both - one names the ticket, the other narrows which ticket is picked
+  ```
+- `--under <epic key>` looks only inside that epic's subtree. Not with a key
+  either: one says which ticket, the other says where to look for one.
+- `-i` runs a session you sit in, rather than a headless one.
+- `--quiet` says nothing until the increment is finished.
+- `--model <model>` beats the playbook's model, for this run only.
+- `--effort <effort>` does the same for the effort.
+- `--agent <id>` beats `HATCH_AGENT`, for this run only.
+- `--dry-run` prints the prompt and exits: it claims nothing, spawns nothing,
+  and clones nothing even where a workspace is configured.
+- `--no-keys` reads no keys from this terminal. Ctrl-C and `--stop-file` still
+  work.
+- `--repo <path>` also serves that checkout. It is repeatable, and the whole
+  list is for this run; `HATCH_REPOS` is not consulted when it is given.
+- `--workspace <dir>` clones into `<dir>` every repository the board binds that
+  this runner has no checkout of. `HATCH_WORKSPACE` is not consulted when it is
+  given, and `--workspace off` never clones.
+
+### go-to-work
+
+```
+hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]
+                 [--interval <seconds>] [--merge-interval <seconds>]
+                 [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
+                 [--until <HH:MM>] [--stop-file <path>] [--no-keys]
+                 [--restart-after <minutes> | --no-restart]
+                 [--repo <path>]... [--workspace <dir>]
+```
+
+`work` in a circle: the next actionable issue, one increment, ask again, until
+nothing on the board is an agent's to move, and then wait and ask again. It
+takes no ticket key. [The loop: `hatch go-to-work`](one-increment-and-the-loop#the-loop-hatch-go-to-work)
+has the pass in order, the bounds and the restarts.
+
+- `--mine` takes only the caller's own tickets. Plain `go-to-work` skips every
+  person's tickets, including yours.
+- `--under <epic key>` stays inside one epic's subtree.
+- `--once` makes one pass, and out.
+- `--quiet` prints no per-increment stream, only what each one ended as.
+- `--interval <seconds>` is how long to wait when there was nothing to do.
+  The default is 60.
+- `--merge-interval <seconds>` is the merge train's own clock, separate from
+  `--interval`: approved pull requests merge on it without waiting for an idle
+  pass. The default is 5.
+- `--agent <id>` beats `HATCH_AGENT`. It is resolved once before the loop starts
+  and carried the whole night, unlike `--model` and `--effort`, which `work`
+  reads fresh each run.
+- `--no-keys` reads no keys from this terminal. Ctrl-C and `--stop-file` still
+  work.
+- `--repo <path>` also serves that checkout, and is repeatable.
+- `--workspace <dir>` is where to clone the repositories this runner has no
+  checkout of.
+- `--max-runs <n>` stops after that many increments.
+- `--max-spend <dollars>` stops once the run has cost that much.
+- `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
+- `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
+- `--restart-after <minutes>` comes back as a newer build at least that often.
+  `0` means only when the loop's own source actually changed.
+- `--no-restart` never comes back as a newer build.
+
+None of the bounds is set by default. Each is read between increments, so the
+increment in flight always finishes. The two restart flags do nothing in a
+`hatch` started by hand, which has no supervisor to rebuild and run it again.
+
+### do-my-work
+
+```
+hatch do-my-work [every go-to-work flag]
+```
+
+Exactly `go-to-work --mine`, every flag included, and `hatch do-my-work -h`
+prints `go-to-work`'s own usage block. It exists for a smaller budget spent on
+one person's own tickets: on a board shared with other people, plain
+`go-to-work` works the shared pool and skips every person's own, so one loop
+never has to work both. Run `go-to-work` for the pool and `do-my-work`
+separately for yours. [Sharing a board](one-increment-and-the-loop#sharing-a-board)
+has the rest, including what happens to a key that belongs to nobody.
+
 ## Coming
 
 Pages this one names that are not written yet:
