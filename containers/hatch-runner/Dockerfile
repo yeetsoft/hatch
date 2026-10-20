@@ -1,7 +1,8 @@
 # The runner, in a container, beside the stack it works for.
 #
 # What is in here is the whole of what the container can do, and the ticket
-# says so out loud: git, the claude CLI, and the hatch binary. It can plan,
+# says so out loud: git, the claude, codex and grok CLIs, and the hatch binary -
+# one image, and HATCH_AGENT says which of the three the loop spawns. It can plan,
 # break down, analyse and implement in any repository; it cannot build or test
 # one whose toolchain this image does not happen to carry, and no generic image
 # carries everybody's. The base-OS runner the Runner page hands out is the
@@ -52,7 +53,8 @@ RUN case "$TARGETARCH" in \
 # does not.
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 
-# curl and ca-certificates are the claude installer's own prerequisites; git is
+# curl and ca-certificates are the claude, codex and grok installers' own
+# prerequisites; git is
 # what an increment branches, commits and pushes with; libstdc++6 is what the
 # CLI itself is linked against.
 #
@@ -102,7 +104,45 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # built on any given day should carry the version Anthropic is telling people
 # to run, not whatever landed that morning.
 RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
-ENV PATH="/root/.local/bin:${PATH}"
+# codex: the vendor's release binary rather than the npm package, for the same
+# reason as above - there is no Node in this image. It is a static musl build,
+# so the glibc base here runs it as it would any other. Unpinned
+# (CODEX_VERSION=latest) and that is not ideal: a build on a given day picks up
+# whatever shipped that morning, so set CODEX_VERSION to a release tag where
+# that matters. The asset names were checked against the releases page when
+# this landed (both triples answer under /releases/latest/download/); a rename
+# upstream fails this build, not an increment. TARGETARCH is declared again
+# because the build stage's does not carry over.
+ARG TARGETARCH
+ARG CODEX_VERSION=latest
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-musl ;; \
+      arm64) triple=aarch64-unknown-linux-musl ;; \
+      *) echo "hatch-runner: no codex release for TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && if [ "$CODEX_VERSION" = latest ]; then \
+      url=https://github.com/openai/codex/releases/latest/download/codex-$triple.tar.gz; \
+    else \
+      url=https://github.com/openai/codex/releases/download/$CODEX_VERSION/codex-$triple.tar.gz; \
+    fi \
+ && curl -fsSL "$url" | tar -xzf - -C /usr/local/bin \
+ && mv /usr/local/bin/codex-$triple /usr/local/bin/codex \
+ && chmod +x /usr/local/bin/codex \
+ && codex --version
+
+# grok: the vendor's installer (https://x.ai/cli/install.sh - a prebuilt binary
+# per architecture, no Node, no sudo; the URL was checked when this landed). It
+# is a bash script, run from a file rather than piped so a failed download
+# fails the build: sh has no pipefail, and `curl | bash` reports bash's exit
+# and swallows curl's. It installs under ~/.grok/bin, which the PATH below
+# carries. The grok adapter passes --no-auto-update, so what is installed here
+# is what runs.
+RUN curl -fsSL https://x.ai/cli/install.sh -o /tmp/grok-install.sh \
+ && bash /tmp/grok-install.sh \
+ && rm /tmp/grok-install.sh \
+ && /root/.grok/bin/grok --version
+
+ENV PATH="/root/.local/bin:/root/.grok/bin:${PATH}"
 
 # The CLI refuses `--permission-mode bypassPermissions` as uid 0 unless it is
 # told it is in a sandbox - and an increment runs in print mode, where nothing
@@ -112,6 +152,14 @@ ENV PATH="/root/.local/bin:${PATH}"
 # asking after. Root rather than a made-up user because the checkout arrives as
 # a bind mount from the host, and a container user whose uid does not match the
 # files cannot write to the branch it is supposed to push.
+#
+# That flag is Claude's. grok's grant is --always-approve --trust, which has no
+# OS sandbox to satisfy. codex's is --approve-for-me (workspace-write), whose
+# Linux sandbox wants user namespaces or landlock that an unprivileged
+# container may not have: NOT YET PROVEN either way, and no workaround is
+# shipped for it. The first real codex increment settles it, and this comment
+# with it. The adapter never passes codex's bypass-the-sandbox flag to make it
+# go.
 ENV IS_SANDBOX=1
 
 COPY --from=build /out/hatch /usr/local/bin/hatch
