@@ -468,6 +468,11 @@ public class AdminSurfaceTests
         // how every story is worked, is an owner's: ProjectsController.PutLanding.
         "IssueOnePrController.PutIssueOnePr",
 
+        // A release note, open to a key only under the issue's live claim: the
+        // claim check is in the action, not the attribute, so a key can write the
+        // note of the ticket it is working and no other. IssueReleaseNoteController.
+        "IssueReleaseNoteController.PutIssueReleaseNote",
+
         // Holding and resuming a ticket - an agent that could hold its own
         // ticket could park it off the board for the night. Stalling is the
         // other write IssueStallController makes, and it is open to a key on
