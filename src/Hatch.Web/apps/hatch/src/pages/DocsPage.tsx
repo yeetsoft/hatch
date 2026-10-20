@@ -22,6 +22,7 @@ import { DocsSidebar } from '../components/DocsSidebar';
 interface RenderedDoc {
   html: string;
   outline: OutlineEntry[];
+  mermaidCount: number;
 }
 
 // Filled lazily, the first time each slug is visited - DOC_PAGES's pages are
@@ -32,13 +33,13 @@ const rendered = new Map<string, RenderedDoc>();
 function renderedDoc(page: DocPage): RenderedDoc {
   let doc = rendered.get(page.slug);
   if (!doc) {
-    const { html, outline } = renderDocs(page.body);
+    const { html, outline, mermaidCount } = renderDocs(page.body);
     // DOMPurify's default SANITIZE_DOM silently drops an id whose value names a
     // property of document or of a form (title, links, images, forms, body,
     // location...), so a heading titled "Links" would lose its anchor. The content
     // here is shipped in the repo, not typed by a user, so the clobbering guard
     // protects nothing and costs anchors.
-    doc = { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), outline };
+    doc = { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), outline, mermaidCount };
     rendered.set(page.slug, doc);
   }
   return doc;
