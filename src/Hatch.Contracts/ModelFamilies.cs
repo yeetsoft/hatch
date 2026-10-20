@@ -18,7 +18,7 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
     public static ModelFamilies Default { get; } = new([
         new ModelFamily("claude", "^claude-[a-z0-9][a-z0-9.-]{0,48}$", "claude-opus-5"),
         new ModelFamily("codex", "^gpt-[a-z0-9][a-z0-9.-]{0,48}$", "gpt-6-astra"),
-        new ModelFamily("grok", "^grok-[a-z0-9][a-z0-9.-]{0,48}$", "grok-4.6"),
+        new ModelFamily("grok", "^grok-[a-z0-9][a-z0-9.-]{0,48}$", "grok-4.7"),
     ]);
 
     /// <summary>
