@@ -1227,6 +1227,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long>("IssueId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("IssueType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("ModelUsage")
                         .HasColumnType("jsonb");
 
@@ -1235,6 +1239,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<long?>("PeakContextTokens")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("PlaybookEffort")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("PlaybookFileHash")
                         .HasMaxLength(64)
@@ -1248,9 +1256,23 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int?>("PlaybookFromStatusId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PlaybookKey")
+                        .HasMaxLength(71)
+                        .HasColumnType("character varying(71)");
+
+                    b.Property<string>("PlaybookModel")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
                     b.Property<string>("PlaybookSource")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<int?>("PlaybookToStatusId")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("PromptChars")
                         .HasColumnType("integer");
