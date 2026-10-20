@@ -571,6 +571,151 @@ public class WorkLogControllerTests
         Assert.Equal("a limit is between 1 and 500 - not 501", await h.SessionRefusalAsync(limit: 501));
     }
 
+    // ---- Folded by playbook ----
+
+    [Fact]
+    public async Task TheByPlaybookRange_IsHalfOpen_FromIsInAndToIsOut()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var from = Now.AddHours(-2);
+        var to = Now.AddHours(-1);
+
+        await h.SpendAsync(issue, 1_000, from.AddTicks(-1), playbookKey: "before");
+        await h.SpendAsync(issue, 20_000, from, playbookKey: "at-from");
+        await h.SpendAsync(issue, 300_000, to.AddTicks(-1), playbookKey: "inside");
+        await h.SpendAsync(issue, 4_000_000, to, playbookKey: "at-to");
+
+        var byPlaybook = await h.ByPlaybookAsync(from.ToString("o"), to.ToString("o"));
+
+        Assert.Equal(from, byPlaybook.From);
+        Assert.Equal(to, byPlaybook.To);
+        Assert.Equal(["inside", "at-from"], byPlaybook.Rows.Select(r => r.PlaybookKey));
+    }
+
+    [Fact]
+    public async Task TheByPlaybookRange_DefaultsToTheFourteenDaysEndingNow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddDays(-20), playbookKey: "old");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-1), playbookKey: "recent");
+
+        var byPlaybook = await h.ByPlaybookAsync();
+
+        Assert.Equal(Now.AddDays(-14), byPlaybook.From);
+        Assert.Equal(Now, byPlaybook.To);
+        Assert.Equal("recent", Assert.Single(byPlaybook.Rows).PlaybookKey);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_FoldsEachCombinationOnce_AndEveryOlderRowIntoOneUnknown()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-5), playbookKey: "7", fromStatusId: 1, toStatusId: 2,
+            issueType: "task", model: "opus", effort: "high", peakContextTokens: 100, promptChars: 10);
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-4), playbookKey: "7", fromStatusId: 1, toStatusId: 2,
+            issueType: "task", model: "opus", effort: "high", peakContextTokens: 300, promptChars: 30);
+        await h.SpendAsync(issue, 3_000, Now.AddHours(-3), playbookKey: "7", fromStatusId: 1, toStatusId: 2,
+            issueType: "task", model: "sonnet", effort: "high");
+        await h.SpendAsync(issue, 4_000, Now.AddHours(-2));
+        await h.SpendAsync(issue, 5_000, Now.AddHours(-1));
+
+        var rows = (await h.ByPlaybookAsync()).Rows;
+
+        Assert.Equal(3, rows.Count);
+
+        var opus = Assert.Single(rows, r => r.Model == "opus");
+        Assert.Equal(2, opus.Sessions);
+        Assert.Equal(3_000, opus.TotalTokens);
+        Assert.Equal(200, opus.MedianPeakContextTokens);
+        Assert.Equal(300, opus.MaxPeakContextTokens);
+        Assert.Equal(20, opus.MedianPromptChars);
+
+        var unknown = Assert.Single(rows, r => r.PlaybookKey is null);
+        Assert.Equal(2, unknown.Sessions);
+        Assert.Equal(9_000, unknown.TotalTokens);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_NarrowsToOneProject_AndAnUnmatchedProjectAnswersNoRows()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+
+        var other = new EfHatchProject { Key = "OTH", Name = "Other", CreatedAt = Now };
+        h.Db.Add(other);
+        await h.Db.SaveChangesAsync();
+        var elsewhere = await h.FileAsync(projectId: other.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-2), playbookKey: "mine");
+        await h.SpendAsync(elsewhere, 20_000, Now.AddHours(-1), playbookKey: "theirs");
+
+        Assert.Equal(2, (await h.ByPlaybookAsync()).Rows.Count);
+
+        var narrowed = await h.ByPlaybookAsync(projectId: h.ProjectId);
+        Assert.Equal("mine", Assert.Single(narrowed.Rows).PlaybookKey);
+
+        Assert.Equal("theirs", Assert.Single((await h.ByPlaybookAsync(projectId: other.Id)).Rows).PlaybookKey);
+        Assert.Empty((await h.ByPlaybookAsync(projectId: 999_999)).Rows);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_NamesTheColumnsFromTheBoardNow_AndLeavesTheIdWhereAColumnIsGone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var todo = new EfHatchStatus { Name = "To Do", SortOrder = 20 };
+        var doing = new EfHatchStatus { Name = "Doing", SortOrder = 30 };
+        h.Db.AddRange(todo, doing);
+        await h.Db.SaveChangesAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), playbookKey: "7", fromStatusId: todo.Id, toStatusId: doing.Id);
+
+        var row = Assert.Single((await h.ByPlaybookAsync()).Rows);
+        Assert.Equal("To Do", row.FromStatusName);
+        Assert.Equal("Doing", row.ToStatusName);
+
+        h.Db.Statuses.Remove(doing);
+        await h.Db.SaveChangesAsync();
+
+        row = Assert.Single((await h.ByPlaybookAsync()).Rows);
+        Assert.Equal(doing.Id, row.ToStatusId);
+        Assert.Null(row.ToStatusName);
+        Assert.Equal("To Do", row.FromStatusName);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_NamesNoColumnForARowThatStoredNone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1));
+
+        var row = Assert.Single((await h.ByPlaybookAsync()).Rows);
+
+        Assert.Null(row.FromStatusId);
+        Assert.Null(row.FromStatusName);
+        Assert.Null(row.ToStatusId);
+        Assert.Null(row.ToStatusName);
+    }
+
+    [Fact]
+    public async Task TheByPlaybookRead_RefusesABadBoundAndAnInvertedRangeInTheSameWords()
+    {
+        var h = await NewAsync();
+
+        Assert.Equal(
+            "a range bound is an instant (2026-09-12T17:00:00Z) - not \"last tuesday\"",
+            await h.ByPlaybookRefusalAsync(from: "last tuesday"));
+        Assert.Equal(
+            "a range ends before it begins",
+            await h.ByPlaybookRefusalAsync(from: "2026-09-07T03:00:00Z", to: "2026-09-06T03:00:00Z"));
+    }
+
     // ---- Who may read it ----
 
     [Fact]
@@ -598,9 +743,10 @@ public class WorkLogControllerTests
 
         public required int ProjectId { get; init; }
 
-        public async Task<IssueDto> FileAsync(string type = "task", string title = "a thing", string? parentKey = null) =>
+        public async Task<IssueDto> FileAsync(
+            string type = "task", string title = "a thing", string? parentKey = null, int? projectId = null) =>
             Created(await Issues.CreateIssue(
-                new IssueCreateRequest(ProjectId, type, title, null, parentKey, null, null), default));
+                new IssueCreateRequest(projectId ?? ProjectId, type, title, null, parentKey, null, null), default));
 
         /// <summary>
         /// A row straight into the context rather than through the writer, so
@@ -618,7 +764,14 @@ public class WorkLogControllerTests
             int turns = 1,
             int? requests = null,
             long? peakContextTokens = null,
-            string? agent = null)
+            string? agent = null,
+            string? playbookKey = null,
+            int? fromStatusId = null,
+            int? toStatusId = null,
+            string? issueType = null,
+            string? model = null,
+            string? effort = null,
+            int? promptChars = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -641,6 +794,13 @@ public class WorkLogControllerTests
                 Requests = requests,
                 PeakContextTokens = peakContextTokens,
                 Agent = agent,
+                PromptChars = promptChars,
+                PlaybookKey = playbookKey,
+                PlaybookFromStatusId = fromStatusId,
+                PlaybookToStatusId = toStatusId,
+                IssueType = issueType,
+                PlaybookModel = model,
+                PlaybookEffort = effort,
                 CreatedAt = Now,
             };
 
@@ -664,6 +824,16 @@ public class WorkLogControllerTests
             string? sort = null,
             int limit = 100) =>
             Value(await History.GetSessions(from, to, ancestorKey, sort, limit, default));
+
+        public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
+            string? from = null, string? to = null, int? projectId = null) =>
+            Value(await History.GetByPlaybook(from, to, projectId, default));
+
+        public async Task<string> ByPlaybookRefusalAsync(string? from = null, string? to = null)
+        {
+            var result = await History.GetByPlaybook(from, to, null, default);
+            return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
+        }
 
         public async Task<string> SessionRefusalAsync(
             string? from = null,
