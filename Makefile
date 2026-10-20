@@ -126,6 +126,28 @@ browsers:
 		pwsh src/Hatch.Api.Tests/bin/Debug/net10.0/playwright.ps1 install chromium webkit; \
 	fi'
 
+# The browser cases alone, from nothing: builds the hatch bundle the board smoke
+# (src/Hatch.Api.Tests/E2e/BoardRendersTests.cs) serves out of
+# src/Hatch.Api/wwwroot/apps/hatch - gitignored, so a fresh checkout or worktree
+# has none, and the smoke fails by design without one - then runs only
+# Hatch.Api.Tests.E2e. It proves a real browser can load the board against the
+# real API. `make test-api-db` runs these among everything else; this is the
+# short loop for them.
+#
+# Uses test-api-db's database, so `make db` first (the dependency does it) and
+# `make browsers` once per machine; each process makes its own scratch databases
+# beside it, so two runs at once do not collide. $(API_TEST_CLAMP) is the same
+# hang clamp. Node comes from nvm when nvm is the sourced shell function, else
+# whatever is on PATH, which must be 22+ (src/Hatch.Web/.nvmrc) - nvm-windows
+# is an nvm.exe and no function, and `nvm use` there is not wanted.
+test-e2e: db
+	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
+	set -e; \
+	if [ "$$(type -t nvm)" = function ]; then nvm use; fi; \
+	(cd ./src/Hatch.Web && npm ci && npm run build -w apps/hatch); \
+	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
+		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP) --filter "FullyQualifiedName~E2e"'
+
 # One `npm ci` at the workspace root, then each app in turn. The apps are still
 # named one at a time rather than run with `--workspaces` so that the "==>" line
 # says which one is building when something fails.
