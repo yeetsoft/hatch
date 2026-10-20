@@ -534,19 +534,29 @@ public sealed class Increment(
                 : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
                 : null;
 
-            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, _clock.GetUtcNow()) is { } hit)
+            var endedAt = _clock.GetUtcNow();
+            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, endedAt) is { } hit)
             {
-                report.UsageLimitResetAt = hit.ResetAt;
-                report.UsageLimitResetKnown = hit.ResetKnown;
-                report.UsageLimitPassed = hit.Passed;
+                if (facts.Usage?.FirstOrDefault(w => w.Window == hit.Window) is { ResetsAt: { } resetsAt } && resetsAt > endedAt)
+                {
+                    report.UsageLimitResetAt = TimeZoneInfo.ConvertTime(resetsAt, _clock.LocalTimeZone);
+                    report.UsageLimitResetKnown = true;
+                    report.UsageLimitPassed = false;
+                }
+                else
+                {
+                    report.UsageLimitResetAt = hit.ResetAt;
+                    report.UsageLimitResetKnown = hit.ResetKnown;
+                    report.UsageLimitPassed = hit.Passed;
+                }
                 report.UsageLimitWindow = hit.Window;
                 report.AgentDisplayName = adapter.DisplayName;
 
                 say.Line("");
-                say.Line(hit.Passed
-                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, the reset it named has just passed - trying again at {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
-                    : hit.ResetKnown
-                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, resets {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
+                say.Line(report.UsageLimitPassed
+                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, the reset it named has just passed - trying again at {UsageLimit.Clock(report.UsageLimitResetAt!.Value, report.UsageLimitResetKnown)}"
+                    : report.UsageLimitResetKnown
+                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, resets {UsageLimit.Clock(report.UsageLimitResetAt!.Value, report.UsageLimitResetKnown)}"
                     : $"hatch: {report.Key} - out of {adapter.DisplayName} usage, and the reset time could not be read - treating it as an hour away");
             }
 
@@ -1132,6 +1142,8 @@ public sealed class Increment(
                 PeakContextTokens = render.PeakContextTokens,
                 PromptChars = prompt.Length,
             };
+
+        facts.Usage = render.Usage;
 
         ReadClamp();
         ReadOutputLastMessage();

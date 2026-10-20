@@ -6540,7 +6540,11 @@ is offered again on the next pass exactly as if it had moved, unless something
 else - a dependency, a playbook, a question - holds it back.
 
 **Neither is a usage limit.** A session that ends because the Claude account it
-ran under hit its usage limit is read from what it said on its way out - the
+ran under hit its usage limit is read first from the session's own stream -
+the `rate_limit_event` window matching the one the sentence named, already in
+the runner's own zone with nothing to parse - and only when that is missing,
+already passed, or silent on that one window does it fall back to what it
+said on its way out - the
 read now covers every spelling a limit comes back under (session, weekly, Opus,
 Sonnet and Fable), as well as the pay-as-you-go phrasing that never says "limit"
 at all (`You're out of usage credits · resets ...`); it handles a dated reset
