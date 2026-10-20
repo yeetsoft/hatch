@@ -152,6 +152,5 @@ flavour.
 
 Pages this one links to that are not written yet:
 
-- `the-board-and-its-columns`
 - `the-lifecycle-of-a-ticket`
 - `questions-and-decisions`
