@@ -386,13 +386,13 @@ so a session never has to work out its own base:
   for the key — the lowercased key, or that and a hyphen and anything — the
   checkout goes onto it at origin's tip and the trunk is merged in; a
   conflict is left in progress for the session, and the prompt says so
-  (`what-a-session-is-told`). With no branch, or only one already merged,
-  the checkout stays on the trunk and the prompt names a branch to cut. With
-  two unmerged branches the loop asks on the ticket which to use and spawns
-  nothing. In a project that lands on the trunk, the checkout stays on
-  `<trunk>` when origin has no branch for the ticket, and the session pushes
-  `<trunk>` itself; the runner never does. Never a rebase, never a
-  force-push.
+  ([what a session is told](what-a-session-is-told#the-branch)). With no
+  branch, or only one already merged, the checkout stays on the trunk and
+  the prompt names a branch to cut. With two unmerged branches the loop
+  asks on the ticket which to use and spawns nothing. In a project that
+  lands on the trunk, the checkout stays on `<trunk>` when origin has no
+  branch for the ticket, and the session pushes `<trunk>` itself; the
+  runner never does. Never a rebase, never a force-push.
 - **When the increment ends, the tree is put right before the ticket is let
   go**: a merge or rebase left half-done is aborted, uncommitted changes are
   stashed under a message naming the ticket, unpushed commits and commits
@@ -411,13 +411,12 @@ same checkout.
 Each increment's prompt, model and effort come from [a
 playbook](/apps/hatch/playbooks) — a row per column transition and issue
 type, yours to change and never your agents': the API refuses the write
-from a key, on purpose. `what-a-session-is-told` has the prompt section by
-section.
+from a key, on purpose. [What a session is told](what-a-session-is-told) has
+the prompt section by section.
 
 ## Coming
 
 Pages this one names that are not written yet:
 
 - `flow-wip-and-the-battery`
-- `what-a-session-is-told`
 - `the-container-runner`

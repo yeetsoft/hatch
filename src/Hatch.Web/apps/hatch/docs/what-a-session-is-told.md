@@ -206,10 +206,14 @@ which only the operator makes. An increment that leaves the ticket where it
 found it is recorded as having done nothing. No playbook edits: the API
 refuses them on purpose, and a wrong playbook is said on the ticket instead.
 
-The prompt then ends with two things that are plain paragraphs, not sections.
-A ticket moving into review may be asked for a release note, and every prompt
-asks for a `work-log` block saying what the session did. Both have their own
-pages, beside the hooks and the inbox.
+The prompt then ends with two things that are plain paragraphs, not sections,
+not with a heading of their own: a ticket moving into review may be asked for
+a release note, and every prompt asks for a `work-log` block saying what the
+session did. What becomes of each is below, beside the hooks that reach a
+session while it runs, the budget it runs under, and the inbox that carries a
+message to it: [the work-log block](#the-work-log-block), [the release-note
+block](#the-release-note-block), [hooks](#hooks), [the budget](#the-budget),
+[the inbox](#the-inbox).
 
 ## How the session runs
 
@@ -240,6 +244,97 @@ fixed, trust-gated paths the runner cannot safely redirect.
 Beyond the prompt, what the session knows is the repository's own `CLAUDE.md`
 ([the CLAUDE.md block](the-claudemd-block)).
 
+## The work-log block
+
+Every prompt ends by asking for a fenced `work-log` block: a title naming
+what the session did, a blank line, then a summary under 100 words.
+Written last, and once - the runner takes the *last* such block in whatever
+the session said, so quoting the shape earlier in its own prose does not talk
+it out of the one that counts, and a session that writes two is read by its
+second.
+
+Out of that block, the runner takes the first non-empty line as the title - a
+leading `title:` dropped, clipped to 200 characters - and everything after it
+as the summary, clipped to 2,000. Both go up as one row on the issue's **Work
+log**, beside what the session spent: its cost, its tokens, its models, its
+duration and the agent that ran it. Every session's row totals onto **Agents
+→ Leaderboard** ([watching the loop](watching-the-loop)).
+
+A block with nothing usable in it still puts a row up, marked **undescribed**
+rather than left blank - and on a plain advance that otherwise left the
+ticket exactly where it found it, the increment is judged not to have moved,
+which is a stall ([one increment and the loop](one-increment-and-the-loop#stalls)).
+Only where the run never reported at all - interrupted, or the CLI falling
+over before it could say anything - does no row go up: a row of zeros would
+be a claim to have done the work, not a record of it.
+
+## The release-note block
+
+Asked for only where it is read: an issue with no parent, moving as a plain
+advance into the review column, never on a hop. Its shape depends on what the
+issue is. An epic writes a feature announcement - one sentence, then a short
+paragraph beneath it that may link into the docs as `/apps/hatch/docs/...`, a
+path and never an origin. Anything else writes one line, no body.
+
+The note is capped at 2,000 characters and clipped rather than refused, and
+the last `release-note` block in the session's output wins, the same rule
+the work log follows. It is written under the claim - only while
+the session's lease on the ticket is still live - and before the work log, so
+a failure further down the increment cannot lose it. Writing none is fine:
+the [changelog](/apps/hatch/changelog) then falls back to showing the
+ticket's title, and either way a person can edit or correct the note from the
+issue page.
+
+## Hooks
+
+A headless session runs under a settings file the runner writes outside
+every checkout - under the system's temporary directory, so wiring it in
+leaves `git status` showing only what the session itself changed - and hands
+to the agent CLI for the run, deleting it when the run ends.
+
+Two hooks live there always. After every tool call, one asks the board
+through `hatch inbox` for anything said to the session since it last asked,
+throttled to once every fifteen seconds; at the stop, another always asks,
+and holds the session open until it has read what came back, so a session
+finishing up does not end with a message still unread. A third, optional
+one runs `rtk` ahead of every `Bash` call when an `rtk` binary is on `PATH` -
+`HATCH_RTK=off` turns that one off, and nothing turns off the other two.
+
+A `hatch work -i` session runs with no hooks at all: somebody is at the
+keyboard, so nothing needs to reach it this way. Codex and Grok carry none
+either - Codex because `codex exec` only honours hooks under a flag this
+adapter will not send, and Grok because its CLI loads hooks only from fixed,
+trust-gated paths this runner cannot safely redirect into. A message sent to
+either mid-run waits for the session's next increment instead.
+
+## The budget
+
+The playbook's budget - millions of tokens - is never itself in the prompt;
+a session is not told the number it is spending against. The first time a
+session's tokens cross it, the next hook hands back the wrap-up message once:
+finish the edit in hand, commit what is green, push it, file what is left as
+tasks, say on the ticket what landed, then stop. It is said exactly once, not
+on every call after.
+
+Past the budget by half again, the runner stops the session outright rather
+than asking it to wrap up - crossing a budget is not a decision left for
+somebody else to make. See [playbooks](playbooks) for where a budget is set.
+
+## The inbox
+
+A person reaches a working session from the issue page's claim panel, in the
+**Tell the agent** box - shown only while the ticket's claim is live, since
+there is nobody running to read it otherwise. Sending it posts a comment of
+kind `message`.
+
+The hooks above are what carries it in: each delivers a message exactly once,
+at most every fifteen seconds after a tool call and always at the stop, and
+the session is told to apply it and say on the ticket if it changes the plan.
+Anything said while no session was running waits instead for the next
+dispatch, where it is carried under [*Said to you since the last
+session*](#said-to-you-since-the-last-session) and marked read just before
+the spawn - so it is neither lost nor delivered twice.
+
 ## Coming
 
 Pages this one names that are not written yet:
@@ -247,3 +342,4 @@ Pages this one names that are not written yet:
 - `playbooks`
 - `questions-and-decisions`
 - `review-pull-requests-and-the-merge-train`
+- `watching-the-loop`
