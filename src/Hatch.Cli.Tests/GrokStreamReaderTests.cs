@@ -160,7 +160,7 @@ public sealed class GrokStreamReaderTests
                 costUSD = 0.01268905m,
             },
         };
-        const string fence = "```work-log\nA title\n\nA summary.\n```";
+        const string fence = "```release-note\nA note.\n```\n```work-log\nA title\n\nA summary.\n```";
 
         var (streamFacts, streamReader) = New();
         streamReader.Read(Fixtures.GrokUsage(inputTokens: 7210, outputTokens: 1893, cacheReadTokens: 41000, cacheCreationTokens: 0));
@@ -178,6 +178,8 @@ public sealed class GrokStreamReaderTests
         Assert.Equal(streamReader.TokensSoFar, jsonReader.TokensSoFar);
         Assert.Equal(streamReader.Requests, jsonReader.Requests);
         Assert.Equal(streamReader.PeakContextTokens, jsonReader.PeakContextTokens);
+        Assert.Equal("A note.", streamFacts.ReleaseNote);
+        Assert.Equal("A note.", jsonFacts.ReleaseNote);
         Assert.Equal(streamFacts.Result!.Title, jsonFacts.Result!.Title);
         Assert.Equal(streamFacts.Result.Summary, jsonFacts.Result.Summary);
         Assert.Equal(streamFacts.Result.CostUsd, jsonFacts.Result.CostUsd);

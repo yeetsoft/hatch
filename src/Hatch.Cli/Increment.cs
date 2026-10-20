@@ -499,6 +499,12 @@ public sealed class Increment(
             if (report.Clamped && claim.Lost is null)
                 await Clamp.CommentAsync(board, say, report.Key, report.ClampedAtTokens!.Value, report.ClampedAtRequests, ct);
 
+            // The note goes up before the bill, so a failure further down cannot
+            // lose it - and never after the lease has gone, since it is a write
+            // onto the ticket, unlike the meter reading.
+            if (claim.Lost is null && facts.ReleaseNote is { } note)
+                await PostReleaseNoteAsync(report.Key, note, claim.Token, ct);
+
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and
             // a meter reading is not a claim to have done the work.
@@ -1212,6 +1218,27 @@ public sealed class Increment(
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {
             say.Complain($"hatch: the work log entry for {key} could not be written - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The release note the session wrote, put on the ticket under the claim
+    /// this runner holds.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here may fail the increment. The work happened either way, and a
+    /// refused note is a line for the operator, not a reason to stop the loop.
+    /// </remarks>
+    private async Task PostReleaseNoteAsync(string key, string note, Guid token, CancellationToken ct)
+    {
+        try
+        {
+            await board.ReleaseNoteAsync(key, note, token, ct);
+            say.Line($"hatch: release note: written to {key}");
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            say.Complain($"hatch: the release note for {key} could not be written - {e.Message}");
         }
     }
 

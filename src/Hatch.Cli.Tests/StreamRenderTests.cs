@@ -153,6 +153,67 @@ public sealed class StreamRenderTests
     }
 
     [Fact]
+    public void No_release_note_block_and_an_empty_one_are_both_null()
+    {
+        Assert.Null(StreamRender.ReleaseNote("It went fine, thanks."));
+        Assert.Null(StreamRender.ReleaseNote("```release-note\n\n\n```"));
+    }
+
+    [Fact]
+    public void The_last_release_note_block_wins()
+    {
+        var note = StreamRender.ReleaseNote("""
+            I was asked to end with:
+
+            ```release-note
+            A note for the people who read the release notes.
+            ```
+
+            ...and here is mine:
+
+            ```release-note
+            Shipped it.
+            ```
+            """);
+
+        Assert.Equal("Shipped it.", note);
+    }
+
+    [Fact]
+    public void A_message_with_both_blocks_yields_each_from_its_own_fence()
+    {
+        var said = "```release-note\nShipped it.\n```\n```work-log\nDid a thing\n\nIn detail.\n```";
+
+        Assert.Equal("Shipped it.", StreamRender.ReleaseNote(said));
+        Assert.Equal(("Did a thing", "In detail."), StreamRender.WorkLog(said));
+    }
+
+    [Fact]
+    public void A_release_note_keeps_its_title_line_and_body_trimmed()
+    {
+        var note = StreamRender.ReleaseNote("```release-note\n\n  A headline\n\nThe body.\n\n```");
+
+        Assert.Equal("A headline\n\nThe body.", note);
+    }
+
+    [Fact]
+    public void A_release_note_is_clipped_to_what_the_route_takes()
+    {
+        var note = StreamRender.ReleaseNote($"```release-note\n{new string('x', ReleaseNoteRequest.MaxLength + 500)}\n```");
+
+        Assert.Equal(ReleaseNoteRequest.MaxLength, note!.Length);
+    }
+
+    [Fact]
+    public void The_result_event_carries_the_release_note_into_the_facts()
+    {
+        var (facts, _) = Play(Fixtures.Result(said: "```release-note\nShipped it.\n```\n```work-log\nA title\n```"));
+
+        Assert.Equal("Shipped it.", facts.ReleaseNote);
+        Assert.Equal("A title", facts.Result!.Title);
+    }
+
+    [Fact]
     public void Anything_that_is_not_an_event_is_stepped_over()
     {
         // The CLI is entitled to say something on stdout that is not an event -
