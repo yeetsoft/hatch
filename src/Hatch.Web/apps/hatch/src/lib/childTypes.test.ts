@@ -7,7 +7,8 @@ describe('childTypes', () => {
     // The order is the promise, not just the membership: the first entry is
     // what a picker starts on, and it should be the ordinary child - a story
     // under an epic, a task under a story, a bug or an epic.
-    expect(childTypes('epic')).toEqual(['epic', 'story', 'task', 'bug']);
+    expect(childTypes('epic')).toEqual(['epic', 'reflection', 'story', 'task', 'bug']);
+    expect(childTypes('reflection')).toEqual(['epic', 'story', 'task', 'bug']);
     expect(childTypes('story')).toEqual(['task', 'bug']);
     expect(childTypes('bug')).toEqual(['task']);
   });

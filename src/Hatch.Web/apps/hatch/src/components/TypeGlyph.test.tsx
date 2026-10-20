@@ -4,7 +4,7 @@ import { TypeGlyph } from './TypeGlyph';
 import type { IssueType } from '../types';
 
 describe('TypeGlyph', () => {
-  it.each<IssueType>(['epic', 'story', 'task', 'bug'])(
+  it.each<IssueType>(['epic', 'reflection', 'story', 'task', 'bug'])(
     'names %s on the title and the accessible name, and wears its own class',
     (type) => {
       const html = renderToStaticMarkup(<TypeGlyph type={type} />);
@@ -15,9 +15,10 @@ describe('TypeGlyph', () => {
     },
   );
 
-  it('draws four different shapes, not four colours of the same one', () => {
+  it('draws five different shapes, not five colours of the same one', () => {
     const shapes = {
       epic: renderToStaticMarkup(<TypeGlyph type="epic" />),
+      reflection: renderToStaticMarkup(<TypeGlyph type="reflection" />),
       story: renderToStaticMarkup(<TypeGlyph type="story" />),
       task: renderToStaticMarkup(<TypeGlyph type="task" />),
       bug: renderToStaticMarkup(<TypeGlyph type="bug" />),
@@ -38,5 +39,17 @@ describe('TypeGlyph', () => {
     expect(shapes.task).not.toContain('<polygon');
     expect(shapes.bug).not.toContain('<rect');
     expect(shapes.bug).not.toContain('<circle');
+
+    // The hexagon and the triangle are both a <polygon>, so the tag cannot
+    // tell them apart - the number of points does.
+    const pointCount = (svg: string) => /points="([^"]+)"/.exec(svg)![1].trim().split(/\s+/).length;
+    expect(shapes.reflection).toContain('<polygon');
+    expect(pointCount(shapes.reflection)).toBe(6);
+    expect(pointCount(shapes.bug)).toBe(3);
+    expect(shapes.reflection).not.toContain('<circle');
+    expect(shapes.reflection).not.toContain('<rect');
+    expect(shapes.epic).not.toContain('points=');
+    expect(shapes.story).not.toContain('points=');
+    expect(shapes.task).not.toContain('points=');
   });
 });

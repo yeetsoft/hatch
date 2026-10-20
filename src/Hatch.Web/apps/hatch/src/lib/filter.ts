@@ -180,12 +180,18 @@ export const revealType = (filter: CardFilter, type: IssueType): CardFilter =>
     the reason `assigneeFacets` is: choosing a thing must not shrink the list
     you chose it from. */
 export function typeCounts(cards: IssueCard[]): Record<IssueType, number> {
-  const counts: Record<IssueType, number> = { epic: 0, story: 0, task: 0, bug: 0 };
+  const counts: Record<IssueType, number> = { epic: 0, reflection: 0, story: 0, task: 0, bug: 0 };
   for (const card of cards) counts[card.type] += 1;
   return counts;
 }
 
-const PLURALS: Record<IssueType, string> = { epic: 'epics', story: 'stories', task: 'tasks', bug: 'bugs' };
+const PLURALS: Record<IssueType, string> = {
+  epic: 'epics',
+  reflection: 'reflections',
+  story: 'stories',
+  task: 'tasks',
+  bug: 'bugs',
+};
 
 /** What the Types control says: `All`, `All but tasks` for three, and for one
     or two the ones drawn (`Epics, stories`). */

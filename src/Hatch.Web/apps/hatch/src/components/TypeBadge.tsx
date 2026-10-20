@@ -8,6 +8,7 @@ import type { IssueType } from '../types';
    problem, so it is the only one wearing the danger tone. */
 const TONES: Record<IssueType, BadgeTone> = {
   epic: 'primary',
+  reflection: 'success',
   story: 'muted',
   task: 'muted',
   bug: 'danger',
