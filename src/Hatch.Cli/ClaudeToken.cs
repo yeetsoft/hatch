@@ -66,10 +66,10 @@ public sealed class ClaudeTokenCommand(Cli cli)
 
         if (answer.Body.Trim().Length == 0) return NoToken;
 
-        ClaudeTokenDto? wrapped;
+        CredentialDto? wrapped;
         try
         {
-            wrapped = JsonSerializer.Deserialize(answer.Body, HatchJson.Default.ClaudeTokenDto);
+            wrapped = JsonSerializer.Deserialize(answer.Body, HatchJson.Default.CredentialDto);
         }
         catch (JsonException e)
         {

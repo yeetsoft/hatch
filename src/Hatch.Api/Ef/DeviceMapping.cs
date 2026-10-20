@@ -264,7 +264,7 @@ public static class SiteSettingKeys
 
     /// <summary>
     /// A Claude subscription OAuth token (<c>sk-ant-oat...</c>), used by Hatch
-    /// to read the account's own headroom - see Modules/Hatch/ClaudeCredential.
+    /// to read the account's own headroom - see Modules/Hatch/AgentCredential.
     /// A setting rather than an environment variable for the reason the Immich
     /// and Anthropic keys above are one, plus a reason of its own: it is
     /// genuinely optional, and the provisioning path cannot express an optional
