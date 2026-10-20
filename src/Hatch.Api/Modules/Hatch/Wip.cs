@@ -186,8 +186,9 @@ public static class Wip
         var ids = parentIds.Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
         if (ids.Count == 0) return new Dictionary<long, EpicLimit>();
 
+        var runsChildren = IssueTypeKinds.RunsChildrenTypes;
         var rows = await db.Issues.AsNoTracking()
-            .Where(i => ids.Contains(i.Id) && IssueTypeKinds.RunsChildren(i.Type))
+            .Where(i => ids.Contains(i.Id) && runsChildren.Contains(i.Type))
             .Select(i => new { i.Id, i.Project!.Key, i.Number, i.WipLimit })
             .ToListAsync(ct);
 

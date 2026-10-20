@@ -6,7 +6,10 @@ namespace Hatch.Contracts;
 /// </summary>
 public static class IssueTypeKinds
 {
-    private static readonly HashSet<string> RunsChildrenTypes = ["epic", "reflection"];
+    private static readonly HashSet<string> RunsChildrenSet = ["epic", "reflection"];
 
-    public static bool RunsChildren(string type) => RunsChildrenTypes.Contains(type);
+    /// <summary>The same types as <see cref="RunsChildren"/>, for a database query, which cannot translate the method.</summary>
+    public static readonly IReadOnlyList<string> RunsChildrenTypes = ["epic", "reflection"];
+
+    public static bool RunsChildren(string type) => RunsChildrenSet.Contains(type);
 }
