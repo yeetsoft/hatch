@@ -108,7 +108,7 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
 
-*Environment variables* has the full table.
+[Environment variables](environment-variables) has the full table.
 
 ## What --show prints
 
@@ -238,5 +238,4 @@ reference](cli-reference) has each one in full.
 
 Pages this one names that are not written yet:
 
-- `environment-variables`
 - `questions-and-decisions`

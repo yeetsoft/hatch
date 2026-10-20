@@ -202,7 +202,8 @@ Five more are set for the container, and are not for changing: `HATCH_BASE`
 above, as it arrives inside) and `IS_SANDBOX` (set to `1` by the image, because
 the `claude` CLI refuses to bypass permission prompts as root unless it is told
 it is in a sandbox, and an unattended increment has nobody to answer one).
-*Environment variables* has the full table for the whole of Hatch.
+[Environment variables](environment-variables) has the full table for the whole
+of Hatch.
 
 ## One container, one workspace
 
@@ -247,4 +248,3 @@ stays stopped, and a crash is still recovered from.
 Pages this one links to that are not written yet:
 
 - `one-increment-and-the-loop`
-- `environment-variables`
