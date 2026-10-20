@@ -3880,13 +3880,16 @@ order:
 2. **epic** — an epic standing in a column short of the implementation
    column, carried on each move right until it reaches that column, with
    something filed under it — any direct child, of any type, in any column —
-   and whose own direct parent is itself an epic that has reached the
-   implementation column. A top-level epic — one with no
-   parent, or a parent that is not a running epic — is never carried this way:
-   its own column is the whole signal, and only a person moves it in
-   (HA-202). An epic that clears the parent test but has nothing filed under
-   it is never a hop either: it is folded instead, with *"nothing is filed
-   under it — an epic runs its stories, and it has none"*.
+   and, for a sub-epic, whose own direct parent is itself an epic that has
+   reached the implementation column. A top-level epic — one with no
+   parent — is carried only by the move that lands it in the implementation
+   column, and by no earlier one: the move off the backlog, into the column
+   that feeds the implementation column, is the person's press, and this
+   carries it the rest of the way (HA-1069). An epic whose parent is not a
+   running epic is never carried (HA-202). An epic that clears those tests
+   but has nothing filed under it is never a hop either: it is folded
+   instead, with *"nothing is filed under it — an epic runs its stories, and
+   it has none"*.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
    whose parent is an epic at or past the implementation column — in [In
    Progress](#status), in review, wherever it stands once it has reached
@@ -3970,7 +3973,7 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 - The issue is blocked by some other fold — a claim, a ready date, an
   assignee, a question, a repository, a dependency, a full [WIP](#wip)
   section, [an epic at its own limit](#an-epics-own-limit), a terminal next
-  column, a top-level epic (its own column is the signal, not a pass), an
+  column, an
   epic whose parent epic is not running, an epic with nothing filed under it,
   or (for a child of a `ParentPulls` column) a parent that has not reached the
   implementation column, or a sibling on a shared story's branch already in flight, or a childless issue
@@ -4149,16 +4152,22 @@ it. This is decision 8 of epic HA-422.
 
 ### Running an epic
 
-**The pull is for a sub-epic, never a top-level one.** An operator drags a
-*top-level* epic into the column before the WIP section and walks away — that
-column, on its own, is the whole signal that its sub-tree should run, and only
-a person sets it. No pass ever carries a top-level epic across on its own say-so
-(HA-202): one with no parent, or whose parent is not itself a running epic,
-is folded — *"a top-level epic is moved in by a person - its own column is the
-signal for everything under it"*, or, where it has a parent epic that simply
-is not running, *"its parent epic is not running, so nothing pulls it in"*.
+**A person starts a top-level epic by moving it off the backlog.** An
+operator drags a *top-level* epic into the column that feeds the WIP section —
+on the stock board, *Backlog → To Do* — and walks away: the next pass carries
+it into the implementation column with no session, the same [`epic`
+hop](#the-hop) a sub-epic gets, and the epic slice of the WIP section is the
+only thing that holds it there (HA-1069). That earlier move is the press, and
+nothing carries an epic across it for a person — a [pre-approved](#pre-approval)
+epic is the exception only because pre-approval is that person's say-so given
+in advance, and the express hop carries it across on its own. An epic with
+nothing filed under it is folded — *"nothing is filed under it — an epic runs
+its stories, and it has none"* — and one whose parent is not a running epic is
+folded *"its parent epic is not running, so nothing pulls it in"*. A board
+whose breakdown column empties directly into the feeder column has no such
+press: an epic breakdown has just filled is carried straight in.
 
-Once a person has moved a top-level epic into the section, an epic **filed
+Once a top-level epic is in the section, an epic **filed
 under it** is carried in by the next pass with no session — [the `epic`
 hop](#the-hop) — as long as something is filed under that sub-epic and the
 epic slice has room; a sub-epic with nothing filed under it is folded instead,
@@ -4262,13 +4271,14 @@ linked here rather than repeated.
   describes.
 - `Backlog → To Do` is the express hop again, for the epic and, separately,
   for each story as it is filed.
-- **The epic's own `To Do → In Progress` move is the one press left for a
-  person.** `To Do` is not ticked `ExpressSkips`, so the express hop never
-  fires for the epic there, and the epic-start playbook that used to cover
-  this move is retired on a WIP-enabled board regardless, per [the playbooks
-  above](#playbooks). The move has no hop and no playbook either, so it
-  folds on a missing playbook until somebody drags the epic across by hand.
-  Everything after that one press is unattended.
+- **The epic's own `To Do → In Progress` move is the epic hop.** `To Do` is
+  not ticked `ExpressSkips`, so the express hop never fires for the epic
+  there, but the epic hop does: a top-level epic with something filed under
+  it is carried into the implementation column by the next pass, with no
+  session and no playbook, as soon as the WIP section's epic slice has room.
+  The one press a regular, un-pre-approved epic needs is the move off the
+  backlog into `To Do`; a pre-approved epic needs none. Everything after is
+  unattended.
 - Each story's own `To Do → In Progress` is the analysis playbook; its
   `In Progress → In Review` is implementation, or closeout once its own
   tasks are all terminal or deferred.
@@ -5586,8 +5596,10 @@ which one it failed is what `work/queue` reports:
 
     An epic standing in a column short of the implementation column, carried
     on each move right until it reaches that column, is a second kind of hop:
-    something is filed under it, of any type. Where nothing is, the
-    refinement is its own fold rather than a
+    something is filed under it, of any type, and, for a sub-epic, a parent
+    epic at or past the implementation column; a top-level epic is carried
+    only by the move that lands it there (HA-1069). Where nothing is filed,
+    the refinement is its own fold rather than a
     fall-through to the seventeenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic at or past the
