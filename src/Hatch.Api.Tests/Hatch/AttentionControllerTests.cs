@@ -1337,6 +1337,82 @@ public class AttentionControllerTests
         Assert.Empty(Value(await h.Attention.GetAttention(default)).LandingHeld!);
     }
 
+    // ---- The deadlocked half (HA-1021) ----
+
+    // A waits on B, B on its open child B1, B1 on A: the ring the work queue
+    // marks deadlocked. Written straight to the table, since the controller's
+    // ring check walks dependency edges only and the parent edge closes this one.
+    private static async Task<(EfHatchIssue A, EfHatchIssue B, EfHatchIssue B1)> DeadlockedRingAsync(Harness h)
+    {
+        // Without playbooks every row folds "no playbook covers it" and no
+        // dependency edge ever gates, so the ring needs the board's three.
+        h.Db.AddRange(
+            Playbook(h.Todo, h.InProgress, "epic", "opus"),
+            Playbook(h.Todo, h.InProgress, "", "sonnet"),
+            Playbook(h.InProgress, h.Review, "", "sonnet"));
+        await h.Db.SaveChangesAsync();
+
+        var a = await h.FileAsync("story", "story a", h.Todo, rank: 1024);
+        var b = await h.FileAsync("story", "story b", h.InProgress, rank: 2048);
+        var b1 = await h.FileAsync("task", "task b1", h.Todo, parentId: b.Id);
+        await h.DependsAsync(a, b);
+        await h.DependsAsync(b1, a);
+        return (a, b, b1);
+    }
+
+    private static EfHatchPlaybook Playbook(int from, int to, string types, string model) => new()
+    {
+        FromStatusId = from,
+        ToStatusId = to,
+        Types = types,
+        Shape = "any",
+        Prompt = "do the thing",
+        Model = model,
+        Effort = "high",
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Fact]
+    public async Task Attention_ListsEveryDeadlockedIssueInQueueOrder_WithTheQueuesSentence()
+    {
+        var h = await NewAsync();
+        var (a, b, b1) = await DeadlockedRingAsync(h);
+        await h.FileAsync("story", "bystander", h.Todo, rank: 4096);
+
+        var deadlocked = Value(await h.Attention.GetAttention(default)).Deadlocked!;
+
+        // The scan's order, not rank order: columns right to left, so B (in
+        // progress) leads, then A and B1 in todo, A first on Id.
+        Assert.Equal([Key(b), Key(a), Key(b1)], deadlocked.Select(d => d.Key));
+        Assert.All(deadlocked, d => Assert.StartsWith("deadlocked - ", d.Sentence));
+        Assert.Equal("story b", deadlocked[0].Title);
+        Assert.Equal("story", deadlocked[0].Type);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyDeadlockedListWhenNothingIsDeadlocked()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "alone", h.Todo);
+
+        var deadlocked = Value(await h.Attention.GetAttention(default)).Deadlocked;
+
+        Assert.NotNull(deadlocked);
+        Assert.Empty(deadlocked);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyDeadlockedListOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        var deadlocked = Value(await h.Attention.GetAttention(default)).Deadlocked;
+
+        Assert.NotNull(deadlocked);
+        Assert.Empty(deadlocked);
+    }
+
     // ---- The merges column half (HA-466) ----
 
     [Fact]
@@ -1404,6 +1480,20 @@ public class AttentionControllerTests
                 Where = $"host:/checkouts/{name}",
                 ExhaustedUntil = exhaustedUntil,
             });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A dependency edge, written straight to the table: <paramref name="issue"/> waits on <paramref name="blocker"/>.</summary>
+        public async Task DependsAsync(EfHatchIssue issue, EfHatchIssue blocker)
+        {
+            Db.Dependencies.Add(new EfHatchIssueDependency
+            {
+                IssueId = issue.Id,
+                DependsOnId = blocker.Id,
+                CreatedBy = "hatch-agent",
+                CreatedAt = Now,
+            });
+
             await Db.SaveChangesAsync();
         }
 
@@ -1665,7 +1755,7 @@ public class AttentionControllerTests
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time)),
             Time = time,
             ProjectId = project.Id,
             Inbox = inbox.Id,
@@ -1696,7 +1786,7 @@ public class AttentionControllerTests
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time)),
             Time = time,
             ProjectId = project.Id,
             Inbox = done.Id,
