@@ -2563,6 +2563,57 @@ public record WorkLogSessionsDto(
     DateTimeOffset? LastSessionAt,
     IReadOnlyList<WorkLogSessionDto> Sessions);
 
+/// <summary>
+/// The sessions in a range, folded by the playbook they ran under: one row per
+/// distinct playbook, transition, issue type, model and effort.
+/// </summary>
+/// <remarks>
+/// <paramref name="From"/> and <paramref name="To"/> are the range as given,
+/// half-open, exactly as <see cref="WorkLogSessionsDto"/> echoes it. Every group
+/// in the window is answered - this is neither ranked nor capped.
+/// </remarks>
+public record WorkLogByPlaybookDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<WorkLogByPlaybookRowDto> Rows);
+
+/// <summary>
+/// One playbook/transition/type/model/effort combination, and what its sessions
+/// cost. A row whose six grouping fields are all null is every session an older
+/// runner wrote, folded together as the unknown group.
+/// </summary>
+/// <param name="PlaybookKey">The stored playbook key: a row's id as text, or <c>"{types}:{shape}"</c> for a file row. Never re-read against the playbook's current prompt.</param>
+/// <param name="FromStatusName">The board's <em>current</em> name for <paramref name="FromStatusId"/>, or null where the id is null or no longer names a column.</param>
+/// <param name="ToStatusName">The board's current name for <paramref name="ToStatusId"/>, read the same way.</param>
+/// <param name="Undescribed">Sessions that never wrote a work-log block.</param>
+/// <param name="CostUsd">Notional USD summed over the priced sessions only; <paramref name="UnpricedSessions"/> counts the rest, so it reads as a floor.</param>
+/// <param name="MedianPeakContextTokens">Over the sessions that reported a peak context only; null when none did.</param>
+/// <param name="MaxPeakContextTokens">The largest of those, or null when none reported one.</param>
+/// <param name="MedianPromptChars">Over the sessions that recorded a prompt length only; null when none did.</param>
+public record WorkLogByPlaybookRowDto(
+    string? PlaybookKey,
+    int? FromStatusId,
+    string? FromStatusName,
+    int? ToStatusId,
+    string? ToStatusName,
+    string? IssueType,
+    string? Model,
+    string? Effort,
+    int Sessions,
+    int Errors,
+    int Undescribed,
+    int Turns,
+    long InputTokens,
+    long OutputTokens,
+    long CacheCreationTokens,
+    long CacheReadTokens,
+    long TotalTokens,
+    decimal CostUsd,
+    int UnpricedSessions,
+    double? MedianPeakContextTokens,
+    long? MaxPeakContextTokens,
+    double? MedianPromptChars);
+
 // ---- Overnight ----
 
 /// <summary>

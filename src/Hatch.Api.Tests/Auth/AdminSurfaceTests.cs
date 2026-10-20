@@ -315,6 +315,7 @@ public class AdminSurfaceTests
         // like the module's other reads and, deliberately unlike the write above
         // it, open to a person: reading what the nights cost is the whole point
         // of the page.
+        "WorkLogController.GetByPlaybook",
         "WorkLogController.GetHistory",
         "WorkLogController.GetSessions",
 
