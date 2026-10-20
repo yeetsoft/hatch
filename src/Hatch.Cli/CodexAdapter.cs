@@ -207,11 +207,22 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
     /// through. Re-pull from the vendor's current model list when it changes -
     /// the same caveat <c>ModelFamilies.Default</c>'s codex row carries.
     /// </summary>
+    /// <remarks>
+    /// Confirmed against a real, logged-in CLI on 2026-10-20 (HA-910's proof):
+    /// a ChatGPT-account login's own catalog is <c>gpt-reserve</c>,
+    /// <c>gpt-6-luna</c>, <c>gpt-5.6-terra</c>, <c>gpt-5.6-luna</c> and
+    /// <c>codex-auto-review</c> - every other id tried, including the ones this
+    /// table named before (<c>gpt-6.1-sol</c>, <c>gpt-6-astra</c>, and even
+    /// guesses like bare <c>gpt-6</c>), answers the same hard refusal: "the
+    /// '&lt;id&gt;' model is not supported when using Codex with a ChatGPT
+    /// account." No id in that catalog reads as a tier above <c>sonnet</c>'s, so
+    /// <c>opus</c>/<c>fable</c> collapse onto it here rather than naming an id
+    /// this login cannot reach; API-key auth was not tried and may unlock more.
+    /// </remarks>
     private static string MapModel(string model) => model switch
     {
         "haiku" => "gpt-6-luna",
-        "sonnet" => "gpt-6.1-sol",
-        "opus" or "fable" => "gpt-6-astra",
+        "sonnet" or "opus" or "fable" => "gpt-5.6-terra",
         _ => model,
     };
 
