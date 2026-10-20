@@ -1,7 +1,7 @@
 ---
 title: Running the runner as a container instead
 section: Running agents
-order: 40
+order: 80
 summary: Running the runner as a container instead of a binary on your own machine, and what it can't build.
 ---
 

@@ -31,9 +31,8 @@ address — there isn't one the repository can know.
   to a first `hatch work` against your own board.
 - **Concepts** — [The board and its columns](the-board-and-its-columns)
   names what happens in each column and who moves work out of it.
-- **Running agents** — [Getting the runner and pointing it at the
-  board](getting-the-runner-and-pointing-it-at-the-board) gets the binary
-  onto your machine and aimed at this board.
+- **Running agents** — [The runner](the-runner) gets the binary onto your
+  machine and aimed at this board.
 - **Deploying and operating** — [Putting a front door on
   it](putting-a-front-door-on-it) covers signing in and running this
   somewhere more than one person reaches.

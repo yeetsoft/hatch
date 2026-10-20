@@ -1,7 +1,7 @@
 ---
 title: The morning after a night
 section: Running agents
-order: 20
+order: 60
 summary: Where to see what the loop landed overnight.
 ---
 

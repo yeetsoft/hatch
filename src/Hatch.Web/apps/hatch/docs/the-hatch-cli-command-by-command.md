@@ -1,7 +1,7 @@
 ---
 title: The hatch CLI, command by command
 section: Running agents
-order: 50
+order: 90
 summary: Every `hatch` command, what it does, and what it costs to run.
 ---
 
@@ -16,18 +16,6 @@ ordinary case.
 hatch --help                 every command, from the program itself
 hatch <command> -h           ...and what one of them takes
 ```
-
-## Pointing it at a board
-
-```
-hatch config                              ask for the origin and the key, and write them
-hatch config --origin <your-hatch-origin> ...without being asked for the origin
-hatch config --show                       what is set, and which layer it came from
-```
-
-Written to a per-user file — mode 600, under the platform's application-data
-directory, outside every repository — so it follows you between checkouts and
-you do it once. A Hatch with its wall off needs no key; leave it blank.
 
 ## One increment: `hatch work`
 
@@ -323,39 +311,6 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 
 `hatch answer` walks the open questions serially on purpose: six printed at once
 get answered in aggregate, which is how a wrong assumption gets in.
-
-## Settings
-
-Read in three layers, highest first: an exported variable, then `scripts/.env`
-in the checkout you are standing in, then the per-user file `hatch config`
-writes.
-
-```
-HATCH_BASE         the origin of your Hatch
-HATCH_KEY          hatch_ak_... Optional against a Hatch with its wall off
-HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH
-HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments
-HATCH_RUNNER       what the board calls this runner (default: a character from
-                   the cast list, chosen once per checkout - see `hatch config`)
-HATCH_ROOT         the checkout to work in (default: upwards from here)
-HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on
-                   the platform's path separator (: on Unix, ; on Windows)
-HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every
-                   repository the board binds that it has no checkout of
-HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on
-HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH
-                   (exported only: scripts/.env and `hatch config` are not read for it)
-```
-
-`--repo` on `go-to-work` or `work` (repeatable) beats `HATCH_REPOS` outright for
-that run rather than adding to it, the same way any other flag beats a setting.
-`hatch config --repo /path/to/a/checkout` (repeatable) writes `HATCH_REPOS` to
-the per-user file; `--repo` alone clears it. `--workspace <dir>` works the same
-way for `HATCH_WORKSPACE` — beats it for that run — and `hatch config
---workspace <dir>` writes it to the per-user file. A workspace refuses to sit
-inside a named checkout, or a named checkout inside it, in either direction: a
-clone under a tree being reset, or a tree under a directory of clones, is two
-owners of one path.
 
 ## Where the prompt comes from
 

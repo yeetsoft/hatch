@@ -6,11 +6,7 @@ import { DOC_PAGES, docPage, renderDocs } from './docs';
 /** The pages split out of hatch-at-home.md: slug and section, in reading order. */
 const SPLIT_PAGES: [slug: string, section: string][] = [
   ['hatch-on-your-phone', 'Start here'],
-  ['getting-the-runner-and-pointing-it-at-the-board', 'Running agents'],
-  ['the-morning-after-a-night', 'Running agents'],
   ['letting-the-loop-merge-for-you', 'Running agents'],
-  ['running-the-runner-as-a-container-instead', 'Running agents'],
-  ['the-hatch-cli-command-by-command', 'Running agents'],
   ['putting-a-front-door-on-it', 'Deploying and operating'],
   ['upgrading', 'Deploying and operating'],
   ['where-the-data-is-and-how-to-back-it-up', 'Deploying and operating'],
