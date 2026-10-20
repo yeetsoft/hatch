@@ -131,6 +131,12 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
         return closing;
     }
 
+    /// <summary>The line printed so a person can join the session after the increment.</summary>
+    /// <remarks>
+    /// Only honest because no <c>CODEX_HOME</c> overlay is built, so the rollout
+    /// lands in the operator's real home and outlives the run. An overlay would
+    /// take the rollout with it when deleted; see <see cref="CodexHooks"/>.
+    /// </remarks>
     public string ResumeCommand(string sessionId) => $"codex exec resume {sessionId}";
 
     /// <summary>
