@@ -50,7 +50,7 @@ give it to the runner:
 hatch config --origin <your-hatch-origin> --key <the key>
 ```
 
-A runner in a container takes it as `HATCH_KEY=<the key>` in the same `.env`.
+The [container runner](the-container-runner) is for a Hatch with its wall off: it cannot fetch its credential from one with the wall up, so it takes no key.
 
 **6. If you are locked out,** set `HATCH_AUTH=false` (or delete the line) and
 run `docker compose up -d`. That is the whole rollback, and nothing is lost:

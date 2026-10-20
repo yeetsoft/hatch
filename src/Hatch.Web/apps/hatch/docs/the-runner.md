@@ -236,7 +236,6 @@ in full.
 Pages this one names that are not written yet:
 
 - `one-increment-and-the-loop`
-- `the-container-runner`
 - `watching-the-loop`
 - `people-roles-and-keys`
 - `environment-variables`
