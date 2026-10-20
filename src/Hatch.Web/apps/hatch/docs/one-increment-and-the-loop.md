@@ -180,7 +180,7 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
    (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
    This is the one moment no claim is held.
 3. **Age restart.** Under Hatch's own supervisor a loop that has run long
-   enough asks to come back as a newer build (*Restarts*, below).
+   enough asks to come back as a newer build ([Restarts](#restarts)).
 4. **Pause.** Paused from the board or from the keyboard, it keeps
    heartbeating and takes nothing. The board wins if both are true.
 5. **Usage-limit wait.** A runner whose account ran out of usage takes
@@ -278,9 +278,146 @@ An increment fails when its session exits non-zero, or a clone fails; one clean
 exit resets the streak. The run finishes by printing the night: why it
 stopped, how many increments and what they cost, what moved, and what stalled.
 
+### Restarts
+
+A loop whose own source changed on the trunk asks to come back as the new
+build — exit 75, because a process cannot rebuild itself.
+
+```
+hatch go-to-work --restart-after 60   come back as a newer build at least that often (default 30)
+hatch go-to-work --restart-after 0    ...only when its own source actually changed
+hatch go-to-work --no-restart         ...never
+```
+
+`0` is not "off" — it still asks, only on an actual change rather than a
+clock running out. `--no-restart` is the only one of the three that is
+really off.
+
+Two more things turn restarts off before any of those flags is even read:
+`--once`, since it heartbeats as a one-off and never comes back regardless;
+and an unset `HATCH_NIGHT_STATE`, which only Hatch's own supervisor sets. A
+`hatch` started by hand has nothing standing over it, so it is the loop it
+started as, and all three flags do nothing there.
+
+The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
+Windows: it catches the 75, rebuilds and runs the loop again, carrying the
+night's totals forward, so a restart cannot outspend `--max-spend`.
+
+Windows client editions refuse scripts by default (execution policy
+`Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
+.\scripts\hatch.ps1 go-to-work` runs the supervisor anyway, and
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` allows it for the
+account once; a clone carries no mark of the web, so `RemoteSigned` is
+enough. Group Policy outranks both: if it is what refuses, it is the thing
+to change, and no flag will get round it.
+
+The container runner never asks.
+
+Exit codes:
+
+```
+0    the night ended, for one of the reasons above - Ctrl-C, SIGTERM and a
+     closed terminal included
+1    a refusal: a flag it does not take, a stop file that already exists, a
+     lock it could not take
+75   asking the supervisor to rebuild and run it again
+```
+
+### One loop per served checkout
+
+A loop is not limited to the checkout it is standing in: `--repo
+/path/to/a/checkout` (repeatable) or `HATCH_REPOS` (checkout paths joined on
+the platform's path separator) names others it serves too — which is what
+lets one loop on a laptop work the two or three repositories already cloned
+there, with no checkout of its own. Every named path is checked at startup:
+it must exist and carry a `.git`, and a project's binding can only ever
+match it once it has an `origin` — before anything is locked or claimed.
+
+A second `go-to-work` naming any checkout this loop already serves is
+refused, naming the pid of the one that already holds it. Two loops no
+longer collide over the board — the claim divides it — but they would still
+collide over a tree they share, one increment's reset landing in the middle
+of another's branch. Two checkouts, two loops, and both are welcome, whether
+each loop found its checkout by standing in it or by naming it.
+
+A loop with none of its own checkouts of what a board binds can still serve
+it. **Cloning is on by default**: an unset `HATCH_WORKSPACE` is a per-user
+directory, and only `--workspace off` (or `HATCH_WORKSPACE=off`) never
+clones — `hatch config --show` prints which this runner would do. Named or
+default, the workspace is a directory the loop owns entirely, and it clones
+whatever a project binds that it has no checkout of into
+`<dir>/<host>/<owner>/<repo>` the first time a ticket needs it — a port in a
+host, if there is one, spelled with `_` in place of `:`, since Windows will
+not take a `:` in a directory name. A remote two projects both bind is
+cloned once and served to both. A clone that fails releases the ticket,
+comments on it with git's own line, and counts as a failed increment — three
+of them in a row end the night the same way three failed spawns do. A
+directory already holding clones from an earlier night is served as it is
+found, nothing re-cloned.
+
+A second loop that never named its own workspace shares the default one
+with the first rather than being refused: it serves only the checkouts it
+already has and clones nothing, since the first loop already owns whatever
+directory the default's clones land in. A workspace may not sit inside a
+named checkout, nor a named checkout inside it — a clone under a tree being
+reset, or a tree under a directory of clones, is two owners of one path.
+
+### What it does to your checkout
+
+Before every increment, on every checkout the ticket's project is bound to —
+so a session never has to work out its own base:
+
+- It fetches, and puts the checkout back on the default branch at the tip
+  the remote has it at right now — a binding's own base branch beats
+  `origin/HEAD` for that checkout, and `HATCH_BASE_BRANCH` only ever
+  overrides the checkout the loop is standing in.
+- **Uncommitted and untracked changes go into a stash**, named for the hour
+  it was taken. Nothing is discarded — `git stash pop` is how you get it
+  back — and ignored files are never touched, so a dependency directory or a
+  local `.env` is safe.
+- A local trunk ahead of origin is reset to match it too — only `git
+  reflog` keeps what it had, since this is the one case where committed
+  work is not safe from the reset.
+- A branch whose upstream on origin has been deleted is deleted locally too,
+  named on the terminal with the short sha it pointed at, so `git branch
+  <name> <sha>` puts it back.
+- **Then it goes onto the ticket's branch.** If origin has one branch named
+  for the key — the lowercased key, or that and a hyphen and anything — the
+  checkout goes onto it at origin's tip and the trunk is merged in; a
+  conflict is left in progress for the session, and the prompt says so
+  (`what-a-session-is-told`). With no branch, or only one already merged,
+  the checkout stays on the trunk and the prompt names a branch to cut. With
+  two unmerged branches the loop asks on the ticket which to use and spawns
+  nothing. In a project that lands on the trunk, the checkout stays on
+  `<trunk>` when origin has no branch for the ticket, and the session pushes
+  `<trunk>` itself; the runner never does. Never a rebase, never a
+  force-push.
+- **When the increment ends, the tree is put right before the ticket is let
+  go**: a merge or rebase left half-done is aborted, uncommitted changes are
+  stashed under a message naming the ticket, unpushed commits and commits
+  left on the local trunk are named on the ticket (the latter moved to a
+  `-rescued-` branch), and a pull request whose branch has fallen behind the
+  trunk gets the trunk merged into it on origin, when that merge is clean.
+  Everything found is one comment on the ticket. The checkout is back on the
+  trunk afterwards.
+
+The practical consequence: work that matters is work that is committed. Do
+not leave something half-finished in the tree and then start the loop in the
+same checkout.
+
+## Where the prompt comes from
+
+Each increment's prompt, model and effort come from [a
+playbook](/apps/hatch/playbooks) — a row per column transition and issue
+type, yours to change and never your agents': the API refuses the write
+from a key, on purpose. `what-a-session-is-told` has the prompt section by
+section.
+
 ## Coming
 
 Pages this one names that are not written yet:
 
 - `watching-the-loop`
 - `flow-wip-and-the-battery`
+- `what-a-session-is-told`
+- `the-container-runner`
