@@ -27,10 +27,21 @@ namespace Hatch.Cli;
 /// <c>auth.json</c> as it runs, and the copy is deleted with the directory, so
 /// <see cref="Dispose"/> copies it over the real one if it changed.</para>
 ///
-/// <para>Whether a hook fires under <c>codex exec</c> at all, and whether Codex
-/// asks for a hook it did not write itself to be trusted first, is not known here.
-/// "No working door" is therefore not decided in <see cref="Write"/>: if the
-/// proof finds there is none, the adapter's <c>WriteHooks</c> answers null.</para>
+/// <para>HA-910's proof against a real, logged-in CLI found that <c>codex exec</c>
+/// skips every hook in an overlay's <c>hooks.json</c> unless the spawn also carries
+/// <c>--dangerously-bypass-hook-trust</c>, a flag the adapter never sends. That is
+/// why the adapter's <c>WriteHooks</c> answers null rather than reaching
+/// <see cref="Write"/>, and a session runs with no <c>CODEX_HOME</c> at all.</para>
+///
+/// <para>Do not re-open that door without solving resume. The overlay is the
+/// session's whole Codex home, so the thread's rollout is written inside it and
+/// <see cref="Dispose"/> deletes it with the directory; <c>codex exec resume &lt;id&gt;</c>
+/// then fails with <c>thread/resume failed: no rollout found for thread id</c>
+/// once the increment ends (seen on a real session, HA-1026). Either copy the
+/// session's rollout and thread files back into the real home in
+/// <see cref="Dispose"/>, as <c>auth.json</c> is, or change the sentence
+/// <see cref="CodexAdapter.ResumeCommand"/> prints so it does not promise a join
+/// that will not outlive the increment.</para>
 /// </remarks>
 public sealed class CodexHooks : IAgentHooks
 {
