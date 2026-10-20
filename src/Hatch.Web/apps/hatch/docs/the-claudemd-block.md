@@ -1,9 +1,11 @@
 ---
 title: The CLAUDE.md block
 section: Reference
-order: 10
+order: 50
 summary: The block to paste into a repository's CLAUDE.md so its agents know how to reach the board.
 ---
+
+## What it is and where it goes
 
 The runner spawns a `claude` session per increment, inside your checkout. What
 that session knows about the board is whatever your repository's `CLAUDE.md`
@@ -14,6 +16,22 @@ and when to stop and ask rather than guess.
 Paste it as its own section. The commands in it are the runner's own, so they
 work from any directory once `hatch config` has run; nothing in it names a path
 in your repository, and nothing in it needs editing to fit one.
+
+That is deliberate. The block says `hatch` and never a path to a script, because
+the commands in it are the installed binary's: they work from any directory once
+`hatch config` has run, whichever repository the session was spawned in. A path
+that exists in only one checkout would be true of exactly one installation, and
+the block is for every one of them.
+
+This page is the block's home. Copy it from here; the repository's own
+`CLAUDE.md` is the copy that gets read, and this is the copy that is kept
+current.
+
+## The block
+
+Everything inside the fence below is the block, and everything between the
+contract marks is what to copy. The first line of it is the heading to paste
+under.
 
 <!-- claude-contract:start -->
 ````markdown
@@ -194,3 +212,40 @@ Two things in it point at documentation rather than restating it —
 own **Docs** page, under the gear beside this one. Every Hatch image carries the
 whole of this documentation, so the sessions your board dispatches can read it
 without leaving the machine.
+
+## What each part is for
+
+**Reaching Hatch** is the part that stops a session inventing `curl`. It lists
+the commands a working session makes, says which of them need a checkout and
+which are one request, and gives the three layers the settings come from: an
+exported `HATCH_BASE` or `HATCH_KEY`, then `scripts/.env` in the checkout, then
+the per-user file `hatch config` writes. The key lives outside the artifact, so
+it is never a tracked file or a value in a commit. It also tells a session how
+to read a refusal: a `403` means the key works and the route is not one a key
+may take, so ask the operator; a `401` is either a key that was sent and refused
+or no key against a Hatch that wants one. [CLI reference](cli-reference) has
+every command, [Environment variables](environment-variables) has the settings,
+and [People, roles and keys](people-roles-and-keys) has what a key may reach.
+
+**What an agent does with a ticket** is the routine a session follows once it
+has one: move it to in progress before starting, comment the commit sha and the
+branch, and record the pull request with `hatch pr`, or the sha it reached the
+trunk at with `hatch landed` in a project that lands there. Without those
+comments a ticket changes under nobody's eye, and the person who looks six
+months later finds code and no account of it. [How work flows](how-work-flows) is the long form.
+
+**What only the operator does** is the list of things a session must not do,
+and why a refusal there is not a fault. A terminal or deferred column, a
+protected column, and an edit to a playbook are decisions that belong to a
+person, or to the board carrying a pre-approved ticket on with no session. A
+`403` on one of them is the gate working, not a misconfiguration to route
+around. [The board and its columns](the-board-and-its-columns) explains which
+columns are which.
+
+**When a decision is not the implementer's** is what a session does at a choice
+that is not its to make: `hatch ask`, one call per question, with the choices
+named as options and one of them marked with `--recommend`, and then stop. An
+open question blocks the ticket from being dispatched at all, so nothing more is
+spawned at it until somebody answers. The answer comes back as a decision in
+the next prompt, settled. The `ask` section of [CLI reference](cli-reference)
+has the flags.
