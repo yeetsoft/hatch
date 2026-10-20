@@ -1,5 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -261,7 +262,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             && !(family is not null
                 && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
                 && family.Children(i.Id).Count > 0
-                && (i.Type == "epic"
+                && (IssueTypeKinds.RunsChildren(i.Type)
                     ? family.EpicFold(i.Id, statuses) is null
                     : family.OpenChildren(i.Id).Count == 0)));
 

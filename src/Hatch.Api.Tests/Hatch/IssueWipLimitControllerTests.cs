@@ -32,6 +32,18 @@ public class IssueWipLimitControllerTests
     }
 
     [Fact]
+    public async Task ALimit_IsSetAndReadBack_OnAReflectionToo()
+    {
+        var h = await NewAsync();
+        var reflection = await h.FileAsync("reflection", "the reflection");
+
+        var patched = await h.SetAsync(reflection.Key, "2");
+
+        Assert.Equal(2, patched.WipLimit);
+        Assert.Equal(2, (await h.ReadAsync(reflection.Key)).WipLimit);
+    }
+
+    [Fact]
     public async Task AnEmptyString_ClearsIt()
     {
         var h = await NewAsync();
@@ -100,7 +112,7 @@ public class IssueWipLimitControllerTests
         var refusal = await h.Wip.PatchIssueWipLimit(issue.Key, new IssueWipLimitRequest("2"), default);
 
         Assert.Equal(
-            $"only an epic takes a limit on its stories at once - {issue.Key} is a {type}",
+            $"only an epic or a reflection takes a limit on its children at once - {issue.Key} is a {type}",
             Reason(refusal.Result));
         Assert.Empty(await h.EventsAsync(issue.Key));
     }

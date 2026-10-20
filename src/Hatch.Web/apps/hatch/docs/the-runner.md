@@ -238,6 +238,5 @@ reference](cli-reference) has each one in full.
 
 Pages this one names that are not written yet:
 
-- `people-roles-and-keys`
 - `environment-variables`
 - `questions-and-decisions`
