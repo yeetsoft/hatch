@@ -26,9 +26,9 @@ interface Chunk {
   imports: string[];
 }
 
-let cached: Promise<Chunk> | null = null;
+let cached: Promise<{ chunk: Chunk; entry: Chunk }> | null = null;
 
-function monacoChunk(): Promise<Chunk> {
+function monacoChunk(): Promise<{ chunk: Chunk; entry: Chunk }> {
   cached ??= build({
     configFile: fileURLToPath(new URL('../../vite.config.ts', import.meta.url)),
     logLevel: 'silent',
@@ -41,20 +41,31 @@ function monacoChunk(): Promise<Chunk> {
       (item) => item.type === 'chunk' && item.moduleIds.some((id) => id.endsWith('src/lib/monaco.ts')),
     );
     if (!chunk) throw new Error('no output chunk has src/lib/monaco.ts among its modules');
-    return chunk;
+    const entry = output.find(
+      (item) => item.type === 'chunk' && item.moduleIds.some((id) => id.endsWith('src/main.tsx')),
+    );
+    if (!entry) throw new Error('no output chunk has src/main.tsx among its modules');
+    return { chunk, entry };
   });
   return cached;
 }
 
 describe('the Monaco chunk', () => {
   it('finds the chunk it reads', async () => {
-    const chunk = await monacoChunk();
+    const { chunk } = await monacoChunk();
     expect(chunk.fileName).toMatch(/^assets\/monaco-/);
   });
 
-  it("imports only the preload helper's own chunk, never the entry's", async () => {
-    const chunk = await monacoChunk();
-    expect(chunk.imports).toHaveLength(1);
-    expect(chunk.imports[0]).toMatch(/^assets\/vite-preload-/);
+  // Not `toHaveLength(1)` any more (HA-1058): once something dynamically
+  // imports lib/mermaid.ts for real, cssColor.ts - shared by editorTheme.ts
+  // and mermaidTheme.ts - becomes reachable from two separate lazy chunks and
+  // earns a hashed chunk of its own, which Monaco's chunk now also imports.
+  // That chunk's name tracks only cssColor.ts's own content, same as the
+  // preload helper's does - what this test actually guards is that neither
+  // import traces back to the entry's own hashed name.
+  it("imports the preload helper's own chunk, and never the entry's", async () => {
+    const { chunk, entry } = await monacoChunk();
+    expect(chunk.imports.some((f) => /^assets\/vite-preload-/.test(f))).toBe(true);
+    expect(chunk.imports).not.toContain(entry.fileName);
   });
 });
