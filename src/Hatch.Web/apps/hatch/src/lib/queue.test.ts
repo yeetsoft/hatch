@@ -51,6 +51,7 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  releaseNote: null,
   modelOverride: null,
   effortOverride: null,
   assignee: null,
