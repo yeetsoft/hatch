@@ -342,4 +342,3 @@ Pages this one names that are not written yet:
 - `playbooks`
 - `questions-and-decisions`
 - `review-pull-requests-and-the-merge-train`
-- `watching-the-loop`

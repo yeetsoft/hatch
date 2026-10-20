@@ -242,9 +242,3 @@ from **Agents → Runners** or by a bound it was given, and non-zero when
 something went wrong; `unless-stopped` would restart the container after a
 deliberate stop and undo the button that stopped it. A stop the board asked for
 stays stopped, and a crash is still recovered from.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `one-increment-and-the-loop`
