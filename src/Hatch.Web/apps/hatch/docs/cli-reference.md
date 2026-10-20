@@ -460,6 +460,25 @@ never has to work both. Run `go-to-work` for the pool and `do-my-work`
 separately for yours. [Sharing a board](one-increment-and-the-loop#sharing-a-board)
 has the rest, including what happens to a key that belongs to nobody.
 
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, it was interrupted, or the `--mine` key belongs to nobody. |
+| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
+| `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
+| `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
+| `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |
+
+`go-to-work` and `do-my-work` never exit `130`. They catch their own
+interrupt, print the night's tally with `interrupted` as the stop reason, and
+exit `0`. A `--mine` key that belongs to nobody ends their night the same way,
+with `0`, where `work --mine` refuses with `1`. [One increment and the
+loop](one-increment-and-the-loop#exit-codes) has `work`'s codes and the loop's
+own in prose; this table is the whole binary's.
+
+`work -i` exits with the attached session's own exit code.
+
 ## Coming
 
 Pages this one names that are not written yet:
