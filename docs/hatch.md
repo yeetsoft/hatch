@@ -7319,5 +7319,3 @@ code already settles is a round trip through a person for nothing.
   UI, and an accepted gap.
 - **Pushed updates.** The board polls (see above); a server-sent signal would
   only make the same refresh arrive sooner.
-
-## Keepalive text
