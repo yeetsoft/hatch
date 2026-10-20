@@ -106,12 +106,21 @@ describe('renderDocs on fixtures', () => {
   });
 
   it('renders a mermaid fence as a placeholder carrying its source', () => {
-    const { html, outline, ids: headingIds } = renderDocs('```mermaid\ngraph TD\n  A --> B\n```\n');
+    const { html, outline, ids: headingIds, mermaidCount } = renderDocs('```mermaid\ngraph TD\n  A --> B\n```\n');
     const m = html.match(/<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">([\s\S]*?)<\/pre><\/div>/);
     expect(m).not.toBeNull();
     expect(m![1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).toBe('graph TD\n  A --> B');
     expect(outline).toEqual([]);
     expect(headingIds).toEqual([]);
+    expect(mermaidCount).toBe(1);
+  });
+
+  it('counts two mermaid fences in one source', () => {
+    expect(renderDocs('```mermaid\na\n```\n\n```mermaid\nb\n```\n').mermaidCount).toBe(2);
+  });
+
+  it('counts no mermaid fence at all as zero', () => {
+    expect(renderDocs('no fence here\n').mermaidCount).toBe(0);
   });
 
   it('escapes a mermaid fence that carries markup', () => {
@@ -124,7 +133,9 @@ describe('renderDocs on fixtures', () => {
 
   it('leaves every non-mermaid fence to the default renderer', () => {
     for (const fenced of ['```sh\necho hi\n```\n', '```ts\nconst x = 1;\n```\n', '```\nplain\n```\n']) {
-      expect(renderDocs(fenced).html).not.toContain('hatch-docs-mermaid');
+      const { html, mermaidCount } = renderDocs(fenced);
+      expect(html).not.toContain('hatch-docs-mermaid');
+      expect(mermaidCount).toBe(0);
     }
     expect(renderDocs('    indented\n').html).not.toContain('hatch-docs-mermaid');
   });

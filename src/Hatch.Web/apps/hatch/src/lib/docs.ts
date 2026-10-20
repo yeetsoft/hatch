@@ -58,10 +58,13 @@ function escapeAttr(s: string): string {
     disagree. The output is not sanitized - that is the page's job, and a separate
     step. Links to other pages resolve to `/docs/<slug>` addresses. A local
     `Marked`, so the global instance `markdown.ts` uses is untouched. */
-export function renderDocs(source: string): { html: string; outline: OutlineEntry[]; ids: string[] } {
+export function renderDocs(
+  source: string,
+): { html: string; outline: OutlineEntry[]; ids: string[]; mermaidCount: number } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
   const ids: string[] = [];
+  let mermaidCount = 0;
   const marked = new Marked({
     walkTokens(token) {
       if (token.type === 'link') token.href = resolveDocHref(token.href);
@@ -83,12 +86,13 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
       code({ text, lang }: Tokens.Code) {
         const word = (lang ?? '').trim().split(/\s+/)[0]?.toLowerCase();
         if (word !== 'mermaid') return false;
+        mermaidCount++;
         return `<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">${escapeAttr(text)}</pre></div>`;
       },
     },
   });
   const html = marked.parse(source, { async: false });
-  return { html, outline, ids };
+  return { html, outline, ids, mermaidCount };
 }
 
 /** The id a `#fragment` names, decoded: one leading `#` off, then percent-escapes
