@@ -295,6 +295,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("ReadyAtHasTime")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ReleaseNote")
+                        .HasColumnType("text");
+
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()

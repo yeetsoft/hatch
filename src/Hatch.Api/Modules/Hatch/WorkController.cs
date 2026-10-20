@@ -231,7 +231,7 @@ public class WorkController(
             repos = RepositoryDeclaration.From(remote, standing, clones);
         }
 
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -252,7 +252,8 @@ public class WorkController(
             r.ClearNote,
             r.Model,
             r.DeniedTools,
-            r.BlockedKind)).ToList();
+            r.BlockedKind,
+            r.Deadlocked)).ToList();
     }
 
     /// <summary>

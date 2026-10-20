@@ -155,7 +155,7 @@ public class RunnersTests
     }
 
     private static Runners With(int goneAfterSeconds = 90) =>
-        new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = goneAfterSeconds }));
+        new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = goneAfterSeconds }), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()));
 
     private static EfHatchRunner Row(string? line = null) => new()
     {

@@ -53,7 +53,7 @@ internal static class TestClaims
             db,
             new Dispatch(db, actors ?? new StubActorDirectory(), rule, time),
             rule,
-            runners ?? new Runners(Options.Create(new HatchOptions())),
+            runners ?? new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions())),
             time);
     }
 }

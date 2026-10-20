@@ -2748,6 +2748,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
+| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -2763,7 +2764,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
@@ -3832,6 +3833,34 @@ useful answer and a list of reasons is not — while `work/{key}`, which somebod
 asked for by name, returns the refusal rather than a 404, because a person who
 named a ticket is owed the sentence saying why it cannot move.
 
+### Deadlocked
+
+A row is **deadlocked** when no pass will ever clear it on its own: the move it
+waits on needs other rows to move first, and every one of those waits, through
+the board's own folds, on a row that is itself stuck. A story that depends on a
+story whose open child depends on the first is the plain case, and
+`IssueDependenciesController` cannot refuse it, because it walks dependency
+edges only and the parent edge is what closes the ring.
+
+`Deadlocks.Find` works it out as a fixpoint over what each fold reports it
+waits on (`ScanRow.WaitsOn`). A row with nothing to wait on can move, and a row
+moves once everything it waits on can - except where the fold is *any-of*, as
+the work-in-progress limit is: it frees as soon as any one of the rows holding
+a slot can move, so it is deadlocked only when all of them are stuck. Whatever
+cannot move at the fixpoint is deadlocked. A row parked behind a higher
+priority tier is clear, not deadlocked: the park is not a fold.
+
+The queue marks them, and only the queue does (`work/next`, preemption and the
+dashboard pay nothing for it). The judgement is **board-wide**, whatever
+`ancestorKey`, `mine` or the runner's checkout say: a narrowed queue runs a
+second, unnarrowed scan to decide, so a row outside the subtree, or a fold for
+the wrong repository, cannot hide an edge of a ring. A live claim counts as
+movable whoever holds it.
+
+A deadlocked row has `deadlocked: true`, and its `blocked` sentence starts
+`deadlocked - ` and then says what the fold said. `blockedKind` is unchanged, so
+a deadlocked dependency row still groups with the dependency rows.
+
 ### The hop
 
 **The loop's own write, on the loop's own say-so.** Seven kinds, asked in this
@@ -4555,13 +4584,21 @@ behind {headKey}, position {n} in the train"`. That sentence is also what
 field anywhere in `QueueEntryDto`.
 
 **The driver, and how the heartbeat elects one.** `Runners.DriversAsync`
-(`Runners.cs:183-215`) elects, per project, the longest-live loop that holds
+(`Runners.cs:196-246`) elects, per project, the longest-live loop that holds
 a checkout of it — `Dispatch.HoldsCheckout`, the same rule
 `WorkController.GetReview` uses for its own eligibility, so the two can
-never disagree. Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
+never disagree. With the wall up, a project that has an owner is driven only
+by a runner whose key belongs to one of that project's owners or approvers
+(`EfHatchRunner.ForPersonId`, rewritten on every beat, against the raw
+`ProjectMembers` rows): a stranger's runner, or one on a key that belongs to
+nobody, is not a candidate however long it has run, and a project with no
+qualifying runner live has no driver, so its pull requests wait. With the
+wall off, or on a project with no owner, a role means nothing and every
+holder of a checkout is eligible. Being a site admin is not being an owner.
+Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:188-190`). Ties go to
-the oldest `FirstSeenAt`, then `Name` ordinally (`:208`) — deliberately
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). Ties go to
+the oldest `FirstSeenAt`, then `Name` ordinally (`:239`) — deliberately
 stable, so a project's driver only moves once it actually drops out of live.
 The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and

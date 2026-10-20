@@ -37,9 +37,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// exactly as it was. For a caller answering on a named runner's behalf,
     /// the row's own owner is not whoever the HTTP caller happens to be.
     /// </param>
+    /// <param name="markDeadlocks">
+    /// Mark the rows <see cref="Deadlocks.Find"/> says no pass will ever clear,
+    /// and start their sentence <c>deadlocked - </c>. Judged over the whole
+    /// board, whatever <paramref name="ancestorKey"/>, <paramref name="mine"/>
+    /// or <paramref name="repos"/> narrow this scan to, so a narrowed scan
+    /// pays for a second, unnarrowed one. Only the queue asks.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
-        CancellationToken ct, Actor? principalOverride = null)
+        CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false)
     {
         var statuses = await OrderedStatusesAsync(ct);
 
@@ -328,6 +335,26 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 parkedByKey = firstClearThisTier;
                 parkedByLevel = PriorityLevels.Name(level);
             }
+        }
+
+        if (markDeadlocks)
+        {
+            // The fixpoint is whole-board and runner-independent: a subtree, a
+            // "mine" fold or a wrong checkout would each hide an edge of the
+            // ring. A live claim is movable whoever holds it, so the token
+            // still passes through.
+            var whole = scope is not null || mine || repos.IsDeclared
+                ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
+                : rows;
+            var dead = Deadlocks.Find(whole);
+
+            // Marked after the loop and not inline, which is the same thing: a
+            // deadlocked row has a non-empty WaitsOn, which only a non-null
+            // fold produces, so the tier-park rewrite never touched it and its
+            // sentence is never null. BlockedKind stays what the fold said.
+            for (var i = 0; i < rows.Count; i++)
+                if (dead.Contains(rows[i].Issue.Id))
+                    rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
         return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace);
@@ -1498,7 +1525,7 @@ public sealed record ScanRow(
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
-    IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false);
+    IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false);
 
 /// <summary>
 /// <see cref="Dispatch.BlockedWithKind"/>'s answer: the sentence and its kind,

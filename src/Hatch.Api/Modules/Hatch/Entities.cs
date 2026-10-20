@@ -920,6 +920,17 @@ public class EfHatchIssue
     public bool? OnePullRequest { get; set; }
 
     /// <summary>
+    /// The sentence or two the changelog shows for this issue when it is
+    /// finished, or null where nobody has written one. Markdown, stored as
+    /// typed and trimmed. Written by a person at any time, or by a key under
+    /// the issue's live claim - <see cref="IssueReleaseNoteController"/> is the
+    /// only way in, and <c>IssuePatchRequest</c> deliberately carries no
+    /// field for it. The cap is the API's (<c>ReleaseNoteRequest.MaxLength</c>),
+    /// not the column's.
+    /// </summary>
+    public string? ReleaseNote { get; set; }
+
+    /// <summary>
     /// When an increment last left this ticket where it found it. Null for
     /// the overwhelming majority of issues.
     /// </summary>
@@ -1795,6 +1806,12 @@ public class EfHatchIssueEvent
     /// sides as <c>on</c>, <c>off</c> or <c>inherit</c>.
     /// </summary>
     public const string OnePrChanged = "one_pr_changed";
+
+    /// <summary>
+    /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
+    /// The payload is <c>{ from, to }</c>, either side null.
+    /// </summary>
+    public const string ReleaseNoteChanged = "release_note_changed";
 
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";

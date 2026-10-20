@@ -521,6 +521,11 @@ public record IssueClaimDto(
 /// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
 /// <paramref name="OpenQuestions"/> is.
 /// </param>
+/// <param name="ReleaseNote">
+/// The note the changelog shows for this issue, or null where none is written -
+/// see <see cref="EfHatchIssue.ReleaseNote"/>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -568,7 +573,8 @@ public record IssueDto(
     string? PullRequestReviewDecision = null,
     string? PullRequestHeadSha = null,
     DateTimeOffset? PullRequestReadAt = null,
-    DateTimeOffset? ClosedAt = null);
+    DateTimeOffset? ClosedAt = null,
+    string? ReleaseNote = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1584,6 +1590,21 @@ public record ExpressRequest(bool Express);
 public record OnePrRequest(string Value);
 
 /// <summary>
+/// An issue's release note. Null, empty or whitespace clears it.
+/// </summary>
+/// <param name="Note">The note, markdown. Trimmed before it is stored.</param>
+public record ReleaseNoteRequest(string? Note)
+{
+    /// <summary>
+    /// The longest note the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it: the
+    /// API refuses a longer one from a person, and the runner clips a
+    /// session's note to fit rather than losing it to a 400.
+    /// </summary>
+    public const int MaxLength = 2000;
+}
+
+/// <summary>
 /// The level to set, by name - <c>"none"</c>, <c>"express"</c> or
 /// <c>"preapproved"</c> - see <see cref="PreApprovalLevels"/>. One required
 /// string rather than a boolean, for the same reason <see cref="PriorityRequest"/>
@@ -1962,6 +1983,12 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// name="Blocked"/> is, or null exactly where <paramref name="Blocked"/> is
 /// null. Lets a client group the queue without parsing the sentence.
 /// </param>
+/// <param name="Deadlocked">
+/// True on a row no pass will ever clear on its own: it waits, through the
+/// board's own folds, on rows that wait on it. Its <paramref name="Blocked"/>
+/// sentence starts <c>deadlocked - </c>; <paramref name="BlockedKind"/> is
+/// what the fold said and is unchanged.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1974,7 +2001,8 @@ public record QueueEntryDto(
     string? ClearNote = null,
     string? Model = null,
     IReadOnlyList<string>? DeniedTools = null,
-    string? BlockedKind = null);
+    string? BlockedKind = null,
+    bool Deadlocked = false);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what

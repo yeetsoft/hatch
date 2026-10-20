@@ -1180,6 +1180,9 @@ export interface QueueEntry {
       `blocked` is null. Lets a client group the queue without parsing the
       sentence. As on `QueueEntryDto`. */
   blockedKind: 'working' | 'wip' | 'dependency' | 'turn' | 'family' | 'person' | 'other' | null;
+  /** True on a row no pass will clear on its own; its `blocked` sentence starts
+      `deadlocked - `. `blockedKind` is unchanged. As on `QueueEntryDto`. */
+  deadlocked?: boolean;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status
