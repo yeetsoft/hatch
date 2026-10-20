@@ -1467,6 +1467,125 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    private const string ReleaseNotePath = "/api/hatch/issues/AER-1/release-note";
+    private const string WorkLogPath = "/api/hatch/issues/AER-1/work-log";
+    private const string NoteAndLog = "```release-note\nShipped it.\n```\n```work-log\nDid a thing\n```";
+
+    private static void SaysNoteAndLog(Harness h) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: NoteAndLog));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+    private static void StubTheBoard(Harness h)
+    {
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+    }
+
+    [Fact]
+    public async Task The_release_note_is_posted_under_the_claim_before_the_work_log_row()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        StubTheBoard(h);
+        h.Wire.Json("PUT", ReleaseNotePath, Fixtures.Issue("AER-1"));
+        SaysNoteAndLog(h);
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        var put = Assert.Single(h.Wire.To("PUT", ReleaseNotePath));
+        Assert.Equal("Shipped it.", put.Read<ReleaseNoteRequest>().Note);
+        Assert.Contains($"heldToken={token}", put.Query, StringComparison.OrdinalIgnoreCase);
+
+        var calls = h.Wire.Calls.ToList();
+        Assert.True(
+            calls.FindIndex(c => c.Route == $"PUT {ReleaseNotePath}") < calls.FindIndex(c => c.Route == $"POST {WorkLogPath}"));
+        Assert.True(h.Say.Mentions("release note"));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_session_that_wrote_no_release_note_posts_none()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        StubTheBoard(h);
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Empty(h.Wire.To("PUT", ReleaseNotePath));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_release_note_is_not_posted_after_the_lease_went()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            "\"this claim has expired\"");
+        h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("PUT", ReleaseNotePath, Fixtures.Issue("AER-1"));
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: NoteAndLog));
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return new SessionResult(143, "");
+            }
+
+            return new SessionResult(0, "");
+        };
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.LostLease);
+        Assert.Single(h.Wire.To("POST", WorkLogPath));
+        Assert.Empty(h.Wire.To("PUT", ReleaseNotePath));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_refused_release_note_does_not_fail_the_increment()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        StubTheBoard(h);
+        h.Wire.Reply("PUT", ReleaseNotePath, HttpStatusCode.Conflict, "\"this issue is not claimed\"");
+        SaysNoteAndLog(h);
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Moved);
+        Assert.Single(h.Wire.To("POST", WorkLogPath));
+        Assert.Contains(h.Say.Complained, l => l.Contains("release note", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task The_line_the_session_is_inside_of_reaches_the_board()
     {

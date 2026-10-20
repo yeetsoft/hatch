@@ -343,6 +343,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
         if (cost is { } spent) _facts.CostUsd = spent;
 
         var (title, summary) = StreamRender.WorkLog(resultText);
+        _facts.ReleaseNote = StreamRender.ReleaseNote(resultText);
 
         _facts.Result = new WorkLogEntryRequest(
             SessionId: _facts.SessionId ?? "",
