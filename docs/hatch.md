@@ -1360,9 +1360,15 @@ that shares, standing in the review column or any non-terminal, non-deferred
 column to its right, with no pull request recorded on it
 (`PriorityTree.WaitingOn`). For the story's purposes it is finished:
 
-- **The next sibling is pulled.** `FamilyGate.SiblingInFlight` does not count it,
-  so a `ParentPulls` column carries the next child while this one waits, instead
-  of waiting for a merge that cannot come until every sibling is done.
+- **The next sibling is pulled.** `FamilyGate.SharedBranchSibling` does not count
+  it, so a `ParentPulls` column carries the next child while this one waits,
+  instead of waiting for a merge that cannot come until every sibling is done.
+  What holds a parent pull is a shared story's sibling at or past the
+  implementation column, not terminal, and not waiting on the story's pull
+  request: the child is folded with "{sibling}, sharing this story's branch, is
+  already in flight - one sibling at a time". Under a story with sharing off, a
+  bug or an epic there is no shared branch and no sibling holds a pull;
+  [dependencies](#dependency) order those siblings instead.
 - **Edges between siblings clear** — the exception under
   [Dependency](#dependency).
 - **The story reaches its closeout.** The fold that holds a story out of review
@@ -3793,9 +3799,11 @@ order, and this is where any of them is caught. One folds instead of landing
 exactly: an epic that clears every other test but has nothing filed under it
 is folded with "nothing is filed under it — an epic runs its stories, and it
 has none". A parent-pull child past the hold above can now only ever be
-folded by the other of `FamilyGate.Pulls`'s two conditions — a sibling
-already in flight — with "a sibling is already in flight, so only one child
-is pulled through at a time". Every refusal above this one still applies to
+folded by the other of `FamilyGate.Pulls`'s two conditions — a sibling on a
+shared story's branch already in flight — with "{sibling}, sharing this
+story's branch, is already in flight - one sibling at a time", kind `family`,
+the same sentence the implementation-column fold gives. Under anything but a
+shared story no sibling holds a pull. Every refusal above this one still applies to
 every kind of hop
 exactly as it applies to any other issue: a hop answers only "does this
 column still need a session", and nothing about a live claim, a pause, a
@@ -3849,8 +3857,9 @@ order:
 4. **parent** — a child standing in a column marked [`ParentPulls`](#status),
    whose parent has reached the implementation column — stands in it, or in
    any column to its right, a terminal column included; a deferred column
-   never counts — and none of whose siblings is standing further along, in
-   board order, than the column this issue would be pulled into (HA-149) -
+   never counts — and which has no sibling holding the pull: only a sibling on
+   a shared story's branch holds it, at or past the implementation column, not
+   terminal and not waiting on the story's pull request (HA-149, HA-1018) -
    and none of whose own [dependencies](#dependency) is unmet, which folds the
    pull instead (HA-1017).
 5. **sendback** — a childless issue standing in a column, to the right
@@ -3926,7 +3935,7 @@ Two answers, both `409`, and each carries the sentence a reader would see on
   column, a top-level epic (its own column is the signal, not a pass), an
   epic whose parent epic is not running, an epic with nothing filed under it,
   or (for a child of a `ParentPulls` column) a parent that has not reached the
-  implementation column, or a sibling already in flight, or a childless issue
+  implementation column, or a sibling on a shared story's branch already in flight, or a childless issue
   over its playbook's `BriefLimit` with no column to send it back to. The
   sentence is exactly the one `Blocked` already gives for that fold.
 - The issue is clear, but is not a hop — none of the seven kinds above applies,
@@ -5474,13 +5483,14 @@ which one it failed is what `work/queue` reports:
 
     A child standing in a column marked [`ParentPulls`](#status) is a fourth
     kind of hop, for a different reason again: its parent has reached the
-    implementation column (see [the hop](#the-hop)), and none of its siblings
-    is standing further along, in board order, than the column this issue
-    would be pulled into. Where the column is so marked but a sibling is
-    already in flight, the refinement is its own fold rather than a
-    fall-through to the seventeenth condition's "no playbook covers this":
-    "a sibling is already in flight, so only one child is pulled through at a
-    time" — the only one of `FamilyGate.Pulls`'s two conditions this fold can
+    implementation column (see [the hop](#the-hop)), and no sibling holds the
+    pull: only a sibling on a shared story's branch does, at or past the
+    implementation column, not terminal and not waiting on the story's pull
+    request. Where the column is so marked but such a sibling is already in
+    flight, the refinement is its own fold rather than a fall-through to the
+    seventeenth condition's "no playbook covers this": "{sibling}, sharing this
+    story's branch, is already in flight - one sibling at a time", kind
+    `family` — the only one of `FamilyGate.Pulls`'s two conditions this fold can
     still be naming, since the hold above has already spoken for a parent
     that has not started.
 

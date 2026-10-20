@@ -2612,6 +2612,7 @@ public class WorkControllerTests
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
         var parent = await h.FileAsync("story", "the epic", h.InProgress);
+        await h.OnePrAsync(parent, true);
         // Claimed, so the sibling already pulled through is folded rather
         // than a second, clear normal-tier candidate of its own - this test
         // is about the family's own folds, not a third row it did not mean
@@ -5182,7 +5183,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task AChildWithASiblingInFlight_IsFoldedNamingThat()
+    public async Task AChildWithASiblingInFlight_UnderAStoryNotSharingItsBranch_IsStillAParentHop()
     {
         var h = await NewAsync();
         var parent = await h.FileAsync("story", "the epic", h.InProgress);
@@ -5192,11 +5193,9 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
 
-        Assert.Equal(
-            "a sibling is already in flight, so only one child is pulled through at a time",
-            entry.Blocked);
-        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
-        Assert.False(entry.Hop);
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
     [Fact]
@@ -9685,7 +9684,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task OnePr_Off_ASiblingInReview_StillHoldsBackTheNextChild()
+    public async Task OnePr_Off_ASiblingInReview_DoesNotHoldBackTheNextChild()
     {
         var h = await NewAsync();
         var (story, _) = await OnePrStoryAsync(h, on: false);
@@ -9694,7 +9693,9 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
 
-        Assert.Equal("a sibling is already in flight, so only one child is pulled through at a time", entry.Blocked);
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
     [Fact]
@@ -9708,7 +9709,8 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
 
-        Assert.Equal("a sibling is already in flight, so only one child is pulled through at a time", entry.Blocked);
+        Assert.Equal(SharedBranchHold(sibling), entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
     }
 
     private static string SharedBranchHold(EfHatchIssue sibling) =>
@@ -9987,6 +9989,90 @@ public class WorkControllerTests
     }
 
     // ---- One pull request: one sibling at a time ----
+
+    private static async Task<(EfHatchIssue T1, EfHatchIssue T2, EfHatchIssue T3)> ChainedTasksAsync(Harness h, NineColumns nine, bool shared)
+    {
+        await h.TickImplementationAsync(h.InProgress);
+        await h.TickParentPullsAsync(nine.Draft);
+        await h.TickParentPullsAsync(h.Todo);
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        if (shared) await h.OnePrAsync(story, true);
+        var t1 = await h.FileAsync("task", "first", nine.Draft, rank: 1024, parentId: story.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", nine.Draft, rank: 2048, parentId: story.Id);
+        var t3 = await h.FileAsync("task", "third, after the second", h.Todo, rank: 3072, parentId: story.Id);
+        await h.DependsAsync(t2, t1);
+        await h.DependsAsync(t3, t2);
+        return (t1, t2, t3);
+    }
+
+    private static void AssertChainedByDependencies(IReadOnlyList<QueueEntryDto> queue, EfHatchIssue t1, EfHatchIssue t2, EfHatchIssue t3)
+    {
+        var first = queue.Single(e => e.Issue.Key == Key(t1));
+        Assert.Null(first.Blocked);
+        Assert.True(first.Hop);
+        Assert.Equal(HopKinds.Parent, first.HopKind);
+
+        foreach (var (task, before) in new[] { (t2, t1), (t3, t2) })
+        {
+            var entry = queue.Single(e => e.Issue.Key == Key(task));
+            Assert.Equal($"{Key(before)} is not done, and this cannot be implemented until it is", entry.Blocked);
+            Assert.Equal(BlockedKinds.Dependency, entry.BlockedKind);
+            Assert.False(entry.Hop);
+        }
+    }
+
+    [Fact]
+    public async Task OnePr_Off_ChainedTasksInTheLeftColumns_AreOrderedByDependenciesAlone()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        var (t1, t2, t3) = await ChainedTasksAsync(h, nine, shared: false);
+
+        AssertChainedByDependencies(Value(await h.Work.GetQueue(0, null, default)), t1, t2, t3);
+    }
+
+    [Fact]
+    public async Task OnePr_ChainedTasksInTheLeftColumns_AreOrderedByDependenciesAlone()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        var (t1, t2, t3) = await ChainedTasksAsync(h, nine, shared: true);
+
+        AssertChainedByDependencies(Value(await h.Work.GetQueue(0, null, default)), t1, t2, t3);
+    }
+
+    [Fact]
+    public async Task OnePr_ASiblingInProgress_FoldsTheParentPullNamingIt()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Equal(SharedBranchHold(first), entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_TwoIndependentSiblings_OneInProgress_TheOtherIsAParentHop()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "independent of it", h.Inbox, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+    }
 
     [Fact]
     public async Task OnePr_ASiblingsClaim_FoldsTheOtherTask()

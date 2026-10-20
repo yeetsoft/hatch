@@ -779,7 +779,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// issue is.
     /// </param>
     /// <param name="statuses">
-    /// The board, for the same board-order comparison <see cref="FamilyGate.SiblingInFlight"/>
+    /// The board, for the same sibling check <see cref="FamilyGate.SharedBranchSibling"/>
     /// runs to decide <paramref name="hop"/> - needed again here so the
     /// ParentPulls fold below can name which of its two reasons applies,
     /// without re-deriving the rule <see cref="FamilyGate.Pulls"/> already
@@ -1037,7 +1037,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (to.Id == implementation?.Id
             && family.SharedBranchSibling(issue, statuses) is { } sibling)
-            return ($"{sibling}, sharing this story's branch, is already in flight - one sibling at a time", BlockedKinds.Family);
+            return (FamilyGate.SharedBranchHold(sibling), BlockedKinds.Family);
 
         // The mirror of the dependency fold above: that one gates the move in,
         // this one gates the move out. An issue standing in the implementation
@@ -1123,11 +1123,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // still unmet here. The other - a parent that has not reached the
         // implementation column - is the fold above, for every story, bug or
         // task before it can ever reach this one, so this can now only ever
-        // speak for a sibling already in flight. A childless issue in such a
-        // column (e.g. plain Backlog) has nothing to pull, so it falls
-        // through unchanged.
-        if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses))
-            return ("a sibling is already in flight, so only one child is pulled through at a time", BlockedKinds.Family);
+        // speak for a sibling on the story's shared branch, still in flight.
+        // A childless issue in such a column (e.g. plain Backlog) has nothing
+        // to pull, so it falls through unchanged.
+        if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses)
+            && family.SharedBranchSibling(issue, statuses) is { } sharedHold)
+            return (FamilyGate.SharedBranchHold(sharedHold), BlockedKinds.Family);
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak >= claimed.Claims!.StallResumeLimit)
             return ($"sent back {sendBackStreak} times in a row, at this board's limit of " +
@@ -2077,47 +2078,15 @@ public sealed class FamilyGate
         && Columns.AtOrPastImplementation(statuses, statusId);
 
     /// <summary>
-    /// Whether a sibling of this issue is in flight - see HA-149: standing
-    /// strictly right, in board order, of the column this issue would be pulled
-    /// into, and not terminal.
-    /// </summary>
-    public bool SiblingInFlight(EfHatchIssue issue, List<EfHatchStatus> statuses)
-    {
-        if (issue.ParentId is not { } parentId) return false;
-        if (statuses.FirstOrDefault(s => s.Id == issue.StatusId) is not { } from) return false;
-        if (Columns.Target(statuses, from) is not { } target) return false;
-
-        var board = Columns.Board(statuses);
-        var targetIndex = board.FindIndex(s => s.Id == target.Id);
-
-        foreach (var siblingId in Children(parentId))
-        {
-            if (siblingId == issue.Id) continue;
-            if (!_statusById.TryGetValue(siblingId, out var siblingStatusId)) continue;
-
-            // Finished, as far as the parent is concerned: it has pushed to the
-            // shared branch and waits there for the one pull request to merge.
-            // Without this the next sibling would wait for a merge that cannot
-            // happen until every sibling is done.
-            if (_waiting.Contains(siblingId)) continue;
-
-            var siblingIndex = board.FindIndex(s => s.Id == siblingStatusId);
-            if (siblingIndex <= targetIndex) continue; // not pulled past yet, or deferred (-1)
-            if (board[siblingIndex].IsTerminal) continue;
-
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// The key of the first sibling in flight on the story's shared branch, or
     /// null where this issue shares none or no sibling is. In flight is judged
     /// by the sibling's own row: at or past the implementation column, not
     /// terminal, and not waiting on the story's pull request. Whether the
     /// sibling has a pull request of its own does not matter - this issue is
-    /// the one that would go on the story's branch.
+    /// the one that would go on the story's branch. This is also the only
+    /// thing that holds a parent pull (see <see cref="Pulls"/>): under a story
+    /// with sharing off, a bug or an epic there is no shared branch, and
+    /// dependencies order the siblings instead.
     /// </summary>
     public string? SharedBranchSibling(EfHatchIssue issue, List<EfHatchStatus> statuses)
     {
@@ -2139,12 +2108,17 @@ public sealed class FamilyGate
         return null;
     }
 
+    /// <summary>The sentence a sibling in flight on the shared branch holds an issue back with.</summary>
+    public static string SharedBranchHold(string sibling) =>
+        $"{sibling}, sharing this story's branch, is already in flight - one sibling at a time";
+
     /// <summary>
     /// Whether this issue's column may carry it one column right with no
-    /// session - see HA-149.
+    /// session - see HA-149: its parent has started, and no sibling is in
+    /// flight on the story's shared branch.
     /// </summary>
     public bool Pulls(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
         issue.ParentId is { } parentId
         && ParentStarted(parentId, statuses)
-        && !SiblingInFlight(issue, statuses);
+        && SharedBranchSibling(issue, statuses) is null;
 }
