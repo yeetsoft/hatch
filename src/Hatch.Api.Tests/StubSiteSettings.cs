@@ -26,6 +26,8 @@ internal sealed class StubSiteSettings(
     string? immichBaseUrl = null,
     string? immichApiKey = null,
     string? claudeSubscriptionToken = null,
+    string? codexApiKey = null,
+    string? xaiApiKey = null,
     string? localPersonName = null) : ISiteSettingsService
 {
     public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(new SiteSettingsSnapshot(
@@ -51,6 +53,8 @@ internal sealed class StubSiteSettings(
         ImmichBaseUrl: immichBaseUrl,
         ImmichApiKey: immichApiKey,
         ClaudeSubscriptionToken: claudeSubscriptionToken,
+        CodexApiKey: codexApiKey,
+        XaiApiKey: xaiApiKey,
         LocalPersonName: localPersonName));
 
     /// <summary>Counted rather than ignored: SettingsController is supposed to call it on every write.</summary>
