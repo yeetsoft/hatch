@@ -4,11 +4,12 @@
    data-theme>` - which is what tokens.css keys its dark palette on.
 
    This file is framework-free on purpose. <ThemeProvider> is one caller; the
-   other is standalone/topbar.ts, the bar that renders on pages Hatch did not
-   build with Vite and React (Swagger UI, the logo export). Those pages must
-   read and write the *same* stored choice as the apps - a house where the
-   theme you picked in admin does not survive the click into Swagger is a house
-   with two themes - and importing ThemeProvider to get it would drag React
+   others are standalone/topbar.ts, the bar that renders on pages Hatch did not
+   build with Vite and React (Swagger UI, the logo export), and the public
+   site's theme.ts, which applies the stored choice and has no control. Those
+   callers must read and write the *same* stored choice as the apps - a house
+   where the theme you picked in admin does not survive the click into Swagger
+   is a house with two themes - and importing ThemeProvider to get it would drag React
    onto a static page to run twelve lines of localStorage.
 
    So the mechanism lives here and both callers use it. The React file below

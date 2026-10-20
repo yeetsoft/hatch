@@ -12,6 +12,7 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
     "./base.css": "./src/base.css",
+    "./themeStore": "./src/theme/themeStore.ts",
     "./menuState": "./src/components/menuState.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",
     "./calloutSubject": "./src/components/calloutSubject.ts",
