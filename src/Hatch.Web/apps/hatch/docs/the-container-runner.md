@@ -246,6 +246,5 @@ stays stopped, and a crash is still recovered from.
 
 Pages this one links to that are not written yet:
 
-- `watching-the-loop`
 - `one-increment-and-the-loop`
 - `environment-variables`
