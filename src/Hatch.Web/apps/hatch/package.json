@@ -21,6 +21,7 @@
     "@hatch/ui": "*",
     "dompurify": "^3.4.13",
     "marked": "^18.0.7",
+    "mermaid": "^12.2.0",
     "monaco-editor": "0.57.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
