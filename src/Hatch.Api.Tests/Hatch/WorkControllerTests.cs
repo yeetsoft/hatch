@@ -6652,12 +6652,153 @@ public class WorkControllerTests
         Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
     }
 
+    // ---- Blocking ids ----
+    //
+    // A fold that waits on other issues carries their ids out to the scan row,
+    // for the deadlock check: all of them for a dependency or an open child,
+    // any one of them for a full WIP section. A fold that waits on a person, a
+    // clock or a build waits on no issue at all.
+
+    private static async Task<ScanRow> ScanRowAsync(Harness h, EfHatchIssue issue)
+    {
+        var scan = await new Dispatch(h.Db, h.Actors, TestClaims.With(), h.Time)
+            .ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        return scan.Rows.Single(r => r.Issue.Id == issue.Id);
+    }
+
+    [Fact]
+    public async Task BlockingIds_ADependency_WaitsOnTheBlockersId()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("story", "phase one", h.Review);
+        var second = await h.FileAsync("story", "phase two", h.Todo);
+        await h.DependsAsync(second, first);
+
+        var row = await ScanRowAsync(h, second);
+
+        Assert.Equal(BlockedKinds.Dependency, row.BlockedKind);
+        Assert.Equal([first.Id], row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_SeveralDependencies_WaitOnEveryBlockersId()
+    {
+        var h = await NewAsync();
+        var one = await h.FileAsync("story", "phase one", h.Review);
+        var two = await h.FileAsync("story", "phase one and a half", h.Todo);
+        var last = await h.FileAsync("story", "phase two", h.Todo);
+        await h.DependsAsync(last, two);
+        await h.DependsAsync(last, one);
+
+        var row = await ScanRowAsync(h, last);
+
+        Assert.Equal(new[] { one.Id, two.Id }.Order(), row.WaitsOn!.Order());
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_AnOpenChild_IsWhatItsParentWaitsOn()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        var child = await h.FileAsync("task", "not started", h.Todo, parentId: parent.Id);
+
+        var row = await ScanRowAsync(h, parent);
+
+        Assert.Equal(BlockedKinds.Family, row.BlockedKind);
+        Assert.Equal([child.Id], row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_AFullWipSection_WaitsOnAnyOfTheStoriesInIt()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(2, h.InProgress, h.Review);
+        var inside = await h.FileAsync("story", "already inside", h.InProgress, rank: 512);
+        var insideToo = await h.FileAsync("story", "already inside too", h.Review, rank: 512);
+        var waiting = await h.FileAsync("story", "waiting to get in", h.Todo, rank: 1024);
+
+        var row = await ScanRowAsync(h, waiting);
+
+        Assert.Equal(BlockedKinds.Wip, row.BlockedKind);
+        Assert.True(row.AnyOf);
+        Assert.Equal(new[] { inside.Id, insideToo.Id }.Order(), row.WaitsOn!.Order());
+    }
+
+    [Fact]
+    public async Task BlockingIds_ASiblingInFlightOnTheSharedBranch_IsWhatItWaitsOn()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
+
+        var row = await ScanRowAsync(h, next);
+
+        Assert.Equal([first.Id], row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_ATaskWaitingOnItsStorysPullRequest_WaitsOnTheStory()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+
+        var row = await ScanRowAsync(h, waiting);
+
+        Assert.Equal([story.Id], row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_AParentNotYetStarted_IsWhatItsChildWaitsOn()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Inbox);
+        var task = await h.FileAsync("task", "the task", h.Todo, parentId: story.Id);
+
+        var row = await ScanRowAsync(h, task);
+
+        Assert.Equal([story.Id], row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_AQuestion_WaitsOnNoIssue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a story", h.Todo);
+        await h.AskAsync(issue, "which approach?");
+
+        var row = await ScanRowAsync(h, issue);
+
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+        Assert.Null(row.WaitsOn);
+        Assert.False(row.AnyOf);
+    }
+
+    [Fact]
+    public async Task BlockingIds_AClearRow_WaitsOnNoIssue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a story", h.Todo);
+
+        var row = await ScanRowAsync(h, issue);
+
+        Assert.Null(row.Blocked);
+        Assert.Null(row.WaitsOn);
+    }
+
     [Fact]
     public void BlockedWithKind_TheThreeFoldsNoQueueRowReaches_AreTaggedByTheTable()
     {
         // ScanAsync skips a column with no target, so no queue row carries these.
         // Each returns before it reads anything but the columns and the hop kind.
-        static (string? Sentence, string? Kind) Fold(EfHatchStatus from, EfHatchStatus? to) =>
+        static Blocking Fold(EfHatchStatus from, EfHatchStatus? to) =>
             Dispatch.BlockedWithKind(
                 null!, from, to, null, 0, 0, 0, null, null, default!, default!, default!, null, null, default!,
                 null!, null!, null, null!, null, null!);

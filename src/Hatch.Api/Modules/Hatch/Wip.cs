@@ -237,6 +237,10 @@ public sealed class WipSection
     /// </summary>
     public int LoadUnder(long epicId) => Slices.First(s => s.Counts("story")).LoadUnder(epicId);
 
+    /// <summary>The issues behind <see cref="LoadUnder"/>, less <paramref name="exceptId"/> - see <see cref="WipSlice.CountedUnder"/>.</summary>
+    public IReadOnlyList<long> CountedUnder(long epicId, long exceptId) =>
+        Slices.First(s => s.Counts("story")).CountedUnder(epicId, exceptId);
+
     public WipDto ToDto() => new(StatusIds, Slices.Select(s => s.ToDto()).ToList());
 }
 
@@ -291,6 +295,38 @@ public sealed class WipSlice
     /// a story under the epic carries the story's id, never the epic's.
     /// </summary>
     public int LoadUnder(long epicId) => _counted.Count(id => _parents.GetValueOrDefault(id) == epicId);
+
+    /// <summary>
+    /// The ids behind <see cref="LoadUnder"/>, sorted, less <paramref name="exceptId"/> -
+    /// the epic's other counted children, any one of which leaving frees a slot
+    /// under its limit.
+    /// </summary>
+    public IReadOnlyList<long> CountedUnder(long epicId, long exceptId) =>
+        _counted.Where(id => id != exceptId && _parents.GetValueOrDefault(id) == epicId).Order().ToList();
+
+    /// <summary>
+    /// The family roots <see cref="Load"/> is made of, less the one this issue
+    /// is itself charged to, sorted: the issues any one of which leaving frees
+    /// a slot for it. Roots only, since a counted descendant of a root takes no
+    /// slot of its own and its leaving frees nothing. The root this issue is
+    /// charged to is the topmost counted id on its own line, this issue
+    /// included - the one <see cref="Counted"/> makes the fold subtract.
+    /// </summary>
+    public IReadOnlyList<long> Holders(EfHatchIssue issue)
+    {
+        long? own = null;
+        var seen = new HashSet<long>();
+        long? at = issue.Id;
+        while (at is { } id && seen.Add(id))
+        {
+            if (_counted.Contains(id)) own = id;
+            at = _parents.GetValueOrDefault(id);
+        }
+
+        return _counted
+            .Where(id => id != own && !Wip.HasAncestorIn(id, _counted, _parents))
+            .Order().ToList();
+    }
 
     public WipSliceLoadDto ToDto() => new(Types, Limit, Load, ClaimedInbound);
 }
