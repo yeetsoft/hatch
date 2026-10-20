@@ -5002,6 +5002,27 @@ button.hatch-option.chosen {
   gap: var(--sp-3);
 }
 
+.hatch-changelog-day + .hatch-changelog-day {
+  margin-top: var(--sp-5);
+}
+
+/* One day's fixes: a flat, compact list - no Card, matching the brief's
+   "one-liner" language for a fix. */
+.hatch-changelog-fixes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-changelog-fixes li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 .hatch-cumulative-flow-legend-item {
   display: flex;
   align-items: center;
