@@ -123,6 +123,43 @@ hatch_ak_…`.
 - **Where the key goes:** never into the artifact — [the runner](the-runner#where-the-key-never-goes)
   says where it stays instead.
 
+## 401 and 403
+
+Two refusals a program meets at `/api`, and they say different things. Browser
+navigation to `/apps/hatch` on a walled Hatch does not meet either: it is sent
+to sign-in instead.
+
+- **A `401` is the wall.** Either a key was sent and refused — never minted,
+  mistyped, or revoked — or no key was sent to a Hatch that has its wall on.
+  The CLI tells the two apart:
+  - No key sent: ``hatch: 401 - no key was sent and this Hatch has its wall on. Run `hatch config`.``
+  - Key sent: `hatch: 401 - the key was not accepted. Minted, not revoked, copied whole?`
+- **A `403` is a gate.** The wall let the caller in and a rule behind it said
+  no. There are two kinds.
+  - **The role gate** answers `{ "error": "<code>" }`, with one of:
+    - `pending_approval` — the person has not been let in yet, and is refused
+      at every level.
+    - `not_admin` — the person's role is below what the route asks for.
+    - `no_person` — an enrolled device nobody has claimed.
+    - `key_not_accepted` — a key reached a route that takes no key at all.
+    - `scope_mismatch` — a key reached a route that takes a scope this key does
+      not carry.
+  - **A project or person-only refusal** is a bare sentence rather than a
+    code:
+    - `only an owner or approver of <KEY> may move work into "<column>"`
+    - `only an owner of <KEY> may add or remove its members`
+    - `only an owner of <KEY> may change how its work lands`
+    - `only an owner of <KEY> may change whether its playbooks are sourced from its repository`
+    - `only an owner or approver of <KEY> may set pre-approval - it is the approve press given in advance`
+    - `setting an issue's pre-approval level is a person's call, not an agent's`
+    - `moving work into a protected column is an owner's or approver's call, not an agent's`
+- **What the CLI prints for a `403`** is one fixed line, whatever the cause:
+  `hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).`
+  It drops the answer's body, so it can misdescribe the cause: the route may
+  be one a key takes, and the refusal a project's rule about who may make
+  that change. The real reason is in the API's own answer, which `hatch api …`
+  shows, and in the sentences above.
+
 ## Coming
 
 Pages this one links to that are not written yet:
