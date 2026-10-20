@@ -53,7 +53,7 @@ public class SettingsControllerTests
 
         var stored = fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.ClaudeSubscriptionToken).Value;
         Assert.DoesNotContain("sk-ant-oat-1", stored);
-        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetTokenAsync(default));
+        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetAsync("claude", default));
     }
 
     /// <summary>The whole of "clearing it removes it": a value sent, not a second verb.</summary>
@@ -66,7 +66,7 @@ public class SettingsControllerTests
         var settings = await fixture.Controller.PutHatchSettings(new(ClaudeSubscriptionToken: "", null), default);
 
         Assert.Equal("", settings.ClaudeSubscriptionToken);
-        Assert.Null(await fixture.Credential.GetTokenAsync(default));
+        Assert.Null(await fixture.Credential.GetAsync("claude", default));
     }
 
     /// <summary>A second save replaces rather than appends - there is one row, and it is the one the admin page wrote to.</summary>
@@ -79,7 +79,7 @@ public class SettingsControllerTests
         await fixture.Controller.PutHatchSettings(new(ClaudeSubscriptionToken: "second", null), default);
 
         Assert.Single(fixture.Db.SiteSettings.Where(s => s.Key == SiteSettingKeys.ClaudeSubscriptionToken));
-        Assert.Equal("second", await fixture.Credential.GetTokenAsync(default));
+        Assert.Equal("second", await fixture.Credential.GetAsync("claude", default));
     }
 
     /// <summary>
@@ -95,7 +95,150 @@ public class SettingsControllerTests
         var settings = await fixture.Controller.GetHatchSettings(default);
 
         Assert.NotEqual("", settings.ClaudeSubscriptionToken);
-        Assert.Equal("set-by-the-admin-page", await fixture.Credential.GetTokenAsync(default));
+        Assert.Equal("set-by-the-admin-page", await fixture.Credential.GetAsync("claude", default));
+    }
+
+    // ---- The agent keys, held exactly as the token is ----
+
+    private static HatchSettingsWriteRequest Write(string key, string? value) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => new(null, null, CodexApiKey: value),
+        SiteSettingKeys.XaiApiKey => new(null, null, XaiApiKey: value),
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string Read(HatchSettingsDto dto, string key) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => dto.CodexApiKey,
+        SiteSettingKeys.XaiApiKey => dto.XaiApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string? Plaintext(SiteSettingsSnapshot snapshot, string key) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => snapshot.CodexApiKey,
+        SiteSettingKeys.XaiApiKey => snapshot.XaiApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnAgentKeyNobodySet_ReadsEmpty(string key)
+    {
+        var settings = await NewFixture().Controller.GetHatchSettings(default);
+
+        Assert.Equal("", Read(settings, key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ASavedAgentKey_ReadsBackAsDotsAndNeverAsItself(string key)
+    {
+        var fixture = NewFixture();
+
+        var written = await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+        var read = await fixture.Controller.GetHatchSettings(default);
+
+        foreach (var dto in new[] { written, read })
+        {
+            Assert.NotEqual("", Read(dto, key));
+            Assert.DoesNotContain("sk-agent-1", System.Text.Json.JsonSerializer.Serialize(dto));
+        }
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ASavedAgentKey_IsProtectedAtRestUnderItsOwnKey(string key)
+    {
+        var fixture = NewFixture();
+
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
+        Assert.DoesNotContain("sk-agent-1", stored);
+        Assert.Equal("sk-agent-1", SecretProtector.Unprotect(stored));
+        Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ClearingAnAgentKey_LeavesItReadingExactlyLikeOneNobodySet(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var settings = await fixture.Controller.PutHatchSettings(Write(key, ""), default);
+
+        Assert.Equal("", Read(settings, key));
+        Assert.True(string.IsNullOrWhiteSpace(Plaintext(await fixture.Settings.GetAsync(default), key)));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnOmittedAgentKey_IsLeftAlone(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var settings = await fixture.Controller.PutHatchSettings(new(null, LocalPersonName: "Grace"), default);
+
+        Assert.NotEqual("", Read(settings, key));
+        Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task SavingAnAgentKeyAgain_ReplacesItInPlace(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "first"), default);
+
+        await fixture.Controller.PutHatchSettings(Write(key, "second"), default);
+
+        Assert.Single(fixture.Db.SiteSettings.Where(s => s.Key == key));
+        Assert.Equal("second", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    /// <summary>A key the admin page's generic Upsert wrote - same row, same protection - is already set here.</summary>
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnAgentKeySetByTheAdminPage_ReadsBackOnIt(string key)
+    {
+        var fixture = NewFixture((key, SecretProtector.Protect("set-by-the-admin-page")));
+
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.NotEqual("", Read(settings, key));
+        Assert.Equal("set-by-the-admin-page", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    /// <summary>Three credentials in one table: writing one must not touch the other two.</summary>
+    [Fact]
+    public async Task WritingOneCredential_DoesNotDisturbTheOtherTwo()
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(new("claude-1", null, CodexApiKey: "codex-1", XaiApiKey: "xai-1"), default);
+
+        await fixture.Controller.PutHatchSettings(new(null, null, CodexApiKey: "codex-2"), default);
+        var snapshot = await fixture.Settings.GetAsync(default);
+
+        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
+        Assert.Equal("codex-2", snapshot.CodexApiKey);
+        Assert.Equal("xai-1", snapshot.XaiApiKey);
+
+        await fixture.Controller.PutHatchSettings(new(null, null, XaiApiKey: ""), default);
+        snapshot = await fixture.Settings.GetAsync(default);
+
+        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
+        Assert.Equal("codex-2", snapshot.CodexApiKey);
+        Assert.True(string.IsNullOrWhiteSpace(snapshot.XaiApiKey));
     }
 
     /// <summary>Not a secret, so it comes back to be edited rather than redacted.</summary>
@@ -132,7 +275,7 @@ public class SettingsControllerTests
         var settings = await fixture.Controller.PutHatchSettings(new(null, LocalPersonName: "Grace"), default);
 
         Assert.Equal("Grace", settings.LocalPersonName);
-        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetTokenAsync(default));
+        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetAsync("claude", default));
     }
 
     [Fact]
@@ -179,7 +322,7 @@ public class SettingsControllerTests
 
         var answer = await fixture.Controller.GetClaudeToken(default);
 
-        var dto = Assert.IsType<ClaudeTokenDto>(answer.Value);
+        var dto = Assert.IsType<CredentialDto>(answer.Value);
         Assert.DoesNotContain("sk-ant-oat-1", dto.ProtectedToken);
         Assert.Equal("sk-ant-oat-1", SecretProtector.Unprotect(dto.ProtectedToken));
     }
@@ -229,8 +372,98 @@ public class SettingsControllerTests
         Assert.DoesNotContain("sk-ant-oat-1", System.Text.Json.JsonSerializer.Serialize(refusal.Value));
     }
 
+    // ---- credentials/{agent}: the same answer for every agent ----
+
+    private static HatchSettingsWriteRequest WriteAgent(string agent, string? value) => agent switch
+    {
+        "claude" => new(ClaudeSubscriptionToken: value, null),
+        "codex" => new(null, null, CodexApiKey: value),
+        "grok" => new(null, null, XaiApiKey: value),
+        _ => throw new ArgumentOutOfRangeException(nameof(agent), agent, null),
+    };
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    [InlineData("grok")]
+    public async Task TheCredentialRoute_AnswersItWrappedTheWayTheStoreWrapsIt(string agent)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(WriteAgent(agent, "sk-secret-1"), default);
+
+        var answer = await fixture.Controller.GetCredential(agent, default);
+
+        var dto = Assert.IsType<CredentialDto>(answer.Value);
+        Assert.DoesNotContain("sk-secret-1", dto.ProtectedToken);
+        Assert.Equal("sk-secret-1", SecretProtector.Unprotect(dto.ProtectedToken));
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    [InlineData("grok")]
+    public async Task WithNoCredentialSaved_TheCredentialRouteAnswersNoContent(string agent)
+    {
+        var answer = await NewFixture().Controller.GetCredential(agent, default);
+
+        Assert.IsType<NoContentResult>(answer.Result);
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    [InlineData("grok")]
+    public async Task WithTheCredentialCleared_TheCredentialRouteAnswersNoContent(string agent)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(WriteAgent(agent, "sk-secret-1"), default);
+        await fixture.Controller.PutHatchSettings(WriteAgent(agent, ""), default);
+
+        Assert.IsType<NoContentResult>((await fixture.Controller.GetCredential(agent, default)).Result);
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    [InlineData("grok")]
+    public async Task WithTheWallUp_TheCredentialRouteRefusesEverybody(string agent)
+    {
+        var fixture = NewFixture(authEnabled: true);
+        await fixture.Controller.PutHatchSettings(WriteAgent(agent, "sk-secret-1"), default);
+
+        var answer = await fixture.Controller.GetCredential(agent, default);
+
+        var refusal = Assert.IsType<ObjectResult>(answer.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, refusal.StatusCode);
+        Assert.IsType<AuthErrorDto>(refusal.Value);
+        Assert.DoesNotContain("sk-secret-1", System.Text.Json.JsonSerializer.Serialize(refusal.Value));
+    }
+
+    /// <summary>An agent this Hatch has no credential for is not "none saved": it is a route that does not exist.</summary>
+    [Theory]
+    [InlineData("gemini")]
+    [InlineData("Claude")]
+    public async Task AnUnknownAgent_IsNotFound(string agent)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(new("claude-1", null, CodexApiKey: "codex-1", XaiApiKey: "xai-1"), default);
+
+        var answer = await fixture.Controller.GetCredential(agent, default);
+
+        Assert.IsType<NotFoundResult>(answer.Result);
+    }
+
+    /// <summary>The wall is checked before the agent is, so a refused caller learns nothing about which agents exist.</summary>
+    [Fact]
+    public async Task WithTheWallUp_AnUnknownAgentIsRefusedNotNotFound()
+    {
+        var answer = await NewFixture(authEnabled: true).Controller.GetCredential("gemini", default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(answer.Result).StatusCode);
+    }
+
     /// <summary>
-    /// The split itself, asserted rather than described: the token route takes
+    /// The split itself, asserted rather than described: the credential routes take
     /// a Hatch-scoped key because a keyless runner is its ordinary caller, and
     /// the two routes beside it still take a person and nothing else. Read off
     /// the attributes because that is where the decision lives - and because
@@ -238,9 +471,10 @@ public class SettingsControllerTests
     /// the class level later would silently replace all three.
     /// </summary>
     [Fact]
-    public void TheTokenRouteTakesAKeyAndTheOtherTwoDoNot()
+    public void TheCredentialRoutesTakeAKeyAndTheOtherTwoDoNot()
     {
         Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetClaudeToken)).AcceptScope);
+        Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetCredential)).AcceptScope);
         Assert.Null(Guard(nameof(SettingsController.GetHatchSettings)).AcceptScope);
         Assert.Null(Guard(nameof(SettingsController.PutHatchSettings)).AcceptScope);
 
@@ -266,7 +500,7 @@ public class SettingsControllerTests
         // by the controller's own Invalidate, which is the point.
         var settings = new SiteSettingsService(new TestDbContextFactory(options), new FakeTimeProvider());
 
-        var credential = new SiteSettingClaudeCredential(settings);
+        var credential = new SiteSettingAgentCredential(settings);
         var controller = new SettingsController(
             db, settings, credential, Options.Create(new AuthOptions { Enabled = authEnabled }));
 
@@ -277,7 +511,7 @@ public class SettingsControllerTests
         SettingsController Controller,
         AppDbContext Db,
         ISiteSettingsService Settings,
-        IClaudeCredential Credential);
+        IAgentCredential Credential);
 
     private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
     {

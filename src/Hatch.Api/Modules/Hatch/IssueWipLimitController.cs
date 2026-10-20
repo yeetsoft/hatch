@@ -3,6 +3,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,8 +49,8 @@ public class IssueWipLimitController(
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
-        if (issue.Type != "epic")
-            return BadRequest($"only an epic takes a limit on its stories at once - {key} is a {issue.Type}");
+        if (!IssueTypeKinds.RunsChildren(issue.Type))
+            return BadRequest($"only an epic or a reflection takes a limit on its children at once - {key} is a {issue.Type}");
 
         if (request.Limit is null)
             return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);

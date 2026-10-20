@@ -564,6 +564,8 @@ export interface Issue {
   onePrOwn: boolean | null;
   /** See IssueCard.onePrFrom and IssueDto.OnePrFrom. */
   onePrFrom: string | null;
+  /** See IssueDto.ReleaseNote. */
+  releaseNote: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCard.stalledAt and IssueDto.StalledAt. */
   stalledAt: string | null;
@@ -680,6 +682,7 @@ export type IssueEventKind =
   | 'express_changed'
   | 'pre_approval_changed'
   | 'one_pr_changed'
+  | 'release_note_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
@@ -1427,6 +1430,15 @@ export interface LandingHeld {
   sentence: string;
 }
 
+/** An issue the board has deadlocked, with the judge's own sentence saying
+    why. Mirrors DeadlockedDto. */
+export interface Deadlocked {
+  key: string;
+  title: string;
+  type: string;
+  sentence: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1487,6 +1499,9 @@ export interface Attention {
       the judge's own sentence saying why - a person's to fix, every time.
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
+  /** The issues the board has deadlocked, with the judge's own sentence saying
+      why - a person's to fix, every time. Absent from a board that predates it. */
+  deadlocked?: Deadlocked[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
@@ -1528,10 +1543,14 @@ export interface Me {
 
 // ---- Settings ----
 
-/** The two settings a Hatch install of its own has. Mirrors HatchSettingsDto. */
+/** The settings a Hatch install of its own has. Mirrors HatchSettingsDto. */
 export interface HatchSettings {
   /** Dots when a token is set, empty when none is - never the token itself. */
   claudeSubscriptionToken: string;
+  /** Dots when a Codex API key is set, empty when none is - never the key itself. */
+  codexApiKey: string;
+  /** Dots when a Grok Build (xAI) API key is set, empty when none is - never the key itself. */
+  xaiApiKey: string;
   /** Whether there is a name here to set at all: false wherever the wall is up,
       because there the name comes from the grant and the field would be a lie. */
   localPersonNameApplies: boolean;
@@ -1539,10 +1558,12 @@ export interface HatchSettings {
   localPersonName: string;
 }
 
-/** An edit to either setting, or both. A field left out is left alone; `''`
-    clears one - the same rule the issues bulk endpoint states. */
+/** An edit to any of the settings, or several. A field left out is left alone;
+    `''` clears one - the same rule the issues bulk endpoint states. */
 export interface HatchSettingsWriteRequest {
   claudeSubscriptionToken?: string;
+  codexApiKey?: string;
+  xaiApiKey?: string;
   localPersonName?: string;
 }
 
@@ -1792,6 +1813,40 @@ export interface OvernightRowDto {
   projectKey: string;
   landedAt: string;
   descendantCount: number;
+}
+
+// ---- Changelog ----
+
+/** The newest window of days that shipped something - `GET /api/hatch/changelog`'s whole read. */
+export interface ChangelogDto {
+  days: ChangelogDayDto[];
+  hasOlder: boolean;
+  oldest: string | null;
+  months: ChangelogMonthDto[];
+}
+
+/** One day's worth of closes, split into the epics and everything else. */
+export interface ChangelogDayDto {
+  date: string;
+  features: ChangelogEntryDto[];
+  fixes: ChangelogEntryDto[];
+}
+
+/** One parentless, closed issue, as a day draws it. */
+export interface ChangelogEntryDto {
+  key: string;
+  title: string;
+  type: IssueType;
+  projectKey: string;
+  releaseNote: string | null;
+  closedAt: string;
+  descendantCount: number;
+}
+
+/** One calendar month and how many issues closed in it. */
+export interface ChangelogMonthDto {
+  month: string;
+  count: number;
 }
 
 // ---- Runners ----

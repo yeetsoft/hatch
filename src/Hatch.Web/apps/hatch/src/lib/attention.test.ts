@@ -6,7 +6,9 @@ import {
   attentionTone,
   buildIconTone,
   buildIconWords,
+  closesOnPress,
   conflictEmptyWords,
+  deadlockedEmptyWords,
   failingBuildEmptyWords,
   landingHeldEmptyWords,
   questionEmptyWords,
@@ -19,7 +21,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, ExhaustedRunner, LandingHeld, Question, Review, TrunkBuild } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -72,6 +74,14 @@ const landingHeld = (over: Partial<LandingHeld> = {}): LandingHeld => ({
   title: 'A story that landed and is not done',
   type: 'story',
   sentence: 'Its pull request merged but the issue is not done.',
+  ...over,
+});
+
+const deadlocked = (over: Partial<Deadlocked> = {}): Deadlocked => ({
+  key: 'AER-21',
+  title: 'A story stuck in a ring',
+  type: 'story',
+  sentence: 'deadlocked - it waits on AER-22, which waits on it.',
   ...over,
 });
 
@@ -172,6 +182,13 @@ describe('attentionCount', () => {
     expect(attentionCount(attention())).toBe(0);
   });
 
+  it('counts a deadlocked row, adds it to the other sources, and counts an absent field as zero', () => {
+    // Nothing dispatches into a ring, so every row is a person's to break.
+    expect(attentionCount(attention({ deadlocked: [deadlocked(), deadlocked({ key: 'AER-23' })] }))).toBe(2);
+    expect(attentionCount(attention({ reviews: [review()], deadlocked: [deadlocked()] }))).toBe(2);
+    expect(attentionCount(attention())).toBe(0);
+  });
+
   it('does not count a runner out of usage, and stays resting for it', () => {
     // A dot, not a pill: see the control's own remarks.
     const exhausted = attention({ exhaustedRunners: [exhaustedRunner()] });
@@ -255,6 +272,19 @@ describe('attentionLabel', () => {
     expect(attentionLabel(attention({ trunkBuilds: [trunkBuild(), trunkBuild({ id: 2 })] }))).toBe(
       '2 trunk builds failing',
     );
+  });
+
+  it('names a deadlocked issue first, pluralised on its own count', () => {
+    expect(attentionLabel(attention({ deadlocked: [deadlocked()] }))).toBe('1 issue deadlocked');
+    expect(attentionLabel(attention({ deadlocked: [deadlocked(), deadlocked({ key: 'AER-23' })] }))).toBe(
+      '2 issues deadlocked',
+    );
+  });
+
+  it('puts deadlocked ahead of trunk builds, pull requests and questions', () => {
+    expect(
+      attentionLabel(attention({ deadlocked: [deadlocked()], trunkBuilds: [trunkBuild()], reviews: [review()] })),
+    ).toBe('1 issue deadlocked, 1 trunk build failing, 1 pull request to review');
   });
 
   it('combines all three parts, trunk builds first', () => {
@@ -347,6 +377,12 @@ describe('conflictEmptyWords', () => {
 describe('approvedHeldEmptyWords', () => {
   it('says nothing approved has stopped merging', () => {
     expect(approvedHeldEmptyWords()).toBe('Nothing approved has stopped merging.');
+  });
+});
+
+describe('deadlockedEmptyWords', () => {
+  it('says nothing is deadlocked', () => {
+    expect(deadlockedEmptyWords()).toBe('Nothing is deadlocked.');
   });
 });
 
@@ -480,5 +516,36 @@ describe('resetWords', () => {
 
   it('is unknown for a time that cannot be read', () => {
     expect(resetWords('not a date', NOW)).toBe('resets at an unknown time');
+  });
+});
+
+describe('closesOnPress', () => {
+  const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+
+  it('closes on a same-tab link', () => {
+    expect(closesOnPress({ href: '/issues/HA-12', target: null }, plain)).toBe(true);
+    expect(closesOnPress({ href: '/issues/HA-12', target: '_self' }, plain)).toBe(true);
+  });
+
+  it('stays open for a link that opens a new tab', () => {
+    expect(closesOnPress({ href: 'https://example.test/pull/1', target: '_blank' }, plain)).toBe(false);
+  });
+
+  it('stays open for a button, which has no link', () => {
+    expect(closesOnPress(null, plain)).toBe(false);
+  });
+
+  it('stays open for an anchor with nowhere to go', () => {
+    expect(closesOnPress({ href: null, target: null }, plain)).toBe(false);
+    expect(closesOnPress({ href: '', target: null }, plain)).toBe(false);
+  });
+
+  it('stays open for a press that opens elsewhere', () => {
+    const link = { href: '/issues/HA-12', target: null };
+    expect(closesOnPress(link, { ...plain, metaKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, ctrlKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, shiftKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, altKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, button: 1 })).toBe(false);
   });
 });

@@ -960,6 +960,18 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task AReflectionWithNoChildren_IsFoldedTheSameWayAnEpicIs()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var reflection = await h.FileAsync("reflection", "nothing under it yet", h.InProgress);
+
+        Assert.Equal(
+            "nothing is filed under it - an epic runs its stories, and it has none",
+            Value(await h.Work.GetWork(Key(reflection), null, default)).Blocked);
+    }
+
+    [Fact]
     public async Task AnEpicWithAnOpenGrandchild_IsUnaffected()
     {
         var h = await NewAsync();
@@ -1566,6 +1578,72 @@ public class WorkControllerTests
         var work = Value(await h.Work.GetWork(Key(issue), null, default));
 
         Assert.False(work.InReview);
+    }
+
+    // ---- HA-1036: AsksReleaseNote ----
+
+    [Fact]
+    public async Task AsksReleaseNote_IsTrueForAParentlessLeafMovingFromImplementationIntoReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a leaf, no parent", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.True(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsTrueForAParentlessEpicsCloseout()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("epic", "an epic, no open children", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.True(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAChild()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the parent", h.InProgress);
+        var issue = await h.FileAsync("task", "a child, otherwise ready to advance", h.InProgress, parentId: parent.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.False(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAMoveIntoAnyOtherColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not yet in implementation", h.Todo);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("in progress", work.ToStatus!.Name);
+        Assert.False(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAConflictsDispatch()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "ready for a verdict", h.Review);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Conflicts, work.Kind);
+        Assert.False(work.AsksReleaseNote);
     }
 
     [Fact]
@@ -2755,20 +2833,20 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindATopLevelEpicNobodyHasMovedIn()
+    public async Task Queue_DoesNotParkAClearEconomyCandidateBehindAChildlessTopLevelEpic()
     {
         var h = await NewAsync();
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
         await h.TickWipAsync(h.InProgress, h.Review);
-        var epic = await h.FileAsync("epic", "E, a person moves it in", h.Todo);
+        var epic = await h.FileAsync("epic", "E, nothing filed under it", h.Todo);
         var thrifty = await h.FileAsync("bug", "economy, otherwise clear", h.Todo);
         await h.EconomyAsync(thrifty);
         await h.SeedUsageAsync(nathan.Id, Now, ("session", 10, Now + TimeSpan.FromHours(2)));
 
         Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(thrifty)).Blocked);
         Assert.Equal(
-            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
+            FamilyGate.NothingUnder,
             Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic)).Blocked);
     }
 
@@ -4710,6 +4788,22 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_ListsAPreApprovedReflectionRowWithADoneChildAsACloseHopToo()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("reflection", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("story", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
     public async Task Queue_ListsAPreApprovedEpicRowWithOnlyADeferredChildAsACloseHopToo()
     {
         var h = await NewAsync();
@@ -5570,9 +5664,10 @@ public class WorkControllerTests
     // section, a story or bug under it, itself standing in a column ticked
     // ExpressSkips, is carried the same way, naming the epic that carried it.
     //
-    // A top-level epic - no parent at all, or a parent that is not a running
-    // epic - is never carried this way: its own column is the whole signal,
-    // and only a person sets it (HA-202).
+    // A top-level epic - no parent at all - is carried the same way on the
+    // move that lands it in the implementation column, and on no earlier one:
+    // the move off the backlog is the person's press (HA-1069). A sub-epic
+    // whose parent is not a running epic is never carried (HA-202).
 
     [Fact]
     public async Task Queue_ListsAnEpicEnteringTheSectionAsClearAndAHopCarryingTheEpicKind()
@@ -5615,6 +5710,19 @@ public class WorkControllerTests
         Assert.True(payload.GetProperty("epic").GetBoolean());
         Assert.False(payload.TryGetProperty("express", out _));
         AssertColumns(e, h.Todo, h.InProgress);
+    }
+
+    [Fact]
+    public async Task Hop_OnAReflectionEnteringTheSection_MovesItTheSameWayAnEpicHopDoes()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var running = await h.FileAsync("epic", "running above it", h.InProgress);
+        var reflection = await h.FileAsync("reflection", "R", h.Todo, parentId: running.Id);
+        await h.FileAsync("story", "under R", h.Todo, parentId: reflection.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(reflection), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
     }
 
     [Fact]
@@ -5665,7 +5773,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task ATopLevelEpicWithStories_IsFoldedNamingAPersonMovesItIn()
+    public async Task ATopLevelEpicWithStoriesInTheFeederColumn_IsClearAndAHopCarryingTheEpicKind()
     {
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
@@ -5674,33 +5782,60 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
 
-        Assert.Equal(
-            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
-            entry.Blocked);
-        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
-        Assert.False(entry.Hop);
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
+        Assert.Null(entry.HopUnder);
+
+        var work = Value(await h.Work.GetWork(Key(epic), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Epic, work.HopKind);
+        Assert.Null(work.Playbook);
     }
 
     [Fact]
-    public async Task Hop_OnATopLevelEpicWithStories_Is409CarryingThatSentenceAndWritesNothing()
+    public async Task Hop_OnATopLevelEpicWithStories_MovesItAndWritesEpicOnTheTrail()
     {
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
         var epic = await h.FileAsync("epic", "E", h.Todo);
         await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
 
-        var result = await h.Work.HopWork(Key(epic), null, null, null, default);
+        var moved = Value(await h.Work.HopWork(Key(epic), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
 
-        var response = (ObjectResult)result.Result!;
-        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
-        Assert.Equal(
-            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
-            response.Value?.ToString());
-        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == epic.Id)).Events);
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == epic.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("epic").GetBoolean());
+        Assert.False(payload.TryGetProperty("express", out _));
+        AssertColumns(e, h.Todo, h.InProgress);
     }
 
     [Fact]
-    public async Task ATopLevelEpicWithNoChildren_IsFoldedNamingAPersonMovesItIn()
+    public async Task ATopLevelReflectionWithStoriesInTheFeederColumn_IsClearAndAHopCarryingTheEpicKind()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var reflection = await h.FileAsync("reflection", "R", h.Todo);
+        await h.FileAsync("story", "under R", h.Todo, parentId: reflection.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(reflection));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
+        Assert.Null(entry.HopUnder);
+
+        var work = Value(await h.Work.GetWork(Key(reflection), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Epic, work.HopKind);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task ATopLevelEpicWithNoChildren_IsFoldedNamingNothingIsFiledUnderIt()
     {
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
@@ -5708,10 +5843,40 @@ public class WorkControllerTests
 
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
-        Assert.Equal(
-            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
-            entry.Blocked);
+        Assert.Equal(FamilyGate.NothingUnder, entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ATopLevelEpicStandingLeftOfTheFeederColumn_IsNotCarriedByTheEpicHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.Inbox);
+        await h.FileAsync("story", "under E", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.NotEqual(HopKinds.Epic, entry.HopKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AStoryUnderATopLevelEpicTheHopCarriedIn_GetsTheUnderHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var epic = await h.FileAsync("epic", "E, carried in", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+        Assert.Equal(Key(epic), entry.HopUnder);
     }
 
     [Fact]
@@ -5728,6 +5893,38 @@ public class WorkControllerTests
         Assert.Equal("its parent epic is not running, so nothing pulls it in", entry.Blocked);
         Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AnEpicWhoseParentIsAReflectionNotRunning_IsFoldedTheSameWayAsAParkedEpicParent()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var parkedParent = await h.FileAsync("reflection", "parked, not running", h.Todo, rank: 1024);
+        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 2048, parentId: parkedParent.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Equal("its parent epic is not running, so nothing pulls it in", entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AnEpicWhoseParentIsARunningReflection_IsCarriedTheSameWayAsARunningEpicParent()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var runningReflection = await h.FileAsync("reflection", "running above it", h.InProgress);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: runningReflection.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
     }
 
     [Fact]
@@ -5803,7 +6000,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task OnABoardWhereToDoIsAlsoTickedWip_ATopLevelEpicInToDo_IsFoldedNamingAPersonMovesItIn()
+    public async Task OnABoardWhereToDoIsAlsoTickedWip_ATopLevelEpicInToDo_IsClearAndAHopCarriesIt()
     {
         var h = await NewAsync();
         await h.TickWipAsync(h.Todo, h.InProgress, h.Review);
@@ -5813,10 +6010,9 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
 
-        Assert.Equal(
-            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
-            entry.Blocked);
-        Assert.False(entry.Hop);
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
     }
 
     [Fact]
@@ -5871,6 +6067,21 @@ public class WorkControllerTests
         await h.TickExpressSkipsAsync(h.Inbox);
         var epic = await h.FileAsync("epic", "E", h.InProgress);
         var bug = await h.FileAsync("bug", "a bug under E", h.Inbox, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(bug));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Under, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task ABugUnderARunningReflection_IsCarriedTheSameWayAsUnderARunningEpic()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var reflection = await h.FileAsync("reflection", "R", h.InProgress);
+        var bug = await h.FileAsync("bug", "a bug under R", h.Inbox, parentId: reflection.Id);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(bug));
 

@@ -603,8 +603,8 @@ public class EfHatchIssue
     /// </summary>
     public const int MaxClaimChatterLength = ClaimRequest.MaxChatterLength;
 
-    /// <summary>The four types, in the order a picker should offer them.</summary>
-    public static readonly string[] Types = ["epic", "story", "task", "bug"];
+    /// <summary>The five types, in the order a picker should offer them.</summary>
+    public static readonly string[] Types = ["epic", "reflection", "story", "task", "bug"];
 
     /// <summary>
     /// Which parents each type may take. Advisory shape rather than a
@@ -616,10 +616,11 @@ public class EfHatchIssue
     public static readonly IReadOnlyDictionary<string, string[]> LegalParentTypes =
         new Dictionary<string, string[]>
         {
-            ["epic"] = ["epic"],
-            ["story"] = ["epic"],
-            ["task"] = ["story", "bug", "epic"],
-            ["bug"] = ["epic", "story"],
+            ["epic"] = ["epic", "reflection"],
+            ["reflection"] = ["epic"],
+            ["story"] = ["epic", "reflection"],
+            ["task"] = ["story", "bug", "epic", "reflection"],
+            ["bug"] = ["epic", "story", "reflection"],
         };
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -917,6 +918,17 @@ public class EfHatchIssue
     /// own value, else the project's.
     /// </remarks>
     public bool? OnePullRequest { get; set; }
+
+    /// <summary>
+    /// The sentence or two the changelog shows for this issue when it is
+    /// finished, or null where nobody has written one. Markdown, stored as
+    /// typed and trimmed. Written by a person at any time, or by a key under
+    /// the issue's live claim - <see cref="IssueReleaseNoteController"/> is the
+    /// only way in, and <c>IssuePatchRequest</c> deliberately carries no
+    /// field for it. The cap is the API's (<c>ReleaseNoteRequest.MaxLength</c>),
+    /// not the column's.
+    /// </summary>
+    public string? ReleaseNote { get; set; }
 
     /// <summary>
     /// When an increment last left this ticket where it found it. Null for
@@ -1794,6 +1806,12 @@ public class EfHatchIssueEvent
     /// sides as <c>on</c>, <c>off</c> or <c>inherit</c>.
     /// </summary>
     public const string OnePrChanged = "one_pr_changed";
+
+    /// <summary>
+    /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
+    /// The payload is <c>{ from, to }</c>, either side null.
+    /// </summary>
+    public const string ReleaseNoteChanged = "release_note_changed";
 
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";

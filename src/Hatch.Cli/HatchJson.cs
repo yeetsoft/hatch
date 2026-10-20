@@ -35,7 +35,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ClaimPreemptedDto))]
 [JsonSerializable(typeof(RunnerInstructionDto))]
 [JsonSerializable(typeof(List<RunnerDto>))]
-[JsonSerializable(typeof(ClaudeTokenDto))]
+[JsonSerializable(typeof(CredentialDto))]
 [JsonSerializable(typeof(List<StatusDto>))]
 [JsonSerializable(typeof(List<CommentDto>))]
 [JsonSerializable(typeof(List<QuestionDto>))]
@@ -51,6 +51,11 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 [JsonSerializable(typeof(PlaybookFilesDto))]
 [JsonSerializable(typeof(PlaybookFileDto))]
+[JsonSerializable(typeof(ChangelogDto))]
+[JsonSerializable(typeof(ChangelogDayDto))]
+[JsonSerializable(typeof(ChangelogEntryDto))]
+[JsonSerializable(typeof(ChangelogMonthDto))]
+[JsonSerializable(typeof(List<ProjectDto>))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
@@ -60,6 +65,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(IssuePatchRequest))]
 [JsonSerializable(typeof(IssueDependencyRequest))]
 [JsonSerializable(typeof(OnePrRequest))]
+[JsonSerializable(typeof(ReleaseNoteRequest))]
 [JsonSerializable(typeof(WorkLogEntryRequest))]
 [JsonSerializable(typeof(ClaimRequest))]
 [JsonSerializable(typeof(ClaimHeartbeatRequest))]

@@ -1243,6 +1243,91 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-1108: the stream's own <c>rate_limit_event</c> carries the account's
+    /// own reset instant, epoch seconds with nothing to parse - and when its
+    /// window matches the one the sentence named, it wins over the sentence's
+    /// own (zone-parsed) reading. A LiveZoneClock, the same as HA-1107's probe
+    /// test, so the runner's own zone is something other than UTC and the
+    /// conversion has something to prove.
+    /// </summary>
+    [Fact]
+    public async Task A_weekly_sentence_takes_a_seven_day_events_instant()
+    {
+        var offset = TimeSpan.FromHours(-4);
+        using var h = new Harness(clock: new LiveZoneClock(offset));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var streamResetAt = DateTimeOffset.UtcNow.AddDays(3);
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.RateLimitEvent(("seven_day", 1.0, streamResetAt.ToUnixTimeSeconds())));
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your weekly limit · resets Dec 25, 2026 at 11:40pm (UTC)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.Equal("weekly", report.UsageLimitWindow);
+        Assert.Equal(streamResetAt.ToUnixTimeSeconds(), report.UsageLimitResetAt!.Value.ToUnixTimeSeconds());
+        Assert.Equal(offset, report.UsageLimitResetAt!.Value.Offset);
+        Assert.True(report.UsageLimitResetKnown);
+        Assert.False(report.UsageLimitPassed);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// The same weekly sentence as above, but the stream's latest event only
+    /// carries a <c>five_hour</c> window - "session" once <see cref="StreamRender"/>
+    /// renames it - which does not match the sentence's "weekly". With no
+    /// window of its own to correct from, the sentence's own reading stands
+    /// unchanged.
+    /// </summary>
+    [Fact]
+    public async Task A_weekly_sentence_does_not_take_a_five_hour_only_events_instant()
+    {
+        using var h = new Harness(clock: new LiveZoneClock(TimeSpan.FromHours(-4)));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var streamResetAt = DateTimeOffset.UtcNow.AddHours(2);
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.RateLimitEvent(("five_hour", 1.0, streamResetAt.ToUnixTimeSeconds())));
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your weekly limit · resets Dec 25, 2026 at 11:40pm (UTC)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.Equal("weekly", report.UsageLimitWindow);
+        Assert.Equal(new DateTimeOffset(2026, 12, 25, 23, 40, 0, TimeSpan.Zero), report.UsageLimitResetAt);
+        Assert.True(report.UsageLimitResetKnown);
+        Assert.False(report.UsageLimitPassed);
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task An_ordinary_error_still_stalls_rather_than_reading_as_a_usage_limit()
     {
@@ -1463,6 +1548,125 @@ public sealed class IncrementTests
         // longer the holder, and asking as one would be a lie about a lease.
         Assert.DoesNotContain("heldToken", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
+
+        await claim.ReleaseAsync();
+    }
+
+    private const string ReleaseNotePath = "/api/hatch/issues/AER-1/release-note";
+    private const string WorkLogPath = "/api/hatch/issues/AER-1/work-log";
+    private const string NoteAndLog = "```release-note\nShipped it.\n```\n```work-log\nDid a thing\n```";
+
+    private static void SaysNoteAndLog(Harness h) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: NoteAndLog));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+    private static void StubTheBoard(Harness h)
+    {
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+    }
+
+    [Fact]
+    public async Task The_release_note_is_posted_under_the_claim_before_the_work_log_row()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        StubTheBoard(h);
+        h.Wire.Json("PUT", ReleaseNotePath, Fixtures.Issue("AER-1"));
+        SaysNoteAndLog(h);
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        var put = Assert.Single(h.Wire.To("PUT", ReleaseNotePath));
+        Assert.Equal("Shipped it.", put.Read<ReleaseNoteRequest>().Note);
+        Assert.Contains($"heldToken={token}", put.Query, StringComparison.OrdinalIgnoreCase);
+
+        var calls = h.Wire.Calls.ToList();
+        Assert.True(
+            calls.FindIndex(c => c.Route == $"PUT {ReleaseNotePath}") < calls.FindIndex(c => c.Route == $"POST {WorkLogPath}"));
+        Assert.True(h.Say.Mentions("release note"));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_session_that_wrote_no_release_note_posts_none()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        StubTheBoard(h);
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Empty(h.Wire.To("PUT", ReleaseNotePath));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_release_note_is_not_posted_after_the_lease_went()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            "\"this claim has expired\"");
+        h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("PUT", ReleaseNotePath, Fixtures.Issue("AER-1"));
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: NoteAndLog));
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return new SessionResult(143, "");
+            }
+
+            return new SessionResult(0, "");
+        };
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.LostLease);
+        Assert.Single(h.Wire.To("POST", WorkLogPath));
+        Assert.Empty(h.Wire.To("PUT", ReleaseNotePath));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_refused_release_note_does_not_fail_the_increment()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        StubTheBoard(h);
+        h.Wire.Reply("PUT", ReleaseNotePath, HttpStatusCode.Conflict, "\"this issue is not claimed\"");
+        SaysNoteAndLog(h);
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Moved);
+        Assert.Single(h.Wire.To("POST", WorkLogPath));
+        Assert.Contains(h.Say.Complained, l => l.Contains("release note", StringComparison.Ordinal));
 
         await claim.ReleaseAsync();
     }

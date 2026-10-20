@@ -51,6 +51,7 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  releaseNote: null,
   modelOverride: null,
   effortOverride: null,
   assignee: null,
@@ -132,6 +133,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   model: null,
   deniedTools: null,
   blockedKind: null,
+  deadlocked: false,
   ...over,
 });
 

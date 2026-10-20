@@ -157,6 +157,18 @@ public sealed class CodexStreamReaderTests
     }
 
     [Fact]
+    public void TurnCompleted_LiftsTheReleaseNoteFenceBesideTheWorkLog()
+    {
+        var (facts, _) = Play(
+            "gpt-5-codex",
+            Fixtures.CodexItemCompleted("agent_message", text: "```release-note\nA note.\n```\n```work-log\nA title\n```"),
+            Fixtures.CodexTurnCompleted());
+
+        Assert.Equal("A note.", facts.ReleaseNote);
+        Assert.Equal("A title", facts.Result!.Title);
+    }
+
+    [Fact]
     public void TurnFailed_LandsItsTextOnBothResultTextAndLastAssistantText()
     {
         var (facts, _) = Play("gpt-5-codex", Fixtures.CodexTurnFailed("unexpected status 401 Unauthorized"));

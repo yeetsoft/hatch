@@ -3217,27 +3217,169 @@ input.hatch-inline-title-input {
 
 .hatch-docs {
   display: grid;
-  grid-template-columns: minmax(0, 68ch) minmax(12rem, 16rem);
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 68ch);
   gap: var(--sp-8);
   justify-content: center;
   align-items: start;
 }
 
-.hatch-docs-body {
-  grid-column: 1;
-  grid-row: 1;
-  font-size: var(--t-section);
-  line-height: 1.6;
+/* Three columns only when there is an outline to sit beside the body - the
+   landing and the not-found state render no .hatch-docs-outline, and would
+   otherwise sit off-centre beside an empty gutter. */
+.hatch-docs:has(.hatch-docs-outline) {
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 68ch) minmax(12rem, 16rem);
 }
 
-.hatch-docs-outline {
-  grid-column: 2;
+.hatch-docs-sidebar {
+  grid-column: 1;
   grid-row: 1;
   position: sticky;
   top: 0;
   max-height: calc(100dvh - 10rem);
   overflow-y: auto;
   font-size: var(--t-label);
+}
+
+.hatch-docs-search {
+  margin-bottom: var(--sp-3);
+}
+
+.hatch-docs-search-input {
+  width: 100%;
+}
+
+.hatch-docs-search-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  border: thin solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  /* A relative cap, not a fixed one - the sidebar column this sits in is
+     itself sticky with its own max-height (below), so the list scrolls inside
+     that column rather than floating over the text. */
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+.hatch-docs-search-row + .hatch-docs-search-row {
+  border-top: thin solid var(--line);
+}
+
+.hatch-docs-search-row a {
+  display: block;
+  padding: var(--sp-1-5) var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.hatch-docs-search-row.is-active a {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.hatch-docs-search-title {
+  display: block;
+  font-weight: 600;
+}
+
+.hatch-docs-search-heading {
+  display: block;
+  color: var(--muted);
+}
+
+.hatch-docs-search-snippet {
+  display: block;
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+.hatch-docs-search-row mark {
+  background: none;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.hatch-docs-search-status {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+.hatch-docs-sidebar-home {
+  display: block;
+  margin-bottom: var(--sp-3);
+  font-weight: 600;
+}
+
+.hatch-docs-sidebar summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.hatch-docs-sidebar-list {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+
+.hatch-docs-sidebar a {
+  display: block;
+  padding: var(--sp-1) 0;
+  color: var(--muted);
+}
+
+.hatch-docs-sidebar a:hover {
+  color: var(--ink);
+}
+
+.hatch-docs-sidebar a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hatch-docs-body {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--t-section);
+  line-height: 1.6;
+}
+
+.hatch-docs-outline {
+  grid-column: 3;
+  grid-row: 1;
+  position: sticky;
+  top: 0;
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  font-size: var(--t-label);
+}
+
+.hatch-docs-pager {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-4);
+  border-top: thin solid var(--line);
+}
+
+.hatch-docs-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-docs-pager-next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.hatch-docs-pager-label {
+  font-size: var(--t-label);
+  color: var(--muted);
 }
 
 .hatch-docs-body h2,
@@ -3333,6 +3475,21 @@ input.hatch-inline-title-input {
   height: auto;
 }
 
+.hatch-docs-mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.hatch-docs-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.hatch-docs-mermaid-error {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 .hatch-docs-body a:not(.hatch-docs-anchor) {
   color: var(--primary-ink);
 }
@@ -3393,10 +3550,54 @@ input.hatch-inline-title-input {
   margin: 0 0 var(--sp-2);
 }
 
-/* Folded above the text on a phone: the outline is a <details> there. */
+/* The landing's sections, not a rendered document - no .hatch-docs-body
+   typography here. */
+.hatch-docs-landing > section + section {
+  margin-top: var(--sp-8);
+}
+
+.hatch-docs-landing-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.hatch-docs-landing-list li + li {
+  margin-top: var(--sp-3);
+}
+
+.hatch-docs-landing-summary {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
+}
+
+.hatch-docs-missing {
+  color: var(--muted);
+}
+
+/* Folded above the text on a phone: the sidebar and the outline are each a
+   <details> there, the sidebar's above the outline's own. */
 @media (max-width: 40rem) {
   .hatch-docs {
     display: block;
+  }
+
+  .hatch-docs-sidebar {
+    position: static;
+    max-height: none;
+  }
+
+  .hatch-docs-sidebar-phone {
+    display: block;
+    margin-bottom: var(--sp-4);
+    border: thin solid var(--line);
+    border-radius: var(--r-ctl);
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .hatch-docs-sidebar-phone summary {
+    cursor: pointer;
+    font-weight: 600;
   }
 
   .hatch-docs-outline {
@@ -3411,6 +3612,16 @@ input.hatch-inline-title-input {
   .hatch-docs-outline summary {
     cursor: pointer;
     font-weight: 600;
+  }
+
+  .hatch-docs-pager {
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+
+  .hatch-docs-pager-next {
+    text-align: left;
+    margin-left: 0;
   }
 }
 
@@ -4791,6 +5002,40 @@ button.hatch-option.chosen {
   gap: var(--sp-3);
 }
 
+.hatch-changelog-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-5);
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-changelog-older {
+  margin-top: var(--sp-5);
+}
+
+.hatch-changelog-day + .hatch-changelog-day {
+  margin-top: var(--sp-5);
+}
+
+/* One day's fixes: a flat, compact list - no Card, matching the brief's
+   "one-liner" language for a fix. */
+.hatch-changelog-fixes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-changelog-fixes li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 .hatch-cumulative-flow-legend-item {
   display: flex;
   align-items: center;
@@ -5219,6 +5464,11 @@ button.hatch-option.chosen {
 /* A red trunk is the one pill that stands for something already on fire -
    danger, where the other two are neutral or warning tones. */
 .hatch-attention-pill-trunk {
+  background: var(--danger);
+}
+
+/* A deadlock is red in the queue too, so it is red here. */
+.hatch-attention-pill-deadlocked {
   background: var(--danger);
 }
 
@@ -5845,6 +6095,11 @@ button.hatch-option.chosen {
 
 .hatch-queue-row--folded {
   border-left-color: var(--line-strong);
+}
+
+.hatch-queue-row--deadlocked {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
 }
 
 .hatch-queue-ordinal {

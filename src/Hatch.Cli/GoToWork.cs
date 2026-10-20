@@ -110,7 +110,7 @@ public sealed class Tally
 
         if (session.ResetsAt is { } resetsAt && resetsAt != ExhaustedUntil)
         {
-            ExhaustedUntil = resetsAt;
+            ExhaustedUntil = TimeZoneInfo.ConvertTime(resetsAt, _clock.LocalTimeZone);
             ExhaustedKnown = true;
         }
     }
@@ -1617,7 +1617,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // the pull request's branch is brought up to date. A lease that
                 // went gets the trees back on the trunk and nothing written.
                 var limit = report.UsageLimitResetAt is { } resetAt
-                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId, report.UsageLimitPassed)
                     : null;
                 var preempted = report.Preempted
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)

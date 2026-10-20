@@ -56,17 +56,26 @@ function escapeAttr(s: string): string {
     anchor, and lists the `##`/`###` headings as an outline. One pass: the outline
     and the ids come from the same slugger run in document order, so they cannot
     disagree. The output is not sanitized - that is the page's job, and a separate
-    step. A local `Marked`, so the global instance `markdown.ts` uses is untouched. */
-export function renderDocs(source: string): { html: string; outline: OutlineEntry[] } {
+    step. Links to other pages resolve to `/docs/<slug>` addresses. A local
+    `Marked`, so the global instance `markdown.ts` uses is untouched. */
+export function renderDocs(
+  source: string,
+): { html: string; outline: OutlineEntry[]; ids: string[]; mermaidCount: number } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
+  const ids: string[] = [];
+  let mermaidCount = 0;
   const marked = new Marked({
+    walkTokens(token) {
+      if (token.type === 'link') token.href = resolveDocHref(token.href);
+    },
     renderer: {
       heading(token: Tokens.Heading) {
         const { depth, tokens } = token;
         if (depth < 2 || depth > 4) return false;
         const text = plainText(tokens);
         const id = slug(text);
+        ids.push(id);
         if (depth === 2 || depth === 3) outline.push({ depth, text, id });
         const label = escapeAttr(text);
         return (
@@ -74,10 +83,16 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
           `<a class="hatch-docs-anchor" href="#${id}" aria-label="Link to ${label}">#</a></h${depth}>\n`
         );
       },
+      code({ text, lang }: Tokens.Code) {
+        const word = (lang ?? '').trim().split(/\s+/)[0]?.toLowerCase();
+        if (word !== 'mermaid') return false;
+        mermaidCount++;
+        return `<div class="hatch-docs-mermaid"><pre class="hatch-docs-mermaid-source">${escapeAttr(text)}</pre></div>`;
+      },
     },
   });
   const html = marked.parse(source, { async: false });
-  return { html, outline };
+  return { html, outline, ids, mermaidCount };
 }
 
 /** The id a `#fragment` names, decoded: one leading `#` off, then percent-escapes
@@ -139,6 +154,19 @@ export interface DocPage {
 const DOC_KEYS = ['title', 'section', 'order', 'summary'] as const;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** Where a link to another docs page goes: `slug`, `slug.md`, `./slug` or
+    `./slug.md`, with an optional `#fragment`, become `${APP_BASENAME}/docs/slug`
+    with the fragment kept as written. Anything else - a scheme, an absolute or
+    parent path, a query, a name that is not a slug - comes back unchanged. */
+export function resolveDocHref(href: string): string {
+  const hash = href.indexOf('#');
+  const path = hash === -1 ? href : href.slice(0, hash);
+  const fragment = hash === -1 ? '' : href.slice(hash);
+  let name = path.startsWith('./') ? path.slice(2) : path;
+  if (name.endsWith('.md')) name = name.slice(0, -'.md'.length);
+  return SLUG.test(name) ? `${APP_BASENAME}/docs/${name}${fragment}` : href;
+}
+
 /** Reads one markdown file, as the glob hands it over, into a page. Every way the
     file can be wrong throws and names `path`, so a bad page fails the build at the
     file to fix rather than rendering as a blank. The body is returned LF-only, with
@@ -188,3 +216,101 @@ export function parseDocPage(path: string, raw: string): DocPage {
       .replace(/^\n+/, ''),
   };
 }
+
+/** Reference's own first entry, ahead of every real DocPage there: a route, not
+    a markdown file, so it cannot become a DocPage without also living at a
+    `/docs/...` address or inventing a body-less page type. The one place both
+    DocsSidebar and the docs landing read it from, so neither can drift from
+    the other. */
+export const CHANGELOG_LINK = { title: 'Changelog', to: '/changelog' } as const;
+
+/** The order a reader sees sections in - the one place section order is written. */
+export const DOC_SECTIONS = [
+  'Start here',
+  'Concepts',
+  'Running agents',
+  'Deploying and operating',
+  'Reference',
+] as const;
+
+export type DocSection = (typeof DOC_SECTIONS)[number];
+
+// `DOC_SECTIONS.indexOf` does not compile under strict: a DocPage's `section`
+// is `string`, and `indexOf`'s parameter is typed to the literal union.
+function sectionIndex(section: string): number {
+  return DOC_SECTIONS.findIndex((s) => s === section);
+}
+
+/** Sorts a copy of `pages` by section (in DOC_SECTIONS order), then by `order`,
+    leaving `pages` itself untouched. Throws on a section outside DOC_SECTIONS, or
+    on two pages sharing a section and an order - `DocPage` keeps no path, so each
+    error names `${slug}.md`. */
+export function orderDocPages(pages: DocPage[]): DocPage[] {
+  for (const p of pages) {
+    if (sectionIndex(p.section) === -1) {
+      throw new Error(`${p.slug}.md: section "${p.section}" must be one of ${DOC_SECTIONS.join(', ')}`);
+    }
+  }
+  const sorted = [...pages].sort((a, b) => {
+    const bySection = sectionIndex(a.section) - sectionIndex(b.section);
+    return bySection !== 0 ? bySection : a.order - b.order;
+  });
+  // sort is stable (guaranteed since ES2019) and the comparator orders by section
+  // then by order, so two pages sharing both land adjacent to each other.
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (prev.section === curr.section && prev.order === curr.order) {
+      throw new Error(`${prev.slug}.md and ${curr.slug}.md share section "${curr.section}" and order ${curr.order}`);
+    }
+  }
+  return sorted;
+}
+
+/** Each section with at least one page, in `DOC_SECTIONS` order. Relies on `pages`
+    already being ordered - `DOC_PAGES`, or the output of `orderDocPages`. */
+export function docSections(pages: DocPage[]): { section: DocSection; pages: DocPage[] }[] {
+  return DOC_SECTIONS.map((section) => ({
+    section,
+    pages: pages.filter((p) => p.section === section),
+  })).filter((s) => s.pages.length > 0);
+}
+
+/** The page with this slug, or undefined. */
+export function docPage(pages: DocPage[], slug: string): DocPage | undefined {
+  return pages.find((p) => p.slug === slug);
+}
+
+/** Where an old `/docs#id` fragment lands now: `/docs/<slug>` for the page whose
+    slug is `id` (most of the pre-split links, since the split pages' slugs are
+    the old page's `##` ids), else `/docs/<slug>#id` for the page holding a
+    heading with that id, else `null` when nothing does. Slugs across all pages
+    are checked before any heading, so the common case costs no render; headings
+    are rendered lazily, one page at a time, stopping at the first match. */
+export function pageForAnchor(pages: DocPage[], id: string): string | null {
+  if (!id) return null;
+  for (const page of pages) {
+    if (page.slug === id) return `/docs/${page.slug}`;
+  }
+  for (const page of pages) {
+    if (renderDocs(page.body).ids.includes(id)) return `/docs/${page.slug}#${id}`;
+  }
+  return null;
+}
+
+/** The pages either side of `slug` in reading order, walking the sorted list end to
+    end across sections. Both `null` for a slug not in `pages`. */
+export function docNeighbours(pages: DocPage[], slug: string): { previous: DocPage | null; next: DocPage | null } {
+  const i = pages.findIndex((p) => p.slug === slug);
+  if (i === -1) return { previous: null, next: null };
+  return { previous: pages[i - 1] ?? null, next: pages[i + 1] ?? null };
+}
+
+// apps/hatch/docs/ does not exist yet, so the glob matches nothing and this is `[]`.
+// A bad page throws here, at module load - every test importing lib/docs fails with
+// the file's name until it is fixed.
+export const DOC_PAGES = orderDocPages(
+  Object.entries(
+    import.meta.glob('../../docs/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>,
+  ).map(([path, raw]) => parseDocPage(path, raw)),
+);

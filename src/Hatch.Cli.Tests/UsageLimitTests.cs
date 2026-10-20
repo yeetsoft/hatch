@@ -41,24 +41,94 @@ public sealed class UsageLimitTests
     }
 
     [Fact]
-    public void An_unknown_zone_still_gives_an_instant_by_falling_back_to_UTC()
+    public void An_unknown_zone_still_gives_an_instant_by_falling_back_to_the_runners_zone()
     {
-        // 19:40 UTC has already passed by 22:00 UTC, so this is 19:40 the next day.
-        var hit = UsageLimit.Recognise("You've hit your session limit · resets 7:40pm (Mars/Colony)", EndedAt);
+        // A fixed runner zone, not TimeZoneInfo.Local: on a runner whose own
+        // zone is UTC, 7:40pm is 21h40m after EndedAt - past the session's own
+        // window plus slack - which would read as a reset already passed
+        // rather than exercising the fallback this test is about.
+        var runner = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        var hit = UsageLimit.Recognise("You've hit your session limit · resets 7:40pm (Mars/Colony)", EndedAt, runner);
 
         Assert.NotNull(hit);
         Assert.True(hit!.Value.ResetKnown);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-29T19:40:00+00:00"), hit.Value.ResetAt);
+        Assert.False(hit.Value.Passed);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"), hit.Value.ResetAt);
     }
 
     [Fact]
-    public void An_hour_already_past_today_means_tomorrow()
+    public void An_hour_already_past_today_is_a_reset_that_just_passed_and_gets_a_short_retry()
     {
-        // 22:00 UTC is 18:00 in New York on this date - 7:40pm has not happened yet.
+        // 22:00 UTC is 18:00 in New York on this date - 5:00pm is an hour behind, and
+        // tomorrow's would be 23h out, further than a session's own window.
         var hit = UsageLimit.Recognise("You've hit your session limit · resets 5:00pm (America/New_York)", EndedAt);
 
         Assert.NotNull(hit);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-29T21:00:00+00:00"), hit!.Value.ResetAt);
+        Assert.True(hit!.Value.ResetKnown);
+        Assert.True(hit.Value.Passed);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-28T22:05:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal(TimeSpan.FromHours(-4), hit.Value.ResetAt.Offset);
+    }
+
+    private const string SevenForty = "You've hit your session limit · resets 7:40pm (America/New_York)";
+
+    [Fact]
+    public void The_minute_after_the_named_reset_is_a_short_retry_in_the_named_zones_offset()
+    {
+        // The reported night: the wait cleared at 7:40pm, the account's reset trailed it, and the
+        // refusal came back at 7:41pm with the same sentence.
+        var ended = DateTimeOffset.Parse("2026-09-28T23:41:00+00:00");
+
+        var hit = UsageLimit.Recognise(SevenForty, ended);
+
+        Assert.NotNull(hit);
+        Assert.True(hit!.Value.ResetKnown);
+        Assert.True(hit.Value.Passed);
+        Assert.Equal(ended + TimeSpan.FromMinutes(5), hit.Value.ResetAt);
+        Assert.Equal(TimeSpan.FromHours(-4), hit.Value.ResetAt.Offset);
+        Assert.Equal("session", hit.Value.Window);
+    }
+
+    [Theory]
+    [InlineData("2026-09-28T22:40:00+00:00")] // 6:40pm: an hour ahead
+    [InlineData("2026-09-28T18:45:00+00:00")] // 2:45pm: 4h55m ahead
+    public void A_reset_inside_the_window_gives_the_instant_it_names_and_is_not_passed(string endedAt)
+    {
+        var hit = UsageLimit.Recognise(SevenForty, DateTimeOffset.Parse(endedAt));
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.Passed);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal(TimeSpan.FromHours(-4), hit.Value.ResetAt.Offset);
+    }
+
+    [Theory]
+    [InlineData("2026-09-28T17:41:00+00:00", false)] // 5h59m away: inside the window plus an hour
+    [InlineData("2026-09-28T17:40:00+00:00", false)] // exactly 6h away: not further than it
+    [InlineData("2026-09-28T17:39:00+00:00", true)]  // 6h01m away: the named reset has passed
+    public void The_window_plus_an_hour_of_slack_is_where_a_reset_stops_being_the_next_one(string endedAt, bool passed)
+    {
+        var ended = DateTimeOffset.Parse(endedAt);
+
+        var hit = UsageLimit.Recognise(SevenForty, ended);
+
+        Assert.NotNull(hit);
+        Assert.Equal(passed, hit!.Value.Passed);
+        Assert.Equal(
+            passed ? ended + TimeSpan.FromMinutes(5) : DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"),
+            hit.Value.ResetAt);
+        Assert.Equal(TimeSpan.FromHours(-4), hit.Value.ResetAt.Offset);
+    }
+
+    [Fact]
+    public void A_dated_weekly_sentence_is_never_read_as_passed()
+    {
+        var hit = UsageLimit.Recognise(
+            "You've hit your weekly limit · resets Oct 5 at 7:40pm (America/New_York)", EndedAt);
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.Passed);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-05T23:40:00+00:00"), hit.Value.ResetAt);
     }
 
     [Fact]
@@ -102,10 +172,10 @@ public sealed class UsageLimitTests
     [InlineData("You've hit your session limit · resets 7:40pm (America/New_York) · progress saved", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
     [InlineData("You're out of usage credits · resets 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
     [InlineData("You've hit your session limit · resets 7:40pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
-    [InlineData("You've hit your session limit · resets 5:00pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-29T21:00:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 5:00pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-28T22:05:00+00:00", true)]
     [InlineData("You've hit your weekly limit · resets Jan 3, 2027 at 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
     [InlineData("You've hit your weekly limit · resets Jan 3, 2027, 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
-    [InlineData("You've hit your session limit · resets 7:40pm (Mars/Colony)", null, "2026-09-28T22:00:00+00:00", "2026-09-29T19:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7:40pm (Mars/Colony)", "America/Los_Angeles", "2026-09-28T22:00:00+00:00", "2026-09-29T02:40:00+00:00", true)]
     [InlineData("You've hit your session limit · resets soon, we promise", null, "2026-09-28T22:00:00+00:00", null, false)]
     [InlineData("the build failed on main", null, "2026-09-28T22:00:00+00:00", null, null)]
     public void Every_sentence_shape_the_CLI_prints_resolves_to_the_instant_it_names(

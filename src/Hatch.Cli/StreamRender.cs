@@ -23,6 +23,9 @@ public sealed class RunFacts
     /// <summary>The whole work log entry, or null on a run that ended before it could report.</summary>
     public WorkLogEntryRequest? Result { get; set; }
 
+    /// <summary>The session's <c>release-note</c> block, lifted for the runner to post under its claim; null when it wrote none.</summary>
+    public string? ReleaseNote { get; set; }
+
     /// <summary>
     /// The result event's own <c>result</c> field, raw - what <see cref="UsageLimit"/>
     /// reads, because a limit's sentence is not always inside the work-log fence
@@ -47,6 +50,15 @@ public sealed class RunFacts
 
     /// <summary>The requests the session had made when its hard limit was crossed.</summary>
     public int? HardLimitedAtRequests { get; set; }
+
+    /// <summary>
+    /// The latest <c>rate_limit_event</c>'s windows, out of the session's own
+    /// stream - null on a run that never saw one, or a quiet run, where
+    /// <see cref="Increment.SpawnAsync"/> never sets this. Read by the usage-limit
+    /// correction in <see cref="Increment.SpawnAsync"/> to prefer the stream's own
+    /// reset instant over the sentence's.
+    /// </summary>
+    public IReadOnlyList<UsageWindow>? Usage { get; set; }
 }
 
 /// <summary>
@@ -307,6 +319,7 @@ public sealed partial class StreamRender : IAgentStreamReader
 
         var resultText = Text(e, "result") ?? "";
         var (title, summary) = WorkLog(resultText);
+        _facts.ReleaseNote = ReleaseNote(resultText);
 
         _facts.ResultText = resultText;
         _facts.Result = new WorkLogEntryRequest(
@@ -412,8 +425,34 @@ public sealed partial class StreamRender : IAgentStreamReader
         return (title, body.Length == 0 ? null : body);
     }
 
+    /// <summary>
+    /// The note the session was asked to leave for the people who will read the
+    /// release notes, out of its <c>release-note</c> block.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="WorkLog"/>, the <em>last</em> block wins. The text is kept
+    /// whole - the first line is simply where the note starts, and the server
+    /// stores the markdown as it comes - trimmed and clipped to
+    /// <see cref="ReleaseNoteRequest.MaxLength"/>. No block, or an empty one, is null.
+    /// </remarks>
+    internal static string? ReleaseNote(string said)
+    {
+        var blocks = ReleaseNoteFence().Matches(said);
+        if (blocks.Count == 0) return null;
+
+        var note = blocks[^1].Groups[1].Value.ReplaceLineEndings("\n").Trim();
+        if (note.Length == 0) return null;
+
+        return note.Length > ReleaseNoteRequest.MaxLength
+            ? note[..ReleaseNoteRequest.MaxLength].TrimEnd()
+            : note;
+    }
+
     [GeneratedRegex(@"```work-log[^\n]*\n(.*?)```", RegexOptions.Singleline)]
     private static partial Regex Fence();
+
+    [GeneratedRegex(@"```release-note[^\n]*\n(.*?)```", RegexOptions.Singleline)]
+    private static partial Regex ReleaseNoteFence();
 
     [GeneratedRegex(@"^title:\s*", RegexOptions.IgnoreCase)]
     private static partial Regex TitlePrefix();

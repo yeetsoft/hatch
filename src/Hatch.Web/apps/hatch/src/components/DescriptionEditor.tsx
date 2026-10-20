@@ -28,6 +28,7 @@ export function DescriptionEditor({
   previewClassName,
   clampTo,
   rows = 16,
+  noun = 'description',
 }: {
   /** The section's heading, drawn beside the controls. A node rather than a
       string because the level differs: <h2> on the page, <h4> inside a dialog
@@ -56,6 +57,9 @@ export function DescriptionEditor({
   clampTo?: number | null;
   /** The height the box opens at, which differs for the same reason. */
   rows?: number;
+  /** What this editor writes about, in lower case; drives the empty state,
+      the changed-underneath sentence and the box's aria-label. */
+  noun?: string;
 }) {
   const [draft, setDraft] = useState(() => openDraft(value));
   const [preview, setPreview] = useState(true);
@@ -113,7 +117,7 @@ export function DescriptionEditor({
 
       {draft.changed && (
         <p className="text-muted">
-          The description changed while this was being edited.{' '}
+          The {noun} changed while this was being edited.{' '}
           <Button onClick={() => setDraft(revert(draft))}>Take the new version</Button>
         </p>
       )}
@@ -131,7 +135,7 @@ export function DescriptionEditor({
             />
           )
         ) : (
-          <p className="text-muted">No description yet.</p>
+          <p className="text-muted">No {noun} yet.</p>
         )
       ) : (
         // `rows` is the height it opens at and the floor it never goes back
@@ -141,7 +145,7 @@ export function DescriptionEditor({
           onChange={(text) => setDraft(editDraft(draft, text))}
           rows={rows}
           className={editorClassName}
-          ariaLabel="Description"
+          ariaLabel={noun.charAt(0).toUpperCase() + noun.slice(1)}
         />
       )}
 

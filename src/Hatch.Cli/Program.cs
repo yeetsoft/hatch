@@ -238,6 +238,7 @@ try
         "board" => await new BoardCommands(cli).BoardAsync(rest, cancelling.Token),
         "next" => await new BoardCommands(cli).NextAsync(rest, cancelling.Token),
         "queue" => await new BoardCommands(cli).QueueAsync(rest, cancelling.Token),
+        "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
         "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
@@ -252,7 +253,7 @@ try
         "questions" => await new QuestionCommands(cli).QuestionsAsync(rest, cancelling.Token),
         "answer" => await new QuestionCommands(cli).AnswerAsync(rest, cancelling.Token),
         "api" => await new ApiCommand(cli).RunAsync(rest, cancelling.Token),
-        "runner-claude-token" => await new ClaudeTokenCommand(cli).RunAsync(rest, cancelling.Token),
+        "runner-credential" => await new CredentialCommand(cli).RunAsync(rest, cancelling.Token),
 
         // Unreachable: the name was checked against the same table above.
         _ => 1,
@@ -342,7 +343,7 @@ internal partial class Program
     /// every other - there is no hidden verb here. What this list is for is the
     /// block in src/Hatch.Web/apps/hatch/public/hatch-at-home.md that a friend pastes into their own
     /// repository's <c>CLAUDE.md</c>: that block is the contract an agent
-    /// works to, and <c>runner-claude-token</c> is the container entrypoint's
+    /// works to, and <c>runner-credential</c> is the container entrypoint's
     /// own plumbing (containers/hatch-runner/entrypoint.sh). Naming it there
     /// would be telling every session in the house about a command that prints
     /// a credential, for no work it could ever do with it. <c>inbox</c> is what a
@@ -354,7 +355,7 @@ internal partial class Program
     /// </remarks>
     public static readonly string[] Internal =
     [
-        "runner-claude-token",
+        "runner-credential",
         "inbox",
     ];
 
@@ -365,7 +366,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "board", "next", "queue", "changelog", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -382,6 +383,8 @@ internal partial class Program
         "  hatch queue                  every card a pass would look at, and why",
         "  hatch queue AER-1            ...under one epic",
         "  hatch queue --mine           ...only your own",
+        "  hatch changelog              what shipped, as markdown - the newest 7 days that shipped something",
+        "  hatch changelog --days 30 --before 2026-09-01 --project AER --json",
         "  hatch show AER-12            the brief, plus its comments",
         "  hatch comments AER-12        the thread alone, without the brief you already have",
         "  hatch start AER-12           move it to \"in progress\"",
@@ -407,7 +410,7 @@ internal partial class Program
         "",
         "The one the container runner's entrypoint calls, and nobody types:",
         "",
-        "  hatch runner-claude-token    the Claude token this Hatch holds, decoded",
+        "  hatch runner-credential <agent>   the credential this Hatch holds for an agent, as NAME=value",
         "",
         "And the one a session's hooks call, and nobody types:",
         "",

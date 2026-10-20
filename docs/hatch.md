@@ -2751,6 +2751,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
+| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -2783,7 +2784,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
@@ -3103,6 +3104,15 @@ The row carries no pull request url, since it has none; `sentence` is the
 judge's own. `attentionCount` counts it, for `approvedHeld`'s reason: nothing
 in the loop will fix a trunk that is red. The empty state reads *Nothing landed
 has stopped short of done.*
+
+`deadlocked` is every issue the work queue marks [deadlocked](#deadlocked),
+judged board-wide and listed in the queue's own order: priority tier, then
+columns right to left, then `(rank, id)`, not rank order across the board.
+`sentence` is the queue's own, starting `deadlocked - `. It is listed whatever
+the board's shape - an empty list, never absent, on a board with no edges and
+on one with no review column - because it is read from the same unnarrowed scan
+the queue marks its rows with, so the panel and the queue cannot disagree.
+Counting it towards the badge is the panel's own change, not this read's.
 
 Pre-approval reaches this panel's review half too, the same way it already
 reaches the merge column's. A row in `reviews` that is
@@ -3873,13 +3883,16 @@ order:
 2. **epic** — an epic standing in a column short of the implementation
    column, carried on each move right until it reaches that column, with
    something filed under it — any direct child, of any type, in any column —
-   and whose own direct parent is itself an epic that has reached the
-   implementation column. A top-level epic — one with no
-   parent, or a parent that is not a running epic — is never carried this way:
-   its own column is the whole signal, and only a person moves it in
-   (HA-202). An epic that clears the parent test but has nothing filed under
-   it is never a hop either: it is folded instead, with *"nothing is filed
-   under it — an epic runs its stories, and it has none"*.
+   and, for a sub-epic, whose own direct parent is itself an epic that has
+   reached the implementation column. A top-level epic — one with no
+   parent — is carried only by the move that lands it in the implementation
+   column, and by no earlier one: the move off the backlog, into the column
+   that feeds the implementation column, is the person's press, and this
+   carries it the rest of the way (HA-1069). An epic whose parent is not a
+   running epic is never carried (HA-202). An epic that clears those tests
+   but has nothing filed under it is never a hop either: it is folded
+   instead, with *"nothing is filed under it — an epic runs its stories, and
+   it has none"*.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
    whose parent is an epic at or past the implementation column — in [In
    Progress](#status), in review, wherever it stands once it has reached
@@ -3963,7 +3976,7 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 - The issue is blocked by some other fold — a claim, a ready date, an
   assignee, a question, a repository, a dependency, a full [WIP](#wip)
   section, [an epic at its own limit](#an-epics-own-limit), a terminal next
-  column, a top-level epic (its own column is the signal, not a pass), an
+  column, an
   epic whose parent epic is not running, an epic with nothing filed under it,
   or (for a child of a `ParentPulls` column) a parent that has not reached the
   implementation column, or a sibling on a shared story's branch already in flight, or a childless issue
@@ -4142,16 +4155,22 @@ it. This is decision 8 of epic HA-422.
 
 ### Running an epic
 
-**The pull is for a sub-epic, never a top-level one.** An operator drags a
-*top-level* epic into the column before the WIP section and walks away — that
-column, on its own, is the whole signal that its sub-tree should run, and only
-a person sets it. No pass ever carries a top-level epic across on its own say-so
-(HA-202): one with no parent, or whose parent is not itself a running epic,
-is folded — *"a top-level epic is moved in by a person - its own column is the
-signal for everything under it"*, or, where it has a parent epic that simply
-is not running, *"its parent epic is not running, so nothing pulls it in"*.
+**A person starts a top-level epic by moving it off the backlog.** An
+operator drags a *top-level* epic into the column that feeds the WIP section —
+on the stock board, *Backlog → To Do* — and walks away: the next pass carries
+it into the implementation column with no session, the same [`epic`
+hop](#the-hop) a sub-epic gets, and the epic slice of the WIP section is the
+only thing that holds it there (HA-1069). That earlier move is the press, and
+nothing carries an epic across it for a person — a [pre-approved](#pre-approval)
+epic is the exception only because pre-approval is that person's say-so given
+in advance, and the express hop carries it across on its own. An epic with
+nothing filed under it is folded — *"nothing is filed under it — an epic runs
+its stories, and it has none"* — and one whose parent is not a running epic is
+folded *"its parent epic is not running, so nothing pulls it in"*. A board
+whose breakdown column empties directly into the feeder column has no such
+press: an epic breakdown has just filled is carried straight in.
 
-Once a person has moved a top-level epic into the section, an epic **filed
+Once a top-level epic is in the section, an epic **filed
 under it** is carried in by the next pass with no session — [the `epic`
 hop](#the-hop) — as long as something is filed under that sub-epic and the
 epic slice has room; a sub-epic with nothing filed under it is folded instead,
@@ -4255,13 +4274,14 @@ linked here rather than repeated.
   describes.
 - `Backlog → To Do` is the express hop again, for the epic and, separately,
   for each story as it is filed.
-- **The epic's own `To Do → In Progress` move is the one press left for a
-  person.** `To Do` is not ticked `ExpressSkips`, so the express hop never
-  fires for the epic there, and the epic-start playbook that used to cover
-  this move is retired on a WIP-enabled board regardless, per [the playbooks
-  above](#playbooks). The move has no hop and no playbook either, so it
-  folds on a missing playbook until somebody drags the epic across by hand.
-  Everything after that one press is unattended.
+- **The epic's own `To Do → In Progress` move is the epic hop.** `To Do` is
+  not ticked `ExpressSkips`, so the express hop never fires for the epic
+  there, but the epic hop does: a top-level epic with something filed under
+  it is carried into the implementation column by the next pass, with no
+  session and no playbook, as soon as the WIP section's epic slice has room.
+  The one press a regular, un-pre-approved epic needs is the move off the
+  backlog into `To Do`; a pre-approved epic needs none. Everything after is
+  unattended.
 - Each story's own `To Do → In Progress` is the analysis playbook; its
   `In Progress → In Review` is implementation, or closeout once its own
   tasks are all terminal or deferred.
@@ -5402,6 +5422,22 @@ unrecognised Claude limit does. There is no usage probe for Codex: a session's
 own cost is read from the stream it already sends, nothing is polled on the
 side.
 
+**What could not be checked.** Whether API-key auth reaches a larger reachable
+catalog than the ChatGPT-account login this proof used: the refusal sentence's
+own wording ("not supported when using Codex with a ChatGPT account") suggests
+it might, and it was not tried, so the tier table above is only as wide as that
+one login. Every real run also printed `WARNING: proceeding, even though we
+could not create PATH aliases: Refusing to create helper binaries under
+temporary dir...`; it never stopped a `hatch` command from working, so its
+cause was not chased. And whether `turn.completed.usage.reasoning_output_tokens`
+is ever nonzero on this login's models: the field was present and `0` on every
+stream read, so it is emitted, but no nonzero case has been seen. The stream
+reader adds it to the output count when it is there, so a nonzero value would
+be counted, but no real one has exercised that. Two further things that
+did not happen in the proof: no real usage-limit sentence was seen (see
+**Limits** above), and the refreshed `auth.json` was never compared, which is
+moot while no session sets `CODEX_HOME`.
+
 ### What makes an issue actionable
 
 Twenty conditions, the eighteenth a way out of the seventeenth rather than one
@@ -5563,8 +5599,10 @@ which one it failed is what `work/queue` reports:
 
     An epic standing in a column short of the implementation column, carried
     on each move right until it reaches that column, is a second kind of hop:
-    something is filed under it, of any type. Where nothing is, the
-    refinement is its own fold rather than a
+    something is filed under it, of any type, and, for a sub-epic, a parent
+    epic at or past the implementation column; a top-level epic is carried
+    only by the move that lands it there (HA-1069). Where nothing is filed,
+    the refinement is its own fold rather than a
     fall-through to the seventeenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic at or past the
@@ -6505,12 +6543,16 @@ is offered again on the next pass exactly as if it had moved, unless something
 else - a dependency, a playbook, a question - holds it back.
 
 **Neither is a usage limit.** A session that ends because the Claude account it
-ran under hit its usage limit is read from what it said on its way out - the
+ran under hit its usage limit is read first from the session's own stream -
+the `rate_limit_event` window matching the one the sentence named, already in
+the runner's own zone with nothing to parse - and only when that is missing,
+already passed, or silent on that one window does it fall back to what it
+said on its way out - the
 read now covers every spelling a limit comes back under (session, weekly, Opus,
 Sonnet and Fable), as well as the pay-as-you-go phrasing that never says "limit"
 at all (`You're out of usage credits · resets ...`); it handles a dated reset
 given either with "at" or with a bare comma, an hour with no minutes, an unknown
-zone (falls back to UTC rather than giving up), and a reset naming no zone at
+zone (falls back to the runner's own zone rather than giving up), and a reset naming no zone at
 all, read against the runner's own zone rather than falling to the one-hour-away
 treatment. A time with no date is the next occurrence of that clock time after
 the session ended, in the named zone; a limit the session named but whose time
@@ -6538,9 +6580,12 @@ other way round: room left in that window clears
 the wait outright, this same pass, whatever instant the sentence gave; a reset
 instant that disagrees with the one carried in replaces it, in either
 direction; and a probe with no session window at all - or no answer at all -
-touches nothing, leaving the sentence standing. A correction says itself once,
-the same "out of Claude usage until ..." line the sentence itself prints, and
-not again merely because a later probe lands on the same corrected reading.
+touches nothing, leaving the sentence standing. The probe's own instant
+carries no zone of its own, so the correction converts it into the runner's
+own local clock as it replaces the carried one - the same "out of Claude
+usage until ..." line the sentence itself prints is shown in the runner's own
+clock either way. A correction says itself once, and not again merely because
+a later probe lands on the same corrected reading.
 
 **The wait cannot outlast the window.** The reset instant above is only
 ever a guess, and the "next occurrence of that clock time" rule it is
@@ -6554,6 +6599,17 @@ whether or not a probe has said anything to the contrary. A ticket a
 still-spent account refuses costs one session, not the rest of the window;
 the three-in-a-row stall machinery is what catches a spawn that keeps
 being refused.
+
+A session reset further away than its own window is the same guess gone the
+other way. A session never resets more than five hours out, so a sentence with
+no date whose next occurrence is more than the window plus an hour away - a
+`resets 7:40pm` read at 7:41pm, the account's own reset trailing the minute it
+names - is read as *just passed*, not as tomorrow. The wait then ends five
+minutes after the session ended, in the zone the sentence named, and the
+console line, the outcome and the ticket's comment all say that the named reset
+had just passed and when the runner tries again. A dated sentence is taken as
+given, so a weekly limit is unchanged; an undated per-model weekly sentence
+lands here too, which costs one refused spawn every five minutes.
 
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see
