@@ -201,6 +201,14 @@ describe('DocsPage', () => {
     expect(outlineHrefs(html)).toContain('one-increment-hatch-work');
   });
 
+  it('draws How work flows with a mermaid placeholder for each diagram', () => {
+    const page = docPage(DOC_PAGES, 'how-work-flows');
+    expect(page).toBeDefined();
+    const html = renderAt('/docs/how-work-flows');
+
+    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(2);
+  });
+
   describe('anything else', () => {
     for (const path of ['/docs/no-such-page', '/docs/a/b']) {
       it(`shows a not-found state inside the docs frame for ${path}`, () => {
