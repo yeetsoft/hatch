@@ -39,10 +39,11 @@ says Google sign-in is not configured, a variable above did not arrive.
 the Administrator — the migrate log says so ("No Administrator exists yet. The
 next person to sign in with Google becomes the Administrator."). So sign in
 yourself, straight away, before you share the address. Everyone after arrives
-Pending and can do nothing until an Administrator approves them under
-**Users**. Signing in again never changes anybody's role.
+Pending, unless an Administrator added them first with **Add user**, and can
+do nothing until an Administrator approves them on **Manage → Users**, by
+changing their **Role**. Signing in again never changes anybody's role.
 
-**5. The runner now needs a key.** Open **Runner → API keys**, mint one, and
+**5. The runner now needs a key.** Open **Manage → API keys**, mint one, and
 give it to the runner:
 
 ```
