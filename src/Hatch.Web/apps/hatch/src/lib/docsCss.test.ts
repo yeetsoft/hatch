@@ -47,6 +47,15 @@ describe('the docs page styles', () => {
     expect(img['height']).toBe('auto');
   });
 
+  it('keep a diagram inside the column, scrolling sideways in its own box', () => {
+    const svg = declarationsOf('.hatch-docs-mermaid svg');
+    expect(svg['max-width']).toBe('100%');
+    expect(svg['height']).toBe('auto');
+
+    const box = declarationsOf('.hatch-docs-mermaid');
+    expect(box['overflow-x']).toBe('auto');
+  });
+
   it('keeps the sidebar sticky on the desk', () => {
     // declarationsOf merges the @media rule's declarations over the outer
     // rule's, since both share the selector string - the first match, the
