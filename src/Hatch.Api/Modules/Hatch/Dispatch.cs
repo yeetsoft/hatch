@@ -1031,6 +1031,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to.Id == implementation?.Id)
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return (WaitingOn(waitingOn), BlockedKinds.Dependency);
+            if (family.SharedBranchSibling(issue, statuses) is { } sibling)
+                return ($"{sibling}, sharing this story's branch, is already in flight - one sibling at a time", BlockedKinds.Family);
         }
 
         // The mirror of the dependency fold above: that one gates the move in,
@@ -1919,7 +1921,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey);
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], [], []);
+    public static readonly FamilyGate None = new([], [], [], [], [], []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -1935,16 +1937,19 @@ public sealed class FamilyGate
     private readonly Dictionary<long, int> _statusById;
     private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> _byId;
     private readonly HashSet<long> _waiting;
+    private readonly Dictionary<long, long> _sharedStory;
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
-        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting)
+        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting,
+        Dictionary<long, long> sharedStory)
     {
         _children = children;
         _open = open;
         _statusById = statusById;
         _byId = byId;
         _waiting = waiting;
+        _sharedStory = sharedStory;
     }
 
     public static async Task<FamilyGate> ForAsync(
@@ -1978,7 +1983,13 @@ public sealed class FamilyGate
         tree ??= await PriorityTree.ForAsync(db, ct);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
-        return new FamilyGate(children, open, statusById, byId, waiting);
+        // Which tasks share a story's branch, and which story - read off the
+        // same tree, for the fold that keeps two of them off the branch at once.
+        var sharedStory = new Dictionary<long, long>();
+        foreach (var id in byId.Keys)
+            if (tree.SharedStoryOf(id) is { } story) sharedStory[id] = story;
+
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory);
     }
 
     /// <summary>
@@ -2094,6 +2105,34 @@ public sealed class FamilyGate
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The key of the first sibling in flight on the story's shared branch, or
+    /// null where this issue shares none or no sibling is. In flight is judged
+    /// by the sibling's own row: at or past the implementation column, not
+    /// terminal, and not waiting on the story's pull request. Whether the
+    /// sibling has a pull request of its own does not matter - this issue is
+    /// the one that would go on the story's branch.
+    /// </summary>
+    public string? SharedBranchSibling(EfHatchIssue issue, List<EfHatchStatus> statuses)
+    {
+        if (!_sharedStory.TryGetValue(issue.Id, out var storyId)) return null;
+
+        var started = Columns.AtOrPastImplementationIds(statuses);
+        var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
+
+        foreach (var siblingId in Children(storyId))
+        {
+            if (siblingId == issue.Id) continue;
+            if (!_statusById.TryGetValue(siblingId, out var siblingStatusId)) continue;
+            if (!started.Contains(siblingStatusId) || terminal.Contains(siblingStatusId)) continue;
+            if (_waiting.Contains(siblingId)) continue;
+
+            return _byId[siblingId].Key;
+        }
+
+        return null;
     }
 
     /// <summary>
