@@ -160,6 +160,24 @@ to sign-in instead.
   that change. The real reason is in the API's own answer, which `hatch api …`
   shows, and in the sentences above.
 
+## Whose tickets `--mine` reaches
+
+- **Who sets it.** An admin, on **Manage → API keys** — a key may never set
+  its own. **Belongs to**, on the mint form, lists people only and is
+  pre-selected to the admin at the screen; left as is, that admin becomes the
+  key's owner. The **Owner** select on an existing, unrevoked row also offers
+  `nobody`; a revoked row shows its owner as text only.
+- **Whose tickets it reaches.** The signed-in person; failing that, the key's
+  owner; failing that, the local person where the wall is off. `--mine` takes
+  only a ticket assigned to that person, or to the key itself, and folds
+  every other one.
+- **A key that belongs to nobody has no tickets of its own**, and is refused
+  before a `--mine` pass scans anything: an admin sets it on **Manage → API
+  keys**.
+
+[One increment and the loop](one-increment-and-the-loop#sharing-a-board) says
+more about sharing one board between people and keys.
+
 ## Coming
 
 Pages this one links to that are not written yet:
