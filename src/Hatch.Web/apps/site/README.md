@@ -44,3 +44,8 @@ five-item plumbing tax in
 it takes items 4 and 5 (the CI matrix, the `Makefile`'s `test-web` loop) and
 deliberately not items 1–3: no `Hatch.Api.csproj` build target, no
 `Dockerfile.api` `COPY`, no `Program.cs` redirect or fallback route.
+
+The API image's `web-build` stage still ends in `build --workspaces
+--if-present`, so the image builds this app too, into an `apps/site/dist/` that
+nothing copies out; the build is hermetic, so that is harmless, and the app is
+not added to the image's `COPY` list.
