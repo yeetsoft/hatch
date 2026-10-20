@@ -41,14 +41,20 @@ public class ManifestContentTypeTests
             "apps/hatch has not been built - run npm run build -w apps/hatch (or make test-web) first");
 
         var (hatch, quartz) = await MinimalDatabases.CreateAsync();
+        try
+        {
+            await using var factory = new ManifestFactory(hatch, quartz);
+            using var client = factory.CreateClient();
 
-        await using var factory = new ManifestFactory(hatch, quartz);
-        using var client = factory.CreateClient();
+            var response = await client.GetAsync("/apps/hatch/manifest.webmanifest");
 
-        var response = await client.GetAsync("/apps/hatch/manifest.webmanifest");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("application/manifest+json", response.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("application/manifest+json", response.Content.Headers.ContentType?.MediaType);
+        }
+        finally
+        {
+            await MinimalDatabases.DropAsync(hatch, quartz);
+        }
     }
 
     /// <summary>Found by walking up for the solution file, same as <c>MinimalStartupTests.RepositoryRoot()</c> - duplicated rather than extracted for a helper this small, used in exactly two places.</summary>
