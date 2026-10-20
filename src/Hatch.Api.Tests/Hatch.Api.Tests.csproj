@@ -22,6 +22,13 @@
       failing would make `dotnet test` red on every laptop.
     -->
     <PackageReference Include="Xunit.SkippableFact" Version="1.5.85" />
+    <!--
+      Drives a real browser for the e2e cases, and brings its own: the
+      package carries Chromium and WebKit rather than expecting one already
+      on the machine. `make browsers` installs them, into Playwright's own
+      per-user cache.
+    -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
   </ItemGroup>
 
   <ItemGroup>

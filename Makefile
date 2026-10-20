@@ -109,6 +109,23 @@ test-api-db: db
 	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
 		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP)
 
+# Installs what the e2e cases in src/Hatch.Api.Tests need to drive a real
+# browser: Chromium and WebKit, into Playwright's own per-user cache
+# (%LOCALAPPDATA%\ms-playwright on Windows), not this checkout. WebKit is
+# installed for HA-1047 (the phone layout); Firefox is not (HA-1030). Once per
+# machine, and again whenever the Microsoft.Playwright package moves - the
+# installer is the one that ships inside it, copied beside the test binary by
+# the package's own build/Microsoft.Playwright.targets.
+browsers:
+	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
+	command -v pwsh >/dev/null || { echo "make browsers needs PowerShell (pwsh): Playwright'\''s installer is a PowerShell script. https://aka.ms/powershell" >&2; exit 1; }; \
+	dotnet build ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj && \
+	if [ "$$(uname -s)" = "Linux" ]; then \
+		pwsh src/Hatch.Api.Tests/bin/Debug/net10.0/playwright.ps1 install chromium webkit --with-deps; \
+	else \
+		pwsh src/Hatch.Api.Tests/bin/Debug/net10.0/playwright.ps1 install chromium webkit; \
+	fi'
+
 # One `npm ci` at the workspace root, then each app in turn. The apps are still
 # named one at a time rather than run with `--workspaces` so that the "==>" line
 # says which one is building when something fails.
