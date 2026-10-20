@@ -1815,6 +1815,40 @@ export interface OvernightRowDto {
   descendantCount: number;
 }
 
+// ---- Changelog ----
+
+/** The newest window of days that shipped something - `GET /api/hatch/changelog`'s whole read. */
+export interface ChangelogDto {
+  days: ChangelogDayDto[];
+  hasOlder: boolean;
+  oldest: string | null;
+  months: ChangelogMonthDto[];
+}
+
+/** One day's worth of closes, split into the epics and everything else. */
+export interface ChangelogDayDto {
+  date: string;
+  features: ChangelogEntryDto[];
+  fixes: ChangelogEntryDto[];
+}
+
+/** One parentless, closed issue, as a day draws it. */
+export interface ChangelogEntryDto {
+  key: string;
+  title: string;
+  type: IssueType;
+  projectKey: string;
+  releaseNote: string | null;
+  closedAt: string;
+  descendantCount: number;
+}
+
+/** One calendar month and how many issues closed in it. */
+export interface ChangelogMonthDto {
+  month: string;
+  count: number;
+}
+
 // ---- Runners ----
 
 /** What a runner is: a loop that will ask again between increments, or a single
