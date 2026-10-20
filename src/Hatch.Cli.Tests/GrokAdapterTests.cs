@@ -191,11 +191,11 @@ public sealed class GrokAdapterTests : IDisposable
     [Fact]
     public void A_pinned_model_passes_through_m()
     {
-        var request = new SessionRequest("/root", "grok-4.6", "high", "prompt", Quiet: true);
+        var request = new SessionRequest("/root", "grok-4.7", "high", "prompt", Quiet: true);
 
         var args = Adapter().BuildAttached(request).ArgumentList;
 
-        Assert.Equal(["-m", "grok-4.6", "--effort", "high", "--cwd", "/root", "prompt"], args);
+        Assert.Equal(["-m", "grok-4.7", "--effort", "high", "--cwd", "/root", "prompt"], args);
     }
 
     [Theory]
@@ -215,12 +215,12 @@ public sealed class GrokAdapterTests : IDisposable
     [Fact]
     public void An_overridden_tier_passes_its_pinned_id_through_m()
     {
-        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.6" };
+        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.7" };
         var request = new SessionRequest("/root", "opus", "high", "prompt", Quiet: true);
 
         var args = Adapter(tiers).BuildAttached(request).ArgumentList;
 
-        Assert.Equal(["-m", "grok-4.6", "--effort", "high", "--cwd", "/root", "prompt"], args);
+        Assert.Equal(["-m", "grok-4.7", "--effort", "high", "--cwd", "/root", "prompt"], args);
     }
 
     [Fact]
@@ -240,7 +240,6 @@ public sealed class GrokAdapterTests : IDisposable
     [InlineData("medium")]
     [InlineData("high")]
     [InlineData("xhigh")]
-    [InlineData("max")]
     public void Effort_passes_straight_through(string effort)
     {
         var request = new SessionRequest("/root", "sonnet", effort, "prompt", Quiet: true);
@@ -249,6 +248,21 @@ public sealed class GrokAdapterTests : IDisposable
 
         Assert.Contains("--effort", args);
         Assert.Contains(effort, args);
+    }
+
+    [Theory]
+    [InlineData("low", "low")]
+    [InlineData("medium", "medium")]
+    [InlineData("high", "high")]
+    [InlineData("xhigh", "xhigh")]
+    [InlineData("max", "xhigh")]
+    public void Efforts_map_max_to_xhigh_and_pass_the_rest_through(string effort, string expected)
+    {
+        var request = new SessionRequest("/root", "sonnet", effort, "prompt", Quiet: true);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Equal(expected, args[args.IndexOf("--effort") + 1]);
     }
 
     [Fact]
@@ -265,7 +279,7 @@ public sealed class GrokAdapterTests : IDisposable
     [Fact]
     public void An_override_table_that_leaves_only_one_tier_on_the_default_does_not_warn()
     {
-        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.6" };
+        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.7" };
         _ = Adapter(tiers);
 
         Assert.DoesNotContain(_warnings, w => w.Contains("run on the CLI's default model here"));
