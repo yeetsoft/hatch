@@ -1663,6 +1663,18 @@ export interface WorkLogEntry {
   playbookFileSha: string | null;
   /** The hash of a file-sourced playbook's contents. */
   playbookFileHash: string | null;
+  /** Which playbook the session ran under: a row's id as text, or "types:shape" for a file. */
+  playbookKey: string | null;
+  /** The column the playbook's transition leaves. */
+  playbookFromStatusId: number | null;
+  /** The column the playbook's transition enters. */
+  playbookToStatusId: number | null;
+  /** The issue's type when the session was dispatched. */
+  issueType: string | null;
+  /** The model the session ran on. */
+  playbookModel: string | null;
+  /** The effort the session ran at. */
+  playbookEffort: string | null;
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */

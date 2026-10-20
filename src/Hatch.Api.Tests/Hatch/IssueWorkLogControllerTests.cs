@@ -177,6 +177,64 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task PlaybookDetail_IsPassedThroughUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            PlaybookKey = "*:any",
+            PlaybookFromStatusId = 3,
+            PlaybookToStatusId = 4,
+            IssueType = "task",
+            PlaybookModel = "opus",
+            PlaybookEffort = "high",
+        });
+
+        Assert.Equal("*:any", entry.PlaybookKey);
+        Assert.Equal(3, entry.PlaybookFromStatusId);
+        Assert.Equal(4, entry.PlaybookToStatusId);
+        Assert.Equal("task", entry.IssueType);
+        Assert.Equal("opus", entry.PlaybookModel);
+        Assert.Equal("high", entry.PlaybookEffort);
+
+        var log = await h.ReadAsync(issue.Key);
+        var row = Assert.Single(log.Entries);
+        Assert.Equal("*:any", row.PlaybookKey);
+        Assert.Equal(3, row.PlaybookFromStatusId);
+        Assert.Equal(4, row.PlaybookToStatusId);
+        Assert.Equal("task", row.IssueType);
+        Assert.Equal("opus", row.PlaybookModel);
+        Assert.Equal("high", row.PlaybookEffort);
+    }
+
+    [Fact]
+    public async Task PlaybookDetail_IsNullWhenNotSent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported());
+
+        Assert.Null(entry.PlaybookKey);
+        Assert.Null(entry.PlaybookFromStatusId);
+        Assert.Null(entry.PlaybookToStatusId);
+        Assert.Null(entry.IssueType);
+        Assert.Null(entry.PlaybookModel);
+        Assert.Null(entry.PlaybookEffort);
+
+        var log = await h.ReadAsync(issue.Key);
+        var row = Assert.Single(log.Entries);
+        Assert.Null(row.PlaybookKey);
+        Assert.Null(row.PlaybookFromStatusId);
+        Assert.Null(row.PlaybookToStatusId);
+        Assert.Null(row.IssueType);
+        Assert.Null(row.PlaybookModel);
+        Assert.Null(row.PlaybookEffort);
+    }
+
+    [Fact]
     public async Task ABoardOrProjectSourcedRow_NeverCarriesAFileReference()
     {
         var h = await NewAsync();

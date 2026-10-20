@@ -2320,6 +2320,12 @@ public record WorkLogModelUseDto(
 /// that ended badly still had an id and still cost something.
 /// </param>
 /// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookKey">Which playbook the session ran under: a board or project row's id as text, or <c>"{types}:{shape}"</c> for a file row. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookFromStatusId">The column the playbook's transition leaves. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookToStatusId">The column the playbook's transition enters. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -2338,7 +2344,13 @@ public record WorkLogEntryRequest(
     string? PlaybookFileTrunk = null,
     string? PlaybookFileSha = null,
     string? PlaybookFileHash = null,
-    string? Agent = null);
+    string? Agent = null,
+    string? PlaybookKey = null,
+    int? PlaybookFromStatusId = null,
+    int? PlaybookToStatusId = null,
+    string? IssueType = null,
+    string? PlaybookModel = null,
+    string? PlaybookEffort = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -2354,6 +2366,12 @@ public record WorkLogEntryRequest(
 /// </param>
 /// <param name="CostUsd">Dollars, or null when the agent reported no price - unpriced, not free.</param>
 /// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookKey">Which playbook the session ran under: a board or project row's id as text, or <c>"{types}:{shape}"</c> for a file row. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookFromStatusId">The column the playbook's transition leaves. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookToStatusId">The column the playbook's transition enters. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -2379,7 +2397,13 @@ public record WorkLogEntryDto(
     string? PlaybookFileTrunk,
     string? PlaybookFileSha,
     string? PlaybookFileHash,
-    string? Agent);
+    string? Agent,
+    string? PlaybookKey,
+    int? PlaybookFromStatusId,
+    int? PlaybookToStatusId,
+    string? IssueType,
+    string? PlaybookModel,
+    string? PlaybookEffort);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for

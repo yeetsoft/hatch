@@ -143,9 +143,11 @@ it**. [`theme/ThemeProvider.tsx`](../src/Hatch.Web/packages/ui/src/theme/ThemePr
 is only the React around it: the state components read, the subscription, the
 context.
 
-The split exists because there are two callers. The other is
+The split exists because there are three callers. The others are
 [`standalone/topbar.ts`](../src/Hatch.Web/packages/ui/src/standalone/topbar.ts),
-the bar on pages Hatch did not build with Vite. Those pages must read and write
+the bar on pages Hatch did not build with Vite, and
+[`apps/site/src/theme.ts`](../src/Hatch.Web/apps/site/src/theme.ts), which runs
+`applyChoice(readChoice())` on the public site and has no control. Those pages must read and write
 the *same* stored choice as the apps — a house where the theme you picked in
 one app does not survive the click into Swagger is a house with two themes —
 and importing `ThemeProvider` to get it would drag React onto a static page to
