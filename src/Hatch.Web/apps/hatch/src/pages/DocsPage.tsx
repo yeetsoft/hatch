@@ -1,52 +1,104 @@
-import { useEffect, type MouseEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { PageHeader } from '@hatch/ui';
-import { docLinkTarget, hashId, isPlainPrimaryClick, renderDocs } from '../lib/docs';
+import {
+  DOC_PAGES,
+  docLinkTarget,
+  docPage,
+  docSections,
+  hashId,
+  isPlainPrimaryClick,
+  renderDocs,
+  type DocPage,
+  type OutlineEntry,
+} from '../lib/docs';
 import { usePhone } from '../lib/viewport';
 import { DocsSetupPrompt } from '../components/SetupPromptBox';
-// Relative on purpose: Vite refuses a "/hatch-at-home.md" specifier into public/.
-// The file stays where it is, so it is still served at /apps/hatch/hatch-at-home.md.
-import source from '../../public/hatch-at-home.md?raw';
 
-// The document's own H1 becomes the page header, so the title appears once.
-// A document that loses its H1 fails here, loudly, rather than drawing a page
-// with no title.
-const match = source.match(/^# (.+)\r?\n([\s\S]*)$/);
-if (!match) throw new Error('hatch-at-home.md must open with a "# " title line');
-const [, title, body] = match;
+interface RenderedDoc {
+  html: string;
+  outline: OutlineEntry[];
+}
 
-const docs = renderDocs(body);
-// DOMPurify's default SANITIZE_DOM silently drops an id whose value names a
-// property of document or of a form (title, links, images, forms, body,
-// location...), so a heading titled "Links" would lose its anchor. The content
-// here is shipped in the repo, not typed by a user, so the clobbering guard
-// protects nothing and costs anchors.
-const html = DOMPurify.sanitize(docs.html, { SANITIZE_DOM: false });
+// Filled lazily, the first time each slug is visited - DOC_PAGES's pages are
+// cheap to render, but there is no reason to pay for all of them before a
+// reader has asked for any.
+const rendered = new Map<string, RenderedDoc>();
 
-const list = (
-  <ol className="hatch-docs-outline-list">
-    {docs.outline.map((entry) => (
-      <li key={entry.id} className={`hatch-docs-outline-item hatch-docs-outline-item--d${entry.depth}`}>
-        <a href={'#' + entry.id}>{entry.text}</a>
-      </li>
-    ))}
-  </ol>
-);
+function renderedDoc(page: DocPage): RenderedDoc {
+  let doc = rendered.get(page.slug);
+  if (!doc) {
+    const { html, outline } = renderDocs(page.body);
+    // DOMPurify's default SANITIZE_DOM silently drops an id whose value names a
+    // property of document or of a form (title, links, images, forms, body,
+    // location...), so a heading titled "Links" would lose its anchor. The content
+    // here is shipped in the repo, not typed by a user, so the clobbering guard
+    // protects nothing and costs anchors.
+    doc = { html: DOMPurify.sanitize(html, { SANITIZE_DOM: false }), outline };
+    rendered.set(page.slug, doc);
+  }
+  return doc;
+}
 
-/** The "Hatch at home" document, shown inside the app. */
-export function DocsPage() {
+function DocsLanding() {
+  return (
+    <div className="hatch-page">
+      <PageHeader title="Docs" />
+      {/* First under the title, because bringing somebody on is the thing a reader
+          of the landing is most likely to want to pass along. Not repeated on every
+          page below - that would be an aside shown sixteen times over. */}
+      <DocsSetupPrompt />
+      <div className="hatch-docs">
+        <div className="hatch-docs-landing">
+          {docSections(DOC_PAGES).map(({ section, pages }) => (
+            <section key={section}>
+              <h2>{section}</h2>
+              <ul className="hatch-docs-landing-list">
+                {pages.map((page) => (
+                  <li key={page.slug}>
+                    <Link to={`/docs/${page.slug}`}>{page.title}</Link>
+                    <p className="hatch-docs-landing-summary">{page.summary}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocsNotFound({ path }: { path: string }) {
+  return (
+    <div className="hatch-page">
+      <div className="hatch-docs">
+        <p className="hatch-docs-missing">
+          There&rsquo;s no docs page at <code>/docs/{path}</code>. <Link to="/docs">Back to Docs</Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DocsArticle({ page }: { page: DocPage }) {
   const isPhone = usePhone();
-  const { hash } = useLocation();
+  const { pathname, hash } = useLocation();
   const navigate = useNavigate();
+  const pageRef = useRef<HTMLDivElement>(null);
+  const doc = useMemo(() => renderedDoc(page), [page]);
 
-  // On a fresh load and on every hash change, Back included. scrollIntoView moves
+  // On a fresh load, on a hash change, and on moving from one docs page to another
+  // - Back included. The route element is the same for every docs page, so
+  // .hatch-page stays mounted and keeps its scrollTop across the move; without this
+  // a page opened from another would open part-way down. scrollIntoView moves
   // whichever ancestor scrolls: .hatch-page on the desk, the document on a phone.
   useEffect(() => {
     const id = hashId(hash);
-    if (!id) return;
-    document.getElementById(id)?.scrollIntoView();
-  }, [hash]);
+    const target = id ? document.getElementById(id) : pageRef.current?.querySelector('.hatch-page-header');
+    target?.scrollIntoView();
+  }, [pathname, hash]);
 
   // One handler for the whole article. A link into the app goes through the router
   // (no page load, either address); fragments and external links stay the browser's.
@@ -60,15 +112,23 @@ export function DocsPage() {
     navigate(t.to);
   };
 
+  const list = (
+    <ol className="hatch-docs-outline-list">
+      {doc.outline.map((entry) => (
+        <li key={entry.id} className={`hatch-docs-outline-item hatch-docs-outline-item--d${entry.depth}`}>
+          <a href={'#' + entry.id}>{entry.text}</a>
+        </li>
+      ))}
+    </ol>
+  );
+
   return (
-    <div className="hatch-page">
-      <PageHeader title={title} />
-      {/* First under the title, because bringing somebody on is the thing a
-          reader of this page is most likely to want to pass along. */}
-      <DocsSetupPrompt />
+    <div className="hatch-page" ref={pageRef}>
+      <PageHeader title={page.title} />
       {/* A direct child of .hatch-page, which caps its children at --measure. */}
       <div className="hatch-docs">
-        {/* Plain anchors, not <Link>: a router link would turn a fragment into a route change. */}
+        {/* Plain anchors, not <Link>: a router link would turn a fragment into a
+            route change. */}
         {isPhone ? (
           <details className="hatch-docs-outline">
             <summary>On this page</summary>
@@ -80,8 +140,18 @@ export function DocsPage() {
             {list}
           </nav>
         )}
-        <article className="hatch-docs-body" onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: html }} />
+        <article className="hatch-docs-body" onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: doc.html }} />
       </div>
     </div>
   );
+}
+
+/** The docs frame: the landing at `/docs`, one page per slug in DOC_PAGES, and a
+    not-found state for anything else. */
+export function DocsPage() {
+  const { '*': rest = '' } = useParams();
+  if (rest === '') return <DocsLanding />;
+  const page = docPage(DOC_PAGES, rest);
+  if (!page) return <DocsNotFound path={rest} />;
+  return <DocsArticle page={page} />;
 }
