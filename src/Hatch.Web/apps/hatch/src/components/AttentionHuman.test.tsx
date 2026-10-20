@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, landingHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, LandingHeld, Review, TrunkBuild } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, Review, TrunkBuild } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -80,6 +80,14 @@ const landingHeld = (over: Partial<LandingHeld> = {}): LandingHeld => ({
   ...over,
 });
 
+const deadlocked = (over: Partial<Deadlocked> = {}): Deadlocked => ({
+  key: 'AER-16',
+  title: 'A story stuck in a ring',
+  type: 'story',
+  sentence: 'deadlocked - it waits on AER-17, which waits on it.',
+  ...over,
+});
+
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
   dialogProps = null;
@@ -87,11 +95,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws trunk builds, then pull requests, then questions, each with the panel’s own empty wording', () => {
+  it('draws deadlocked first, then trunk builds, then pull requests, then questions, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual([
+      'Deadlocked',
       'Trunk builds that fail',
       'Pull requests to review',
       'Approved, not merging',
@@ -99,17 +108,46 @@ describe('AttentionHuman', () => {
       'Questions to answer',
     ]);
 
+    const deadlockedAt = html.indexOf(deadlockedEmptyWords());
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
     const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
     const landingHeldAt = html.indexOf(landingHeldEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
 
-    expect(trunkAt).toBeGreaterThan(-1);
+    expect(deadlockedAt).toBeGreaterThan(-1);
+    expect(deadlockedAt).toBeLessThan(trunkAt);
     expect(trunkAt).toBeLessThan(reviewAt);
     expect(reviewAt).toBeLessThan(approvedHeldAt);
     expect(approvedHeldAt).toBeLessThan(landingHeldAt);
     expect(landingHeldAt).toBeLessThan(questionAt);
+  });
+
+  it('shows the empty words when nothing is deadlocked', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ deadlocked: [] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(deadlockedEmptyWords());
+  });
+
+  it('lists a deadlocked row’s key, title and sentence under Deadlocked, linked to the issue', () => {
+    const row = deadlocked();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ deadlocked: [row] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(deadlockedEmptyWords());
+    expect(html).toContain('>Deadlocked</h3>');
+    expect(html).toContain(row.key);
+    expect(html).toContain(row.title);
+    expect(html).toContain(row.sentence);
+    expect(html).toContain(`href="/issues/${row.key}"`);
   });
 
   it('shows the empty words when nothing landed has stopped short of done', () => {
