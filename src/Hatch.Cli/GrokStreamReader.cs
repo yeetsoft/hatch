@@ -7,8 +7,10 @@ namespace Hatch.Cli;
 /// Grok Build's own event vocabulary, read back the way <see
 /// cref="StreamRender"/> reads Claude's <c>stream-json</c> and <see
 /// cref="CodexStreamReader"/> reads Codex's <c>--json</c> - its own file,
-/// standalone from any adapter (none exists yet). Read against the vendor's
-/// own headless-mode guide, 2026-10-19.
+/// standalone from any adapter (none exists yet). First read against the
+/// vendor's own headless-mode guide, 2026-10-19; every shape below is now
+/// confirmed against a real 1.0.62 binary's own streaming-json and json
+/// output on HA-918, the same day.
 /// </summary>
 /// <remarks>
 /// <para><b>Session id.</b> Grok's <c>-s</c> demands a UUID before the stream
@@ -25,11 +27,16 @@ namespace Hatch.Cli;
 /// only for the work-log fallback row below, never added to these running
 /// totals, since a real run's <c>usage</c> events already carried it. Total is
 /// <c>input + output + cache_creation + cache_read</c>; peak context is the
-/// same less output. A <c>usage</c> event is deduped by <c>messageId</c>;
-/// counted unconditionally when it carries none, which is every line for the
-/// quiet <c>json</c> object (a single call). <c>reasoning_tokens</c> is read
-/// as already inside <c>output_tokens</c> - the vendor's own total leaves it
-/// out - so it is never added again here.</para>
+/// same less output. A <c>usage</c> event is deduped by <c>messageId</c> -
+/// confirmed on HA-918 that no real <c>usage</c> event carries one (only
+/// <c>usage</c> and a <c>signature</c>), so every real line is counted
+/// unconditionally today; the dedup stays as a defence against a future
+/// vendor version that starts sending one, not a path this run ever took.
+/// <c>reasoning_tokens</c> is read as already inside <c>output_tokens</c> -
+/// confirmed by a real turn's own arithmetic (<c>input + cache_read +
+/// output</c> alone matched the vendor's own <c>total_tokens</c>, with
+/// <c>reasoning_tokens</c> adding nothing on top) - so it is never added
+/// again here.</para>
 ///
 /// <para><b>The work-log row</b>, built on <c>end</c> or the quiet object: one
 /// row per <c>modelUsage</c> key, or - missing or empty - one row keyed
@@ -38,14 +45,19 @@ namespace Hatch.Cli;
 /// <para><b>Cost.</b> <c>total_cost_usd_ticks / 10_000_000_000m</c> when
 /// present (exact), else <c>total_cost_usd</c>, else null - unpriced, never
 /// zero (HA-707). Never <c>?? 0m</c>, unlike <see cref="StreamRender"/>'s own
-/// Claude reading.</para>
+/// Claude reading. Confirmed exact on a real turn: <c>total_cost_usd_ticks</c>
+/// was precisely <c>total_cost_usd * 10_000_000_000</c>.</para>
 ///
 /// <para><b>The final message.</b> <c>text.data</c> accumulates into a buffer
 /// cleared on every <c>tool_call</c> and <c>tool_call_update</c>, so what is
 /// left at <c>end</c> is the text after the last tool - <see
 /// cref="RunFacts.ResultText"/>, fed to <see cref="StreamRender.WorkLog"/> for
-/// the fence. <see cref="RunFacts.LastAssistantText"/> is simply the latest
-/// non-empty <c>text.data</c>, overwritten rather than accumulated.</para>
+/// the fence. Confirmed on a real multi-turn run: a streamed <c>end</c> event
+/// carries no <c>text</c> field at all (only the quiet single-object
+/// <c>json</c> output does), so <c>Finish</c>'s own fallback to the buffer is
+/// not a fallback in practice against a stream - it is the only source. <see
+/// cref="RunFacts.LastAssistantText"/> is simply the latest non-empty
+/// <c>text.data</c>, overwritten rather than accumulated.</para>
 ///
 /// <para><b>Errors.</b> An <c>error</c> event's <c>message</c> becomes both
 /// <see cref="RunFacts.ResultText"/> and <see
@@ -53,7 +65,15 @@ namespace Hatch.Cli;
 /// usage-limit read looks at on a run that ends without <c>end</c>, which
 /// leaves <see cref="RunFacts.Result"/> null. <c>IsError</c> is true once an
 /// <c>error</c> was seen, or <c>stopReason</c> is anything but
-/// <c>end_turn</c>.</para>
+/// <c>end_turn</c>. Confirmed live on HA-918, twice: an invalid <c>-m</c>
+/// produces <c>{"type":"error","message":"Couldn't set model '...': Invalid
+/// params: \"unknown model id\"...","cwd":"..."}</c>, and the account's own
+/// free-tier usage limit, hit mid-investigation, produced <c>{"type":"error",
+/// "message":"You've reached your free Grok Build usage limit for now. Get
+/// SuperGrok for much higher limits, or try again later: ...","cwd":"..."}</c>
+/// - see <see cref="UsageLimit.RecogniseGrok"/>, whose one-hour backstop this
+/// confirms rather than replaces: the real sentence names no reset time at
+/// all.</para>
 ///
 /// <para>This vocabulary has no rate-limit event, so <see cref="Usage"/> is
 /// always empty and <see cref="UsageReadAt"/> always null - an absent battery
@@ -162,13 +182,17 @@ internal sealed class GrokStreamReader : IAgentStreamReader
     /// <see cref="StreamRender.Summarise"/>'s own field-order loop, duplicated
     /// here over <c>rawInput</c> in place of <c>input</c> - that method is
     /// private and tied to <see cref="StreamRender"/>'s own <c>_root</c>.
+    /// <c>target_file</c> is grok's own name for the field Claude calls
+    /// <c>file_path</c> - confirmed on HA-918's real <c>read_file</c> tool
+    /// call, whose <c>rawInput</c> carried <c>target_file</c> and nothing
+    /// named <c>file_path</c> or <c>path</c> at all.
     /// </summary>
     private string ToolField(JsonElement e)
     {
         if (!e.TryGetProperty("rawInput", out var rawInput) || rawInput.ValueKind != JsonValueKind.Object)
             return "";
 
-        foreach (var field in (string[])["command", "file_path", "pattern", "description", "url", "path", "key"])
+        foreach (var field in (string[])["command", "target_file", "file_path", "pattern", "description", "url", "path", "key"])
             if (Text(rawInput, field) is { Length: > 0 } value)
                 return StreamRender.Clip(StreamRender.Flat(StreamRender.Here(_root, value)));
 

@@ -89,7 +89,7 @@ public sealed class GrokStreamReaderTests
 
         var modelUsage = new Dictionary<string, object>
         {
-            ["grok-4.6"] = new
+            ["grok-4.7"] = new
             {
                 inputTokens = 7210,
                 outputTokens = 1893,
@@ -150,7 +150,7 @@ public sealed class GrokStreamReaderTests
     {
         var modelUsage = new Dictionary<string, object>
         {
-            ["grok-4.6"] = new
+            ["grok-4.7"] = new
             {
                 inputTokens = 7210,
                 outputTokens = 1893,

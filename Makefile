@@ -48,6 +48,13 @@ test-hatch-live:
 		--filter "FullyQualifiedName~DeniedToolsProofTests" \
 		--blame-hang-timeout 300s --blame-hang-dump-type none
 
+# The grok equivalent (src/Hatch.Cli.Tests/GrokDeniedToolsProofTests.cs) - a
+# real `grok` session on the caller's own account, same opt-in reasoning.
+test-hatch-live-grok:
+	HATCH_LIVE_GROK_TESTS=1 dotnet test ./src/Hatch.Cli.Tests/Hatch.Cli.Tests.csproj \
+		--filter "FullyQualifiedName~GrokDeniedToolsProofTests" \
+		--blame-hang-timeout 300s --blame-hang-dump-type none
+
 # A built CLI for this machine, so that `hatch.sh work` starts in milliseconds
 # rather than spending a few seconds in `dotnet run` deciding whether to build
 # first. It is an optimisation and not a requirement - hatch.sh falls back to

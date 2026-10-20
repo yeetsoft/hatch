@@ -1236,11 +1236,14 @@ after another gets a chain of them, a linked list the loop walks in order; an
 epic whose five stories are independent gets none, and the loop takes them in
 whatever order the board puts them in.
 
-**A dependency gates implementation, and nothing else.** The old rule folded an
-issue past every move it could make; this one holds exactly one. An issue
+**A dependency gates implementation, and a parent pull.** The old rule folded an
+issue past every move it could make; this one holds two. An issue
 waiting on another still goes through Breakdown, still lands in Backlog, and is
 still analysed — everything left of the writing keeps moving, which is the
-point. What it does not do is get picked up and written.
+point. What it does not do is get picked up and written. The other move it
+holds is a [parent pull](#the-hop) (hop kind 4): a child carried into the
+implementation column by its started parent waits on its own unmet
+dependencies like any other, and stays where it stands until they are done.
 
 That column is **ticked, and measured only where nothing is**. The
 implementation column is the one a person ticked *Code written here* on
@@ -1396,6 +1399,13 @@ line: while either holds a live claim the other is folded — *"AER-6, sharing
 this story's branch, is held…"* — and a take that raced is let go by the same
 check as an ancestor's. A task with a pull request of its own is on its own
 branch and is not held. Tasks under different stories stay parallel.
+
+The same rule holds at the dispatcher, before any claim exists: a move into the
+implementation column is folded while a sibling is in flight on the story's
+branch — at or past that column, not terminal, and not waiting on the story's
+pull request. The sibling's own pull request does not matter; the moving task is
+the one that would go on the story's branch. The sentence is the same and the
+kind is `family`.
 
 **The branch a dispatch is named for.** `WorkDto.BranchKey` and `BranchTitle`
 carry the story's key and title for a task that shares, and the issue's own
@@ -3739,8 +3749,16 @@ missing configuration:
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
 9. Something it [depends on](#dependency) is unfinished, and the move is into
-   the column where the code gets written. Only that move: a pull request that
-   already exists is not held back by what its ticket once waited on.
+   the column where the code gets written, or a parent pull (hop kind 4) out of
+   a `ParentPulls` column. Only those moves: a pull request that already exists
+   is not held back by what its ticket once waited on.
+
+   Also folded on that same move, just after the dependency: the issue is a
+   task that shares its story's branch and a sibling is in flight on it — at or
+   past the implementation column, not terminal, not waiting on the story's
+   pull request. *"AER-12, sharing this story's branch, is already in flight -
+   one sibling at a time"*, kind `family`. See
+   [one sibling at a time](#one-pull-request).
 10. The move is into the [WIP section](#wip), and the section has no room for
     it: the load — not counting this issue — is already at or over the limit.
     Said after the dependency, which needs other work to land, and before the
@@ -3832,7 +3850,9 @@ order:
    whose parent has reached the implementation column — stands in it, or in
    any column to its right, a terminal column included; a deferred column
    never counts — and none of whose siblings is standing further along, in
-   board order, than the column this issue would be pulled into (HA-149).
+   board order, than the column this issue would be pulled into (HA-149) -
+   and none of whose own [dependencies](#dependency) is unmet, which folds the
+   pull instead (HA-1017).
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own
    `Target` is the implementation column (`Columns.Implementation`),
@@ -4953,7 +4973,7 @@ families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
 validates against (the board's playbook, a repository's playbook file and an
 issue's override all refuse in one sentence naming the aliases and the
 families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
-supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.6 for grok) - not "nonsense-1"`) and the CLI
+supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.7 for grok) - not "nonsense-1"`) and the CLI
 reads. **Pinning an id is choosing an agent.** A runner whose agent
 (`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
 it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
@@ -5151,14 +5171,117 @@ everything that knows an agent's own vocabulary — the argument lists for an
 unattended and an attached spawn, the stream it reads back, the command that
 rejoins a session, the shape a hook answers with — is reached through the
 adapter rather than written into the loop. Today there are three — `claude`,
-`codex` and `grok` — each its own implementation, not a second loop. `HATCH_AGENT`
-chooses which, and `HATCH_CLAUDE_BIN` says where the claude adapter's
-executable is when it is not on `PATH` (another agent's binary is named by a
-setting of its own). `--agent <id>` on `hatch work` or `hatch go-to-work` beats
-the setting for that run, and an id nobody has an adapter for is refused before
-anything is spawned. The agent also decides which rows the runner takes: a row
-pinned to another agent's model is skipped (see the `Model` paragraph under
+`codex` and `grok` — each its own implementation, not a second loop.
+`HATCH_AGENT` chooses which, and `HATCH_CLAUDE_BIN` / `HATCH_CODEX_BIN` /
+`HATCH_GROK_BIN` say where that agent's own executable is when it is not on
+`PATH` (another agent's binary is named by a setting of its own). `--agent
+<id>` on `hatch work` or `hatch go-to-work` beats the setting for that run,
+and an id nobody has an adapter for is refused before anything is spawned.
+The agent also decides which rows the runner takes: a row pinned to another
+agent's model is skipped (see the `Model` paragraph under
 [Playbooks](#playbooks)).
+
+#### Grok Build
+
+The vendor's own CLI, `grok`, read against its headless-scripting guide
+(`https://docs.x.ai/build/cli/headless-scripting` and the bundled
+`14-headless-mode.md` in `xai-org/grok-build`) and then confirmed live on
+HA-918, 2026-10-19, against a real `grok --version` of `1.0.62 (1474f9cbdd91)
+[stable]`.
+
+**The flags.** An unattended spawn is `--prompt-file <path> --verbatim
+--output-format json|streaming-json --always-approve --trust --no-auto-update
+--effort <level> --cwd <root>`, plus `-s <uuid>` for a streamed run and
+`--deny`/`--disallowed-tools` for whatever the playbook's denied-tools rules
+translate to (below). `--prompt-file` exists because the CLI never reads
+stdin, and a prompt handed as `-p <PROMPT>` would sit in the process list and
+risk Windows' own ~32,000-character argv limit; `--verbatim` stops it reading
+a machine-composed prompt as anything but literal text. `--trust` is the
+grant: the vendor gates `AGENTS.md`, project skills and hooks behind a
+per-folder trust decision, and a runner cloning its own workspace has no
+prior one — confirmed live, an untrusted real checkout reads no project
+instructions at all, and the same checkout trusted reads `AGENTS.md` and
+quotes it back correctly. `--no-auto-update` keeps a background update from
+changing the binary mid-loop. None of `--trust`, `--prompt-file`,
+`--verbatim`, `--always-approve` or `--no-auto-update` appears in `grok
+--help` — headless scripting is covered by the vendor's own guide, not the
+CLI's own help text — but all five are real, accepted flags: an unrecognised
+one is refused outright ("unexpected argument"), which none of these are.
+Resuming is `grok -r <session-id>`, confirmed live to find a session by its
+id alone regardless of which directory the join runs from.
+
+**The tiers.** A real `grok models` on the account HA-918 ran against lists
+exactly one model, `grok-4.7` (the CLI's own default) — no second, smaller or
+larger id to give `haiku` its own tier below `sonnet`, or `opus`/`fable` one
+above it. All four of the playbook's tiers therefore ship unset, taking
+whatever the CLI's own default resolves to; a pinned id a ticket or playbook
+names directly still passes through `-m` unchanged.
+
+**The effort rule.** Grok's own words are `low`, `medium`, `high` and
+`xhigh` — not `max`, the playbook's own top word. Handing it `--effort max`
+does not clamp to the account's own ceiling, it refuses outright ("unknown
+effort level 'max'; use one of: xhigh, high, medium, low"), confirmed live.
+`max` is mapped to `xhigh` before the flag is built, the same word Codex's
+own effort already uses for the same reason; every other word, recognised or
+not, passes straight through for the real CLI to accept or refuse on its own.
+
+**Denied tools.** The playbook's own tool names map onto `--deny` rules
+Grok's Claude-compatibility layer already recognises — `Bash`, `Read`,
+`Edit`, `Write`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, with or without a
+parenthesised pattern — and the bare literal `Agent` maps onto
+`--disallowed-tools Agent` instead, since it is not one of grok's own
+`--deny` tools. Everything else, including `Agent(...)` with a pattern, has
+no equivalent and refuses the whole increment before anything is spawned,
+rather than spawning it under a narrower claim than the playbook asked for.
+Confirmed live: `--deny Edit` and `--deny Write` each refuse a real file
+change under `--always-approve`, and `--deny "Bash(git push*)"` refuses the
+exact command before it runs - a real `git push` to a real remote never
+reached it.
+
+**No hooks.** Grok's hooks load only from `~/.grok/hooks/*.json`,
+`~/.grok/config.toml`, `~/.claude/settings.json`, or the project itself (the
+last forbidden without `--trust`) — confirmed live, neither `grok --help` nor
+`grok agent --help` names a `--settings`/`--hooks` flag to point elsewhere,
+and `grok inspect` run inside a real, trusted checkout reports "Hooks
+(None)". Writing into the operator's own `~/.grok/hooks` would leak into
+every grok session on the machine, not just Hatch's; relocating `GROK_HOME`
+would copy `auth.json` (a `grok login` refresh rotates the token under the
+real login) and move `sessions/` out from under `grok -r`. So there are
+none, on purpose, which costs exactly what it costs Codex: a `hatch comment`
+sent mid-run waits for the session's next increment rather than reaching it,
+and only the hard token limit ends a run that nobody is watching.
+
+**Reach.** Grok documents no `--add-dir`; a sibling checkout is still
+reachable, by its absolute path only.
+
+**Cost.** Unpriced unless grok's own stream reports one — `total_cost_usd` or
+the exact `total_cost_usd_ticks / 10,000,000,000`, confirmed live to be the
+same number either way on a real turn — never zero.
+
+**The limit.** No reset time has been seen in a real sentence yet - HA-918's
+own investigation hit the account's free-tier limit mid-run, and the
+message it got ("You've reached your free Grok Build usage limit for now.
+Get SuperGrok for much higher limits, or try again later: …") names no
+clock at all. Every Grok limit report rests the same one-hour backstop every
+other unknown-reset limit does.
+
+**Install and auth.** The vendor's own install page
+(`https://docs.x.ai/build/overview`) puts the binary wherever it is signed
+in from; headless auth is `XAI_API_KEY` or a cached `grok login` token,
+neither this adapter's concern since a CLI refusing to run without one says
+so on its own stderr.
+
+**What could not be checked.** The account used for this proof offers only
+one model, so no second tier's effort ceiling or deny behaviour was ever
+exercised against a different id. The free-tier limit was hit partway
+through, which cut the live run short of a full `hatch work` increment
+end to end (claim, streamed progress, ticket comment, pull request, claim
+release) - the pieces checked individually (argv, stream shapes, trust,
+resume, denial, the limit sentence itself) all held, but that exact
+end-to-end sequence was not independently re-confirmed once the limit hit.
+Only `Edit`, `Write` and the `Bash(git push*)` pattern were exercised
+directly among the denied-tools allow-list; `Read`, `Grep`, `Glob`,
+`WebFetch` and `WebSearch` were not, though nothing found says they differ.
 
 It has the same shape as `--model` and `--effort` and the opposite lifetime, on
 purpose. Those are one operator's opinion about one increment, which is why a
