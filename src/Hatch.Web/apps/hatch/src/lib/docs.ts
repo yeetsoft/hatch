@@ -56,11 +56,15 @@ function escapeAttr(s: string): string {
     anchor, and lists the `##`/`###` headings as an outline. One pass: the outline
     and the ids come from the same slugger run in document order, so they cannot
     disagree. The output is not sanitized - that is the page's job, and a separate
-    step. A local `Marked`, so the global instance `markdown.ts` uses is untouched. */
+    step. Links to other pages resolve to `/docs/<slug>` addresses. A local
+    `Marked`, so the global instance `markdown.ts` uses is untouched. */
 export function renderDocs(source: string): { html: string; outline: OutlineEntry[] } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
   const marked = new Marked({
+    walkTokens(token) {
+      if (token.type === 'link') token.href = resolveDocHref(token.href);
+    },
     renderer: {
       heading(token: Tokens.Heading) {
         const { depth, tokens } = token;
@@ -138,6 +142,19 @@ export interface DocPage {
 
 const DOC_KEYS = ['title', 'section', 'order', 'summary'] as const;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Where a link to another docs page goes: `slug`, `slug.md`, `./slug` or
+    `./slug.md`, with an optional `#fragment`, become `${APP_BASENAME}/docs/slug`
+    with the fragment kept as written. Anything else - a scheme, an absolute or
+    parent path, a query, a name that is not a slug - comes back unchanged. */
+export function resolveDocHref(href: string): string {
+  const hash = href.indexOf('#');
+  const path = hash === -1 ? href : href.slice(0, hash);
+  const fragment = hash === -1 ? '' : href.slice(hash);
+  let name = path.startsWith('./') ? path.slice(2) : path;
+  if (name.endsWith('.md')) name = name.slice(0, -'.md'.length);
+  return SLUG.test(name) ? `${APP_BASENAME}/docs/${name}${fragment}` : href;
+}
 
 /** Reads one markdown file, as the glob hands it over, into a page. Every way the
     file can be wrong throws and names `path`, so a bad page fails the build at the
