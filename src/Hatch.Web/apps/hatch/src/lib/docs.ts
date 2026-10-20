@@ -188,3 +188,77 @@ export function parseDocPage(path: string, raw: string): DocPage {
       .replace(/^\n+/, ''),
   };
 }
+
+/** The order a reader sees sections in - the one place section order is written. */
+export const DOC_SECTIONS = [
+  'Start here',
+  'Concepts',
+  'Running agents',
+  'Deploying and operating',
+  'Reference',
+] as const;
+
+export type DocSection = (typeof DOC_SECTIONS)[number];
+
+// `DOC_SECTIONS.indexOf` does not compile under strict: a DocPage's `section`
+// is `string`, and `indexOf`'s parameter is typed to the literal union.
+function sectionIndex(section: string): number {
+  return DOC_SECTIONS.findIndex((s) => s === section);
+}
+
+/** Sorts a copy of `pages` by section (in DOC_SECTIONS order), then by `order`,
+    leaving `pages` itself untouched. Throws on a section outside DOC_SECTIONS, or
+    on two pages sharing a section and an order - `DocPage` keeps no path, so each
+    error names `${slug}.md`. */
+export function orderDocPages(pages: DocPage[]): DocPage[] {
+  for (const p of pages) {
+    if (sectionIndex(p.section) === -1) {
+      throw new Error(`${p.slug}.md: section "${p.section}" must be one of ${DOC_SECTIONS.join(', ')}`);
+    }
+  }
+  const sorted = [...pages].sort((a, b) => {
+    const bySection = sectionIndex(a.section) - sectionIndex(b.section);
+    return bySection !== 0 ? bySection : a.order - b.order;
+  });
+  // sort is stable (guaranteed since ES2019) and the comparator orders by section
+  // then by order, so two pages sharing both land adjacent to each other.
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (prev.section === curr.section && prev.order === curr.order) {
+      throw new Error(`${prev.slug}.md and ${curr.slug}.md share section "${curr.section}" and order ${curr.order}`);
+    }
+  }
+  return sorted;
+}
+
+/** Each section with at least one page, in `DOC_SECTIONS` order. Relies on `pages`
+    already being ordered - `DOC_PAGES`, or the output of `orderDocPages`. */
+export function docSections(pages: DocPage[]): { section: DocSection; pages: DocPage[] }[] {
+  return DOC_SECTIONS.map((section) => ({
+    section,
+    pages: pages.filter((p) => p.section === section),
+  })).filter((s) => s.pages.length > 0);
+}
+
+/** The page with this slug, or undefined. */
+export function docPage(pages: DocPage[], slug: string): DocPage | undefined {
+  return pages.find((p) => p.slug === slug);
+}
+
+/** The pages either side of `slug` in reading order, walking the sorted list end to
+    end across sections. Both `null` for a slug not in `pages`. */
+export function docNeighbours(pages: DocPage[], slug: string): { previous: DocPage | null; next: DocPage | null } {
+  const i = pages.findIndex((p) => p.slug === slug);
+  if (i === -1) return { previous: null, next: null };
+  return { previous: pages[i - 1] ?? null, next: pages[i + 1] ?? null };
+}
+
+// apps/hatch/docs/ does not exist yet, so the glob matches nothing and this is `[]`.
+// A bad page throws here, at module load - every test importing lib/docs fails with
+// the file's name until it is fixed.
+export const DOC_PAGES = orderDocPages(
+  Object.entries(
+    import.meta.glob('../../docs/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>,
+  ).map(([path, raw]) => parseDocPage(path, raw)),
+);

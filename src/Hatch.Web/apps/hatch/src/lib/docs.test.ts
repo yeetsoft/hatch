@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
 import source from '../../public/hatch-at-home.md?raw';
-import { createSlugger, docLinkTarget, hashId, isPlainPrimaryClick, parseDocPage, renderDocs } from './docs';
+import {
+  createSlugger,
+  docLinkTarget,
+  type DocPage,
+  DOC_PAGES,
+  docNeighbours,
+  docPage,
+  docSections,
+  DOC_SECTIONS,
+  hashId,
+  isPlainPrimaryClick,
+  orderDocPages,
+  parseDocPage,
+  renderDocs,
+} from './docs';
 
 /** The document's lines outside fenced blocks, which is where its headings are. */
 function proseLines(): string[] {
@@ -261,5 +275,97 @@ describe('parseDocPage', () => {
 
   it('throws on a path that is not .md', () => {
     expect(() => parseDocPage('../../docs/x.txt', page())).toThrow('x.txt');
+  });
+});
+
+/** A `DocPage` with everything but slug, section and order fixed. */
+function dp(slug: string, section: string, order: number): DocPage {
+  return { slug, title: slug, section, order, summary: slug, body: 'Body.\n' };
+}
+
+describe('orderDocPages', () => {
+  it('sorts by section in DOC_SECTIONS order, then by order, without mutating the input', () => {
+    const concepts2 = dp('concepts-2', 'Concepts', 2);
+    const start1 = dp('start-1', 'Start here', 1);
+    const concepts1 = dp('concepts-1', 'Concepts', 1);
+    const input = [concepts2, start1, concepts1];
+    expect(orderDocPages(input)).toEqual([start1, concepts1, concepts2]);
+    expect(input).toEqual([concepts2, start1, concepts1]);
+  });
+
+  it('throws on a section outside DOC_SECTIONS, naming the file, the section and the five allowed', () => {
+    const bad = dp('x', 'Nope', 1);
+    expect(() => orderDocPages([bad])).toThrow('x.md');
+    expect(() => orderDocPages([bad])).toThrow('Nope');
+    for (const section of DOC_SECTIONS) {
+      expect(() => orderDocPages([bad])).toThrow(section);
+    }
+  });
+
+  it('throws on two pages sharing a section and an order, naming both files', () => {
+    const a = dp('a', 'Concepts', 1);
+    const b = dp('b', 'Concepts', 1);
+    expect(() => orderDocPages([a, b])).toThrow('a.md');
+    expect(() => orderDocPages([a, b])).toThrow('b.md');
+  });
+
+  it('allows two pages to share an order across different sections', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Concepts', 1);
+    expect(orderDocPages([a, b])).toEqual([a, b]);
+  });
+});
+
+describe('docSections', () => {
+  it('omits an empty section and keeps DOC_SECTIONS order', () => {
+    const start = dp('start', 'Start here', 1);
+    const reference = dp('reference', 'Reference', 1);
+    const concepts = dp('concepts', 'Concepts', 1);
+    expect(docSections([start, concepts, reference])).toEqual([
+      { section: 'Start here', pages: [start] },
+      { section: 'Concepts', pages: [concepts] },
+      { section: 'Reference', pages: [reference] },
+    ]);
+  });
+});
+
+describe('docPage', () => {
+  const a = dp('a', 'Start here', 1);
+  const b = dp('b', 'Concepts', 1);
+
+  it('finds the page with the slug', () => {
+    expect(docPage([a, b], 'b')).toEqual(b);
+  });
+
+  it('is undefined for an unknown slug', () => {
+    expect(docPage([a, b], 'c')).toBeUndefined();
+  });
+});
+
+describe('docNeighbours', () => {
+  it('crosses a section boundary, even over one with no pages', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Running agents', 1);
+    expect(docNeighbours([a, b], 'a')).toEqual({ previous: null, next: b });
+    expect(docNeighbours([a, b], 'b')).toEqual({ previous: a, next: null });
+  });
+
+  it('gives null at both ends of the list', () => {
+    const a = dp('a', 'Start here', 1);
+    const b = dp('b', 'Start here', 2);
+    const c = dp('c', 'Start here', 3);
+    expect(docNeighbours([a, b, c], 'a')).toEqual({ previous: null, next: b });
+    expect(docNeighbours([a, b, c], 'c')).toEqual({ previous: b, next: null });
+  });
+
+  it('gives null both ways for an unknown slug', () => {
+    const a = dp('a', 'Start here', 1);
+    expect(docNeighbours([a], 'nope')).toEqual({ previous: null, next: null });
+  });
+});
+
+describe('DOC_PAGES', () => {
+  it('is an array - empty until a page lands under apps/hatch/docs/', () => {
+    expect(Array.isArray(DOC_PAGES)).toBe(true);
   });
 });
