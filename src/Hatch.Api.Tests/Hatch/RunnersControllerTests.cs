@@ -664,6 +664,123 @@ public class RunnersControllerTests
         Assert.Equal(beat.Drives, patched.Drives);
     }
 
+    // ---- Driving a project: whose runner may ----
+
+    [Fact]
+    public async Task AnOwnersRunnerStartedLater_StillDrivesAnOwnedProject_OverAStrangersOlderOne()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var owner = h.Actors.AddPerson("Owner");
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.AddMemberAsync(owner.Id, ProjectMemberRole.Owner);
+
+        var first = await h.LoopBeatAsync("here:/stranger", stranger);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var second = await h.LoopBeatAsync("here:/owner", owner);
+
+        Assert.Empty(first.Drives!);
+        Assert.Equal(["AER"], second.Drives);
+        Assert.Empty((await h.ListAsync()).Single(r => r.Name == "here:/stranger").Drives!);
+    }
+
+    [Fact]
+    public async Task AnApproversRunner_DrivesAnOwnedProject()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var owner = h.Actors.AddPerson("Owner");
+        var approver = h.Actors.AddPerson("Approver");
+        await h.AddMemberAsync(owner.Id, ProjectMemberRole.Owner);
+        await h.AddMemberAsync(approver.Id, ProjectMemberRole.Approver);
+
+        var beat = await h.LoopBeatAsync("here:/approver", approver);
+
+        Assert.Equal(["AER"], beat.Drives);
+    }
+
+    [Fact]
+    public async Task AKeyBelongingToNobody_DrivesNothingOnAnOwnedProject()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.AddMemberAsync(h.Actors.AddPerson("Owner").Id, ProjectMemberRole.Owner);
+
+        var beat = await h.LoopBeatAsync("here:/orphan", null);
+
+        Assert.Empty(beat.Drives!);
+    }
+
+    [Fact]
+    public async Task WithOnlyAStrangersRunnerLive_NobodyDrivesTheOwnedProject()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.AddMemberAsync(h.Actors.AddPerson("Owner").Id, ProjectMemberRole.Owner);
+
+        var beat = await h.LoopBeatAsync("here:/stranger", h.Actors.AddPerson("Stranger"));
+
+        Assert.Empty(beat.Drives!);
+        Assert.Empty((await h.OneAsync()).Drives!);
+    }
+
+    [Fact]
+    public async Task WithTheWallOff_TheOldestRunnerDrivesAnOwnedProject_WhoeverItWorksFor()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.AddMemberAsync(h.Actors.AddPerson("Owner").Id, ProjectMemberRole.Owner);
+
+        var beat = await h.LoopBeatAsync("here:/stranger", h.Actors.AddPerson("Stranger"));
+
+        Assert.Equal(["AER"], beat.Drives);
+    }
+
+    [Fact]
+    public async Task AProjectWithNoOwner_IsDrivenByTheOldestRunner_EvenWithTheWallUp()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var stranger = h.Actors.AddPerson("Stranger");
+
+        var bare = await h.LoopBeatAsync("here:/stranger", stranger);
+        Assert.Equal(["AER"], bare.Drives);
+
+        // An approver without an owner is still an ownerless project.
+        await h.AddMemberAsync(h.Actors.AddPerson("Approver").Id, ProjectMemberRole.Approver);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var later = await h.LoopBeatAsync("here:/orphan", null);
+
+        Assert.Empty(later.Drives!);
+        Assert.Equal(["AER"], (await h.LoopBeatAsync("here:/stranger", stranger)).Drives);
+    }
+
+    [Fact]
+    public async Task MembershipChanges_MoveTheProjectOnTheNextBeat()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var owner = h.Actors.AddPerson("Owner");
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.AddMemberAsync(owner.Id, ProjectMemberRole.Owner);
+
+        await h.LoopBeatAsync("here:/owner", owner);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.Empty((await h.LoopBeatAsync("here:/stranger", stranger)).Drives!);
+
+        // The stranger becomes an approver, but the owner's runner still holds it.
+        await h.AddMemberAsync(stranger.Id, ProjectMemberRole.Approver);
+        Assert.Empty((await h.LoopBeatAsync("here:/stranger", stranger)).Drives!);
+
+        // The owner's runner goes quiet, and the approver's takes over.
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon));
+        Assert.Equal(["AER"], (await h.LoopBeatAsync("here:/stranger", stranger)).Drives);
+
+        // Removed again, they lose it on the very next beat.
+        await h.RemoveMemberAsync(stranger.Id);
+        Assert.Empty((await h.LoopBeatAsync("here:/stranger", stranger)).Drives!);
+    }
+
     // ---- The seed ----
 
     [Fact]
@@ -918,6 +1035,28 @@ public class RunnersControllerTests
             return repo;
         }
 
+        public async Task AddMemberAsync(Guid personId, string role)
+        {
+            Db.ProjectMembers.Add(new EfHatchProjectMember
+            {
+                ProjectId = ProjectId, PersonId = personId, Role = role, CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task RemoveMemberAsync(Guid personId)
+        {
+            Db.ProjectMembers.RemoveRange(Db.ProjectMembers.Where(m => m.ProjectId == ProjectId && m.PersonId == personId));
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A loop beat for the shared project's remote, as the key of <paramref name="who"/> - or of nobody, for null.</summary>
+        public async Task<RunnerInstructionDto> LoopBeatAsync(string name, Actor? who)
+        {
+            Actors.Principal = who;
+            return await BeatAsync(name, new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        }
+
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));
 
@@ -972,7 +1111,7 @@ public class RunnersControllerTests
         }
     }
 
-    private static async Task<Harness> NewAsync(bool program = false)
+    private static async Task<Harness> NewAsync(bool program = false, bool wall = false)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -984,7 +1123,7 @@ public class RunnersControllerTests
 
         var time = new FakeTimeProvider(Now);
         var claims = TestClaims.With();
-        var runners = new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }));
+        var runners = new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }), Options.Create(new AuthOptions { Enabled = wall }));
 
         var caller = program
             ? new StubCaller

@@ -4555,13 +4555,21 @@ behind {headKey}, position {n} in the train"`. That sentence is also what
 field anywhere in `QueueEntryDto`.
 
 **The driver, and how the heartbeat elects one.** `Runners.DriversAsync`
-(`Runners.cs:183-215`) elects, per project, the longest-live loop that holds
+(`Runners.cs:196-246`) elects, per project, the longest-live loop that holds
 a checkout of it — `Dispatch.HoldsCheckout`, the same rule
 `WorkController.GetReview` uses for its own eligibility, so the two can
-never disagree. Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
+never disagree. With the wall up, a project that has an owner is driven only
+by a runner whose key belongs to one of that project's owners or approvers
+(`EfHatchRunner.ForPersonId`, rewritten on every beat, against the raw
+`ProjectMembers` rows): a stranger's runner, or one on a key that belongs to
+nobody, is not a candidate however long it has run, and a project with no
+qualifying runner live has no driver, so its pull requests wait. With the
+wall off, or on a project with no owner, a role means nothing and every
+holder of a checkout is eligible. Being a site admin is not being an owner.
+Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:188-190`). Ties go to
-the oldest `FirstSeenAt`, then `Name` ordinally (`:208`) — deliberately
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). Ties go to
+the oldest `FirstSeenAt`, then `Name` ordinally (`:239`) — deliberately
 stable, so a project's driver only moves once it actually drops out of live.
 The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and

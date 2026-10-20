@@ -1,4 +1,5 @@
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -21,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// somebody asks, which is the same lazy expiry the claim uses. There is no
 /// timeout to tune and no background job to notice has stopped.
 /// </remarks>
-public sealed class Runners(IOptions<HatchOptions> options)
+public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions> auth)
 {
     /// <summary>
     /// How long after its last heartbeat a row is still returned by the read:
@@ -173,6 +174,17 @@ public sealed class Runners(IOptions<HatchOptions> options)
     /// the two can never disagree about which projects a runner can act on.
     /// </summary>
     /// <remarks>
+    /// With the wall up, a project that has an owner is driven only by a
+    /// runner working for one of its owners or approvers - the people a merge
+    /// belongs to, and whose forge credentials can make it. A runner for
+    /// anybody else, or on a key that belongs to nobody, is not a candidate
+    /// however long it has run, and a project with no such runner live has no
+    /// driver at all. With the wall off, or on a project with no owner, a role
+    /// means nothing and every holder of a checkout is eligible. "Has an owner"
+    /// and "is one" read the raw member rows, as <c>ProjectAccess</c> does: this
+    /// runs on every heartbeat, and a project whose only owner was deleted stays
+    /// owned here, which errs toward nobody driving rather than anybody.
+    ///
     /// The tie-break - oldest <c>FirstSeenAt</c> first, then <c>Name</c>
     /// ordinally - is what makes the election stable: the longest-running
     /// eligible runner keeps a project for as long as it keeps heartbeating,
@@ -191,13 +203,29 @@ public sealed class Runners(IOptions<HatchOptions> options)
         // strand a project with a driver that can never answer.
         var live = await db.Runners.AsNoTracking()
             .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind)
-            .Select(r => new { r.Name, r.FirstSeenAt, r.Remotes, r.Standing })
+            .Select(r => new { r.Name, r.FirstSeenAt, r.Remotes, r.Standing, r.ForPersonId })
             .ToListAsync(ct);
 
         var candidates = live
-            .Select(r => (r.Name, r.FirstSeenAt, Repos: RepositoryDeclaration.From(
+            .Select(r => (r.Name, r.FirstSeenAt, r.ForPersonId, Repos: RepositoryDeclaration.From(
                 r.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), r.Standing, null)))
             .ToList();
+
+        // Who a merge belongs to, per project, for the projects that have an
+        // owner. Left empty with the wall down, where a role means nothing.
+        Dictionary<int, HashSet<Guid>> people = [];
+        if (auth.Value.Enabled)
+        {
+            var members = await db.ProjectMembers.AsNoTracking()
+                .Where(m => m.Role == ProjectMemberRole.Owner || m.Role == ProjectMemberRole.Approver)
+                .Select(m => new { m.ProjectId, m.PersonId, m.Role })
+                .ToListAsync(ct);
+
+            people = members
+                .GroupBy(m => m.ProjectId)
+                .Where(g => g.Any(m => m.Role == ProjectMemberRole.Owner))
+                .ToDictionary(g => g.Key, g => g.Select(m => m.PersonId).ToHashSet());
+        }
 
         var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories).ToListAsync(ct);
         var byRunner = live.ToDictionary(r => r.Name, _ => new List<string>(), StringComparer.Ordinal);
@@ -206,6 +234,8 @@ public sealed class Runners(IOptions<HatchOptions> options)
         {
             var driver = candidates
                 .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
+                .Where(c => !people.TryGetValue(project.Id, out var qualifying)
+                    || (c.ForPersonId is { } person && qualifying.Contains(person)))
                 .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal)
                 .Select(c => c.Name).FirstOrDefault();
 
