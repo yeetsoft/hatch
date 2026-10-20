@@ -342,22 +342,15 @@ public sealed class GrokAdapterTests : IDisposable
     [Fact]
     public void CanSpawn_names_the_variable_and_the_auth_env_when_nothing_is_on_path()
     {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        Environment.SetEnvironmentVariable("PATH", Path.Combine(Path.GetTempPath(), "no-such-dir"));
-        try
-        {
-            Assert.False(new GrokAdapter().CanSpawn(out var refusal));
-            Assert.Equal(
-                "hatch: no grok CLI on PATH.\n\n" +
-                "  Install it (https://docs.x.ai/build/overview), or point at one you have:\n" +
-                "      export HATCH_GROK_BIN=/path/to/grok\n\n" +
-                "  Headless auth is XAI_API_KEY or a cached `grok login` token.",
-                refusal);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PATH", path);
-        }
+        var adapter = new GrokAdapter(path: Path.Combine(Path.GetTempPath(), "no-such-dir"));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            "hatch: no grok CLI on PATH.\n\n" +
+            "  Install it (https://docs.x.ai/build/overview), or point at one you have:\n" +
+            "      export HATCH_GROK_BIN=/path/to/grok\n\n" +
+            "  Headless auth is XAI_API_KEY or a cached `grok login` token.",
+            refusal);
     }
 
     [Fact]
