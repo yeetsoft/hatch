@@ -110,6 +110,7 @@ hatch_ak_…`.
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
   record; image upload; marking the overnight view seen.
+  [`api-reference`](api-reference) has the route-by-route version.
 - **Whose name an event carries.** The signed-in person's, if there is one;
   else the key's **Name**; else, with the wall off, the local name. A key's
   request carries no person, so on a walled Hatch an event it causes is

@@ -603,8 +603,8 @@ public class EfHatchIssue
     /// </summary>
     public const int MaxClaimChatterLength = ClaimRequest.MaxChatterLength;
 
-    /// <summary>The four types, in the order a picker should offer them.</summary>
-    public static readonly string[] Types = ["epic", "story", "task", "bug"];
+    /// <summary>The five types, in the order a picker should offer them.</summary>
+    public static readonly string[] Types = ["epic", "reflection", "story", "task", "bug"];
 
     /// <summary>
     /// Which parents each type may take. Advisory shape rather than a
@@ -616,10 +616,11 @@ public class EfHatchIssue
     public static readonly IReadOnlyDictionary<string, string[]> LegalParentTypes =
         new Dictionary<string, string[]>
         {
-            ["epic"] = ["epic"],
-            ["story"] = ["epic"],
-            ["task"] = ["story", "bug", "epic"],
-            ["bug"] = ["epic", "story"],
+            ["epic"] = ["epic", "reflection"],
+            ["reflection"] = ["epic"],
+            ["story"] = ["epic", "reflection"],
+            ["task"] = ["story", "bug", "epic", "reflection"],
+            ["bug"] = ["epic", "story", "reflection"],
         };
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]

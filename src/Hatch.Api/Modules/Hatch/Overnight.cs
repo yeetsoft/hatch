@@ -20,9 +20,9 @@ public static class Overnight
     /// </summary>
     public static readonly TimeSpan QuietGap = TimeSpan.FromHours(4);
 
-    /// <summary>Epic, bug, story, task - deliberately not <see cref="EfHatchIssue.Types"/>,
-    /// which is the order a picker offers them in.</summary>
-    private static readonly string[] TypeOrder = ["epic", "bug", "story", "task"];
+    /// <summary>Epic, reflection, bug, story, task - deliberately not
+    /// <see cref="EfHatchIssue.Types"/>, which is the order a picker offers them in.</summary>
+    private static readonly string[] TypeOrder = ["epic", "reflection", "bug", "story", "task"];
 
     /// <summary>One landed issue, as the fold reads it.</summary>
     public readonly record struct Landing(

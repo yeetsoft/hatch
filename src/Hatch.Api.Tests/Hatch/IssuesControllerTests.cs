@@ -238,6 +238,30 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AStory_HangsUnderAReflection_TheSameAsUnderAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("reflection", "the reflection");
+
+        var story = await h.CreateAsync("story", "phase 0", parentKey: "AER-1");
+
+        Assert.Equal("AER-1", story.ParentKey);
+        Assert.Equal(["AER-2"], Value(await h.Issues.GetIssue("AER-1", default)).ChildKeys);
+    }
+
+    [Fact]
+    public async Task AReflection_HangsUnderAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+
+        var reflection = await h.CreateAsync("reflection", "a reflection on the plan", parentKey: "AER-1");
+
+        Assert.Equal("AER-1", reflection.ParentKey);
+        Assert.Equal(["AER-2"], Value(await h.Issues.GetIssue("AER-1", default)).ChildKeys);
+    }
+
+    [Fact]
     public async Task ATaskFiledOnItsOwn_CanBeMovedUnderAnEpic()
     {
         var h = await NewAsync();
@@ -666,6 +690,19 @@ public class IssuesControllerTests
 
         var events = await h.EventsAsync("AER-2");
         Assert.Equal([kind, EfHatchIssueEvent.Created], events.Select(e => e.Kind));
+    }
+
+    [Fact]
+    public async Task AnEpic_IsRetypeableToAReflectionAndBack()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+
+        var retyped = Value(await h.Issues.PatchIssue("AER-1", Patch(type: "reflection"), default));
+        Assert.Equal("reflection", retyped.Type);
+
+        var retypedBack = Value(await h.Issues.PatchIssue("AER-1", Patch(type: "epic"), default));
+        Assert.Equal("epic", retypedBack.Type);
     }
 
     [Fact]
@@ -3385,7 +3422,7 @@ public class IssuesControllerTests
 
         var result = await h.Issues.SearchIssues(null, "epicc", null, null, null, null, default);
 
-        Assert.Contains("epic, story, task, bug", Reason(result.Result));
+        Assert.Contains("epic, reflection, story, task, bug", Reason(result.Result));
     }
 
     [Fact]

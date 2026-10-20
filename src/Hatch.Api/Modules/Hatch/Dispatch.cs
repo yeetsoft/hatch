@@ -1,6 +1,7 @@
 using System.Globalization;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -1091,7 +1092,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // An epic has its own version of this rule, just below, with its own
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
-        if (issue.Type != "epic" && from.Id == implementation?.Id
+        if (!IssueTypeKinds.RunsChildren(issue.Type) && from.Id == implementation?.Id
             && family.OpenWorkChildren(issue.Id) is { Count: > 0 } openChildren)
             return new Blocking("its children are the work, and some are still open", BlockedKinds.Family, openChildren);
 
@@ -1102,7 +1103,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // above - the operator shelving a story is not a gap in the epic
         // (HA-114, Taken here). Never on the move to itself: an epic in
         // review is folded by a conflict or a failing build, not by this.
-        if (issue.Type == "epic" && !conflicts && wip is not null
+        if (IssueTypeKinds.RunsChildren(issue.Type) && !conflicts && wip is not null
             && Columns.AtOrPastImplementation(statuses, from.Id)
             && family.EpicFold(issue.Id, statuses) is { } epicBlock)
             return Blocking.Waiting(epicBlock, BlockedKinds.Family, family.EpicOpenChildren(issue.Id, statuses));
@@ -1151,13 +1152,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // sub-epic whose parent epic is not running never reads as merely
         // childless, and no epic is ever silently "no playbook covers
         // this" (HA-113, HA-202, HA-1069).
-        if (issue.Type == "epic" && wip is not null && !Columns.AtOrPastImplementation(statuses, from.Id)
+        if (IssueTypeKinds.RunsChildren(issue.Type) && wip is not null && !Columns.AtOrPastImplementation(statuses, from.Id)
             && to is not null && Columns.AtOrPastImplementation(statuses, to.Id))
         {
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is not null
-                && (epicParent is not { Type: "epic" } || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
+                && (!IssueTypeKinds.RunsChildren(epicParent.Type) || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
                 return new Blocking("its parent epic is not running, so nothing pulls it in", BlockedKinds.Family, [issue.ParentId!.Value]);
 
             return new Blocking(FamilyGate.NothingUnder, BlockedKinds.Family);
@@ -1236,15 +1237,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // top-level epic is carried only by the move that lands it in the
             // implementation column - the move off the backlog is a person's, and
             // this is the rest of the way (HA-1069).
-            if (issue.Type == "epic" && !Columns.AtOrPastImplementation(statuses, from.Id) && wip.Inside(to!.Id)
+            if (IssueTypeKinds.RunsChildren(issue.Type) && !Columns.AtOrPastImplementation(statuses, from.Id) && wip.Inside(to!.Id)
                 && family.Children(issue.Id).Count > 0
                 && (parent is null
                     ? Columns.AtOrPastImplementation(statuses, to.Id)
-                    : parent is { Type: "epic" } parentEpic && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
+                    : parent is { } parentEpic && IssueTypeKinds.RunsChildren(parentEpic.Type) && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
-                && parent is { Type: "epic" } p && Columns.AtOrPastImplementation(statuses, p.StatusId))
+                && parent is { } p && IssueTypeKinds.RunsChildren(p.Type) && Columns.AtOrPastImplementation(statuses, p.StatusId))
                 return HopKinds.Under;
         }
 
@@ -1267,7 +1268,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && effectivePreApproval == PreApprovalLevels.PreApproved
             && issue.PullRequestUrl is not { Length: > 0 }
             && family.Children(issue.Id).Count > 0
-            && (issue.Type == "epic"
+            && (IssueTypeKinds.RunsChildren(issue.Type)
                 ? family.EpicFold(issue.Id, statuses) is null
                 : family.OpenChildren(issue.Id).Count == 0))
             return HopKinds.Close;
