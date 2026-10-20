@@ -44,6 +44,7 @@ public sealed class GrokAdapter : IAgentAdapter
     };
 
     private readonly string? _configured;
+    private readonly string? _path;
     private readonly Action<string>? _warn;
     private readonly IReadOnlyDictionary<string, string?> _tiers;
 
@@ -58,10 +59,11 @@ public sealed class GrokAdapter : IAgentAdapter
     /// real-looking id without this adapter's shipped defaults going stale
     /// under it.
     /// </param>
-    public GrokAdapter(string? configured = null, Action<string>? warn = null, IReadOnlyDictionary<string, string?>? tiers = null)
+    public GrokAdapter(string? configured = null, Action<string>? warn = null, IReadOnlyDictionary<string, string?>? tiers = null, string? path = null)
     {
         _configured = configured;
         _warn = warn;
+        _path = path;
 
         var merged = new Dictionary<string, string?>(DefaultTiers);
         if (tiers is not null)
@@ -112,7 +114,7 @@ public sealed class GrokAdapter : IAgentAdapter
             return true;
         }
 
-        if (!TryFind(_configured, out var found, out refusal)) return false;
+        if (!TryFind(_configured, _path, out var found, out refusal)) return false;
 
         _bin = found;
         return true;
@@ -365,7 +367,7 @@ public sealed class GrokAdapter : IAgentAdapter
     /// neither this adapter's concern, since a CLI that refuses to run without
     /// one says so on its own stderr.
     /// </remarks>
-    private static bool TryFind(string? configured, out string bin, out string refusal)
+    private static bool TryFind(string? configured, string? path, out string bin, out string refusal)
     {
         refusal = "";
 
@@ -379,7 +381,7 @@ public sealed class GrokAdapter : IAgentAdapter
         }
 
         bin = "grok";
-        if (Reach.Find("grok", Environment.GetEnvironmentVariable("PATH")) is { } found)
+        if (Reach.Find("grok", path ?? Environment.GetEnvironmentVariable("PATH")) is { } found)
         {
             bin = found;
             return true;

@@ -220,19 +220,12 @@ public sealed class CodexAdapterTests : IDisposable
     [Fact]
     public void CanSpawn_names_the_variable_when_nothing_is_on_path()
     {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        Environment.SetEnvironmentVariable("PATH", Path.Combine(Path.GetTempPath(), "no-such-dir"));
-        try
-        {
-            Assert.False(new CodexAdapter().CanSpawn(out var refusal));
-            Assert.Equal(
-                "hatch: no codex CLI on PATH.\n\n  Install it, or point at one you have:\n      export HATCH_CODEX_BIN=/path/to/codex",
-                refusal);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PATH", path);
-        }
+        var adapter = new CodexAdapter(path: Path.Combine(Path.GetTempPath(), "no-such-dir"));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            "hatch: no codex CLI on PATH.\n\n  Install it, or point at one you have:\n      export HATCH_CODEX_BIN=/path/to/codex",
+            refusal);
     }
 
     [Fact]
