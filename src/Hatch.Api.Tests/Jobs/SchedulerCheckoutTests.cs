@@ -23,30 +23,36 @@ public class SchedulerCheckoutTests
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
-        var (_, quartz) = await MinimalDatabases.CreateAsync();
+        var (hatch, quartz) = await MinimalDatabases.CreateAsync();
+        try
+        {
+            var scheduler = await SchedulerBuilder.Create()
+                .WithName($"SchedulerCheckoutTests-{Guid.NewGuid():N}")
+                .UsePersistentStore(store =>
+                {
+                    store.UseProperties = true;
+                    store.UseClustering();
+                    store.UsePostgres(quartz);
+                    store.UseSystemTextJsonSerializer();
+                })
+                .BuildScheduler();
 
-        var scheduler = await SchedulerBuilder.Create()
-            .WithName($"SchedulerCheckoutTests-{Guid.NewGuid():N}")
-            .UsePersistentStore(store =>
-            {
-                store.UseProperties = true;
-                store.UseClustering();
-                store.UsePostgres(quartz);
-                store.UseSystemTextJsonSerializer();
-            })
-            .BuildScheduler();
+            scheduler.ListenerManager.AddSchedulerListener(
+                new SchedulerCheckout(scheduler, quartz, NullLogger<SchedulerCheckout>.Instance));
 
-        scheduler.ListenerManager.AddSchedulerListener(
-            new SchedulerCheckout(scheduler, quartz, NullLogger<SchedulerCheckout>.Instance));
+            // Awaited to the end, which is the point: the first check-in has
+            // written the row by the time Start() returns. Asserting it is there is
+            // what keeps the assertion after Shutdown() from passing vacuously.
+            await scheduler.Start();
+            Assert.Equal(1, await StateRowsAsync(quartz, scheduler.SchedulerName));
 
-        // Awaited to the end, which is the point: the first check-in has
-        // written the row by the time Start() returns. Asserting it is there is
-        // what keeps the assertion after Shutdown() from passing vacuously.
-        await scheduler.Start();
-        Assert.Equal(1, await StateRowsAsync(quartz, scheduler.SchedulerName));
-
-        await scheduler.Shutdown();
-        Assert.Equal(0, await StateRowsAsync(quartz, scheduler.SchedulerName));
+            await scheduler.Shutdown();
+            Assert.Equal(0, await StateRowsAsync(quartz, scheduler.SchedulerName));
+        }
+        finally
+        {
+            await MinimalDatabases.DropAsync(hatch, quartz);
+        }
     }
 
     /// <summary>
@@ -62,42 +68,48 @@ public class SchedulerCheckoutTests
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
-        var (_, quartz) = await MinimalDatabases.CreateAsync();
-
-        var scheduler = await SchedulerBuilder.Create()
-            .WithName($"SchedulerCheckoutTests-{Guid.NewGuid():N}")
-            .UsePersistentStore(store =>
-            {
-                store.UseProperties = true;
-                store.UseClustering();
-                store.UsePostgres(quartz);
-                store.UseSystemTextJsonSerializer();
-            })
-            .BuildScheduler();
-
-        scheduler.ListenerManager.AddSchedulerListener(
-            new SchedulerCheckout(scheduler, quartz, NullLogger<SchedulerCheckout>.Instance));
-
-        await scheduler.Start();
-
-        await using var locker = new NpgsqlConnection(quartz);
-        await locker.OpenAsync();
-        await using var tx = await locker.BeginTransactionAsync();
-        await using (var lockRow = new NpgsqlCommand(
-            "UPDATE qrtz_scheduler_state SET last_checkin_time = last_checkin_time WHERE sched_name = @name",
-            locker, tx))
+        var (hatch, quartz) = await MinimalDatabases.CreateAsync();
+        try
         {
-            lockRow.Parameters.AddWithValue("name", scheduler.SchedulerName);
-            await lockRow.ExecuteNonQueryAsync();
+            var scheduler = await SchedulerBuilder.Create()
+                .WithName($"SchedulerCheckoutTests-{Guid.NewGuid():N}")
+                .UsePersistentStore(store =>
+                {
+                    store.UseProperties = true;
+                    store.UseClustering();
+                    store.UsePostgres(quartz);
+                    store.UseSystemTextJsonSerializer();
+                })
+                .BuildScheduler();
+
+            scheduler.ListenerManager.AddSchedulerListener(
+                new SchedulerCheckout(scheduler, quartz, NullLogger<SchedulerCheckout>.Instance));
+
+            await scheduler.Start();
+
+            await using var locker = new NpgsqlConnection(quartz);
+            await locker.OpenAsync();
+            await using var tx = await locker.BeginTransactionAsync();
+            await using (var lockRow = new NpgsqlCommand(
+                "UPDATE qrtz_scheduler_state SET last_checkin_time = last_checkin_time WHERE sched_name = @name",
+                locker, tx))
+            {
+                lockRow.Parameters.AddWithValue("name", scheduler.SchedulerName);
+                await lockRow.ExecuteNonQueryAsync();
+            }
+            // tx is left open - holding the row lock SchedulerShutdown's own DELETE needs.
+
+            var shutdown = scheduler.Shutdown();
+            var finished = await Task.WhenAny(shutdown, Task.Delay(TimeSpan.FromSeconds(15))) == shutdown;
+
+            await tx.RollbackAsync(); // release the lock either way, so the connection pool is clean after
+
+            Assert.True(finished, "SchedulerShutdown should return once its own deadline elapses, not hang on the held lock");
         }
-        // tx is left open - holding the row lock SchedulerShutdown's own DELETE needs.
-
-        var shutdown = scheduler.Shutdown();
-        var finished = await Task.WhenAny(shutdown, Task.Delay(TimeSpan.FromSeconds(15))) == shutdown;
-
-        await tx.RollbackAsync(); // release the lock either way, so the connection pool is clean after
-
-        Assert.True(finished, "SchedulerShutdown should return once its own deadline elapses, not hang on the held lock");
+        finally
+        {
+            await MinimalDatabases.DropAsync(hatch, quartz);
+        }
     }
 
     private static async Task<long> StateRowsAsync(string quartz, string schedulerName)

@@ -1,10 +1,4 @@
 using Hatch.Api.Tests.Hatch;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Npgsql;
-using System.Collections.Concurrent;
 using System.Net;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
@@ -142,186 +136,28 @@ public class MinimalStartupTests
             QuartzLogProvider.SetCurrentLogProvider(null);
         }
 
-        Assert.Empty(await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
-
-        return logs;
-    }
-
-    /// <summary>
-    /// The three settings and nothing else, plus somewhere to log. The content
-    /// root is a scratch directory rather than the Hatch.Api project's: a
-    /// developer's own <c>.env.json</c> sits in the latter, and a test whose
-    /// answer depends on what is in it is not asserting "nothing else is
-    /// configured".
-    /// </summary>
-    private sealed class MinimalFactory(string hatch, string quartz, CapturedLogs logs) : WebApplicationFactory<Program>
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.UseContentRoot(MinimalDatabases.ScratchContentRoot());
-
-            builder.UseSetting("ConnectionStrings:Hatch", hatch);
-            builder.UseSetting("ConnectionStrings:Quartz", quartz);
-            builder.UseSetting("Auth:Enabled", "false");
-
-            builder.ConfigureLogging(logging => logging.AddProvider(logs));
-        }
-    }
-
-    /// <summary>Everything the host said, so the test can assert on the absence of a level rather than on the presence of a string.</summary>
-    private sealed class CapturedLogs : ILoggerProvider
-    {
-        private readonly ConcurrentQueue<(LogLevel Level, string Category, string Message)> lines = new();
-
-        public IReadOnlyCollection<string> Messages => [.. lines.Select(l => l.Message)];
-
-        public IReadOnlyCollection<string> AtErrorOrAbove =>
-            [.. lines.Where(l => l.Level >= LogLevel.Error).Select(l => $"[{l.Level}] {l.Category}: {l.Message}")];
-
-        public ILogger CreateLogger(string categoryName) => new Recorder(categoryName, lines);
-
-        public void Dispose() { }
-
-        private sealed class Recorder(string category, ConcurrentQueue<(LogLevel, string, string)> lines) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-            public bool IsEnabled(LogLevel logLevel) => true;
-
-            public void Log<TState>(
-                LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-                => lines.Enqueue((logLevel, category, $"{formatter(state, exception)} {exception}"));
-        }
-    }
-}
-
-/// <summary>
-/// A scratch <c>hatch</c> and a scratch <c>quartz</c>, made the way a friend's
-/// machine makes them: two empty databases, with the Quartz DDL applied to the
-/// second. Both are dropped and recreated per call, so each test gets the
-/// blank slate its criterion is about.
-/// </summary>
-internal static class MinimalDatabases
-{
-    private static readonly SemaphoreSlim Once = new(1, 1);
-
-    private static int counter;
-
-    public static async Task<(string Hatch, string Quartz)> CreateAsync()
-    {
-        var configured = Environment.GetEnvironmentVariable(HatchDatabase.Variable)
-            ?? throw new InvalidOperationException($"{HatchDatabase.Variable} is unset");
-
-        var template = new NpgsqlConnectionStringBuilder(HatchDatabase.ToConnectionString(configured.Trim()));
-
-        // Suffixed off the database the variable names, so this can only ever
-        // drop something it made - the variable's own database is never touched.
-        var n = Interlocked.Increment(ref counter);
-        var hatch = Named(template, $"{template.Database}_min{n}_hatch");
-        var quartz = Named(template, $"{template.Database}_min{n}_quartz");
-
-        // CREATE DATABASE cannot run inside the database being created, and
-        // two of these racing on one server is a duplicate-name error rather
-        // than a queue, so the maintenance work is serialized.
-        await Once.WaitAsync();
+        // The drop is in its own finally, separate from the host's above: an
+        // assertion below failing is not a reason to leave the pair on the
+        // server right alongside the one that says so.
         try
         {
-            await using var maintenance = new NpgsqlConnection(Named(template, "postgres"));
-            await maintenance.OpenAsync();
+            Assert.Empty(await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
 
-            foreach (var name in new[] { new NpgsqlConnectionStringBuilder(hatch).Database!, new NpgsqlConnectionStringBuilder(quartz).Database! })
+            if (migrated)
             {
-                // WITH (FORCE) rather than a plain DROP: Npgsql pools
-                // connections across tests in this process, and a leftover idle
-                // one is enough to make "database is being accessed by other
-                // users" the result instead.
-                await ExecuteAsync(maintenance, $"DROP DATABASE IF EXISTS {Quote(name)} WITH (FORCE)");
-                await ExecuteAsync(maintenance, $"CREATE DATABASE {Quote(name)}");
+                // Not the four Init alone seeds: TheFlow and Playbooks run too, in
+                // the same migration chain HATCH_MIGRATE=1 applies in full, and
+                // they are what a fresh install's board actually ends up with -
+                // the seven-column flow TheFlow's own doc comment names.
+                var statuses = await deadline.BoundAsync("reading the seeded statuses", () => MinimalDatabases.StatusNamesAsync(hatch));
+                Assert.Equal(["Draft", "Breakdown", "Backlog", "To Do", "In Progress", "In Review", "Done"], statuses);
             }
         }
         finally
         {
-            Once.Release();
+            await deadline.BoundAsync("dropping the scratch databases", () => MinimalDatabases.DropAsync(hatch, quartz));
         }
 
-        // The one that ships, read from where `db` reads it - containers/hatch-db/pginit.sql,
-        // the script the compose db container runs on its own first boot. Copying
-        // the DDL in here would be a second copy that could silently stop
-        // matching the one the container runs; reading it up to and including
-        // the CREATE DATABASE/`\c quartz` lines that only psql's own init
-        // machinery can execute is the alternative to that copy, not a licence
-        // to drift from that file's shape.
-        var pginit = await File.ReadAllTextAsync(
-            Path.Combine(RepositoryRoot(), "containers", "hatch-db", "pginit.sql"));
-        var afterConnect = pginit.IndexOf("\\c quartz", StringComparison.Ordinal);
-        Assert.True(afterConnect >= 0, "containers/hatch-db/pginit.sql has no `\\c quartz` line to split the Quartz DDL from.");
-        var quartzDdl = pginit[(afterConnect + "\\c quartz".Length)..];
-
-        await using (var quartzDb = new NpgsqlConnection(quartz))
-        {
-            await quartzDb.OpenAsync();
-            await ExecuteAsync(quartzDb, quartzDdl);
-        }
-
-        return (hatch, quartz);
+        return logs;
     }
-
-    /// <summary>What HATCH_MIGRATE=1 does to the core schema, for the case that is about a database somebody has migrated.</summary>
-    public static async Task MigrateAsync(string hatch)
-    {
-        await using var db = new Api.Ef.AppDbContext(
-            new DbContextOptionsBuilder<Api.Ef.AppDbContext>().UseNpgsql(hatch).Options);
-        await db.Database.MigrateAsync();
-    }
-
-    /// <summary>Criterion 6, asked of the store rather than of the log: which of this group's jobs hold a trigger.</summary>
-    public static async Task<IReadOnlyList<string>> TriggerNamesAsync(string quartz, string group)
-    {
-        await using var db = new NpgsqlConnection(quartz);
-        await db.OpenAsync();
-
-        await using var command = new NpgsqlCommand("SELECT trigger_name FROM qrtz_triggers WHERE trigger_group = @g", db);
-        command.Parameters.AddWithValue("g", group);
-
-        var names = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync()) names.Add(reader.GetString(0));
-
-        return names;
-    }
-
-    /// <summary>
-    /// A content root with a <c>wwwroot</c> in it and nothing else. The
-    /// directory has to exist (Program.cs combines a path off WebRootPath) and
-    /// has to be empty of apps, which is what makes the boot under test the one
-    /// a friend gets rather than one shaped by whatever is in the working copy.
-    /// </summary>
-    public static string ScratchContentRoot()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "hatch-minimal-startup");
-        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
-        return root;
-    }
-
-    /// <summary>Found by walking up for the solution file, so this works from wherever the test binary is run.</summary>
-    private static string RepositoryRoot()
-    {
-        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "src", "Hatch.slnx")))
-                return d.FullName;
-
-        throw new InvalidOperationException("Could not find the repository root (no src/Hatch.slnx above the test binary).");
-    }
-
-    private static string Named(NpgsqlConnectionStringBuilder template, string database) =>
-        new NpgsqlConnectionStringBuilder(template.ConnectionString) { Database = database }.ConnectionString;
-
-    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
-    {
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync();
-    }
-
-    /// <summary>Database names are composed here from the variable's own, so there is nothing a caller could inject; quoting is so an unusual one still parses.</summary>
-    private static string Quote(string name) => $"\"{name.Replace("\"", "\"\"")}\"";
 }
