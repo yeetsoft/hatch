@@ -135,7 +135,7 @@ public sealed class ClaudeTokenCommandTests
     private static void Answer(CliHarness h, string protectedToken) =>
         h.Wire.Reply(
             "GET", "/api/hatch/settings/claude-token", HttpStatusCode.OK,
-            System.Text.Json.JsonSerializer.Serialize(new ClaudeTokenDto(protectedToken), Fixtures.Json));
+            System.Text.Json.JsonSerializer.Serialize(new CredentialDto(protectedToken), Fixtures.Json));
 
     /// <summary>
     /// What the server writes, spelled out here rather than reversed through
