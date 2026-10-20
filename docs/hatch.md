@@ -5409,6 +5409,22 @@ unrecognised Claude limit does. There is no usage probe for Codex: a session's
 own cost is read from the stream it already sends, nothing is polled on the
 side.
 
+**What could not be checked.** Whether API-key auth reaches a larger reachable
+catalog than the ChatGPT-account login this proof used: the refusal sentence's
+own wording ("not supported when using Codex with a ChatGPT account") suggests
+it might, and it was not tried, so the tier table above is only as wide as that
+one login. Every real run also printed `WARNING: proceeding, even though we
+could not create PATH aliases: Refusing to create helper binaries under
+temporary dir...`; it never stopped a `hatch` command from working, so its
+cause was not chased. And whether `turn.completed.usage.reasoning_output_tokens`
+is ever nonzero on this login's models: the field was present and `0` on every
+stream read, so it is emitted, but no nonzero case has been seen. The stream
+reader adds it to the output count when it is there, so a nonzero value would
+be counted, but no real one has exercised that. Two further things that
+did not happen in the proof: no real usage-limit sentence was seen (see
+**Limits** above), and the refreshed `auth.json` was never compared, which is
+moot while no session sets `CODEX_HOME`.
+
 ### What makes an issue actionable
 
 Twenty conditions, the eighteenth a way out of the seventeenth rather than one

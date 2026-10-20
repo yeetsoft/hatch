@@ -15,6 +15,7 @@ import {
   orderDocPages,
   parseDocPage,
   renderDocs,
+  resolveDocHref,
 } from './docs';
 
 /** The document's lines outside fenced blocks, which is where its headings are. */
@@ -159,6 +160,54 @@ describe('docLinkTarget', () => {
       expect(['fragment', 'app', 'external']).toContain(kind);
       if (href.startsWith('/apps/hatch/')) expect(kind).toBe('app');
     }
+  });
+});
+
+describe('resolveDocHref', () => {
+  it('resolves the four page-link forms', () => {
+    for (const slug of ['upgrading', 'hatch-at-home']) {
+      for (const form of [slug, `${slug}.md`, `./${slug}`, `./${slug}.md`]) {
+        expect(resolveDocHref(form)).toBe(`/apps/hatch/docs/${slug}`);
+        expect(resolveDocHref(`${form}#rolling-back`)).toBe(`/apps/hatch/docs/${slug}#rolling-back`);
+      }
+    }
+  });
+
+  it('keeps a bare # as written', () => {
+    expect(resolveDocHref('upgrading#')).toBe('/apps/hatch/docs/upgrading#');
+  });
+
+  it('returns everything else exactly as given', () => {
+    for (const href of [
+      '',
+      '#x',
+      '/abs',
+      '//host/x',
+      'https://cli.github.com/',
+      'mailto:a@b.c',
+      '../x',
+      'a/b.md',
+      'Upgrading.md',
+      'a_b',
+      'a.md.md',
+      '.md',
+      '././a',
+      'upgrading.md?x=1',
+      'upgrading?x=1#y',
+      '/apps/hatch/runner',
+    ]) {
+      expect(resolveDocHref(href)).toBe(href);
+    }
+  });
+
+  it('rewrites a page link in rendered output', () => {
+    const { html } = renderDocs('[a](./upgrading.md#x)');
+    expect(html).toContain('href="/apps/hatch/docs/upgrading#x"');
+    expect(docLinkTarget('/apps/hatch/docs/upgrading#x')).toEqual({ kind: 'app', to: '/docs/upgrading#x' });
+  });
+
+  it('leaves an image source alone', () => {
+    expect(renderDocs('![a](./upgrading.md)').html).toContain('src="./upgrading.md"');
   });
 });
 
