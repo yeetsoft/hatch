@@ -240,7 +240,8 @@ public static class IssueProjection
                 issue.PullRequestReviewDecision,
                 issue.PullRequestHeadSha,
                 issue.PullRequestReadAt,
-                issue.ClosedAt);
+                issue.ClosedAt,
+                issue.ReleaseNote);
         });
     }
 
