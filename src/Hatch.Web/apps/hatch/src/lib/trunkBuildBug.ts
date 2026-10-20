@@ -5,7 +5,7 @@
 import { sendBack } from './columns';
 import { message } from './errors';
 import type { Priority } from '../components/PriorityControl';
-import type { Issue, Status, TrunkBuildBugRequest } from '../types';
+import type { AssigneeDirectory, Issue, Status, TrunkBuildBugRequest } from '../types';
 
 export interface BugFields {
   express: boolean;
@@ -38,6 +38,26 @@ export async function fileBug(
 ): Promise<{ ok: true; issue: Issue } | { ok: false; error: string }> {
   try {
     return { ok: true, issue: await post(buildId, bugRequest(fields)) };
+  } catch (err) {
+    return { ok: false, error: message(err) };
+  }
+}
+
+/** What the modal reads when it opens: the columns it offers, and the
+    directory the express and priority controls name people from. The
+    directory is a nicety - a failed read of it leaves those controls
+    without names and the dialog still usable - but the columns are not:
+    without them there is nothing to file into, so their failure comes back
+    as a sentence for the dialog to show rather than a rejection nobody
+    hears, which left the dialog sitting disabled with no word as to why.
+    Both fetchers are parameters for the same reason `fileBug`'s `post` is. */
+export async function loadBugChoices(
+  statuses: () => Promise<Status[]>,
+  assignees: () => Promise<AssigneeDirectory>,
+): Promise<{ ok: true; statuses: Status[]; directory: AssigneeDirectory | null } | { ok: false; error: string }> {
+  try {
+    const [ss, dir] = await Promise.all([statuses(), assignees().then((d) => d, () => null)]);
+    return { ok: true, statuses: ss, directory: dir };
   } catch (err) {
     return { ok: false, error: message(err) };
   }
