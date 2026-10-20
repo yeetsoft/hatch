@@ -58,9 +58,10 @@ function escapeAttr(s: string): string {
     disagree. The output is not sanitized - that is the page's job, and a separate
     step. Links to other pages resolve to `/docs/<slug>` addresses. A local
     `Marked`, so the global instance `markdown.ts` uses is untouched. */
-export function renderDocs(source: string): { html: string; outline: OutlineEntry[] } {
+export function renderDocs(source: string): { html: string; outline: OutlineEntry[]; ids: string[] } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
+  const ids: string[] = [];
   const marked = new Marked({
     walkTokens(token) {
       if (token.type === 'link') token.href = resolveDocHref(token.href);
@@ -71,6 +72,7 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
         if (depth < 2 || depth > 4) return false;
         const text = plainText(tokens);
         const id = slug(text);
+        ids.push(id);
         if (depth === 2 || depth === 3) outline.push({ depth, text, id });
         const label = escapeAttr(text);
         return (
@@ -81,7 +83,7 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
     },
   });
   const html = marked.parse(source, { async: false });
-  return { html, outline };
+  return { html, outline, ids };
 }
 
 /** The id a `#fragment` names, decoded: one leading `#` off, then percent-escapes
@@ -261,6 +263,23 @@ export function docSections(pages: DocPage[]): { section: DocSection; pages: Doc
 /** The page with this slug, or undefined. */
 export function docPage(pages: DocPage[], slug: string): DocPage | undefined {
   return pages.find((p) => p.slug === slug);
+}
+
+/** Where an old `/docs#id` fragment lands now: `/docs/<slug>` for the page whose
+    slug is `id` (most of the pre-split links, since the split pages' slugs are
+    the old page's `##` ids), else `/docs/<slug>#id` for the page holding a
+    heading with that id, else `null` when nothing does. Slugs across all pages
+    are checked before any heading, so the common case costs no render; headings
+    are rendered lazily, one page at a time, stopping at the first match. */
+export function pageForAnchor(pages: DocPage[], id: string): string | null {
+  if (!id) return null;
+  for (const page of pages) {
+    if (page.slug === id) return `/docs/${page.slug}`;
+  }
+  for (const page of pages) {
+    if (renderDocs(page.body).ids.includes(id)) return `/docs/${page.slug}#${id}`;
+  }
+  return null;
 }
 
 /** The pages either side of `slug` in reading order, walking the sorted list end to

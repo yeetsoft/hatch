@@ -9,6 +9,7 @@ import {
   docSections,
   hashId,
   isPlainPrimaryClick,
+  pageForAnchor,
   renderDocs,
   type DocPage,
   type OutlineEntry,
@@ -42,6 +43,17 @@ function renderedDoc(page: DocPage): RenderedDoc {
 }
 
 function DocsLanding() {
+  const { hash } = useLocation();
+  const navigate = useNavigate();
+
+  // An old /docs#<id> link, from before the page was split: carries the reader
+  // on to wherever that id lives now. replace: true so Back does not return to
+  // a bare landing that bounces forward again.
+  useEffect(() => {
+    const to = pageForAnchor(DOC_PAGES, hashId(hash));
+    if (to) navigate(to, { replace: true });
+  }, [hash, navigate]);
+
   return (
     <div className="hatch-page">
       <PageHeader title="Docs" />

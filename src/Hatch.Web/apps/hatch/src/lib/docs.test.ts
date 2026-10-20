@@ -13,6 +13,7 @@ import {
   hashId,
   isPlainPrimaryClick,
   orderDocPages,
+  pageForAnchor,
   parseDocPage,
   renderDocs,
   resolveDocHref,
@@ -92,9 +93,10 @@ describe('renderDocs on fixtures', () => {
   });
 
   it('keeps #### out of the outline but gives it an id', () => {
-    const { html, outline } = renderDocs('#### d\n');
+    const { html, outline, ids } = renderDocs('#### d\n');
     expect(html).toContain('<h4 id="d">');
     expect(outline).toEqual([]);
+    expect(ids).toEqual(['d']);
   });
 
   it('does not treat a # line in a fence as a heading', () => {
@@ -327,9 +329,9 @@ describe('parseDocPage', () => {
   });
 });
 
-/** A `DocPage` with everything but slug, section and order fixed. */
-function dp(slug: string, section: string, order: number): DocPage {
-  return { slug, title: slug, section, order, summary: slug, body: 'Body.\n' };
+/** A `DocPage` with everything but slug, section, order and body fixed. */
+function dp(slug: string, section: string, order: number, body = 'Body.\n'): DocPage {
+  return { slug, title: slug, section, order, summary: slug, body };
 }
 
 describe('orderDocPages', () => {
@@ -388,6 +390,33 @@ describe('docPage', () => {
 
   it('is undefined for an unknown slug', () => {
     expect(docPage([a, b], 'c')).toBeUndefined();
+  });
+});
+
+describe('pageForAnchor', () => {
+  it.each([
+    ['letting-the-loop-merge-for-you', '/docs/letting-the-loop-merge-for-you'],
+    ['one-increment-hatch-work', '/docs/the-hatch-cli-command-by-command#one-increment-hatch-work'],
+    ['one-pass-in-order', '/docs/the-hatch-cli-command-by-command#one-pass-in-order'],
+    ['what-ios-cannot-do', '/docs/hatch-on-your-phone#what-ios-cannot-do'],
+  ])('resolves %s to %s against the real pages', (id, to) => {
+    expect(pageForAnchor(DOC_PAGES, id)).toBe(to);
+  });
+
+  it.each(['no-such-heading', ''])('is null for %s against the real pages', (id) => {
+    expect(pageForAnchor(DOC_PAGES, id)).toBeNull();
+  });
+
+  it('finds a heading id the outline omits - a #### heading', () => {
+    const a = dp('a', 'Start here', 1, '## Other\n');
+    const b = dp('b', 'Concepts', 1, '#### Deep\n');
+    expect(pageForAnchor([a, b], 'deep')).toBe('/docs/b#deep');
+  });
+
+  it('prefers the page whose slug is the id over a page with that heading', () => {
+    const slugPage = dp('shared', 'Start here', 1, '## Other\n');
+    const headingPage = dp('other', 'Concepts', 1, '## Shared\n');
+    expect(pageForAnchor([slugPage, headingPage], 'shared')).toBe('/docs/shared');
   });
 });
 
