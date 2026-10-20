@@ -132,6 +132,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   model: null,
   deniedTools: null,
   blockedKind: null,
+  deadlocked: false,
   ...over,
 });
 
