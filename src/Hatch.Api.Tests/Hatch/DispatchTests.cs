@@ -252,6 +252,94 @@ public class DispatchTests
         Assert.Equal(BlockedKinds.Other, RowFor(scan, issue).BlockedKind);
     }
 
+    // ---- Deadlocks: the rows no pass will ever clear on its own ----
+
+    private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
+
+    private static ScanRow DRow(long id, IReadOnlyList<long>? waitsOn = null, bool anyOf = false) =>
+        new(
+            new EfHatchIssue
+            {
+                Id = id, ProjectId = 1, Number = (int)id, Type = "task", Title = "t", Description = "",
+                StatusId = DeadlockStatus.Id, Rank = id, CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+            },
+            DeadlockStatus, null, null, null, "normal", false,
+            WaitsOn: waitsOn, AnyOf: anyOf);
+
+    [Fact]
+    public void Find_ATwoRing_MarksExactlyTheRing()
+    {
+        var rows = new[] { DRow(1, [2]), DRow(2, [1]) };
+
+        Assert.Equal(new HashSet<long> { 1, 2 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AThreeRing_MarksExactlyTheRing()
+    {
+        var rows = new[] { DRow(1, [2]), DRow(2, [3]), DRow(3, [1]) };
+
+        Assert.Equal(new HashSet<long> { 1, 2, 3 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_ARowWaitingOnARingAndOneTwoHopsBehind_BothAreMarked()
+    {
+        var rows = new[] { DRow(1, [2]), DRow(2, [1]), DRow(3, [1]), DRow(4, [3]) };
+
+        Assert.Equal(new HashSet<long> { 1, 2, 3, 4 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AChainEndingInARowThatWaitsOnNothing_NothingIsMarked()
+    {
+        var rows = new[] { DRow(1, []), DRow(2, [1]), DRow(3, [2]) };
+
+        Assert.Empty(Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AChainEndingInAnIdAbsentFromTheRows_NothingIsMarked()
+    {
+        var rows = new[] { DRow(1, [99]), DRow(2, [1]) };
+
+        Assert.Empty(Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_ARingPlusARowAlsoWaitingOnAClearRow_TheAllOfStillMarksIt()
+    {
+        var rows = new[] { DRow(1, [2]), DRow(2, [1]), DRow(3, [1, 4]), DRow(4, []) };
+
+        Assert.Equal(new HashSet<long> { 1, 2, 3 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AnyOfWithOneMovableHolder_IsNotMarked()
+    {
+        // 2 waits on 1 or 3, any one is enough - 1 is clear, so 2 is movable
+        // even though 3 is stuck forever in its own ring with 4.
+        var rows = new[] { DRow(1, []), DRow(2, [1, 3], anyOf: true), DRow(3, [4]), DRow(4, [3]) };
+
+        Assert.Equal(new HashSet<long> { 3, 4 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AnyOfWithEveryHolderInARing_IsMarked()
+    {
+        var rows = new[] { DRow(1, [2]), DRow(2, [1]), DRow(3, [1, 2], anyOf: true) };
+
+        Assert.Equal(new HashSet<long> { 1, 2, 3 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_AnyOfOverAnEmptyList_IsMovable()
+    {
+        var rows = new[] { DRow(1, [], anyOf: true) };
+
+        Assert.Empty(Deadlocks.Find(rows));
+    }
+
     // ---- Helpers ----
 
     private static PlaybookFileRow FileRow(

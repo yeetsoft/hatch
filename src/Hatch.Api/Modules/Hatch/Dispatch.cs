@@ -2184,3 +2184,43 @@ public sealed class FamilyGate
         && ParentStarted(parentId, statuses)
         && SharedBranchSibling(issue, statuses) is null;
 }
+
+// ---- Deadlocks ----
+
+/// <summary>
+/// The rows no pass will ever clear on its own - HA-1014's "deadlocked,
+/// defined" made a function, over the <see cref="ScanRow.WaitsOn"/> /
+/// <see cref="ScanRow.AnyOf"/> edges <see cref="Dispatch.BlockedWithKind"/>
+/// already found for its own sentence. The single definition HA-1019's
+/// queue and HA-1021's attention read both call - keyed by
+/// <see cref="EfHatchIssue"/>.Id, so either can test an id straight against
+/// the result with no lookup of its own.
+/// </summary>
+public static class Deadlocks
+{
+    public static IReadOnlySet<long> Find(IEnumerable<ScanRow> rows)
+    {
+        var byId = rows.ToDictionary(r => r.Issue.Id);
+
+        var movable = new HashSet<long>(
+            byId.Values.Where(r => r.WaitsOn is null || r.WaitsOn.Count == 0).Select(r => r.Issue.Id));
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var row in byId.Values)
+            {
+                if (movable.Contains(row.Issue.Id) || row.WaitsOn is null || row.WaitsOn.Count == 0) continue;
+
+                var clear = row.AnyOf
+                    ? row.WaitsOn.Any(id => movable.Contains(id) || !byId.ContainsKey(id))
+                    : row.WaitsOn.All(id => movable.Contains(id) || !byId.ContainsKey(id));
+
+                if (clear && movable.Add(row.Issue.Id)) changed = true;
+            }
+        }
+
+        return byId.Keys.Where(id => !movable.Contains(id)).ToHashSet();
+    }
+}
