@@ -274,3 +274,26 @@ export function trunkIconWords(holdsTrunk: boolean | null, trunk: string | null)
 export function trunkIconTone(holdsTrunk: boolean | null): 'success' | 'muted' {
   return holdsTrunk === true ? 'success' : 'muted';
 }
+
+/**
+ * Whether a press inside the open panel should close it.
+ *
+ * Yes for a plain press on a link that stays in this tab: the row has done its
+ * job, and a panel left over the page it just loaded - the whole screen, on a
+ * phone - is the bug this exists for. No for everything else: no link (a
+ * button such as *File a bug*, or the text between rows), a link that opens a
+ * new tab (the person comes back to the panel where they left it), and a press
+ * with a modifier or a button other than the primary, which opens elsewhere
+ * and leaves this page alone.
+ *
+ * `link` is the nearest anchor to the press, or null when there is none.
+ */
+export function closesOnPress(
+  link: { href: string | null; target: string | null } | null,
+  press: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean },
+): boolean {
+  if (link === null || !link.href) return false;
+  if (link.target === '_blank') return false;
+  if (press.button !== 0) return false;
+  return !(press.metaKey || press.ctrlKey || press.shiftKey || press.altKey);
+}
