@@ -140,7 +140,7 @@ export function QueueModal({
               <li key={entry.issue.key}>
                 <button
                   type="button"
-                  className={`hatch-queue-row ${entry.blocked === null ? 'hatch-queue-row--clear' : 'hatch-queue-row--folded'}`}
+                  className={`hatch-queue-row ${entry.blocked === null ? 'hatch-queue-row--clear' : 'hatch-queue-row--folded'}${entry.deadlocked ? ' hatch-queue-row--deadlocked' : ''}`}
                   disabled={!card}
                   onClick={() => {
                     onClose();

@@ -5847,6 +5847,11 @@ button.hatch-option.chosen {
   border-left-color: var(--line-strong);
 }
 
+.hatch-queue-row--deadlocked {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+}
+
 .hatch-queue-ordinal {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
