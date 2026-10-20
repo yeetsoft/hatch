@@ -79,6 +79,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   model: null,
   deniedTools: null,
   blockedKind: null,
+  deadlocked: false,
   ...over,
 });
 
@@ -203,6 +204,20 @@ describe('QueueModal', () => {
 
     expect(html).toContain('hatch-queue-row--clear');
     expect(html).not.toContain('hatch-queue-row--folded');
+  });
+
+  it('marks a deadlocked row as deadlocked, folded, and shows its sentence', () => {
+    const html = render('ready', [entry({ blocked: 'deadlocked - waiting on HA-2', deadlocked: true })]);
+
+    expect(html).toContain('hatch-queue-row--deadlocked');
+    expect(html).toContain('hatch-queue-row--folded');
+    expect(html).toContain('deadlocked - waiting on HA-2');
+  });
+
+  it('does not mark an ordinary folded row as deadlocked', () => {
+    const html = render('ready', [entry({ blocked: 'waiting on a dependency' })]);
+
+    expect(html).not.toContain('hatch-queue-row--deadlocked');
   });
 
   it('draws the marker column on every row once any entry is above normal', () => {
