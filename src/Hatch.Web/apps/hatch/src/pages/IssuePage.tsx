@@ -50,6 +50,7 @@ import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
 import { MoveProjectDialog } from '../components/MoveProjectDialog';
 import { ProseClamp } from '../components/ProseClamp';
+import { ReleaseNote } from '../components/ReleaseNote';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -72,6 +73,7 @@ import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { openQuestions } from '../lib/questions';
+import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
@@ -128,6 +130,9 @@ export function IssuePage() {
   const [priorityBusy, setPriorityBusy] = useState(false);
   /* A one-PR press is already out - the same shape as `priorityBusy`. */
   const [onePrBusy, setOnePrBusy] = useState(false);
+  /* The release note's own refusal - drawn inside the section, not in the
+     page's `error`. */
+  const [releaseNoteError, setReleaseNoteError] = useState<string | null>(null);
   /* A pre-approval press is already out - PreApprovalControl's own flag, the
      same shape priorityBusy is. */
   const [preApprovalBusy, setPreApprovalBusy] = useState(false);
@@ -378,6 +383,23 @@ export function IssuePage() {
       } finally {
         setOnePrBusy(false);
       }
+    },
+    [key, load],
+  );
+
+  /* Saves the release note through the sibling lib call, which never throws -
+     its refusal goes to `releaseNoteError`, not the page's own `error`, since
+     `ReleaseNote` draws it inside its own section. */
+  const saveReleaseNote = useCallback(
+    async (note: string): Promise<boolean> => {
+      setReleaseNoteError(null);
+      const refusal = await writeReleaseNote(key, note);
+      if (refusal !== null) {
+        setReleaseNoteError(refusal);
+        return false;
+      }
+      await load();
+      return true;
     },
     [key, load],
   );
@@ -826,6 +848,8 @@ export function IssuePage() {
       />
 
       <Description issue={issue} onSave={(description) => save({ description })} />
+
+      <ReleaseNote issue={issue} onSave={saveReleaseNote} error={releaseNoteError} />
 
       <Comments
         issueKey={key}
