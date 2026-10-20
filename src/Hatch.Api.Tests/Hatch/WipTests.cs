@@ -511,6 +511,18 @@ public class WipTests
     }
 
     [Fact]
+    public async Task EpicsAsync_AReflectionsSetLimitReadsItselfTheSameAsAnEpics()
+    {
+        var h = await NewAsync();
+        var reflection = await h.IssueAsync("reflection", h.Backlog);
+        await h.SetWipLimitAsync(reflection, 3);
+
+        var epics = await Wip.EpicsAsync(h.Db, [reflection], default);
+
+        Assert.Equal(3, epics[reflection].Limit);
+    }
+
+    [Fact]
     public async Task EpicsAsync_AParentThatIsAStoryIsAbsent()
     {
         var h = await NewAsync();

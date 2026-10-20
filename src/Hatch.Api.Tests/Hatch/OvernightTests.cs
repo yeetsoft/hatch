@@ -82,6 +82,20 @@ public class OvernightTests
     }
 
     [Fact]
+    public void OneOfEachTypeIncludingAReflection_ComesBackEpicReflectionBugStoryTask()
+    {
+        var task = Landing(1, Base + TimeSpan.FromMinutes(40), "task");
+        var story = Landing(2, Base + TimeSpan.FromMinutes(30), "story");
+        var bug = Landing(3, Base + TimeSpan.FromMinutes(20), "bug");
+        var reflection = Landing(4, Base + TimeSpan.FromMinutes(10), "reflection");
+        var epic = Landing(5, Base, "epic");
+
+        var result = Overnight.NewestNight([task, story, bug, reflection, epic]);
+
+        Assert.Equal(["epic", "reflection", "bug", "story", "task"], result.Rows.Select(r => r.Type));
+    }
+
+    [Fact]
     public void WithinOneType_OrdersByDescendantCountThenAtThenIssueId_AllDescending()
     {
         var landings = new[]
