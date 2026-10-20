@@ -16,10 +16,12 @@ namespace Hatch.Cli;
 /// tomorrow. A weekly limit is the same sentence with a date in front of the
 /// time, and that date is taken as given rather than rolled forward.</para>
 ///
-/// <para>An unknown zone id degrades to UTC rather than giving up - a wrong
-/// offset on a reset time nobody would have read exactly anyway is better than
-/// throwing the sentence away. A sentence that names a limit but whose time
-/// cannot be parsed at all is <see cref="Recognised.ResetKnown"/> false, and
+/// <para>An unknown zone id degrades to the runner's own zone rather than
+/// giving up - a wrong offset on a reset time nobody would have read exactly
+/// anyway is better than throwing the sentence away. The shipped binary is
+/// invariant-globalization, and Windows cannot read an IANA id without ICU, so
+/// there every named zone degrades this way. A sentence that names a limit but
+/// whose time cannot be parsed at all is <see cref="Recognised.ResetKnown"/> false, and
 /// callers are the ones who turn that into the one-hour backstop.</para>
 /// </remarks>
 public static partial class UsageLimit
@@ -60,9 +62,10 @@ public static partial class UsageLimit
         var match = ClockPattern().Match(said);
         if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
 
+        var runner = runnerZone ?? TimeZoneInfo.Local;
         var zone = match.Groups["zone"].Success
-            ? ResolveZone(match.Groups["zone"].Value.Trim())
-            : runnerZone ?? TimeZoneInfo.Local;
+            ? ResolveZone(match.Groups["zone"].Value.Trim(), runner)
+            : runner;
 
         if (!TryHour(match, out var hour24, out var minute))
             return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
@@ -227,9 +230,13 @@ public static partial class UsageLimit
     /// <summary>
     /// An IANA id resolved the way a wrong one is met everywhere else in this
     /// repository: a fallback rather than an exception, because a reset time is
-    /// worth having even under the wrong offset.
+    /// worth having even under the wrong offset. The fallback is the runner's
+    /// own zone, not UTC: the shipped binary is invariant-globalization, and
+    /// Windows cannot read an IANA id without ICU, so on a Windows runner every
+    /// id lands here, and the runner's zone is the one a Claude account most
+    /// likely resets in.
     /// </summary>
-    private static TimeZoneInfo ResolveZone(string id)
+    private static TimeZoneInfo ResolveZone(string id, TimeZoneInfo fallback)
     {
         try
         {
@@ -237,7 +244,7 @@ public static partial class UsageLimit
         }
         catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException)
         {
-            return TimeZoneInfo.Utc;
+            return fallback;
         }
     }
 

@@ -41,14 +41,19 @@ public sealed class UsageLimitTests
     }
 
     [Fact]
-    public void An_unknown_zone_still_gives_an_instant_by_falling_back_to_UTC()
+    public void An_unknown_zone_still_gives_an_instant_by_falling_back_to_the_runners_zone()
     {
-        // 19:40 UTC has already passed by 22:00 UTC, so this is 19:40 the next day.
         var hit = UsageLimit.Recognise("You've hit your session limit · resets 7:40pm (Mars/Colony)", EndedAt);
+
+        // The next 7:40pm on this machine's own clock after EndedAt, whatever zone that is.
+        var local = TimeZoneInfo.Local;
+        var today = TimeZoneInfo.ConvertTime(EndedAt, local).Date.AddHours(19).AddMinutes(40);
+        if (today <= TimeZoneInfo.ConvertTime(EndedAt, local).DateTime) today = today.AddDays(1);
+        var expected = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(today, DateTimeKind.Unspecified), local);
 
         Assert.NotNull(hit);
         Assert.True(hit!.Value.ResetKnown);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-29T19:40:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal(new DateTimeOffset(expected, TimeSpan.Zero), hit.Value.ResetAt);
     }
 
     [Fact]
@@ -105,7 +110,7 @@ public sealed class UsageLimitTests
     [InlineData("You've hit your session limit · resets 5:00pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-29T21:00:00+00:00", true)]
     [InlineData("You've hit your weekly limit · resets Jan 3, 2027 at 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
     [InlineData("You've hit your weekly limit · resets Jan 3, 2027, 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
-    [InlineData("You've hit your session limit · resets 7:40pm (Mars/Colony)", null, "2026-09-28T22:00:00+00:00", "2026-09-29T19:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7:40pm (Mars/Colony)", "America/Los_Angeles", "2026-09-28T22:00:00+00:00", "2026-09-29T02:40:00+00:00", true)]
     [InlineData("You've hit your session limit · resets soon, we promise", null, "2026-09-28T22:00:00+00:00", null, false)]
     [InlineData("the build failed on main", null, "2026-09-28T22:00:00+00:00", null, null)]
     public void Every_sentence_shape_the_CLI_prints_resolves_to_the_instant_it_names(
