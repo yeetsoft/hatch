@@ -306,7 +306,16 @@ try {
   $command = if ($Arguments.Count -gt 0) { $Arguments[0] } else { '' }
   $rest = if ($Arguments.Count -gt 1) { @($Arguments[1..($Arguments.Count - 1)]) } else { @() }
 
-  if ($command -ceq 'go-to-work') {
+  # A loop asked only for its usage is not a night, so `-h` or `--help` straight
+  # after either name goes through in place, with no supervisor and no copy in
+  # %TEMP%. The program reads only the first argument for that ask, and answers
+  # `do-my-work -h` itself; --mine put in front of it here would hide the ask,
+  # and the program would refuse -h as a flag it does not take.
+  $usage = $rest.Count -gt 0 -and ($rest[0] -ceq '-h' -or $rest[0] -ceq '--help')
+
+  if ($usage -and ($command -ceq 'go-to-work' -or $command -ceq 'do-my-work')) {
+    $code = Invoke-Runner (Resolve-Runner) $Arguments @{ HATCH_ROOT = $Root }
+  } elseif ($command -ceq 'go-to-work') {
     $code = Invoke-GoToWork $rest
   } elseif ($command -ceq 'do-my-work') {
     # Exactly go-to-work --mine, one supervisor - so a restart keeps --mine
