@@ -10,15 +10,18 @@ using Microsoft.Extensions.Options;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// The two settings a Hatch install of its own configures: the Claude
-/// subscription token that drives the battery, and what to call whoever is
+/// The settings a Hatch install of its own configures: the Claude
+/// subscription token that drives the battery, the OpenAI and xAI API keys the
+/// other agents' containers authenticate with, and what to call whoever is
 /// sitting at this machine.
 ///
 /// Here rather than on the admin app's Settings page because an install with no
 /// admin app - which is every install that is only somebody's tracker - still
 /// has to be able to set them. They are the same site settings the admin page
 /// wrote, under the same keys, stored the same way, so an operator who set the
-/// token before this existed finds it already set here.
+/// token before this existed finds it already set here. The agent keys are
+/// held exactly as the token is: protected at rest, dots on read, <c>""</c>
+/// clears.
 ///
 /// Both of those routes carry plain <c>[RequireAdmin]</c> with no
 /// <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
@@ -114,9 +117,18 @@ public class SettingsController(
     {
         var wrote = false;
 
-        if (request.ClaudeSubscriptionToken is { } token)
+        (string Key, string? Value)[] secrets =
+        [
+            (SiteSettingKeys.ClaudeSubscriptionToken, request.ClaudeSubscriptionToken),
+            (SiteSettingKeys.CodexApiKey, request.CodexApiKey),
+            (SiteSettingKeys.XaiApiKey, request.XaiApiKey),
+        ];
+
+        foreach (var (key, value) in secrets)
         {
-            await UpsertAsync(SiteSettingKeys.ClaudeSubscriptionToken, SecretProtector.Protect(token), ct);
+            if (value is not { } secret) continue;
+
+            await UpsertAsync(key, SecretProtector.Protect(secret), ct);
             wrote = true;
         }
 
@@ -166,10 +178,14 @@ public class SettingsController(
             // is asked of the plaintext rather than of SecretProtector.HasValue,
             // which expects the stored form. Same answer, one query fewer - and
             // the value itself never leaves this method.
-            ClaudeSubscriptionToken: string.IsNullOrWhiteSpace(settings.ClaudeSubscriptionToken) ? "" : Redacted,
+            ClaudeSubscriptionToken: RedactedIfSet(settings.ClaudeSubscriptionToken),
             LocalPersonNameApplies: !authOptions.Value.Enabled,
-            LocalPersonName: settings.LocalPersonName ?? "");
+            LocalPersonName: settings.LocalPersonName ?? "",
+            CodexApiKey: RedactedIfSet(settings.CodexApiKey),
+            XaiApiKey: RedactedIfSet(settings.XaiApiKey));
     }
+
+    private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
 }
 
 /// <summary>
@@ -184,10 +200,22 @@ public class SettingsController(
 /// agree by construction.
 /// </param>
 /// <param name="LocalPersonName">The name as stored, or empty. Not a secret, so it is handed back to be edited.</param>
-public record HatchSettingsDto(string ClaudeSubscriptionToken, bool LocalPersonNameApplies, string LocalPersonName);
+/// <param name="CodexApiKey">Dots when one is set, empty when none is - the same answer as the token, for the same reason.</param>
+/// <param name="XaiApiKey">Dots when one is set, empty when none is.</param>
+public record HatchSettingsDto(
+    string ClaudeSubscriptionToken,
+    bool LocalPersonNameApplies,
+    string LocalPersonName,
+    string CodexApiKey,
+    string XaiApiKey);
 
 /// <summary>
-/// An edit to either setting, or both. Null - or omitted - leaves one alone;
-/// <c>""</c> clears it.
+/// An edit to any of the settings, or several. Null - or omitted - leaves one
+/// alone; <c>""</c> clears it. The two agent keys trail with defaults, so a
+/// request that names only the first two behaves as it did before they existed.
 /// </summary>
-public record HatchSettingsWriteRequest(string? ClaudeSubscriptionToken, string? LocalPersonName);
+public record HatchSettingsWriteRequest(
+    string? ClaudeSubscriptionToken,
+    string? LocalPersonName,
+    string? CodexApiKey = null,
+    string? XaiApiKey = null);

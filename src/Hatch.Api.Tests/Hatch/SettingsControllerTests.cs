@@ -98,6 +98,149 @@ public class SettingsControllerTests
         Assert.Equal("set-by-the-admin-page", await fixture.Credential.GetTokenAsync(default));
     }
 
+    // ---- The agent keys, held exactly as the token is ----
+
+    private static HatchSettingsWriteRequest Write(string key, string? value) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => new(null, null, CodexApiKey: value),
+        SiteSettingKeys.XaiApiKey => new(null, null, XaiApiKey: value),
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string Read(HatchSettingsDto dto, string key) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => dto.CodexApiKey,
+        SiteSettingKeys.XaiApiKey => dto.XaiApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string? Plaintext(SiteSettingsSnapshot snapshot, string key) => key switch
+    {
+        SiteSettingKeys.CodexApiKey => snapshot.CodexApiKey,
+        SiteSettingKeys.XaiApiKey => snapshot.XaiApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnAgentKeyNobodySet_ReadsEmpty(string key)
+    {
+        var settings = await NewFixture().Controller.GetHatchSettings(default);
+
+        Assert.Equal("", Read(settings, key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ASavedAgentKey_ReadsBackAsDotsAndNeverAsItself(string key)
+    {
+        var fixture = NewFixture();
+
+        var written = await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+        var read = await fixture.Controller.GetHatchSettings(default);
+
+        foreach (var dto in new[] { written, read })
+        {
+            Assert.NotEqual("", Read(dto, key));
+            Assert.DoesNotContain("sk-agent-1", System.Text.Json.JsonSerializer.Serialize(dto));
+        }
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ASavedAgentKey_IsProtectedAtRestUnderItsOwnKey(string key)
+    {
+        var fixture = NewFixture();
+
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
+        Assert.DoesNotContain("sk-agent-1", stored);
+        Assert.Equal("sk-agent-1", SecretProtector.Unprotect(stored));
+        Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ClearingAnAgentKey_LeavesItReadingExactlyLikeOneNobodySet(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var settings = await fixture.Controller.PutHatchSettings(Write(key, ""), default);
+
+        Assert.Equal("", Read(settings, key));
+        Assert.True(string.IsNullOrWhiteSpace(Plaintext(await fixture.Settings.GetAsync(default), key)));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnOmittedAgentKey_IsLeftAlone(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "sk-agent-1"), default);
+
+        var settings = await fixture.Controller.PutHatchSettings(new(null, LocalPersonName: "Grace"), default);
+
+        Assert.NotEqual("", Read(settings, key));
+        Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task SavingAnAgentKeyAgain_ReplacesItInPlace(string key)
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(Write(key, "first"), default);
+
+        await fixture.Controller.PutHatchSettings(Write(key, "second"), default);
+
+        Assert.Single(fixture.Db.SiteSettings.Where(s => s.Key == key));
+        Assert.Equal("second", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    /// <summary>A key the admin page's generic Upsert wrote - same row, same protection - is already set here.</summary>
+    [Theory]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task AnAgentKeySetByTheAdminPage_ReadsBackOnIt(string key)
+    {
+        var fixture = NewFixture((key, SecretProtector.Protect("set-by-the-admin-page")));
+
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.NotEqual("", Read(settings, key));
+        Assert.Equal("set-by-the-admin-page", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    /// <summary>Three credentials in one table: writing one must not touch the other two.</summary>
+    [Fact]
+    public async Task WritingOneCredential_DoesNotDisturbTheOtherTwo()
+    {
+        var fixture = NewFixture();
+        await fixture.Controller.PutHatchSettings(new("claude-1", null, CodexApiKey: "codex-1", XaiApiKey: "xai-1"), default);
+
+        await fixture.Controller.PutHatchSettings(new(null, null, CodexApiKey: "codex-2"), default);
+        var snapshot = await fixture.Settings.GetAsync(default);
+
+        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
+        Assert.Equal("codex-2", snapshot.CodexApiKey);
+        Assert.Equal("xai-1", snapshot.XaiApiKey);
+
+        await fixture.Controller.PutHatchSettings(new(null, null, XaiApiKey: ""), default);
+        snapshot = await fixture.Settings.GetAsync(default);
+
+        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
+        Assert.Equal("codex-2", snapshot.CodexApiKey);
+        Assert.True(string.IsNullOrWhiteSpace(snapshot.XaiApiKey));
+    }
+
     /// <summary>Not a secret, so it comes back to be edited rather than redacted.</summary>
     [Fact]
     public async Task TheName_ReadsBackAsItself()

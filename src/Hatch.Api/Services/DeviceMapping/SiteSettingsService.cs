@@ -29,6 +29,8 @@ public record SiteSettingsSnapshot(
     string? ImmichBaseUrl,
     string? ImmichApiKey,
     string? ClaudeSubscriptionToken,
+    string? CodexApiKey,
+    string? XaiApiKey,
     string? LocalPersonName);
 
 public interface ISiteSettingsService
@@ -131,6 +133,8 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
                 // module hands it to Immich as a header, not to a screen.
                 ImmichApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.ImmichApiKey)),
                 ClaudeSubscriptionToken: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.ClaudeSubscriptionToken)),
+                CodexApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.CodexApiKey)),
+                XaiApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.XaiApiKey)),
                 // No default: "nobody has said" is a distinct answer from any
                 // name, and it is what tells the nav strip to explain how to
                 // set one. LocalCaller decides what unset means.
