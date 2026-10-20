@@ -5029,6 +5029,76 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_AParentPulledChildWithAnUnmetDependency_IsFoldedNamingItAndIsNotAHop()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        var t1 = await h.FileAsync("task", "first", h.Todo, parentId: parent.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        var first = queue.Single(e => e.Issue.Key == Key(t1));
+        var second = queue.Single(e => e.Issue.Key == Key(t2));
+
+        Assert.True(first.Hop);
+        Assert.Equal(HopKinds.Parent, first.HopKind);
+        Assert.Equal($"{Key(t1)} is not done, and this cannot be implemented until it is", second.Blocked);
+        Assert.Equal(BlockedKinds.Dependency, second.BlockedKind);
+        Assert.False(second.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AParentPulledChild_IsPulledOnceItsDependencyIsDone()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.InProgress);
+        var t1 = await h.FileAsync("task", "first", h.Done, parentId: parent.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var second = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(t2));
+
+        Assert.Null(second.Blocked);
+        Assert.True(second.Hop);
+        Assert.Equal(HopKinds.Parent, second.HopKind);
+    }
+
+    [Fact]
+    public async Task Queue_AParentPulledChild_IsPulledOnceItsDependencyWaitsOnTheSharedStorysPullRequest()
+    {
+        var h = await NewAsync();
+        var (story, t1) = await OnePrStoryAsync(h);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var second = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(t2));
+
+        Assert.Null(second.Blocked);
+        Assert.True(second.Hop);
+        Assert.Equal(HopKinds.Parent, second.HopKind);
+    }
+
+    [Fact]
+    public async Task Queue_AChildWhoseParentHasNotStarted_IsNotAHop_AndKeepsTodaysDependencyFold()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the story", h.Todo);
+        var t1 = await h.FileAsync("task", "first", h.Todo, parentId: parent.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var second = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(t2));
+
+        Assert.False(second.Hop);
+        Assert.Equal(BlockedKinds.Dependency, second.BlockedKind);
+    }
+
+    [Fact]
     public async Task Hop_OnAPulledChild_MovesItAndWritesPulledRatherThanExpress()
     {
         var h = await NewAsync();
