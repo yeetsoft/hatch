@@ -327,6 +327,12 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
     /// cannot simply go - moving them somewhere on the operator's behalf would
     /// be this endpoint deciding that a dozen tickets are now "todo".
     /// </summary>
+    /// <remarks>
+    /// Issues are not the only thing that points at a column. A playbook's
+    /// from/to columns, a project's auto-heal column and a kept verdict all
+    /// restrict in <see cref="HatchContext"/>, so each is refused here by name
+    /// rather than left to the foreign key, which answers a 500.
+    /// </remarks>
     [HttpDelete("{id:int}")]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<IActionResult> DeleteStatus(int id, CancellationToken ct)
@@ -337,6 +343,22 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         var count = await db.Issues.CountAsync(i => i.StatusId == id, ct);
         if (count > 0)
             return Conflict($"\"{status.Name}\" still holds {count} issue{(count == 1 ? "" : "s")}");
+
+        var playbookCount = await db.Playbooks.CountAsync(p => p.FromStatusId == id || p.ToStatusId == id, ct);
+        if (playbookCount > 0)
+            return Conflict($"\"{status.Name}\" still has {playbookCount} playbook{(playbookCount == 1 ? "" : "s")} naming it");
+
+        var healing = await db.Projects
+            .Where(p => p.AutoHealBugStatusId == id)
+            .OrderBy(p => p.Key)
+            .Select(p => p.Key)
+            .ToListAsync(ct);
+        if (healing.Count > 0)
+            return Conflict($"\"{status.Name}\" is where {string.Join(", ", healing)} file{(healing.Count == 1 ? "s" : "")} auto-heal bugs");
+
+        var verdictCount = await db.Verdicts.CountAsync(v => v.StatusId == id, ct);
+        if (verdictCount > 0)
+            return Conflict($"\"{status.Name}\" still has {verdictCount} verdict{(verdictCount == 1 ? "" : "s")} recorded against it");
 
         // Not in the plan's table, and here because the alternative is a state
         // the UI cannot get out of: a board with no columns has nowhere to put
