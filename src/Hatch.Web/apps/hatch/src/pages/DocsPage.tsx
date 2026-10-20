@@ -16,6 +16,7 @@ import {
 } from '../lib/docs';
 import { usePhone } from '../lib/viewport';
 import { DocsSetupPrompt } from '../components/SetupPromptBox';
+import { DocsSidebar } from '../components/DocsSidebar';
 
 interface RenderedDoc {
   html: string;
@@ -62,6 +63,7 @@ function DocsLanding() {
           page below - that would be an aside shown sixteen times over. */}
       <DocsSetupPrompt />
       <div className="hatch-docs">
+        <DocsSidebar />
         <div className="hatch-docs-landing">
           {docSections(DOC_PAGES).map(({ section, pages }) => (
             <section key={section}>
@@ -86,6 +88,7 @@ function DocsNotFound({ path }: { path: string }) {
   return (
     <div className="hatch-page">
       <div className="hatch-docs">
+        <DocsSidebar />
         <p className="hatch-docs-missing">
           There&rsquo;s no docs page at <code>/docs/{path}</code>. <Link to="/docs">Back to Docs</Link>
         </p>
@@ -139,6 +142,7 @@ function DocsArticle({ page }: { page: DocPage }) {
       <PageHeader title={page.title} />
       {/* A direct child of .hatch-page, which caps its children at --measure. */}
       <div className="hatch-docs">
+        <DocsSidebar />
         {/* Plain anchors, not <Link>: a router link would turn a fragment into a
             route change. */}
         {isPhone ? (
