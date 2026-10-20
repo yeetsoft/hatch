@@ -8,8 +8,8 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 /// <remarks>
 /// This runner is always <c>claude</c> here, never the other family in
-/// <see cref="TwoAgents"/> - <see cref="Agents.Resolve"/> only knows
-/// <c>claude</c> and <c>grok</c> (<see cref="Settings.KnownAgentIds"/>), so a
+/// <see cref="TwoAgents"/> - <see cref="Agents.Resolve"/> only knows the ids in
+/// <see cref="Settings.KnownAgentIds"/>, so a
 /// <see cref="Runtime"/> built with <c>Settings.Agent</c> set to anything else
 /// still refuses at <see cref="WorkCommand.RunAsync"/>'s own agent resolve
 /// before ever reaching a ticket. The mismatch this exercises instead is the

@@ -26,12 +26,12 @@ public sealed record Settings
     /// <summary>Everything a settings file may carry. A line naming anything else is skipped, loudly.</summary>
     public static readonly string[] FileNames =
     [
-        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_GROK_BIN", "HATCH_AGENT", "HATCH_BASE_BRANCH",
-        "HATCH_RUNNER", "HATCH_REPOS", "HATCH_WORKSPACE",
+        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_AGENT",
+        "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS", "HATCH_WORKSPACE",
     ];
 
     /// <summary>The agent ids <see cref="Agents"/> knows how to resolve.</summary>
-    public static readonly string[] KnownAgentIds = ["claude", "grok"];
+    public static readonly string[] KnownAgentIds = ["claude", "codex", "grok"];
 
     /// <summary>Which of the three layers a value came from, for <c>config --show</c>.</summary>
     public enum Layer
@@ -60,6 +60,9 @@ public sealed record Settings
 
     /// <summary>The claude CLI, if it is not simply on PATH.</summary>
     public string? ClaudeBin { get; init; }
+
+    /// <summary>The codex CLI, if it is not simply on PATH.</summary>
+    public string? CodexBin { get; init; }
 
     /// <summary>The grok CLI, if it is not simply on PATH.</summary>
     public string? GrokBin { get; init; }
@@ -202,6 +205,7 @@ public sealed record Settings
         var origin = Read("HATCH_BASE");
         var key = Read("HATCH_KEY");
         var claudeBin = Read("HATCH_CLAUDE_BIN");
+        var codexBin = Read("HATCH_CODEX_BIN");
         var grokBin = Read("HATCH_GROK_BIN");
         var agentRaw = Read("HATCH_AGENT");
         var baseBranch = Read("HATCH_BASE_BRANCH");
@@ -245,6 +249,7 @@ public sealed record Settings
             Base = origin.TrimEnd('/'),
             Key = key?.Trim() ?? "",
             ClaudeBin = claudeBin,
+            CodexBin = codexBin,
             GrokBin = grokBin,
             Agent = string.IsNullOrWhiteSpace(agentRaw) ? "claude" : agentRaw,
             BaseBranch = baseBranch,

@@ -93,7 +93,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         var agentId = agent ?? runtime.Settings.Agent;
         if (!Agents.Resolve(
-            agentId, runtime.Settings.ClaudeBin, runtime.Settings.GrokBin, runtime.Say.Complain,
+            agentId, runtime.Settings.ClaudeBin, runtime.Settings.CodexBin, runtime.Settings.GrokBin, runtime.Say.Complain,
             out var agentSessions, out var agentAdapter, out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);

@@ -107,9 +107,54 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
-    public void Known_agent_ids_include_grok()
+    public void Known_agent_ids_include_grok_and_codex()
     {
         Assert.Contains("grok", Settings.KnownAgentIds);
+        Assert.Contains("codex", Settings.KnownAgentIds);
+    }
+
+    [Fact]
+    public void Codex_bin_is_read_from_the_environment()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(null, Env(("HATCH_CODEX_BIN", "/opt/codex")), out var settings, out _, user));
+
+        Assert.Equal("/opt/codex", settings.CodexBin);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_CODEX_BIN"));
+    }
+
+    [Fact]
+    public void Codex_bin_is_read_from_the_checkout_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://mine", "HATCH_CODEX_BIN=/opt/codex");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("/opt/codex", settings.CodexBin);
+        Assert.Equal(Settings.Layer.Checkout, settings.SourceOf("HATCH_CODEX_BIN"));
+    }
+
+    [Fact]
+    public void Codex_bin_is_read_from_the_per_user_file()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_CODEX_BIN=/opt/codex");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal("/opt/codex", settings.CodexBin);
+        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_CODEX_BIN"));
+    }
+
+    [Fact]
+    public void Codex_bin_is_null_and_unset_when_nothing_set_it()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Null(settings.CodexBin);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_CODEX_BIN"));
     }
 
     /// <summary>An exported variable that is there but empty is not a value.</summary>

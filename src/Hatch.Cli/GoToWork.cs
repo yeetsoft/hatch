@@ -648,7 +648,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // FakeSessions, and an unconditional rebuild would silently swap it out.
         var agentId = agent ?? runtime.Settings.Agent;
         if (!Agents.Resolve(
-            agentId, runtime.Settings.ClaudeBin, runtime.Settings.GrokBin, runtime.Say.Complain,
+            agentId, runtime.Settings.ClaudeBin, runtime.Settings.CodexBin, runtime.Settings.GrokBin, runtime.Say.Complain,
             out var agentSessions, out var agentAdapter, out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);

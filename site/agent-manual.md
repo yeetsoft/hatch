@@ -133,6 +133,9 @@ hatch: ignoring "<NAME>" in <path> - not one of: HATCH_BASE HATCH_KEY HATCH_CLAU
 | `HATCH_BASE` | all three | **Required.** The origin. A trailing slash is trimmed. There is no `HATCH_ORIGIN`; `--origin` is a flag of `hatch config`. |
 | `HATCH_KEY` | all three | Optional. A `hatch_ak_…` bearer key. Empty means keyless mode. |
 | `HATCH_CLAUDE_BIN` | all three | The `claude` executable, if it is not on `PATH`. |
+| `HATCH_CODEX_BIN` | all three | The `codex` executable, if it is not on `PATH`. |
+| `HATCH_GROK_BIN` | all three | The `grok` executable, if it is not on `PATH`. |
+| `HATCH_AGENT` | all three | Which agent spawns a session: `claude`, `codex` or `grok`. Default `claude`; `--agent` on `work` and `go-to-work` beats it. |
 | `HATCH_BASE_BRANCH` | all three | The trunk `go-to-work` resets to. Overrides `origin/HEAD` detection. |
 | `HATCH_RUNNER` | all three | What the board calls this runner. Default: a character from the cast list (`src/Hatch.Cli/runner-names.txt`), chosen once per checkout and recorded in the per-user `runners` file - see `hatch config`. Clipped to 240 characters from the front if set explicitly and longer than that. |
 | `HATCH_HEARTBEAT` | environment only in practice | Seconds of session silence before the terminal prints a pulse. Default `20`; `0` turns it off; anything else invalid falls back to 20. Not on the file allow-list. |

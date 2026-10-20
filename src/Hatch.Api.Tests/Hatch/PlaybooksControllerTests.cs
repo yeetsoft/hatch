@@ -584,7 +584,7 @@ public class PlaybooksControllerTests
 
         Assert.Equal(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude; gpt-6-astra for codex; grok-4.7 for grok) - not \"fake-1\"",
+            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok) - not \"fake-1\"",
             Reason(refusal.Result));
 
         var families = new ModelFamilies([

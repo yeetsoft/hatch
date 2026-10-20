@@ -5179,15 +5179,16 @@ Between the loop and the CLI it spawns sits one seam, `IAgentAdapter`:
 everything that knows an agent's own vocabulary — the argument lists for an
 unattended and an attached spawn, the stream it reads back, the command that
 rejoins a session, the shape a hook answers with — is reached through the
-adapter rather than written into the loop. Today there are two, for `claude`
-and `grok`; a third agent would be a third implementation, not a second loop.
-`HATCH_AGENT` chooses which, and `HATCH_CLAUDE_BIN` / `HATCH_GROK_BIN` say
-where that agent's own executable is when it is not on `PATH` (another
-agent's binary is named by a setting of its own). `--agent <id>` on `hatch
-work` or `hatch go-to-work` beats the setting for that run, and an id nobody
-has an adapter for is refused before anything is spawned. The agent also
-decides which rows the runner takes: a row pinned to another agent's model is
-skipped (see the `Model` paragraph under [Playbooks](#playbooks)).
+adapter rather than written into the loop. Today there are three — `claude`,
+`codex` and `grok` — each its own implementation, not a second loop.
+`HATCH_AGENT` chooses which, and `HATCH_CLAUDE_BIN` / `HATCH_CODEX_BIN` /
+`HATCH_GROK_BIN` say where that agent's own executable is when it is not on
+`PATH` (another agent's binary is named by a setting of its own). `--agent
+<id>` on `hatch work` or `hatch go-to-work` beats the setting for that run,
+and an id nobody has an adapter for is refused before anything is spawned.
+The agent also decides which rows the runner takes: a row pinned to another
+agent's model is skipped (see the `Model` paragraph under
+[Playbooks](#playbooks)).
 
 #### Grok Build
 
@@ -5298,7 +5299,69 @@ machine it is on — where the binary is, whether it is logged in — and so is
 true of every ticket that runner touches tonight. `go-to-work` therefore
 resolves it once, before the loop starts, and carries it to the last
 increment. That is deliberate: do not "fix" it to be read per increment to
-match `--model`.
+match `--model`. `--agent codex` on the command line, or `HATCH_AGENT=codex`,
+resolves the same way and at the same moment as `claude` always has — once a
+run, never read back out of a playbook.
+
+#### Codex
+
+**`HATCH_CODEX_BIN` names the binary when it is not on `PATH`**, the same
+shape `HATCH_CLAUDE_BIN` already has. Finding neither refuses with `hatch: no
+codex CLI on PATH.`, a blank line, then `Install it, or point at one you
+have:` and `export HATCH_CODEX_BIN=/path/to/codex` — no vendor URL, since one
+drifts and the environment variable does not.
+
+The tier table, confirmed on 2026-10-20 against a real, logged-in CLI rather
+than guessed from a model list that turned out not to apply to every login: a
+ChatGPT-account login's own reachable catalog is `gpt-reserve`, `gpt-6-luna`,
+`gpt-5.6-terra`, `gpt-5.6-luna` and `codex-auto-review` — every other id tried
+against it, including ones a vendor page names, answers the same refusal, *"the
+'\<id\>' model is not supported when using Codex with a ChatGPT account."*
+No id in that catalog reads as a tier above `sonnet`'s, so `opus` and `fable`
+rest on it too rather than naming an id this login cannot reach:
+
+| Playbook tier    | Codex model     |
+| ---------------- | --------------- |
+| `haiku`          | `gpt-6-luna`    |
+| `sonnet`         | `gpt-5.6-terra` |
+| `opus` / `fable` | `gpt-5.6-terra` |
+
+A pinned id that is not one of those four aliases passes through unchanged,
+the same way `ClaudeAdapter` never resolves `sonnet` itself. The effort table
+is the playbook's five words verbatim, except `max`, which this CLI spells
+`xhigh`.
+
+**The grant is one flag, never two.** Under `exec`, `--approve-for-me` cannot
+sit beside `-s`/`--sandbox` and already implies `workspace-write` on its own —
+confirmed against `codex exec --help` on the installed CLI, which lists no
+`--ask-for-approval` at all. A denied `Edit`, `Write` or `NotebookEdit` (bare)
+downgrades the whole session to `-s read-only` instead, the only restriction
+this CLI has that stands in for any of the three; `Bash` bare, any
+`Bash(…)` pattern, `mcp__…`, and every other built-in have no sandbox-level
+analogue and refuse the increment before the claim, naming the rule. Never
+`--dangerously-bypass-approvals-and-sandbox`, which would remove the very
+sandbox the downgrade relies on.
+
+**Hooks do not fire.** `codex exec` silently skips every hook in a
+`CODEX_HOME` overlay's `hooks.json` unless the spawn also carries
+`--dangerously-bypass-hook-trust` — confirmed by running the identical overlay
+twice, once without the flag (no hook ran) and once with it (both `PostToolUse`
+and `Stop` ran). This adapter will not send that flag, the same stance it
+already takes on the sandbox-removing one above, so it declares no hooks and
+no `CODEX_HOME` at all; a session degrades to running with neither, which it
+already does cleanly for any agent with nothing to hook.
+
+**The resume line** a session prints, `codex exec resume <thread_id>`, rejoins
+it the normal way — confirmed against a real session once its increment had
+ended, which only works because the hooks door above is off and no overlay
+`CODEX_HOME` was ever set for it to disappear with.
+
+**Limits** recognise Codex's own usage-limit wording once a real sentence has
+been seen; until then every report rests on the one-hour backstop also used
+where a window is mentioned but no reset time is given, the same way an
+unrecognised Claude limit does. There is no usage probe for Codex: a session's
+own cost is read from the stream it already sends, nothing is polled on the
+side.
 
 ### What makes an issue actionable
 
@@ -6906,7 +6969,7 @@ whose name is already the *live* runner at a different `where` is refused with
 over, which is how a checkout that moved keeps its name. That refusal is the
 backstop; the first choice already tries to dodge it by reading the board.
 `Agent` works the same way - the id of the agent that spawned the process
-(`claude` today, per `Settings.KnownAgentIds`), absent from a runner that has
+(`claude`, `codex` or `grok` today, per `Settings.KnownAgentIds`), absent from a runner that has
 not reported one - but carries no uniqueness check, since two runners sharing
 an agent id is not a conflict.
 

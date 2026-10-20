@@ -47,7 +47,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task It_asks_for_the_origin_the_key_and_the_cli_and_writes_all_three()
     {
         var input = new Replies(
-            "https://hatch.example", "hatch_ak_written", "/opt/claude", "/opt/grok", "claude");
+            "https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
 
         Assert.Equal(0, await Command(input).RunAsync([], default));
 
@@ -55,14 +55,55 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_BASE=https://hatch.example", written);
         Assert.Contains("HATCH_KEY=hatch_ak_written", written);
         Assert.Contains("HATCH_CLAUDE_BIN=/opt/claude", written);
-        Assert.Contains("HATCH_GROK_BIN=/opt/grok", written);
         Assert.Contains("HATCH_AGENT=claude", written);
+        Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CODEX_BIN=", StringComparison.Ordinal));
+        Assert.DoesNotContain(written, l => l.StartsWith("HATCH_GROK_BIN=", StringComparison.Ordinal));
 
         Assert.Contains("Hatch origin", input.Asked[0]);
         Assert.Contains("API key", input.Asked[1]);
-        Assert.Contains("claude CLI path", input.Asked[2]);
+        Assert.Contains("agent", input.Asked[2]);
+        Assert.Contains("claude CLI path", input.Asked[3]);
+    }
+
+    /// <summary>Only the chosen agent's binary is asked for, and the prompt names it.</summary>
+    [Fact]
+    public async Task Choosing_codex_asks_for_the_codex_CLI_and_writes_HATCH_CODEX_BIN_alone()
+    {
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "codex", "/opt/codex");
+
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_AGENT=codex", written);
+        Assert.Contains("HATCH_CODEX_BIN=/opt/codex", written);
+        Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
+        Assert.Contains("codex CLI path", input.Asked[3]);
+        Assert.DoesNotContain(input.Asked, a => a.Contains("claude CLI path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Choosing_grok_asks_for_the_grok_CLI_alone()
+    {
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "grok", "/opt/grok");
+
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+
+        Assert.Contains("HATCH_GROK_BIN=/opt/grok", File.ReadAllLines(ConfigPath));
         Assert.Contains("grok CLI path", input.Asked[3]);
-        Assert.Contains("agent", input.Asked[4]);
+    }
+
+    /// <summary>Switching agent is not a reason to forget the other one's path.</summary>
+    [Fact]
+    public async Task Choosing_an_agent_keeps_the_other_agents_binary_already_written()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_CLAUDE_BIN=/opt/claude"]);
+
+        Assert.Equal(0, await Command(new Replies("", "", "codex", "/opt/codex")).RunAsync([], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_CLAUDE_BIN=/opt/claude", written);
+        Assert.Contains("HATCH_CODEX_BIN=/opt/codex", written);
     }
 
     /// <summary>
@@ -223,12 +264,12 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task In_a_checkout_it_offers_the_runner_already_named_and_Enter_keeps_it()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "", "");
+        var input = new Replies("https://hatch.example", "", "", "", "");
 
         Assert.Equal(
             0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
 
-        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[5]);
+        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[4]);
         Assert.Empty(RunnerNames.Record.Read(RunnersPath));
     }
 
@@ -236,7 +277,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_typed_name_is_recorded()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "", "Liz Lemon");
+        var input = new Replies("https://hatch.example", "", "", "", "Liz Lemon");
 
         Assert.Equal(
             0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
@@ -248,7 +289,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task An_empty_typed_name_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "", new string(' ', 3));
+        var input = new Replies("https://hatch.example", "", "", "", new string(' ', 3));
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -262,7 +303,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_that_is_not_plain_ASCII_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "", "Jeff Wïnger");
+        var input = new Replies("https://hatch.example", "", "", "", "Jeff Wïnger");
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -276,7 +317,7 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
         var input = new Replies(
-            "https://hatch.example", "", "", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
+            "https://hatch.example", "", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -289,7 +330,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_held_by_a_live_runner_elsewhere_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "", "Liz Lemon");
+        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "Liz Lemon");
 
         var code = await Command(
                 input, root: root, runnerName: "Jeff Winger",
@@ -498,6 +539,22 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Show_prints_HATCH_CODEX_BIN_and_codex_as_the_agent_with_their_layers()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_CODEX_BIN"] = "/opt/codex",
+                    ["HATCH_AGENT"] = "codex",
+                })
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_CODEX_BIN:   /opt/codex  (exported)", Said);
+        Assert.Contains("HATCH_AGENT:       codex  (exported)", Said);
+    }
+
+    [Fact]
     public async Task Show_says_the_agent_is_unset_when_nothing_set_it()
     {
         await Command(new Replies()).RunAsync(["--show"], default);
@@ -647,6 +704,34 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_KEY=hatch_ak_thesecret", written);
         Assert.Contains("HATCH_GROK_BIN=/opt/grok", written);
         Assert.Contains("HATCH_AGENT=grok", written);
+    }
+
+    [Fact]
+    public async Task Key_keeps_HATCH_CODEX_BIN_and_HATCH_AGENT_codex_without_asking_anything()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, [
+            "HATCH_BASE=https://kept", "HATCH_CODEX_BIN=/opt/codex", "HATCH_AGENT=codex",
+        ]);
+        var input = new Replies();
+
+        Assert.Equal(0, await Command(input).RunAsync(["--key", "hatch_ak_thesecret"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_CODEX_BIN=/opt/codex", written);
+        Assert.Contains("HATCH_AGENT=codex", written);
+        Assert.Empty(input.Asked);
+    }
+
+    [Fact]
+    public async Task Origin_keeps_HATCH_CODEX_BIN()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://old", "HATCH_CODEX_BIN=/opt/codex"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--origin", "https://new"], default));
+
+        Assert.Contains("HATCH_CODEX_BIN=/opt/codex", File.ReadAllLines(ConfigPath));
     }
 
     [Fact]

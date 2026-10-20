@@ -18,7 +18,7 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     private static SessionRequest Request(
-        string model = "gpt-6-astra", string effort = "high", bool quiet = false,
+        string model = "gpt-6-luna", string effort = "high", bool quiet = false,
         string? hooks = null, string[]? denied = null) =>
         new("/root", model, effort, "prompt", quiet, HookSettings: hooks, DeniedTools: denied);
 
@@ -38,7 +38,7 @@ public sealed class CodexAdapterTests : IDisposable
         var args = Adapter().BuildHeadless(Request()).ArgumentList;
 
         Assert.Equal(
-            ["exec", "-m", "gpt-6-astra", "-C", "/root",
+            ["exec", "-m", "gpt-6-luna", "-C", "/root",
                 "--json", "-c", "model_reasoning_effort=high", "--approve-for-me"],
             args);
     }
@@ -52,7 +52,7 @@ public sealed class CodexAdapterTests : IDisposable
 
         Assert.Equal(home, start.Environment["CODEX_HOME"]);
         Assert.Equal(
-            ["exec", "-m", "gpt-6-astra", "-C", "/root",
+            ["exec", "-m", "gpt-6-luna", "-C", "/root",
                 "--json", "-c", "model_reasoning_effort=high", "--approve-for-me",
                 "-o", Path.Combine(home, "last-message.txt")],
             start.ArgumentList);
@@ -85,7 +85,7 @@ public sealed class CodexAdapterTests : IDisposable
         var args = Adapter().BuildHeadless(request).ArgumentList;
 
         Assert.Equal(
-            ["exec", "-m", "gpt-6-astra", "-C", "/root", "--add-dir", "/a", "--add-dir", "/b",
+            ["exec", "-m", "gpt-6-luna", "-C", "/root", "--add-dir", "/a", "--add-dir", "/b",
                 "--json", "-c", "model_reasoning_effort=high", "--approve-for-me"],
             args);
     }
@@ -99,7 +99,7 @@ public sealed class CodexAdapterTests : IDisposable
         var args = Adapter().BuildHeadless(Request(denied: [tool])).ArgumentList;
 
         Assert.Equal(
-            ["exec", "-m", "gpt-6-astra", "-C", "/root",
+            ["exec", "-m", "gpt-6-luna", "-C", "/root",
                 "--json", "-c", "model_reasoning_effort=high", "-s", "read-only"],
             args);
         Assert.DoesNotContain("--approve-for-me", args);
@@ -117,9 +117,9 @@ public sealed class CodexAdapterTests : IDisposable
 
     [Theory]
     [InlineData("haiku", "gpt-6-luna")]
-    [InlineData("sonnet", "gpt-6.1-sol")]
-    [InlineData("opus", "gpt-6-astra")]
-    [InlineData("fable", "gpt-6-astra")]
+    [InlineData("sonnet", "gpt-5.6-terra")]
+    [InlineData("opus", "gpt-5.6-terra")]
+    [InlineData("fable", "gpt-5.6-terra")]
     [InlineData("gpt-7-pinned", "gpt-7-pinned")]
     public void Models_map_aliases_and_pass_pinned_ids_through(string model, string expected)
     {
@@ -164,7 +164,7 @@ public sealed class CodexAdapterTests : IDisposable
     {
         var args = Adapter().BuildAttached(Request() with { Prompt = "say hello" }).ArgumentList;
 
-        Assert.Equal(["-m", "gpt-6-astra", "-C", "/root", "say hello"], args);
+        Assert.Equal(["-m", "gpt-6-luna", "-C", "/root", "say hello"], args);
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public sealed class CodexAdapterTests : IDisposable
     {
         var args = Adapter().BuildAttached(Request(denied: ["Edit"])).ArgumentList;
 
-        Assert.Equal(["-m", "gpt-6-astra", "-C", "/root", "prompt"], args);
+        Assert.Equal(["-m", "gpt-6-luna", "-C", "/root", "prompt"], args);
     }
 
     [Theory]
@@ -242,6 +242,12 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     [Fact]
+    public void WriteHooks_answers_null_because_exec_skips_an_overlay_without_the_bypass_flag()
+    {
+        Assert.Null(new CodexAdapter().WriteHooks(Path.GetTempPath(), "AER-1", "hatch", null));
+    }
+
+    [Fact]
     public void CreateReader_hands_the_stream_reader_the_mapped_model()
     {
         var facts = new RunFacts();
@@ -249,7 +255,7 @@ public sealed class CodexAdapterTests : IDisposable
 
         _ = reader.Read("""{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}""").ToList();
 
-        Assert.Equal("gpt-6.1-sol", facts.Result!.Models![0].Model);
+        Assert.Equal("gpt-5.6-terra", facts.Result!.Models![0].Model);
     }
 
     [Fact]

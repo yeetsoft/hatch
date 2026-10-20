@@ -88,20 +88,29 @@ public interface IUsageProbe
 
 /// <summary>
 /// Picks the <see cref="ISessionRunner"/> an agent id names - <c>claude</c>
-/// behind <see cref="ClaudeAdapter"/> and <c>grok</c> behind
-/// <see cref="GrokAdapter"/>, both wrapped in the generic
+/// behind <see cref="ClaudeAdapter"/>, <c>codex</c> behind
+/// <see cref="CodexAdapter"/> and <c>grok</c> behind
+/// <see cref="GrokAdapter"/>, each wrapped in the generic
 /// <see cref="AgentSessionRunner"/>. This is what makes <c>HATCH_AGENT</c>
 /// and <c>--agent</c> refuse an unknown id before anything is spawned.
 /// </summary>
 public static class Agents
 {
     public static bool Resolve(
-        string id, string? claudeBin, string? grokBin, Action<string>? warn, out ISessionRunner runner,
-        out IAgentAdapter adapter, out string refusal)
+        string id, string? claudeBin, string? codexBin, string? grokBin, Action<string>? warn,
+        out ISessionRunner runner, out IAgentAdapter adapter, out string refusal)
     {
         if (id == "claude")
         {
             adapter = new ClaudeAdapter(claudeBin, warn);
+            runner = new AgentSessionRunner(adapter);
+            refusal = "";
+            return true;
+        }
+
+        if (id == "codex")
+        {
+            adapter = new CodexAdapter(codexBin);
             runner = new AgentSessionRunner(adapter);
             refusal = "";
             return true;

@@ -87,7 +87,9 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
 // is a document the session parses. `inbox` prints JSON or nothing.
 if (command == "inbox")
 {
-    if (!Agents.Resolve(settings.Agent, settings.ClaudeBin, settings.GrokBin, say.Complain, out _, out var inboxAdapter, out var inboxRefusal))
+    if (!Agents.Resolve(
+        settings.Agent, settings.ClaudeBin, settings.CodexBin, settings.GrokBin, say.Complain, out _,
+        out var inboxAdapter, out var inboxRefusal))
         return 0;
 
     var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, CancellationToken.None);
@@ -184,7 +186,7 @@ try
         }
 
         if (!Agents.Resolve(
-            settings.Agent, settings.ClaudeBin, settings.GrokBin, say.Complain, out var sessions, out var adapter,
+            settings.Agent, settings.ClaudeBin, settings.CodexBin, settings.GrokBin, say.Complain, out var sessions, out var adapter,
             out var agentRefusal))
         {
             say.Complain(agentRefusal);
@@ -447,7 +449,9 @@ internal partial class Program
         "  HATCH_KEY          hatch_ak_... Optional against a Hatch with its wall off,",
         "                     where calls name themselves with a runner header instead",
         "  HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH",
+        "  HATCH_CODEX_BIN    the codex CLI, if it is not on PATH",
         "  HATCH_GROK_BIN     the grok CLI, if it is not on PATH",
+        "  HATCH_AGENT        which agent spawns a session: claude, codex or grok (default: claude)",
         "  HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments",
         "  HATCH_RUNNER       what the board calls this runner (default: a character from",
         "                     the cast list, chosen once per checkout - see `hatch config`)",

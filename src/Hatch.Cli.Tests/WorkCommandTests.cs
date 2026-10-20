@@ -398,6 +398,25 @@ public sealed class WorkCommandTests
         Assert.Empty(h.Wire.Calls);
     }
 
+    /// <summary>
+    /// The same refusal for the third agent: the id resolves to the Codex
+    /// adapter, which says its own binary is not there, and the board is never
+    /// read. The "no codex CLI on PATH" sentence depends on the machine's
+    /// <c>PATH</c>, so <c>CodexAdapterTests</c> pins it instead.
+    /// </summary>
+    [Fact]
+    public async Task Agent_codex_with_no_CLI_installed_refuses_before_it_reads_the_board()
+    {
+        using var h = new Harness();
+        var missing = Path.Combine(h.Temp, "nowhere", "codex");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { CodexBin = missing } };
+
+        Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "codex", "AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
     [Fact]
     public async Task A_dry_run_prints_its_prompt_with_no_CLI_installed()
     {

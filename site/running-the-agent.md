@@ -77,6 +77,9 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_BASE` | The origin of your Hatch |
 | `HATCH_KEY` | `hatch_ak_…`, optional against a Hatch with its wall off |
 | `HATCH_CLAUDE_BIN` | The `claude` CLI, if it is not on `PATH` |
+| `HATCH_CODEX_BIN` | The `codex` CLI, if it is not on `PATH` |
+| `HATCH_GROK_BIN` | The `grok` CLI, if it is not on `PATH` |
+| `HATCH_AGENT` | Which agent spawns a session: `claude`, `codex` or `grok`. `claude` by default; `--agent` beats it |
 | `HATCH_BASE_BRANCH` | The trunk `go-to-work` resets to, if `origin/HEAD` does not say |
 | `HATCH_RUNNER` | What the board calls this runner. Default: a character from the cast list, chosen once per checkout - see `hatch config` |
 | `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
