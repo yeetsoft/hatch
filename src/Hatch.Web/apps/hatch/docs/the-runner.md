@@ -108,7 +108,7 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
 
-*Environment variables* has the full table.
+[Environment variables](environment-variables) has the full table.
 
 ## What --show prints
 
@@ -206,6 +206,9 @@ hatch api GET /api/hatch/issues?statusId=2
 hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 ```
 
+`hatch api` is the escape hatch for a route with no dedicated verb; see
+[`api-reference`](api-reference) for the full table.
+
 `hatch ask` is for a choice between things you can name: each `--option`
 becomes something the operator presses, and `--recommend` is the one you would
 take. One question a call, so each can be answered on its own, and then stop:
@@ -235,5 +238,4 @@ reference](cli-reference) has each one in full.
 
 Pages this one names that are not written yet:
 
-- `environment-variables`
 - `questions-and-decisions`
