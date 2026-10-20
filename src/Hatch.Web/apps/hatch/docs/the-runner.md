@@ -235,7 +235,6 @@ in full.
 
 Pages this one names that are not written yet:
 
-- `watching-the-loop`
 - `people-roles-and-keys`
 - `environment-variables`
 - `questions-and-decisions`
