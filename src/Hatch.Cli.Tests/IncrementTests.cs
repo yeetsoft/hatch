@@ -1243,6 +1243,91 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>
+    /// HA-1108: the stream's own <c>rate_limit_event</c> carries the account's
+    /// own reset instant, epoch seconds with nothing to parse - and when its
+    /// window matches the one the sentence named, it wins over the sentence's
+    /// own (zone-parsed) reading. A LiveZoneClock, the same as HA-1107's probe
+    /// test, so the runner's own zone is something other than UTC and the
+    /// conversion has something to prove.
+    /// </summary>
+    [Fact]
+    public async Task A_weekly_sentence_takes_a_seven_day_events_instant()
+    {
+        var offset = TimeSpan.FromHours(-4);
+        using var h = new Harness(clock: new LiveZoneClock(offset));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var streamResetAt = DateTimeOffset.UtcNow.AddDays(3);
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.RateLimitEvent(("seven_day", 1.0, streamResetAt.ToUnixTimeSeconds())));
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your weekly limit · resets Dec 25, 2026 at 11:40pm (UTC)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.Equal("weekly", report.UsageLimitWindow);
+        Assert.Equal(streamResetAt.ToUnixTimeSeconds(), report.UsageLimitResetAt!.Value.ToUnixTimeSeconds());
+        Assert.Equal(offset, report.UsageLimitResetAt!.Value.Offset);
+        Assert.True(report.UsageLimitResetKnown);
+        Assert.False(report.UsageLimitPassed);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// The same weekly sentence as above, but the stream's latest event only
+    /// carries a <c>five_hour</c> window - "session" once <see cref="StreamRender"/>
+    /// renames it - which does not match the sentence's "weekly". With no
+    /// window of its own to correct from, the sentence's own reading stands
+    /// unchanged.
+    /// </summary>
+    [Fact]
+    public async Task A_weekly_sentence_does_not_take_a_five_hour_only_events_instant()
+    {
+        using var h = new Harness(clock: new LiveZoneClock(TimeSpan.FromHours(-4)));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var streamResetAt = DateTimeOffset.UtcNow.AddHours(2);
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.RateLimitEvent(("five_hour", 1.0, streamResetAt.ToUnixTimeSeconds())));
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your weekly limit · resets Dec 25, 2026 at 11:40pm (UTC)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.Equal("weekly", report.UsageLimitWindow);
+        Assert.Equal(new DateTimeOffset(2026, 12, 25, 23, 40, 0, TimeSpan.Zero), report.UsageLimitResetAt);
+        Assert.True(report.UsageLimitResetKnown);
+        Assert.False(report.UsageLimitPassed);
+
+        await claim.ReleaseAsync();
+    }
+
     [Fact]
     public async Task An_ordinary_error_still_stalls_rather_than_reading_as_a_usage_limit()
     {

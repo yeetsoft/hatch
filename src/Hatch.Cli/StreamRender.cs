@@ -50,6 +50,15 @@ public sealed class RunFacts
 
     /// <summary>The requests the session had made when its hard limit was crossed.</summary>
     public int? HardLimitedAtRequests { get; set; }
+
+    /// <summary>
+    /// The latest <c>rate_limit_event</c>'s windows, out of the session's own
+    /// stream - null on a run that never saw one, or a quiet run, where
+    /// <see cref="Increment.SpawnAsync"/> never sets this. Read by the usage-limit
+    /// correction in <see cref="Increment.SpawnAsync"/> to prefer the stream's own
+    /// reset instant over the sentence's.
+    /// </summary>
+    public IReadOnlyList<UsageWindow>? Usage { get; set; }
 }
 
 /// <summary>
