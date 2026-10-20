@@ -4,19 +4,24 @@
    that keeps that honest: a field added there and not here is invisible, so
    these records are the place to look first when a value arrives undefined. */
 
-export type IssueType = 'epic' | 'story' | 'task' | 'bug';
+export type IssueType = 'epic' | 'reflection' | 'story' | 'task' | 'bug';
 
-/** The four types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
-export const ISSUE_TYPES: IssueType[] = ['epic', 'story', 'task', 'bug'];
+/** The five types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
+export const ISSUE_TYPES: IssueType[] = ['epic', 'reflection', 'story', 'task', 'bug'];
+
+/** The types that run their children at once, and so carry a stories-at-once
+    limit - mirrors IssueTypeKinds.RunsChildren. */
+export const RUNS_CHILDREN: IssueType[] = ['epic', 'reflection'];
 
 /** Which parents each type may take - mirrors EfHatchIssue.LegalParentTypes.
     Duplicated here to filter the parent picker; the server is still the one
     that decides, and a disagreement shows up as a refusal with a reason. */
 export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
-  epic: ['epic'],
-  story: ['epic'],
-  task: ['story', 'bug', 'epic'],
-  bug: ['epic', 'story'],
+  epic: ['epic', 'reflection'],
+  reflection: ['epic'],
+  story: ['epic', 'reflection'],
+  task: ['story', 'bug', 'epic', 'reflection'],
+  bug: ['epic', 'story', 'reflection'],
 };
 
 /** A stored image: `/api/hatch/images/{id}` serves it. */

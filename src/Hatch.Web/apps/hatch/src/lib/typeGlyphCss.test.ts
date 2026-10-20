@@ -27,6 +27,7 @@ describe('the board card type glyph', () => {
   it('colours each type off a token, never a hex literal', () => {
     expect(declarationsOf('.hatch-type-glyph--epic')['color']).toBe('var(--primary)');
     expect(declarationsOf('.hatch-type-glyph--bug')['color']).toBe('var(--danger)');
+    expect(declarationsOf('.hatch-type-glyph--reflection')['color']).toBe('var(--series-6)');
     expect(declarationsOf('.hatch-type-glyph--story')['color']).toBe('var(--series-7)');
     expect(declarationsOf('.hatch-type-glyph--task')['color']).toBe('var(--series-3)');
   });

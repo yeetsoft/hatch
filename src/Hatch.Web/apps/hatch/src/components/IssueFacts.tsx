@@ -5,6 +5,7 @@ import { projectLogoUrl } from '../lib/projectLogo';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
+import { RUNS_CHILDREN } from '../types';
 import type { Issue, Project } from '../types';
 
 /**
@@ -79,7 +80,7 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
         {effortFact(issue.effortOverride)}
       </Field>
 
-      {issue.type === 'epic' && (
+      {RUNS_CHILDREN.includes(issue.type) && (
         <Field label="Stories at once" as="div">
           {wipLimitFact(issue.wipLimit)}
         </Field>

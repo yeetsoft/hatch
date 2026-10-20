@@ -280,8 +280,8 @@ describe('toggleType', () => {
     expect(toggleType(filter({ types: ['bug'] }), 'epic').types).toEqual(['epic', 'bug']);
   });
 
-  it('removes one of four and leaves three', () => {
-    expect(toggleType(DEFAULT_FILTER, 'bug').types).toEqual(['epic', 'story', 'task']);
+  it('removes one of five and leaves four', () => {
+    expect(toggleType(DEFAULT_FILTER, 'bug').types).toEqual(['epic', 'reflection', 'story', 'task']);
   });
 
   it('will not remove the only type left, and hands back the same filter', () => {
@@ -298,7 +298,7 @@ describe('toggleType', () => {
 
 describe('revealType', () => {
   it('adds a type that is missing, in canonical order', () => {
-    expect(revealType(DEFAULT_FILTER, 'task').types).toEqual(['epic', 'story', 'task', 'bug']);
+    expect(revealType(DEFAULT_FILTER, 'task').types).toEqual(['epic', 'reflection', 'story', 'task', 'bug']);
   });
 
   it('hands back the same filter when the type is already drawn', () => {
@@ -314,14 +314,16 @@ describe('typesSummary', () => {
   it('says All for every type and All but for the one missing', () => {
     expect(typesSummary([...ISSUE_TYPES])).toBe('All');
     expect(typesSummary(DEFAULT_FILTER.types)).toBe('All');
-    expect(typesSummary(['epic', 'story', 'bug'])).toBe('All but tasks');
-    expect(typesSummary(['epic', 'task', 'bug'])).toBe('All but stories');
+    expect(typesSummary(['epic', 'reflection', 'story', 'bug'])).toBe('All but tasks');
+    expect(typesSummary(['epic', 'reflection', 'task', 'bug'])).toBe('All but stories');
+    expect(typesSummary(['epic', 'story', 'task', 'bug'])).toBe('All but reflections');
   });
 
   it('lists one or two types, plural and capitalised, in canonical order', () => {
     expect(typesSummary(['epic'])).toBe('Epics');
     expect(typesSummary(['story'])).toBe('Stories');
     expect(typesSummary(['task'])).toBe('Tasks');
+    expect(typesSummary(['reflection'])).toBe('Reflections');
     expect(typesSummary(['bug'])).toBe('Bugs');
     expect(typesSummary(['epic', 'story'])).toBe('Epics, stories');
     expect(typesSummary(['story', 'task'])).toBe('Stories, tasks');
@@ -336,7 +338,7 @@ describe('typeCounts', () => {
   ];
 
   it('counts every type, and says zero for one with no cards', () => {
-    expect(typeCounts(board)).toEqual({ epic: 1, story: 0, task: 2, bug: 0 });
+    expect(typeCounts(board)).toEqual({ epic: 1, reflection: 0, story: 0, task: 2, bug: 0 });
   });
 
   it('counts the cards a filter would hide', () => {

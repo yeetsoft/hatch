@@ -131,7 +131,13 @@ export function coverageOf(boardRow: CoverageRow, ownRows: CoverageRow[]): Cover
   return left === coverageCells(boardRow).length ? 'live' : 'partly';
 }
 
-const TYPE_PLURALS: Record<IssueType, string> = { epic: 'epics', story: 'stories', task: 'tasks', bug: 'bugs' };
+const TYPE_PLURALS: Record<IssueType, string> = {
+  epic: 'epics',
+  reflection: 'reflections',
+  story: 'stories',
+  task: 'tasks',
+  bug: 'bugs',
+};
 
 const andList = (xs: string[]): string =>
   xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;

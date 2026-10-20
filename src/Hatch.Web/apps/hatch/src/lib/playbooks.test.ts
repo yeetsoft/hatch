@@ -150,7 +150,13 @@ describe('coverage', () => {
 
   describe('coverageCells', () => {
     it('Covers: no types listed covers every type', () => {
-      expect(coverageCells(row(T, U, [], 'leaf')).map((c) => c.type)).toEqual(['epic', 'story', 'task', 'bug']);
+      expect(coverageCells(row(T, U, [], 'leaf')).map((c) => c.type)).toEqual([
+        'epic',
+        'reflection',
+        'story',
+        'task',
+        'bug',
+      ]);
     });
 
     it('Covers: shape any covers leaf and parent', () => {
@@ -226,7 +232,7 @@ describe('coverage', () => {
       const own = [row(T, U, ['task'], 'leaf')];
 
       expect(coverageOf(board, own)).toBe('partly');
-      expect(cellsLeft(board, own)).toHaveLength(7);
+      expect(cellsLeft(board, own)).toHaveLength(9);
       expect(coverageOf(row(T, U, ['task'], 'leaf'), [row(T, U, [], 'any')])).toBe('overridden');
     });
 
@@ -274,7 +280,7 @@ describe('coverage', () => {
 
     it('never reads a partly overridden every-type row as unnarrowed', () => {
       expect(note(row(T, U, []), [row(T, U, ['task'], 'leaf')])).toBe(
-        'for leaf epics, stories and bugs; parent epics, stories, tasks and bugs',
+        'for leaf epics, reflections, stories and bugs; parent epics, reflections, stories, tasks and bugs',
       );
     });
 

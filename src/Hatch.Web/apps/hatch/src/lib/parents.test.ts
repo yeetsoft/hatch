@@ -85,12 +85,13 @@ describe('parentCandidates', () => {
 
 describe('parentHint', () => {
   it('puts an article on every type', () => {
-    expect(parentHint('epic')).toBe('An epic hangs under an epic.');
-    expect(parentHint('bug')).toBe('A bug hangs under an epic or a story.');
+    expect(parentHint('epic')).toBe('An epic hangs under an epic or a reflection.');
+    expect(parentHint('bug')).toBe('A bug hangs under an epic, a story or a reflection.');
+    expect(parentHint('reflection')).toBe('A reflection hangs under an epic.');
   });
 
   it('joins three with commas and a last "or"', () => {
-    expect(parentHint('task')).toBe('A task hangs under a story, a bug or an epic.');
+    expect(parentHint('task')).toBe('A task hangs under a story, a bug, an epic or a reflection.');
   });
 });
 

@@ -1062,6 +1062,10 @@
   color: var(--primary);
 }
 
+.hatch-type-glyph--reflection {
+  color: var(--series-6);
+}
+
 .hatch-type-glyph--story {
   color: var(--series-7);
 }

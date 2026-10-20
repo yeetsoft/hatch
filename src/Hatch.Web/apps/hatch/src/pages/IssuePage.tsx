@@ -83,7 +83,7 @@ import { useCoarsePointer } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
 import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
-import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS } from '../types';
+import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -800,9 +800,10 @@ export function IssuePage() {
             />
           </Field>
 
-          {/* Epics only - a story's page draws nothing here. Retyping an epic
-              to something else leaves the value in place, unread. */}
-          {issue.type === 'epic' && (
+          {/* Epics and reflections only - every other type's page draws nothing
+              here. Retyping one to something else leaves the value in place,
+              unread. */}
+          {RUNS_CHILDREN.includes(issue.type) && (
             <WipLimitField limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
           )}
         </div>
