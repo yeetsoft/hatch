@@ -20,7 +20,7 @@ import { SearchPage } from './pages/SearchPage';
 import { TimelinePage } from './pages/TimelinePage';
 import { CumulativeFlowPage } from './pages/CumulativeFlowPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
-import { IssuePage } from './pages/IssuePage';
+import { IssueRoute } from './pages/IssueRoute';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { StatusesPage } from './pages/StatusesPage';
 import { PlaybooksPage } from './pages/PlaybooksPage';
@@ -154,7 +154,7 @@ function AppShell() {
             <Route path="/runners" element={<RunnersPage />} />
             <Route path="/overnight" element={<OvernightPage />} />
             <Route path="/history" element={<HistoryPage />} />
-            <Route path="/issues/:key" element={<IssuePage />} />
+            <Route path="/issues/:key" element={<IssueRoute />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/runner" element={<RunnerPage />} />
             <Route path="/settings" element={<SettingsPage />} />

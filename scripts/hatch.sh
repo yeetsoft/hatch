@@ -231,6 +231,20 @@ rebuild_runner() {
 # every other flag the night started with. Everything else - including a name
 # that is not a command at all, which the program refuses better than a case
 # statement here could - goes straight through.
+#
+# A loop asked only for its usage is not a night, so `-h` or `--help` straight
+# after either name goes straight through too, in the program's own terms. The
+# program reads only the first argument for that ask, and answers
+# `do-my-work -h` itself; `--mine` put in front of it here would hide the ask,
+# and the program would refuse `-h` as a flag it does not take.
+case "${1:-}" in
+  go-to-work | do-my-work)
+    case "${2:-}" in
+      -h | --help) exec_hatch "$@" ;;
+    esac
+    ;;
+esac
+
 case "${1:-}" in
   go-to-work) shift; supervise_go_to_work "$@" ;;
   do-my-work) shift; supervise_go_to_work --mine "$@" ;;
