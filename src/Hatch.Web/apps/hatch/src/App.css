@@ -3240,6 +3240,72 @@ input.hatch-inline-title-input {
   font-size: var(--t-label);
 }
 
+.hatch-docs-search {
+  margin-bottom: var(--sp-3);
+}
+
+.hatch-docs-search-input {
+  width: 100%;
+}
+
+.hatch-docs-search-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  border: thin solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  /* A relative cap, not a fixed one - the sidebar column this sits in is
+     itself sticky with its own max-height (below), so the list scrolls inside
+     that column rather than floating over the text. */
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+.hatch-docs-search-row + .hatch-docs-search-row {
+  border-top: thin solid var(--line);
+}
+
+.hatch-docs-search-row a {
+  display: block;
+  padding: var(--sp-1-5) var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.hatch-docs-search-row.is-active a {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.hatch-docs-search-title {
+  display: block;
+  font-weight: 600;
+}
+
+.hatch-docs-search-heading {
+  display: block;
+  color: var(--muted);
+}
+
+.hatch-docs-search-snippet {
+  display: block;
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+.hatch-docs-search-row mark {
+  background: none;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.hatch-docs-search-status {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
 .hatch-docs-sidebar-home {
   display: block;
   margin-bottom: var(--sp-3);
