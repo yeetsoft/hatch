@@ -1,2 +1,63 @@
 @import '@hatch/ui/tokens.css';
 @import '@hatch/ui/base.css';
+
+/* The page frame both pages wear. Values come from @hatch/ui's tokens; a
+   literal colour, radius, type step or length here is a bug (the 1px hairline
+   is the one exception). */
+
+/* Revealed on keyboard focus only. .hatch-visually-hidden never reveals
+   itself, so it is not the tool. No outline rule: the browser's default focus
+   ring stays. */
+.site-skip {
+  position: absolute;
+  z-index: 1;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--primary);
+  color: var(--on-accent);
+  transform: translateY(-100%);
+}
+
+.site-skip:focus {
+  transform: translateY(0);
+}
+
+/* The page column: header, main and footer each cap at the reading measure. */
+.site-column {
+  max-width: var(--measure);
+  margin-inline: auto;
+  padding-inline: var(--sp-8);
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding-block: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.site-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.site-nav {
+  display: flex;
+  gap: var(--sp-4);
+  margin-inline-start: auto;
+}
+
+.site-mark {
+  display: block;
+}
+
+.site-footer {
+  padding-block: var(--sp-8);
+}
+
+@media (max-width: 40rem) {
+  .site-column {
+    padding-inline: var(--sp-4);
+  }
+}

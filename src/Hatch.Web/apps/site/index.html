@@ -2,12 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hatch</title>
+    <meta name="description" content="The house project tracker." />
+    <meta property="og:title" content="Hatch" />
+    <meta property="og:description" content="The house project tracker." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="../../packages/ui/src/assets/hatch-logo.png" />
     <link rel="stylesheet" href="/src/site.css" />
   </head>
   <body>
-    <h1>Hatch</h1>
-    <p>The house project tracker.</p>
+    <a class="site-skip" href="#main">Skip to content</a>
+    <header class="site-header site-column">
+      <a class="site-brand" href="%BASE_URL%">
+        <img class="site-mark" src="../../packages/ui/src/assets/hatch-logo.png" alt="" width="40" height="40" />
+        <span>Hatch</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="%BASE_URL%docs/">Docs</a>
+      </nav>
+    </header>
+    <main id="main" class="site-column">
+      <h1>Hatch</h1>
+      <p>The house project tracker.</p>
+    </main>
+    <footer class="site-footer site-column">
+      <!-- HA-981 puts the repository block here and HA-1130 the words. -->
+    </footer>
   </body>
 </html>

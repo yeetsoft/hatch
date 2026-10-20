@@ -2,12 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hatch: page not found</title>
+    <meta name="description" content="There is nothing at this address." />
+    <meta property="og:title" content="Hatch: page not found" />
+    <meta property="og:description" content="There is nothing at this address." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="../../packages/ui/src/assets/hatch-logo.png" />
     <link rel="stylesheet" href="/src/site.css" />
   </head>
   <body>
-    <h1>Page not found</h1>
-    <p>There is nothing at this address.</p>
+    <a class="site-skip" href="#main">Skip to content</a>
+    <header class="site-header site-column">
+      <a class="site-brand" href="%BASE_URL%">
+        <img class="site-mark" src="../../packages/ui/src/assets/hatch-logo.png" alt="" width="40" height="40" />
+        <span>Hatch</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="%BASE_URL%docs/">Docs</a>
+      </nav>
+    </header>
+    <main id="main" class="site-column">
+      <h1>Page not found</h1>
+      <p>There is nothing at this address.</p>
+      <p><a href="%BASE_URL%">Back to the home page</a></p>
+    </main>
+    <footer class="site-footer site-column">
+      <!-- HA-981 puts the repository block here and HA-1130 the words. -->
+    </footer>
   </body>
 </html>
