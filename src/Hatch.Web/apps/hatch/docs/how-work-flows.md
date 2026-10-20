@@ -1,7 +1,7 @@
 ---
 title: How work flows
 section: Concepts
-order: 10
+order: 30
 summary: The columns a ticket crosses, whose each one is, and what one increment of the loop does.
 ---
 
