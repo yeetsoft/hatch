@@ -2455,6 +2455,28 @@ public class EfHatchWorkLogEntry
     [MaxLength(16)] public string? Agent { get; set; }
 
     /// <summary>
+    /// Which playbook the session ran under: a board or project row's own
+    /// <c>Id</c> as text, or <c>"{types}:{shape}"</c> for a file row, which has
+    /// no stable id. Null on a row posted by an older runner.
+    /// </summary>
+    [MaxLength(EfHatchPlaybook.MaxTypesLength + 1 + EfHatchPlaybook.MaxShapeLength)] public string? PlaybookKey { get; set; }
+
+    /// <summary>The column the playbook's transition leaves. Null on a row posted by an older runner.</summary>
+    public int? PlaybookFromStatusId { get; set; }
+
+    /// <summary>The column the playbook's transition enters. Null on a row posted by an older runner.</summary>
+    public int? PlaybookToStatusId { get; set; }
+
+    /// <summary>The issue's type when the session was dispatched. Null on a row posted by an older runner.</summary>
+    [MaxLength(EfHatchIssue.MaxTypeLength)] public string? IssueType { get; set; }
+
+    /// <summary>The model the session ran on. Null on a row posted by an older runner.</summary>
+    [MaxLength(EfHatchPlaybook.MaxModelLength)] public string? PlaybookModel { get; set; }
+
+    /// <summary>The effort the session ran at. Null on a row posted by an older runner.</summary>
+    [MaxLength(EfHatchPlaybook.MaxEffortLength)] public string? PlaybookEffort { get; set; }
+
+    /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
     /// it to two would make a night of them add up to nothing. Null means the
