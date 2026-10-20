@@ -53,12 +53,14 @@ public static class TimelineReport
     public sealed class BoardIndex
     {
         internal HashSet<int> Active { get; }
+        internal HashSet<int> Terminal { get; }
         internal HashSet<int> All { get; }
         internal Dictionary<string, int> ByName { get; }
 
-        private BoardIndex(HashSet<int> active, HashSet<int> all, Dictionary<string, int> byName)
+        private BoardIndex(HashSet<int> active, HashSet<int> terminal, HashSet<int> all, Dictionary<string, int> byName)
         {
             Active = active;
+            Terminal = terminal;
             All = all;
             ByName = byName;
         }
@@ -66,13 +68,12 @@ public static class TimelineReport
         internal static BoardIndex Of(IReadOnlyList<EfHatchStatus> statuses)
         {
             var ordered = statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
+            var board = Columns.Board(ordered);
 
             // The board is empty or one column long: nothing is ever drawn.
-            var active = Columns.Board(ordered)
-                .Skip(1)
-                .Where(s => !s.IsTerminal && !s.IsDeferred)
-                .Select(s => s.Id)
-                .ToHashSet();
+            var active = board.Skip(1).Where(s => !s.IsTerminal && !s.IsDeferred).Select(s => s.Id).ToHashSet();
+
+            var terminal = board.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
 
             // Over every current status, deferred included: a deferred column is
             // a resolved column that draws nothing.
@@ -84,7 +85,7 @@ public static class TimelineReport
                 byName.TryAdd(status.Name, status.Id);
             }
 
-            return new BoardIndex(active, all, byName);
+            return new BoardIndex(active, terminal, all, byName);
         }
     }
 
@@ -124,8 +125,10 @@ public static class TimelineReport
     internal sealed record Stretch(int? StatusId, bool Resolved, DateTimeOffset From, DateTimeOffset? To);
 
     /// <summary>
-    /// One issue's active segments inside <c>[from, to]</c>, and how many of its
-    /// stretches in that range were in a column that could not be resolved.
+    /// One issue's stretches rebuilt from its raw history: a zero-length
+    /// stretch dropped, and consecutive resolved stretches in the same column
+    /// merged into one - plus how many of the stretches in <c>[from, to]</c>
+    /// were in a column that could not be resolved, counted before the merge.
     /// </summary>
     /// <remarks>
     /// <paramref name="changes"/> is the whole of the issue's history and is
@@ -133,7 +136,7 @@ public static class TimelineReport
     /// is after the range was in that move's <c>from</c> column during it, not
     /// in its current one. The caller passes only this issue's changes.
     /// </remarks>
-    public static (IReadOnlyList<Segment> Segments, int Unresolved) SegmentsOf(
+    internal static (List<Stretch> Stretches, int Unresolved) RebuildOf(
         Row row, IEnumerable<Change> changes, BoardIndex board, DateTimeOffset from, DateTimeOffset to)
     {
         var ordered = changes.OrderBy(c => c.At).ThenBy(c => c.EventId).ToList();
@@ -154,6 +157,24 @@ public static class TimelineReport
             else
                 merged.Add(s);
         }
+
+        return (merged, unresolved);
+    }
+
+    /// <summary>
+    /// One issue's active segments inside <c>[from, to]</c>, and how many of its
+    /// stretches in that range were in a column that could not be resolved.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="changes"/> is the whole of the issue's history and is
+    /// deliberately not cut at <paramref name="to"/>: an issue whose first move
+    /// is after the range was in that move's <c>from</c> column during it, not
+    /// in its current one. The caller passes only this issue's changes.
+    /// </remarks>
+    public static (IReadOnlyList<Segment> Segments, int Unresolved) SegmentsOf(
+        Row row, IEnumerable<Change> changes, BoardIndex board, DateTimeOffset from, DateTimeOffset to)
+    {
+        var (merged, unresolved) = RebuildOf(row, changes, board, from, to);
 
         // (c) only active columns draw, (d) clipped to the range.
         var segments = new List<Segment>();
