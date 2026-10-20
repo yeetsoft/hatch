@@ -350,7 +350,7 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
   A 403 means the key is working and the route is not one a key may take.
 
 What a call writes is whatever the route does, and the actor is the key's name
-as always. `api-reference` has the routes.
+as always. [`api-reference`](api-reference) has the routes.
 
 ## The three that spawn an agent
 
@@ -464,6 +464,5 @@ has the rest, including what happens to a key that belongs to nobody.
 
 Pages this one names that are not written yet:
 
-- `api-reference`
 - `environment-variables`
 - `questions-and-decisions`

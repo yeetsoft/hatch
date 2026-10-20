@@ -7,8 +7,8 @@ summary: Every route under /api/hatch, grouped by resource, with who may call it
 
 Every route Hatch answers lives under `/api/hatch`, JSON in and JSON out. This
 page groups them by resource: the board's own resources first, then the
-loop's (`cli-reference` is the easier way to make most of these calls; this
-page is for the ones it has no verb for).
+loop's ([`cli-reference`](cli-reference) is the easier way to make most of
+these calls; this page is for the ones it has no verb for).
 
 ## How to call it
 
@@ -26,7 +26,7 @@ never a database id. Project and column routes take an int id -
 hatch api GET /api/hatch/issues?statusId=2
 ```
 
-`cli-reference` has `hatch api` in full.
+[`cli-reference`](cli-reference) has `hatch api` in full.
 
 `docs/hatch-planning.md` ships inside every Hatch image, so a session can read
 it on the machine it is working on. It carries the filing shapes in full -
@@ -372,8 +372,424 @@ issue title cap, or a body over 1 MB. `import` 400s an empty or over-25
 like create and a project move - retries a numbering race up to five times
 before 409ing.
 
-## Coming
+## The loop's own routes
 
-Pages this one names that are not written yet:
+Everything above is a resource the board itself owns. What follows is what a
+runner calls to do its own work, and what the operator reads to watch it -
+the second half of this page, after the board's own.
 
-- `cli-reference`
+### Work: what a runner asks the board for
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/work/next` | The next clear issue an unattended pass would pick up |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why |
+| GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
+| GET | `/work/{key}` | The same dispatch answer for one named issue |
+| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session |
+| POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
+| POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
+| POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
+| POST | `/work/{key}/landed` | Advances a trunk-landing issue once its commit is confirmed landed and the trunk is green |
+| POST | `/work/{key}/closed` | Records that the pull request recorded on an issue closed without merging |
+
+All ten are a key's. This is the group a reader comes to the page for:
+`hatch work` calls `GET /work/{key}` for a named ticket and `GET /work/next`
+for an unattended one; `hatch go-to-work` calls `GET /work/queue` once to log
+what it sees, then `GET /work/next` in a loop - see
+[one increment and the loop](one-increment-and-the-loop) for what the
+increment does with the answer, rather than retold here. `/work/next` and
+`/work/{key}` answer a `WorkDto`: the issue, the move it would make, and the
+playbook row and the prompt the increment is to run where nothing blocks it,
+or the sentence saying what does - see
+[what a session is told](what-a-session-is-told) for what the prompt itself
+holds.
+
+`next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
+caller's checkouts (any one opts into the repository fold), plus
+`ancestorKey` to narrow to one corner of the board and `mine` to narrow to
+the caller's own tickets; `{key}` and `next` also take `heldToken`, a claim
+the caller already holds, so re-reading a dispatch for a ticket it is already
+working is not folded as a conflict. `queue` instead takes `asRunner`, which
+answers off that named runner's own row - its repositories, `mine` and
+`ancestorKey` - rather than the query string, and may not be combined with
+any of them. The four write routes (`merged`, `pushback`, `closed`) take
+`PullRequestMergedRequest`/`PullRequestPushbackRequest`/`PullRequestClosedRequest(Url,
+Runner)`, comparing `Url` against what is recorded on the issue; `verdict`
+takes only `heldToken`, naming the claim the verdict was recorded under;
+`landed` takes no body at all and trusts nothing from its caller, re-reading
+the landing and the trunk build fresh.
+
+**Refusals worth naming.** `hop` 409s when the move it would make is
+blocked, and 409s again naming the sentence "is not a hop" when nothing
+about the issue is a hop at all. `merged`/`pushback`/`closed` 409 when no
+pull request is recorded, or when the given `Url` is not the one recorded;
+`pushback` separately 409s with the judge's own sentence when the branch is
+not actually a pushback. `merged`/`pushback`/`landed` 409 when the issue
+holds a live claim - a session is running on it, so nothing here moves the
+row out from under it. `landed` 409s off the review column and 409s again
+naming whether the project lands by pull request at all or already carries
+one of its own.
+
+### Claims
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/issues/{key}/claim` | Takes the lease, or says who already has it |
+| POST | `/issues/{key}/claim/heartbeat` | Refreshes the lease, and answers whether the board has preempted it for an emergency |
+| DELETE | `/issues/{key}/claim` | Lets go of it |
+
+All three are a key's, with one narrowing below. A claim is a lease with a
+clock, not a dispatch of its own - `WorkController` is what decides whether
+to send anything at an issue, and a claim that second-guessed that would be
+the same rule in two places. The lease's length is the
+`Hatch__ClaimTtlSeconds` setting (default 300 seconds); taking a claim
+carries it back as `TtlSeconds` alongside `StallLapseSeconds`, so a caller
+never has to know the setting's name to honor it. A heartbeat renews the
+lease and may replace the playbook it is running under; it writes no event on
+an ordinary beat, only on a preemption, which is the board's own decision to
+make room for an emergency ticket and is the one case a heartbeat answers a
+`ClaimPreemptedDto` instead of `204`.
+
+A live claim refuses a second `POST`, including the same runner's own -
+re-claiming is not a thing a runner does, it heartbeats - and a claim on an
+ancestor or descendant issue refuses it too: one runner per line of the tree.
+The `DELETE` carries an optional `token` (the one the claim was taken with)
+and an optional `outcome` - one of `dropped`, `worked`, `preempted` - read
+only alongside a token. Releasing a claim that holds nothing, or releasing
+twice, is a `204` that writes nothing either way.
+
+**The one narrowing.** A tokenless `DELETE` is the operator's own clobber -
+clearing another runner's claim by hand - and it refuses a program caller
+outright even though the route itself is key-open: an agent that could take
+a ticket off another agent mid-increment is the exact failure the claim
+exists to prevent, reintroduced through its own back door. A runner lets go
+of its own lease by presenting the token it was given, which every honest
+runner has. This is deliberately not on the person-only list in
+[Who may call what](#who-may-call-what) below - the attribute itself does
+not narrow the route, the action body does.
+
+### Checks, pull requests and landing
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/issues/{key}/verdicts` | Records a check session's pass/fail about the issue, under its live claim |
+| PUT | `/issues/{key}/merge-check` | Replaces the stored verdict for the issue's branch against one repository's trunk |
+| PUT | `/issues/{key}/build-check` | Replaces the stored verdict for the build on the tip of the issue's branch in one repository |
+| PUT | `/issues/{key}/pull-request-state` | Replaces the stored mergeability, review decision and head sha for the issue's recorded pull request |
+| GET | `/trunk-builds` | Every repository trunk's stored build verdict |
+| PUT | `/trunk-builds` | Replaces the verdict for one repository's trunk |
+| POST | `/trunk-builds/{id}/bug` | Files the bug the attention panel's *File a bug* button asks for, from a failing trunk |
+
+All seven are a key's. None of this group has a `GET` beside the issue
+routes - a verdict, a merge check and a build check all ride an `IssueDto`/
+`ReviewCheckDto`, which is where every client needs them, rather than a
+second route to keep in step. `verdicts` is the one route here that is a
+session's and not a poll's: it names no remote, is matched to the issue's
+live claim token, and only takes effect once `/work/{key}/verdict` is called
+with that same token - a check session records what it found, and the loop
+decides what to do about it. The other five are what a runner's poll writes
+with no session at all, the same background process
+[letting the loop merge for you](letting-the-loop-merge-for-you) describes
+driving the merge train from: a merge check and a build check are facts
+about two refs on origin any runner computes the same way, a pull-request
+state is what the forge itself already says, and a trunk build is nobody's
+issue, so its one route answers to no claim and no column at all.
+`/trunk-builds/{id}/bug` is the one write in this group a person can also
+take, from the attention panel's own button; a key filing one gets none of
+the three optional fields (express, priority, the column) a person may
+choose - they come off the project's own auto-heal settings, and only where
+a project has turned auto-filing on.
+
+**Refusals worth naming.** `verdicts` 400s a verdict that is not `pass`/
+`fail`, and refuses where the issue holds no live check-playbook claim.
+`merge-check`/`build-check`/`pull-request-state`/`trunk-builds` 400 an
+unparseable remote, verdict, merge state or review decision, and (for a
+`failed` or `pending` build or trunk verdict) a missing list of failing
+checks. `pull-request-state` 409s when no pull request is recorded on the
+issue, or when the given url is not the one recorded. A verdict, build or
+merge check that repeats what is already stored refreshes the shas, the
+runner and the time, and writes no event - a poll that looks every interval
+leaves one entry, not a hundred.
+
+### Playbooks
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/playbooks` | key | Every row, in board order |
+| POST | `/playbooks` | **person** | Creates one |
+| PATCH | `/playbooks/{id}` | **person** | Edits one |
+| DELETE | `/playbooks/{id}` | **person** | Deletes one |
+| GET | `/playbook-files` | key | Every stored verdict of what a repository's trunk actually carries at `.hatch/playbooks.yaml` |
+| PUT | `/playbook-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
+
+**A key may read a playbook and may not write one, and the refusal is
+deliberate.** An agent that could widen its own prompt, or raise its own
+model or effort, has no fixed point to settle at, and the failure that
+follows is unbounded spend rather than a wrong answer - the same shape of
+loop the claim's tokenless `DELETE` above and a runner's own `--max-spend`
+are cut to prevent. Reading stays open because an agent has to be told what
+it was dispatched with.
+
+`/playbook-files` is not that same edge, despite sitting beside it: it is
+not the matrix above, it is a cache of what a runner's poll actually found
+on disk at a repository-sourced project's trunk - a fact a key reports about
+a file, not an edit to Hatch's own instructions - so both its `GET` and its
+`PUT` stay key-open. Check each verb against its own attribute rather than
+assume the group is uniform.
+
+`PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
+`ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
+beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
+(millions of tokens) and `BriefLimit` (characters), `DeniedTools`, `IsCheck`,
+and `Source` - `"board"` or `"project"`, by whether `ProjectId` names one.
+The create and patch bodies share that shape with the three-state convention
+every optional field in Hatch takes: absent leaves a field alone (patch) or
+takes its default (create), `""` clears it, a value sets it.
+
+**Refusals worth naming.** Create and patch 400 a column that does not
+exist, a transition that goes nowhere - unless it is the review column
+naming itself, which is the one review playbook a board may have - a
+duplicate of a row already filed for that transition, those types, that
+shape and that project, an unknown model or effort, and a project that reads
+its playbooks from its own repository rather than from rows here at all.
+`playbook-files`' `PUT` 400s an empty remote, trunk, sha or runner, or
+content over the stored cap, and writes no event - there is no issue to
+write one on, and no question, since a bad playbooks file is this row's own
+state rather than a stall.
+
+### Runners and settings
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/runners` | key | Every runner heard from lately, most recent first |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend and until |
+| GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
+| GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
+| GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name |
+| PUT | `/settings` | **person** | Edits them |
+| GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
+| GET | `/settings/claude-token` | key | The same, kept for an older container; `credentials/claude` is its successor |
+| GET | `/me` | key | Who is at the browser, for the nav strip |
+
+`/runners/{name}` is the one call a running loop makes about itself, and the
+whole round trip: it reports what it is - its repositories, whether it
+clones, `mine`, `standing`, where it runs, which agent spawned it - and
+reads back a `RunnerInstructionDto` saying whether to keep going, pause or
+stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
+running within. Those four bounds are *reported* on a runner's first
+heartbeat and *set* only by the person's own `PATCH` - a restart sending its
+original `--max-runs` again never undoes an operator's midnight edit, and an
+agent that could raise them through its own heartbeat could raise its own
+budget, which is the failure the bounds exist to prevent. There is no
+`DELETE`: a row ages out of `GET /runners` on its own once nothing has heard
+from it in a while.
+
+`/runner` and `/runner/download/{rid}` carry no scope at all, unlike every
+other Hatch-scoped read on this page - the audience is a person at a browser
+setting up a machine, and nobody's dispatcher needs to download the program
+it is already running as.
+
+`/settings` is Hatch's own configuration, carrying nothing an agent reads:
+it is person-only on both verbs by design, beside `/runners/{name}` and
+`/playbooks`' writes above - an API key that could write here could set the
+name every event in the house is signed with, or swap the credential the
+account's headroom is read through. `credentials/{agent}` and
+`claude-token` are the one deliberate exception beside it: **the answer is a
+live credential, and it is never logged** - the one place in Hatch a secret
+is handed back out of the API on purpose, for the one caller that has
+nowhere else to read it from, the container entrypoint's own
+`hatch runner-credential` - see [the container runner](the-container-runner)
+and [cli-reference](cli-reference). Both refuse outright wherever the wall
+is up - a credential that crosses a network Hatch does not own is a
+different question from one handed to a container on the same laptop.
+
+`/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn)`
+- `kind: person` with the wall up, `kind: local` with it off, and `204` for
+a key or a keyless runner, which is not somebody at a keyboard.
+
+**Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
+ever used - it edits, it never creates. `POST /runners/{name}` 409s when two
+live runners would otherwise share one name. `credentials/{agent}` 404s an
+agent it does not know and 403s wherever the wall is up; a credential that is
+unset or blank answers `204` rather than either refusal.
+
+### What a night left behind
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| POST | `/issues/{key}/work-log` | key | Records what one session cost on this issue |
+| GET | `/issues/{key}/work-log` | key | This issue's own sessions, and what its whole subtree has cost |
+| GET | `/work-log/history` | key | Spend over time, in equal buckets |
+| GET | `/work-log/sessions` | key | The sessions in a range, ranked, and what the range cost in total |
+| GET | `/overnight` | key | What landed in the newest night |
+| POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
+| GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
+| GET | `/changelog` | key | What shipped, a window of days at a time |
+
+[Watching the loop](watching-the-loop) is what draws these on screen; this
+page is their shapes. `work-log`'s `POST` is the one write on this whole page
+that is a key's and nothing else's, the opposite cut from everything above
+it: it refuses a person - a work log entry is written by the dispatcher,
+with an API key - there is no control anywhere in the browser for writing
+one and none is meant to exist. Its `GET`, on `issues/{key}/work-log`,
+answers a `WorkLogDto(Key, Totals, Own, Entries)` where `Totals` covers the
+whole subtree and `Own`/`Entries` cover only this issue - an epic showing a
+handful of its own sessions beside a much larger `Totals` is the feature,
+not a bug. `/work-log/history` buckets by `hour` or `day`, chosen from the
+range's length unless named, and answers the bucket size it actually used;
+`/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
+`requests` or `peakContext`, each descending. Both take an optional
+`ancestorKey`, read inclusive of the issue itself - deliberately unlike the
+same parameter on `GET /issues` - so the graph, the table and the issue
+page's own meter can never describe different populations.
+
+`/overnight` answers an `OvernightDto(From, To, Count, Rows, Unseen)`,
+grouping and gap-splitting the newest night's terminal landings; `seen` is a
+person's own mark of having looked, and refuses a program for the same
+reason `work-log`'s write refuses a person, in reverse - a keyless runner
+that named itself is refused here too, since it is an agent whether or not
+it carries a credential. `/activity` pages the same event trail
+`/issues/{key}/events` reads for one issue, across every issue instead,
+ordered the same way so one event never sorts differently between the two
+reads; it takes `limit` (1 to 500, default 100) and `offset`, and answers
+`hasMore` rather than a count. `/changelog` takes `before`, `projectId` and
+`days` (default 14), answering the newest window of days that shipped
+something, with every closed month's own count beside it for the jump
+control - this is the same route the Changelog entry at the top of the
+app's nav draws from, not a page of its own.
+
+**Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
+`history` 400s an offset outside +-1440 minutes, an unrecognised bucket
+name, or a request whose buckets would exceed 1000. `sessions` 400s an
+unrecognised sort or a limit outside 1-500. `activity` 400s a limit outside
+1-500 or a negative offset. `changelog` 400s a window under one day or a
+project that does not exist. `history`/`sessions`/`changelog` all 400 an
+unparseable range bound, in the order `to`, then `from`, then the inversion.
+
+### Reports and the battery
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/reports/timeline` | The top-level epics active in a range, and the work beneath each as stretches across the board's columns |
+| GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid |
+| GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
+| GET | `/attention` | What the loop is waiting on a person for, in one request |
+
+All four a key's. `timeline` takes `from`, `to` (default the ninety days
+ending now), `projectId` and `createdBy`; `cumulative-flow` takes only
+`from`/`to`, the same ninety-day default. Neither query is itself bounded by
+the range - the fold needs an issue's first move even where it falls outside
+it - but the ranges' bounds are. `utilization` answers a
+`UtilizationReading(State, ReadAt, Limits)` off whatever this caller's own
+runners last reported on their own heartbeat, never the account's endpoint
+directly, and `204`s for a caller with no runner ever reporting one, which
+is the ordinary state for a fresh install rather than an error.
+
+`attention` is the one request the nav strip's badge and panel both draw
+from, since two polls a poll interval apart would show a lit control beside
+an empty list. It answers an `AttentionDto`: open questions waiting on
+somebody, pull requests in review split into plain reviews, conflicts, and
+failing builds, how many sit in review with no pull request at all, the
+merge column's own held-back and still-progressing rows, trunk-landing rows
+the judge holds, failing trunk builds, exhausted runners, and the
+deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
+or through a chain, on something itself waiting on it.
+
+**Refusals.** None beyond the ordinary ones - every route in this group is
+a read with no body to reject.
+
+## Who may call what
+
+One scope, `hatch`, and it reaches everything under `/api/hatch` **less the
+routes that take a person only**. A key that calls one of those gets a
+`403`, and that is the gate working as designed, not a misconfiguration -
+[People, roles and keys](people-roles-and-keys#api-keys) says the same thing
+in prose, grouped by what the route does; this list is the route-by-route
+version it already points to, and should not repeat or contradict it.
+
+Recounted directly from the `[RequireRole]` attributes - the method's where
+it carries one, the class's otherwise (`AssigneeController` is the one file
+on this page with both) - there are **33** person-only paths on this page,
+across both halves together:
+
+```
+PUT    /projects/{id}/repositories
+PUT    /projects/{id}/logo
+DELETE /projects/{id}/logo
+PUT    /projects/{id}/members/{personId}
+DELETE /projects/{id}/members/{personId}
+POST   /projects/{id}/claim
+PUT    /projects/{id}/landing
+PUT    /projects/{id}/playbooks-source
+PUT    /statuses/{id}/express-skips
+PUT    /statuses/{id}/parent-pulls
+PUT    /statuses/{id}/agent-files
+PUT    /statuses/{id}/implementation
+PUT    /statuses/{id}/protected
+PUT    /statuses/{id}/merges-pull-request
+PUT    /wip
+PATCH  /issues/{key}/wip
+PUT    /issues/{key}/assignee
+PUT    /issues/{key}/priority
+PUT    /issues/{key}/expedite
+PUT    /issues/{key}/pre-approval
+PUT    /issues/{key}/express
+PUT    /issues/{key}/hold
+PATCH  /issues/{key}/playbook
+POST   /images
+PATCH  /runners/{name}
+GET    /runner
+GET    /runner/download/{rid}
+GET    /settings
+PUT    /settings
+POST   /overnight/seen
+POST   /playbooks
+PATCH  /playbooks/{id}
+DELETE /playbooks/{id}
+```
+
+Twenty-four belong to a project, a column, the WIP section, a ticket's own
+fields, or image upload; the other nine are a runner's own record, the
+`/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
+and the three playbook writes.
+
+Two writes that look like the same shape are deliberately **not** on this
+list, because the attribute itself does not narrow them - the narrowing is
+in the action body, against whether the caller is a program at all, the
+same guard `work-log`'s own refusal (above, inverted) uses: the tokenless
+`DELETE /issues/{key}/claim` (Claims, above) and `wipOverride`/a
+cross-project `ProjectId` on `PATCH /issues/{key}` (the Issues table,
+earlier on this page). A reader scanning only `[RequireRole]` attributes
+would miss both; this page does not, by calling each out in its own group's
+prose instead of padding this list with routes that are not, by the
+attribute, person-only at all.
+
+## Refusals
+
+- **`400`** - a field or value the body or the query sent is wrong, named
+  plainly: `"a verdict is one of pass, fail"`, `"an offset is not negative -
+  not -4"`.
+- **`401`** - one of two different things behind one code: a key that was
+  sent and refused (revoked, or malformed), or no key at all against a
+  Hatch whose wall is up and wants one. Neither ever reaches an action - the
+  check runs as an authorization filter, before model binding.
+- **`403`** - either the route is not one this key may take at all (the
+  person-only list above), or the caller is not a live owner or approver of
+  the project the move or the edit concerns - a key or a runner never counts
+  as either, however it is scoped. The error names the reason in both cases,
+  since the caller is already authenticated and the sentence a page shows
+  for "this device is not linked to anyone" is not the sentence it shows for
+  "you are not an administrator".
+- **`404`** - no such issue, no such row, or no such route. An issue key
+  nobody filed is a `404`, never an empty issue - none of the shapes on this
+  page answer "nothing here" by handing back zeroed fields.
+- **`409`** - the state itself refuses the write: a move into a terminal or
+  protected column, a live claim already standing, a project that still
+  holds issues or still has a playbook naming it, a last owner about to be
+  removed, two runners about to share one name.
+
+[`cli-reference`](cli-reference) turns every one of these into one of five
+named sentences rather than a raw status code, for the loop and for a
+terminal both.
