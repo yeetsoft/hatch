@@ -1397,6 +1397,13 @@ this story's branch, is held…"* — and a take that raced is let go by the sam
 check as an ancestor's. A task with a pull request of its own is on its own
 branch and is not held. Tasks under different stories stay parallel.
 
+The same rule holds at the dispatcher, before any claim exists: a move into the
+implementation column is folded while a sibling is in flight on the story's
+branch — at or past that column, not terminal, and not waiting on the story's
+pull request. The sibling's own pull request does not matter; the moving task is
+the one that would go on the story's branch. The sentence is the same and the
+kind is `family`.
+
 **The branch a dispatch is named for.** `WorkDto.BranchKey` and `BranchTitle`
 carry the story's key and title for a task that shares, and the issue's own
 otherwise; the server decides, because whether a story shares is a live,
@@ -3741,6 +3748,13 @@ missing configuration:
 9. Something it [depends on](#dependency) is unfinished, and the move is into
    the column where the code gets written. Only that move: a pull request that
    already exists is not held back by what its ticket once waited on.
+
+   Also folded on that same move, just after the dependency: the issue is a
+   task that shares its story's branch and a sibling is in flight on it — at or
+   past the implementation column, not terminal, not waiting on the story's
+   pull request. *"AER-12, sharing this story's branch, is already in flight -
+   one sibling at a time"*, kind `family`. See
+   [one sibling at a time](#one-pull-request).
 10. The move is into the [WIP section](#wip), and the section has no room for
     it: the load — not counting this issue — is already at or over the limit.
     Said after the dependency, which needs other work to land, and before the
