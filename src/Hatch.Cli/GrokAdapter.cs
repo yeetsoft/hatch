@@ -16,17 +16,24 @@ namespace Hatch.Cli;
 /// session on the machine; relocating <c>GROK_HOME</c> would copy
 /// <c>auth.json</c> (a <c>grok login</c> refresh rotates the token under the
 /// real login) and move <c>sessions/</c> from under <c>grok -r</c> - both
-/// worse than simply having none.</para>
+/// worse than simply having none. Confirmed on HA-918: neither <c>grok
+/// --help</c> nor <c>grok agent --help</c> names a <c>--settings</c>/
+/// <c>--hooks</c> flag on a real 1.0.62 binary, and <c>grok inspect</c> run
+/// inside this checkout - trusted, with a real project to read - reports
+/// "Hooks (None)".</para>
 /// </remarks>
 public sealed class GrokAdapter : IAgentAdapter
 {
     /// <summary>
-    /// The playbook's tiers onto this vendor's own ids, dated 2026-10-19. All
-    /// three shipped null (omit <c>-m</c>, taking the CLI's own default) - the
-    /// vendor's documented default itself moves between doc pages
-    /// (<c>grok-4.5</c> on one, <c>grok-4.6</c> on another), so a pinned id
-    /// here would go stale faster than leaving it unset. HA-918 fills these in
-    /// from a real <c>grok models</c> listing.
+    /// The playbook's tiers onto this vendor's own ids, confirmed against a
+    /// real <c>grok --version</c> (1.0.62, stable) and a real <c>grok
+    /// models</c> on HA-918's account, 2026-10-19: the listing names exactly
+    /// one model, <c>grok-4.7</c> (the CLI's own default), with no second,
+    /// smaller or larger id to give <c>haiku</c> or <c>opus</c>/<c>fable</c> a
+    /// distinct tier onto. All four stay null - omitting <c>-m</c> and taking
+    /// the CLI's own default lands on the same place a pinned
+    /// <c>grok-4.7</c> would, without going stale the day the account's
+    /// listing grows a second row.
     /// </summary>
     internal static readonly IReadOnlyDictionary<string, string?> DefaultTiers = new Dictionary<string, string?>
     {
@@ -142,10 +149,22 @@ public sealed class GrokAdapter : IAgentAdapter
 
         // The vendor gates AGENTS.md, project skills and hooks behind folder
         // trust; a runner cloning its own workspaces has no prior grant, and
-        // without this AGENTS.md is silently never read.
+        // without this AGENTS.md is silently never read. Confirmed on HA-918:
+        // an untrusted real checkout reads no project instructions at all
+        // (`grok inspect` shows "Project trusted: no" and "Project
+        // Instructions (None)" even with one present); handed --trust, the
+        // same directory's AGENTS.md is read and its first line comes back
+        // quoted verbatim.
         start.ArgumentList.Add("--trust");
 
         // A background update mid-night would change the binary mid-loop.
+        // --trust, --prompt-file, --verbatim, --output-format,
+        // --always-approve and --no-auto-update are undocumented by `grok
+        // --help` (headless scripting is covered by the vendor's own guide,
+        // not the CLI's own help text) but all six are real, accepted flags,
+        // confirmed by running them together against a real 1.0.62 binary on
+        // HA-918 - an unrecognised flag is refused by clap with "unexpected
+        // argument", which none of these are.
         start.ArgumentList.Add("--no-auto-update");
 
         start.RedirectStandardInput = true;
@@ -180,6 +199,12 @@ public sealed class GrokAdapter : IAgentAdapter
 
     public string? ReadClosing(string json) => GrokStreamReader.Closing(json);
 
+    /// <summary>
+    /// Confirmed on HA-918 from a directory outside the checkout the session
+    /// started in: <c>grok -r &lt;id&gt;</c> finds it anyway ("Session &lt;id&gt;
+    /// found locally (originally in &lt;its own cwd&gt;)"), so a session is
+    /// keyed by its id alone, never by the directory the join runs from.
+    /// </summary>
     public string ResumeCommand(string sessionId) => $"grok -r {sessionId}";
 
     public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk)
@@ -227,7 +252,7 @@ public sealed class GrokAdapter : IAgentAdapter
         }
 
         start.ArgumentList.Add("--effort");
-        start.ArgumentList.Add(request.Effort);
+        start.ArgumentList.Add(MapEffort(request.Effort));
         start.ArgumentList.Add("--cwd");
         start.ArgumentList.Add(request.Root);
 
@@ -271,6 +296,20 @@ public sealed class GrokAdapter : IAgentAdapter
     /// <summary>The playbook's tier aliases onto this vendor's own ids; anything else, including a pinned id, passes through.</summary>
     private string? MapModel(string model) => _tiers.TryGetValue(model, out var mapped) ? mapped : model;
 
+    /// <summary>
+    /// Grok's own effort words, confirmed on HA-918 against a real 1.0.62
+    /// binary: passing <c>--effort max</c> - the playbook's own top word -
+    /// does not clamp, it refuses outright ("unknown effort level 'max'; use
+    /// one of: xhigh, high, medium, low"), the same way Codex's own top
+    /// word is spelled <c>xhigh</c> rather than <c>max</c> (see
+    /// <see cref="CodexAdapter"/>'s own <c>MapEffort</c>). This is a
+    /// vocabulary mismatch, not a per-model clamp - the account's one model
+    /// (see <see cref="DefaultTiers"/>) takes the same four words regardless.
+    /// Everything else, including a word the vendor does not recognise
+    /// either, passes through unchanged; a real CLI refuses it on its own.
+    /// </summary>
+    private static string MapEffort(string effort) => effort == "max" ? "xhigh" : effort;
+
     private enum RuleKind { Deny, Agent, Refused }
 
     /// <summary>
@@ -279,7 +318,15 @@ public sealed class GrokAdapter : IAgentAdapter
     /// entry; a rule naming one of grok's <c>--deny</c> tools, with or without
     /// a parenthesised pattern, passes straight through; everything else -
     /// including <c>Agent(...)</c>, since the parenthesis takes it out of the
-    /// bare-literal case - has no equivalent and is refused.
+    /// bare-literal case - has no equivalent and is refused. Confirmed live on
+    /// HA-918 against a real binary: <c>--deny Edit</c> refuses a real file
+    /// edit, <c>--deny Write</c> the same, and <c>--deny "Bash(git push*)"</c>
+    /// refuses the exact command before it runs, all three under
+    /// <c>--always-approve</c> - see <c>GrokDeniedToolsProofTests</c>. The
+    /// rest of the list (<c>Read</c>, <c>Grep</c>, <c>Glob</c>,
+    /// <c>WebFetch</c>, <c>WebSearch</c>) was not exercised individually this
+    /// run; nothing found says any of them lack an equivalent, so none came
+    /// out.
     /// </summary>
     private static RuleKind Classify(string rule)
     {

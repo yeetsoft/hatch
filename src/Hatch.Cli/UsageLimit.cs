@@ -133,10 +133,12 @@ public static partial class UsageLimit
         if (string.IsNullOrWhiteSpace(said)) return null;
         if (!GrokMention().IsMatch(said)) return null;
 
-        // No real Grok limit sentence from a headless error event has been seen
-        // yet. When HA-918's proof (or any run) sees one, its reset-time regex
-        // goes here, ahead of this backstop; until then every Grok limit report
-        // rests an hour.
+        // HA-918's own investigation hit the account's free-tier limit for
+        // real, mid-run: a headless error event carrying exactly the first
+        // sentence above, word for word, and naming no reset time - the same
+        // backstop this already falls back to. No run has yet seen either of
+        // the other two sentences, or one naming a time; this stays the
+        // regex's place to land if one ever does.
         return new Recognised(endedAt + UnknownWindow, ResetKnown: false, "session");
     }
 

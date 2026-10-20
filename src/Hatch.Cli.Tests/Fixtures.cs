@@ -455,7 +455,8 @@ public static class Fixtures
     public static string CodexError(string message) =>
         JsonSerializer.Serialize(new { type = "error", message });
 
-    // ---- Grok Build's own events ----
+    // ---- Grok Build's own events - shapes confirmed on HA-918 against a
+    // real 1.0.62 binary's own streaming-json and json output ----
 
     public static string GrokText(string data) =>
         JsonSerializer.Serialize(new { type = "text", data });
@@ -463,16 +464,23 @@ public static class Fixtures
     public static string GrokThought(string data) =>
         JsonSerializer.Serialize(new { type = "thought", data });
 
+    /// <summary>
+    /// <c>title</c> mirrors <c>toolName</c> verbatim on a real run (grok's own
+    /// snake_case name, not a Claude-style display label), a fresh
+    /// <c>tool_call</c>'s own <c>status</c> is <c>"pending"</c>, and
+    /// <c>rawInput</c>'s field is <c>target_file</c>, not <c>path</c> - all
+    /// three confirmed on a real <c>read_file</c> call.
+    /// </summary>
     public static string GrokToolCall(string toolCallId = "call_1") =>
         JsonSerializer.Serialize(new
         {
             type = "tool_call",
             toolCallId,
-            title = "Read",
+            title = "read_file",
             kind = "read",
-            status = "in_progress",
+            status = "pending",
             toolName = "read_file",
-            rawInput = new { path = "src/main.rs" },
+            rawInput = new { target_file = "src/main.rs" },
             content = Array.Empty<object>(),
             locations = Array.Empty<object>(),
         });
@@ -488,14 +496,20 @@ public static class Fixtures
             locations = Array.Empty<object>(),
         });
 
+    /// <summary>
+    /// A real <c>usage</c> line carries only <c>usage</c> and
+    /// <c>signature</c> - no <c>messageId</c>, no <c>stopReason</c>.
+    /// <paramref name="messageId"/> defaults to null for that reason;
+    /// <see cref="GrokStreamReaderTests"/>'s own dedup fact still overrides it
+    /// to exercise that defence, which no real line has triggered yet.
+    /// </summary>
     public static string GrokUsage(
-        string? messageId = "resp_1", long inputTokens = 812, long outputTokens = 45,
-        long cacheReadTokens = 0, long cacheCreationTokens = 0, long reasoningTokens = 0, string stopReason = "end_turn") =>
+        string? messageId = null, long inputTokens = 812, long outputTokens = 45,
+        long cacheReadTokens = 0, long cacheCreationTokens = 0, long reasoningTokens = 0) =>
         JsonSerializer.Serialize(new
         {
             type = "usage",
             messageId,
-            stopReason,
             usage = new
             {
                 input_tokens = inputTokens,
@@ -516,6 +530,7 @@ public static class Fixtures
             stopReason,
             sessionId,
             requestId,
+            cwd = "/root",
             num_turns = numTurns,
             usage,
             modelUsage,
@@ -524,7 +539,7 @@ public static class Fixtures
         });
 
     public static string GrokError(string message) =>
-        JsonSerializer.Serialize(new { type = "error", message });
+        JsonSerializer.Serialize(new { type = "error", message, cwd = "/root" });
 
     public static string GrokJson(
         string? text = null, string sessionId = "abc123", string requestId = "xyz789", int numTurns = 7, string stopReason = "end_turn",
