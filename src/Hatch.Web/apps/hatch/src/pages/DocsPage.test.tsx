@@ -1,25 +1,35 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { ThemeProvider } from '@hatch/ui';
 import { DOC_PAGES, createSlugger, docNeighbours, docPage, docSections, renderDocs } from '../lib/docs';
 import { DocsPage } from './DocsPage';
 
 // The real sanitizer needs a DOM, which this workspace's tests do not have -
 // see ProseClamp.test.tsx. The identity stub still shows what the page handed it.
 vi.mock('dompurify', () => ({ default: { sanitize: (html: string) => html } }));
+// clientLogger.ts reads `window` at import, and there is no jsdom here - the
+// same stub PlaybookRow.test.tsx uses for the same reason.
+vi.mock('../lib/clientLogger', () => ({ clientLogger: { error: () => {} } }));
 
 const state = vi.hoisted(() => ({ phone: false }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
 
 function renderAt(path: string, phone = false): string {
   state.phone = phone;
+  // DocsArticle reads useTheme() (HA-1058's drawing effect is keyed on the
+  // resolved theme), which throws outside a <ThemeProvider> - themeStore.ts
+  // guards every DOM read it makes for a window that is absent here, so the
+  // provider itself renders fine with no jsdom.
   return renderToStaticMarkup(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/docs" element={<DocsPage />} />
-        <Route path="/docs/*" element={<DocsPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/docs/*" element={<DocsPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
