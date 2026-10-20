@@ -59,6 +59,12 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   playbookFileTrunk: null,
   playbookFileSha: null,
   playbookFileHash: null,
+  playbookKey: null,
+  playbookFromStatusId: null,
+  playbookToStatusId: null,
+  issueType: null,
+  playbookModel: null,
+  playbookEffort: null,
   ...over,
 });
 
