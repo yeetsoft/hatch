@@ -5,10 +5,6 @@ import { DOC_PAGES, docPage, renderDocs } from './docs';
 
 /** The pages split out of hatch-at-home.md: slug and section, in reading order. */
 const SPLIT_PAGES: [slug: string, section: string][] = [
-  ['hatch-at-home', 'Start here'],
-  ['prerequisites', 'Start here'],
-  ['the-one-line', 'Start here'],
-  ['opening-the-board-and-setting-your-name', 'Start here'],
   ['hatch-on-your-phone', 'Start here'],
   ['getting-the-runner-and-pointing-it-at-the-board', 'Running agents'],
   ['the-morning-after-a-night', 'Running agents'],
@@ -36,14 +32,14 @@ describe('the pages split out of hatch-at-home.md', () => {
 
 describe('the links retargeted when the document was split', () => {
   const cli = '/apps/hatch/docs/the-hatch-cli-command-by-command';
-  const landing = renderDocs(docPage(DOC_PAGES, 'hatch-at-home')!.body).html;
+  const gettingStarted = renderDocs(docPage(DOC_PAGES, 'getting-started')!.body).html;
 
   it.each([
     `href="${cli}"`,
     `href="${cli}#one-increment-hatch-work"`,
     `href="${cli}#the-loop-hatch-go-to-work"`,
-  ])('the landing page has %s', (href) => {
-    expect(landing).toContain(href);
+  ])('getting started has %s', (href) => {
+    expect(gettingStarted).toContain(href);
   });
 
   it('lands them on headings the CLI page has', () => {

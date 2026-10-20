@@ -440,6 +440,8 @@ describe('pageForAnchor', () => {
     ['one-increment-hatch-work', '/docs/the-hatch-cli-command-by-command#one-increment-hatch-work'],
     ['one-pass-in-order', '/docs/the-hatch-cli-command-by-command#one-pass-in-order'],
     ['what-ios-cannot-do', '/docs/hatch-on-your-phone#what-ios-cannot-do'],
+    ['prerequisites', '/docs/getting-started#prerequisites'],
+    ['the-one-line', '/docs/getting-started#the-one-line'],
   ])('resolves %s to %s against the real pages', (id, to) => {
     expect(pageForAnchor(DOC_PAGES, id)).toBe(to);
   });
