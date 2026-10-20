@@ -142,6 +142,23 @@ describe('DocsPage', () => {
       });
     }
 
+    it('renders the same h1, outline and article with a ?q= as without', () => {
+      const page = DOC_PAGES[0];
+      const term = page.title.split(/\s+/)[0];
+      const outline = renderDocs(page.body).outline;
+      const article = (html: string) => /<article class="hatch-docs-body"[\s\S]*?<\/article>/.exec(html)?.[0];
+
+      const plain = renderAt(`/docs/${page.slug}`);
+      const searched = renderAt(`/docs/${page.slug}?q=${encodeURIComponent(term)}`);
+
+      expect(searched).toContain(`<h1>${escapeText(page.title)}</h1>`);
+      expect(searched.split('<h1').length - 1).toBe(1);
+      expect(outlineHrefs(searched)).toEqual(outline.map((entry) => entry.id));
+      expect(outlineHrefs(searched)).toEqual(outlineHrefs(plain));
+      expect(article(plain)).toBeDefined();
+      expect(article(searched)).toBe(article(plain));
+    });
+
     it('orders the sidebar, then the outline, then the article, then the pager in markup - CSS places them on the desk', () => {
       const page = DOC_PAGES[0];
       const html = renderAt(`/docs/${page.slug}`);
