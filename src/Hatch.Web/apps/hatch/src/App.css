@@ -3217,10 +3217,17 @@ input.hatch-inline-title-input {
 
 .hatch-docs {
   display: grid;
-  grid-template-columns: minmax(0, 68ch) minmax(12rem, 16rem);
+  grid-template-columns: minmax(0, 68ch);
   gap: var(--sp-8);
   justify-content: center;
   align-items: start;
+}
+
+/* Two columns only when there is an outline to sit beside the body - the
+   landing and the not-found state render no .hatch-docs-outline, and would
+   otherwise sit off-centre beside an empty gutter. */
+.hatch-docs:has(.hatch-docs-outline) {
+  grid-template-columns: minmax(0, 68ch) minmax(12rem, 16rem);
 }
 
 .hatch-docs-body {
@@ -3391,6 +3398,31 @@ input.hatch-inline-title-input {
   font-weight: 600;
   color: var(--muted);
   margin: 0 0 var(--sp-2);
+}
+
+/* The landing's sections, not a rendered document - no .hatch-docs-body
+   typography here. */
+.hatch-docs-landing > section + section {
+  margin-top: var(--sp-8);
+}
+
+.hatch-docs-landing-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.hatch-docs-landing-list li + li {
+  margin-top: var(--sp-3);
+}
+
+.hatch-docs-landing-summary {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
+}
+
+.hatch-docs-missing {
+  color: var(--muted);
 }
 
 /* Folded above the text on a phone: the outline is a <details> there. */

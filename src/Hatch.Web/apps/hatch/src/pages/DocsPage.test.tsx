@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import source from '../../public/hatch-at-home.md?raw';
-import { createSlugger, renderDocs } from '../lib/docs';
+import { DOC_PAGES, createSlugger, docPage, docSections, renderDocs } from '../lib/docs';
 import { DocsPage } from './DocsPage';
 
 // The real sanitizer needs a DOM, which this workspace's tests do not have -
@@ -12,13 +11,27 @@ vi.mock('dompurify', () => ({ default: { sanitize: (html: string) => html } }));
 const state = vi.hoisted(() => ({ phone: false }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
 
-function render(phone: boolean): string {
+function renderAt(path: string, phone = false): string {
   state.phone = phone;
   return renderToStaticMarkup(
-    <MemoryRouter>
-      <DocsPage />
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/docs" element={<DocsPage />} />
+        <Route path="/docs/*" element={<DocsPage />} />
+      </Routes>
     </MemoryRouter>,
   );
+}
+
+/** How React escapes text content, so a string compared against rendered HTML
+    matches even when it carries an apostrophe or other entity-worthy character. */
+function escapeText(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 /** The ids of the document's `## ` lines, skipping fenced code. */
@@ -49,40 +62,81 @@ function outlineHrefs(html: string): string[] {
 }
 
 describe('DocsPage', () => {
-  const desk = render(false);
-  const phone = render(true);
-  const body = source.replace(/^# .+\r?\n/, '');
-  const outline = renderDocs(body).outline;
+  describe('the landing', () => {
+    const html = renderAt('/docs');
 
-  it('titles the page from the document, once', () => {
-    expect(desk).toContain('<h1>Hatch at home</h1>');
-    expect(desk.split('<h1').length - 1).toBe(1);
+    it('titles the page Docs, once', () => {
+      expect(html).toContain('<h1>Docs</h1>');
+      expect(html.split('<h1').length - 1).toBe(1);
+    });
+
+    it('lists every section, in docSections order', () => {
+      const sections = docSections(DOC_PAGES);
+      const headings = [...html.matchAll(/<h2[^>]*>(.*?)<\/h2>/g)].map((m) => m[1]);
+      expect(headings).toEqual(sections.map((s) => escapeText(s.section)));
+    });
+
+    it('links every page to its slug, with its summary beside it', () => {
+      for (const page of DOC_PAGES) {
+        expect(html).toContain(`href="/docs/${page.slug}"`);
+        expect(html).toContain(escapeText(page.title));
+        expect(html).toContain(escapeText(page.summary));
+      }
+    });
   });
 
-  it('lists the headings in document order as an outline nav on the desk', () => {
-    expect(outlineHrefs(desk)).toEqual(outline.map((entry) => entry.id));
-    expect(desk).not.toContain('<details');
+  describe('a page', () => {
+    const cases = [DOC_PAGES[0], DOC_PAGES[DOC_PAGES.length - 1]];
+
+    for (const page of cases) {
+      it(`draws ${page.slug} under its own title and outline`, () => {
+        const html = renderAt(`/docs/${page.slug}`);
+        const outline = renderDocs(page.body).outline;
+
+        expect(html).toContain(`<h1>${escapeText(page.title)}</h1>`);
+        expect(html.split('<h1').length - 1).toBe(1);
+        expect(outlineHrefs(html)).toEqual(outline.map((entry) => entry.id));
+        expect(html).toContain('<article class="hatch-docs-body"');
+      });
+    }
+
+    it("outlines the page's ## headings and not the ones inside fenced code", () => {
+      const page = DOC_PAGES[0];
+      const outline = renderDocs(page.body).outline;
+      const ids = outline.filter((entry) => entry.depth === 2).map((entry) => entry.id);
+
+      expect(ids).toEqual(h2Ids(page.body));
+    });
   });
 
-  it('outlines the document\'s ## headings and not the ones inside fenced code', () => {
-    const ids = outline.filter((entry) => entry.depth === 2).map((entry) => entry.id);
+  it('outlines the CLI page with a heading for one increment of hatch work', () => {
+    const page = docPage(DOC_PAGES, 'the-hatch-cli-command-by-command');
+    expect(page).toBeDefined();
+    const html = renderAt('/docs/the-hatch-cli-command-by-command');
 
-    expect(ids).toEqual(h2Ids(body));
-    expect(ids[0]).toBe('prerequisites');
-    expect(desk).toContain('href="#upgrading"');
-    expect(desk).not.toContain('href="#the-operator-and-claude-contract"');
+    expect(outlineHrefs(html)).toContain('one-increment-hatch-work');
   });
 
-  it('puts the document in a docs body article, with anchored headings', () => {
-    expect(desk).toContain('<article class="hatch-docs-body"');
-    expect(desk).toContain('id="prerequisites"');
-    expect(desk).not.toContain('hatch-markdown');
+  describe('anything else', () => {
+    for (const path of ['/docs/no-such-page', '/docs/a/b']) {
+      it(`shows a not-found state inside the docs frame for ${path}`, () => {
+        const html = renderAt(path);
+
+        expect(html).toContain('class="hatch-docs"');
+        expect(html).toContain('href="/docs"');
+        expect(html).not.toContain('hatch-docs-body');
+      });
+    }
   });
 
   it('folds the outline into a closed details on a phone, still one nav', () => {
-    expect(phone).toContain('<details');
-    expect(phone).not.toMatch(/<details[^>]*\sopen/);
-    expect(outlineHrefs(phone)).toEqual(outline.map((entry) => entry.id));
-    expect(phone.split('<nav').length - 1).toBe(1);
+    const page = DOC_PAGES[0];
+    const html = renderAt(`/docs/${page.slug}`, true);
+    const outline = renderDocs(page.body).outline;
+
+    expect(html).toContain('<details');
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    expect(outlineHrefs(html)).toEqual(outline.map((entry) => entry.id));
+    expect(html.split('<nav').length - 1).toBe(1);
   });
 });
