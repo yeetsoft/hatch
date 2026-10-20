@@ -33,6 +33,10 @@
     <Using Include="Hatch.Contracts" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hatch.Api.Tests" />
+  </ItemGroup>
+
   <!--
     The git identity of this build (docs/plans/version.md). The sha rides in on
     SourceRevisionId, which the SDK already appends to

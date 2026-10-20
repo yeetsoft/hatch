@@ -307,6 +307,71 @@ public class TimelineReportTests
         Assert.Empty(segments);
     }
 
+    private static (List<TimelineReport.Stretch> Stretches, int Unresolved) Rebuild(
+        TimelineReport.Row row, TimelineReport.Change[] changes, DateTimeOffset from, DateTimeOffset to,
+        List<EfHatchStatus>? board = null) =>
+        TimelineReport.RebuildOf(row, changes, TimelineReport.IndexOf(board ?? Board()), from, to);
+
+    [Fact]
+    public void RebuildOf_TwoConsecutiveMovesIntoOneColumn_MergeToOneStretch()
+    {
+        var changes = new[]
+        {
+            Move(1, 1, Day(0), 1, 2),
+            Move(1, 2, Day(2), 2, 2),
+            Move(1, 3, Day(4), 2, 5),
+        };
+
+        var (stretches, _) = Rebuild(Epic(1, 5, Day(-1)), changes, Day(-5), Day(10));
+
+        Assert.Equal(
+        [
+            new TimelineReport.Stretch(1, true, Day(-1), Day(0)),
+            new TimelineReport.Stretch(2, true, Day(0), Day(4)),
+            new TimelineReport.Stretch(5, true, Day(4), null),
+        ], stretches);
+    }
+
+    [Fact]
+    public void RebuildOf_AZeroLengthStretch_IsDropped()
+    {
+        var changes = new[]
+        {
+            Move(1, 1, Day(0), 1, 2),
+            Move(1, 2, Day(0), 2, 3),
+        };
+
+        var (stretches, _) = Rebuild(Epic(1, 3, Day(-1)), changes, Day(-5), Day(10));
+
+        Assert.DoesNotContain(stretches, s => s.From == s.To);
+    }
+
+    [Fact]
+    public void RebuildOf_ANameOnlyEventForAVanishedColumn_IsUnresolved_WithAnUnresolvedStretch()
+    {
+        var changes = new[] { Move(1, 1, Day(0), 1, null, ids: false, toName: "gone") };
+
+        var (stretches, unresolved) = Rebuild(Epic(1, 1, Day(-1)), changes, Day(-5), Day(10));
+
+        Assert.Equal(1, unresolved);
+        Assert.Contains(stretches, s => !s.Resolved);
+    }
+
+    [Fact]
+    public void IndexOf_Terminal_HoldsOnlyThePlainTerminalColumn_ExcludingOneAlsoDeferred()
+    {
+        var board = new List<EfHatchStatus>
+        {
+            new() { Id = 1, Name = "backlog", SortOrder = 10 },
+            new() { Id = 2, Name = "done", SortOrder = 20, IsTerminal = true },
+            new() { Id = 3, Name = "parked", SortOrder = 30, IsTerminal = true, IsDeferred = true },
+        };
+
+        var terminal = TimelineReport.IndexOf(board).Terminal;
+
+        Assert.Equal(new HashSet<int> { 2 }, terminal);
+    }
+
     [Fact]
     public void ParseChange_ReadsNames()
     {
