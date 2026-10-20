@@ -222,10 +222,10 @@ describe('DocsPage', () => {
     });
   });
 
-  it('outlines the CLI page with a heading for one increment of hatch work', () => {
-    const page = docPage(DOC_PAGES, 'the-hatch-cli-command-by-command');
+  it('outlines One increment and the loop with a heading for one increment of hatch work', () => {
+    const page = docPage(DOC_PAGES, 'one-increment-and-the-loop');
     expect(page).toBeDefined();
-    const html = renderAt('/docs/the-hatch-cli-command-by-command');
+    const html = renderAt('/docs/one-increment-and-the-loop');
 
     expect(outlineHrefs(html)).toContain('one-increment-hatch-work');
   });

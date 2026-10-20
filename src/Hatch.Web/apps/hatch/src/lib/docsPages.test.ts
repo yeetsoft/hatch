@@ -27,7 +27,7 @@ describe('the pages split out of hatch-at-home.md', () => {
 });
 
 describe('the links retargeted when the document was split', () => {
-  const cli = '/apps/hatch/docs/the-hatch-cli-command-by-command';
+  const cli = '/apps/hatch/docs/one-increment-and-the-loop';
   const gettingStarted = renderDocs(docPage(DOC_PAGES, 'getting-started')!.body).html;
 
   it.each([
@@ -38,8 +38,8 @@ describe('the links retargeted when the document was split', () => {
     expect(gettingStarted).toContain(href);
   });
 
-  it('lands them on headings the CLI page has', () => {
-    const { outline } = renderDocs(docPage(DOC_PAGES, 'the-hatch-cli-command-by-command')!.body);
+  it('lands them on headings the page has', () => {
+    const { outline } = renderDocs(docPage(DOC_PAGES, 'one-increment-and-the-loop')!.body);
     for (const [depth, id] of [
       [2, 'one-increment-hatch-work'],
       [2, 'the-loop-hatch-go-to-work'],
@@ -47,6 +47,16 @@ describe('the links retargeted when the document was split', () => {
     ] as const) {
       expect(outline).toContainEqual(expect.objectContaining({ depth, id }));
     }
+  });
+
+  it.each([
+    'one-increment-hatch-work',
+    'the-loop-hatch-go-to-work',
+    'one-pass-in-order',
+    'bounds-timeouts-and-stopping',
+  ])('has %s as an id on exactly one page, and it is the new one', (id) => {
+    const pages = DOC_PAGES.filter((p) => renderDocs(p.body).ids.includes(id)).map((p) => p.slug);
+    expect(pages).toEqual(['one-increment-and-the-loop']);
   });
 });
 
