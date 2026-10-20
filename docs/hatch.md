@@ -1236,11 +1236,14 @@ after another gets a chain of them, a linked list the loop walks in order; an
 epic whose five stories are independent gets none, and the loop takes them in
 whatever order the board puts them in.
 
-**A dependency gates implementation, and nothing else.** The old rule folded an
-issue past every move it could make; this one holds exactly one. An issue
+**A dependency gates implementation, and a parent pull.** The old rule folded an
+issue past every move it could make; this one holds two. An issue
 waiting on another still goes through Breakdown, still lands in Backlog, and is
 still analysed — everything left of the writing keeps moving, which is the
-point. What it does not do is get picked up and written.
+point. What it does not do is get picked up and written. The other move it
+holds is a [parent pull](#the-hop) (hop kind 4): a child carried into the
+implementation column by its started parent waits on its own unmet
+dependencies like any other, and stays where it stands until they are done.
 
 That column is **ticked, and measured only where nothing is**. The
 implementation column is the one a person ticked *Code written here* on
@@ -3746,8 +3749,9 @@ missing configuration:
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
 9. Something it [depends on](#dependency) is unfinished, and the move is into
-   the column where the code gets written. Only that move: a pull request that
-   already exists is not held back by what its ticket once waited on.
+   the column where the code gets written, or a parent pull (hop kind 4) out of
+   a `ParentPulls` column. Only those moves: a pull request that already exists
+   is not held back by what its ticket once waited on.
 
    Also folded on that same move, just after the dependency: the issue is a
    task that shares its story's branch and a sibling is in flight on it — at or
@@ -3846,7 +3850,9 @@ order:
    whose parent has reached the implementation column — stands in it, or in
    any column to its right, a terminal column included; a deferred column
    never counts — and none of whose siblings is standing further along, in
-   board order, than the column this issue would be pulled into (HA-149).
+   board order, than the column this issue would be pulled into (HA-149) -
+   and none of whose own [dependencies](#dependency) is unmet, which folds the
+   pull instead (HA-1017).
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own
    `Target` is the implementation column (`Columns.Implementation`),

@@ -1019,8 +1019,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // session runs in the primary repository's checkout: every move but a
         // hop, which runs no session and needs no checkout - unless it lands in
         // the implementation column, where the fold has always applied.
-        // Dependencies gate only the move into implementation - a pull request
-        // that already exists is not held back by what its ticket once waited on.
+        // Dependencies gate the move into implementation, and a parent pull out
+        // of a ParentPulls column - a pull request that already exists is not
+        // held back by what its ticket once waited on.
         var conflicts = to.Id == from.Id;
 
         if (!hop || to.Id == implementation?.Id)
@@ -1028,12 +1029,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             if (RepositoryFold(issue, repos) is { } repoBlock) return (repoBlock, BlockedKinds.Other);
         }
 
-        if (to.Id == implementation?.Id)
+        if (to.Id == implementation?.Id
+            || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return (WaitingOn(waitingOn), BlockedKinds.Dependency);
-            if (family.SharedBranchSibling(issue, statuses) is { } sibling)
-                return ($"{sibling}, sharing this story's branch, is already in flight - one sibling at a time", BlockedKinds.Family);
         }
+
+        if (to.Id == implementation?.Id
+            && family.SharedBranchSibling(issue, statuses) is { } sibling)
+            return ($"{sibling}, sharing this story's branch, is already in flight - one sibling at a time", BlockedKinds.Family);
 
         // The mirror of the dependency fold above: that one gates the move in,
         // this one gates the move out. An issue standing in the implementation
