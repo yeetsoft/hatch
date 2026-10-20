@@ -62,6 +62,9 @@ The hops the board makes are:
 - **Close** — a pre-approved parent in review with every child done goes into
   the first Done column to its right.
 
+`the-lifecycle-of-a-ticket` follows one ticket across every column and hop
+above, start to finish.
+
 ## Column flags
 
 A column's behaviour is a set of flags, ticked on the **Statuses** screen.
@@ -82,7 +85,8 @@ There are nine, and a column carries whichever of them it needs.
   the limits in the WIP limits card above the table. In Progress and In Review
   ship with it ticked, and only a person may tick it. A tick left on a
   Deferred or Done column is ignored. An upgrade ticks the two only where the
-  board still has columns of those names.
+  board still has columns of those names. `flow-wip-and-the-battery` covers
+  what the limit is for and how to read the card above the table.
 - **Express skips** — an express issue standing here with no unanswered
   question is carried to the next column with no session. The Done column is
   never entered, and the flag says nothing about whose column anything is.
@@ -111,3 +115,36 @@ There are nine, and a column carries whichever of them it needs.
   this column, current and green, with no session. No stock column ships with
   it. Only a person may tick it, never a key. It needs **Protected** ticked
   first, and a Deferred or Done column is refused.
+
+## Example: an Approved column
+
+Add an eighth column, between In Review and Done, and call it `Approved` —
+every column name on this page is a placeholder, and nothing hangs on it
+being this one. Tick **Protected** on it, then **Merges PR**; the second
+checkbox refuses to tick until the first already has.
+
+What that changes: a person moving a ticket into the new column by hand *is*
+the approval, and the runner then merges the ticket's pull request once its
+branch is current and its build is green, with no session reading the diff
+and nothing spent. A ticket already pre-approved while it stood in review is
+carried into the column by the approve hop above, with no person moving it at
+all. `review-pull-requests-and-the-merge-train` covers reading the pull
+request itself, and the train an approved ticket joins behind whatever else
+in its project is also approved.
+
+The stock board still ships with exactly the seven columns above, and
+`Approved` is never one of them. Adding it — naming an approver, and choosing
+which of the forge's three shapes the repository is — is covered end to end
+on its own page, not repeated here:
+[letting the loop merge for you](letting-the-loop-merge-for-you).
+
+Columns and their flags are the shape of the board. [Issues](issues) is what
+moves across them: dependencies, deferring, and closing a subtree.
+
+## Coming
+
+Pages this one links to that are not written yet:
+
+- `the-lifecycle-of-a-ticket`
+- `flow-wip-and-the-battery`
+- `review-pull-requests-and-the-merge-train`
