@@ -148,6 +148,9 @@ services:
       # against a Hatch with its wall off.
       HATCH_KEY: "${HATCH_KEY:-}"
       HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
+      # Which agent this container's loop spawns: claude, codex or grok. Its
+      # credential is read from the Settings page, not set here.
+      HATCH_AGENT: "${HATCH_AGENT:-claude}"
       HATCH_ROOT: /checkout
       HATCH_WORKSPACE: /workspace
       GIT_AUTHOR_NAME: "${HATCH_GIT_NAME:-}"
