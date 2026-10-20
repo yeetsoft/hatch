@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { ChangelogBody } from './ChangelogPage';
+import { appendWindow } from '../lib/changelog';
 import type { ChangelogDayDto, ChangelogDto, ChangelogEntryDto, Project } from '../types';
 
 /* No DOM runner, so the body is rendered from props, the way
@@ -58,7 +59,7 @@ const changelog = (days: ChangelogDayDto[]): ChangelogDto => ({
 const render = (dto: ChangelogDto, projects: Project[] = [project()]): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <ChangelogBody changelog={dto} projects={projects} />
+      <ChangelogBody changelog={dto} projects={projects} onOlder={() => {}} />
     </MemoryRouter>,
   );
 
@@ -100,5 +101,46 @@ describe('ChangelogBody', () => {
     const html = render(changelog([]));
 
     expect(html).toContain('Nothing has shipped yet.');
+  });
+
+  it('draws no Older when the answer says there is nothing older', () => {
+    expect(render(changelog([day('2026-10-13')]))).not.toContain('Older');
+  });
+
+  it('draws Older when the answer says there is an older window', () => {
+    const html = render({ ...changelog([day('2026-10-13')]), hasOlder: true, oldest: '2026-10-13' });
+    expect(html).toContain('Older');
+  });
+
+  it('draws two appended windows, the older one last', () => {
+    const first = { ...changelog([day('2026-10-13')]), hasOlder: true, oldest: '2026-10-13' };
+    const second = changelog([day('2026-10-02')]);
+
+    const html = render(appendWindow(first, second));
+
+    const a = html.indexOf('October 13');
+    const b = html.indexOf('October 2,');
+    expect(a).toBeGreaterThan(-1);
+    expect(b).toBeGreaterThan(a);
+  });
+
+  it('draws the months as links ahead of the first day', () => {
+    const html = render({
+      ...changelog([day('2026-10-13')]),
+      months: [
+        { month: '2026-10', count: 3 },
+        { month: '2026-04', count: 1 },
+      ],
+    });
+
+    expect(html).toContain('href="/changelog?before=2026-11-01"');
+    expect(html).toContain('href="/changelog?before=2026-05-01"');
+    expect(html).toContain('2026 · 3');
+    expect(html).toContain('2026 · 1');
+    expect(html.indexOf('hatch-changelog-months')).toBeLessThan(html.indexOf('hatch-changelog-day'));
+  });
+
+  it('draws no month list when there are no months', () => {
+    expect(render(changelog([day('2026-10-13')]))).not.toContain('hatch-changelog-months');
   });
 });

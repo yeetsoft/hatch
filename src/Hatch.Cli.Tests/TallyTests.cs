@@ -169,6 +169,28 @@ public sealed class TallyTests
         Assert.Equal(resetAt, tally.ExhaustedUntil);
     }
 
+    /// <summary>
+    /// HA-1107: the probe's own <c>resets_at</c> carries no zone of its own
+    /// - usually <c>Z</c> - so <see cref="Tally.CorrectExhausted"/> converts it
+    /// into the runner's own local zone as it replaces the carried instant,
+    /// the same instant but read in the zone the wait prints in.
+    /// </summary>
+    [Fact]
+    public void A_corrected_reset_instant_is_converted_into_the_runners_own_local_zone()
+    {
+        var clock = new FrozenClock(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.FromHours(-4)));
+        var tally = new Tally(clock);
+        var carried = DateTimeOffset.Parse("2026-09-28T22:00:00Z");
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: carried));
+
+        var probed = DateTimeOffset.Parse("2026-09-28T23:40:00Z");
+        tally.CorrectExhausted(new UsageWindow("session", "Session", 1.0, probed));
+
+        Assert.Equal(probed, tally.ExhaustedUntil);
+        Assert.Equal(TimeSpan.FromHours(-4), tally.ExhaustedUntil!.Value.Offset);
+        Assert.True(tally.ExhaustedKnown);
+    }
+
     [Fact]
     public void An_increment_that_worked_clears_a_usage_limit_the_night_carried()
     {

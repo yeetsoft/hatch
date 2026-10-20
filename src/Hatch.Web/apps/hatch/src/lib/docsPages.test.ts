@@ -5,16 +5,8 @@ import { DOC_PAGES, docPage, renderDocs } from './docs';
 
 /** The pages split out of hatch-at-home.md: slug and section, in reading order. */
 const SPLIT_PAGES: [slug: string, section: string][] = [
-  ['hatch-at-home', 'Start here'],
-  ['prerequisites', 'Start here'],
-  ['the-one-line', 'Start here'],
-  ['opening-the-board-and-setting-your-name', 'Start here'],
   ['hatch-on-your-phone', 'Start here'],
-  ['getting-the-runner-and-pointing-it-at-the-board', 'Running agents'],
-  ['the-morning-after-a-night', 'Running agents'],
   ['letting-the-loop-merge-for-you', 'Running agents'],
-  ['running-the-runner-as-a-container-instead', 'Running agents'],
-  ['the-hatch-cli-command-by-command', 'Running agents'],
   ['putting-a-front-door-on-it', 'Deploying and operating'],
   ['upgrading', 'Deploying and operating'],
   ['where-the-data-is-and-how-to-back-it-up', 'Deploying and operating'],
@@ -35,19 +27,19 @@ describe('the pages split out of hatch-at-home.md', () => {
 });
 
 describe('the links retargeted when the document was split', () => {
-  const cli = '/apps/hatch/docs/the-hatch-cli-command-by-command';
-  const landing = renderDocs(docPage(DOC_PAGES, 'hatch-at-home')!.body).html;
+  const cli = '/apps/hatch/docs/one-increment-and-the-loop';
+  const gettingStarted = renderDocs(docPage(DOC_PAGES, 'getting-started')!.body).html;
 
   it.each([
     `href="${cli}"`,
     `href="${cli}#one-increment-hatch-work"`,
     `href="${cli}#the-loop-hatch-go-to-work"`,
-  ])('the landing page has %s', (href) => {
-    expect(landing).toContain(href);
+  ])('getting started has %s', (href) => {
+    expect(gettingStarted).toContain(href);
   });
 
-  it('lands them on headings the CLI page has', () => {
-    const { outline } = renderDocs(docPage(DOC_PAGES, 'the-hatch-cli-command-by-command')!.body);
+  it('lands them on headings the page has', () => {
+    const { outline } = renderDocs(docPage(DOC_PAGES, 'one-increment-and-the-loop')!.body);
     for (const [depth, id] of [
       [2, 'one-increment-hatch-work'],
       [2, 'the-loop-hatch-go-to-work'],
@@ -55,6 +47,16 @@ describe('the links retargeted when the document was split', () => {
     ] as const) {
       expect(outline).toContainEqual(expect.objectContaining({ depth, id }));
     }
+  });
+
+  it.each([
+    'one-increment-hatch-work',
+    'the-loop-hatch-go-to-work',
+    'one-pass-in-order',
+    'bounds-timeouts-and-stopping',
+  ])('has %s as an id on exactly one page, and it is the new one', (id) => {
+    const pages = DOC_PAGES.filter((p) => renderDocs(p.body).ids.includes(id)).map((p) => p.slug);
+    expect(pages).toEqual(['one-increment-and-the-loop']);
   });
 });
 

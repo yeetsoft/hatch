@@ -95,7 +95,7 @@ describe('DocsSearch', () => {
     expect(html).not.toContain('role="listbox"');
   });
 
-  it.each(['/docs/the-one-line', '/docs', '/docs/no-such-page'])(
+  it.each(['/docs/getting-started', '/docs', '/docs/no-such-page'])(
     'reads ?q= on %s: the field holds it, the list is open on the first row',
     (path) => {
       const query = term();

@@ -238,6 +238,7 @@ try
         "board" => await new BoardCommands(cli).BoardAsync(rest, cancelling.Token),
         "next" => await new BoardCommands(cli).NextAsync(rest, cancelling.Token),
         "queue" => await new BoardCommands(cli).QueueAsync(rest, cancelling.Token),
+        "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
         "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
@@ -365,7 +366,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "board", "next", "queue", "changelog", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -382,6 +383,8 @@ internal partial class Program
         "  hatch queue                  every card a pass would look at, and why",
         "  hatch queue AER-1            ...under one epic",
         "  hatch queue --mine           ...only your own",
+        "  hatch changelog              what shipped, as markdown - the newest 7 days that shipped something",
+        "  hatch changelog --days 30 --before 2026-09-01 --project AER --json",
         "  hatch show AER-12            the brief, plus its comments",
         "  hatch comments AER-12        the thread alone, without the brief you already have",
         "  hatch start AER-12           move it to \"in progress\"",

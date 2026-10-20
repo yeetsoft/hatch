@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Cli.Tests;
 
@@ -192,7 +193,8 @@ public sealed class LifecycleTests
     [Fact]
     public async Task A_usage_limit_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one()
     {
-        using var h = new Harness();
+        // 4pm in New York: 7:40pm is ahead of the session, whatever hour the suite runs at.
+        using var h = new Harness(clock: new FakeTimeProvider(DateTimeOffset.Parse("2026-09-28T20:00:00+00:00")));
         Board(h);
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);

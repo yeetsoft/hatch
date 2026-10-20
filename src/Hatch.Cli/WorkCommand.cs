@@ -650,7 +650,7 @@ public sealed class WorkCommand(Runtime runtime)
             {
                 owned &= claim.Lost is null;
                 var limit = report?.UsageLimitResetAt is { } resetAt
-                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId)
+                    ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId, report.UsageLimitPassed)
                     : null;
                 var preempted = report is { Preempted: true }
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)

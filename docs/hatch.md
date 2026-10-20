@@ -6540,12 +6540,16 @@ is offered again on the next pass exactly as if it had moved, unless something
 else - a dependency, a playbook, a question - holds it back.
 
 **Neither is a usage limit.** A session that ends because the Claude account it
-ran under hit its usage limit is read from what it said on its way out - the
+ran under hit its usage limit is read first from the session's own stream -
+the `rate_limit_event` window matching the one the sentence named, already in
+the runner's own zone with nothing to parse - and only when that is missing,
+already passed, or silent on that one window does it fall back to what it
+said on its way out - the
 read now covers every spelling a limit comes back under (session, weekly, Opus,
 Sonnet and Fable), as well as the pay-as-you-go phrasing that never says "limit"
 at all (`You're out of usage credits · resets ...`); it handles a dated reset
 given either with "at" or with a bare comma, an hour with no minutes, an unknown
-zone (falls back to UTC rather than giving up), and a reset naming no zone at
+zone (falls back to the runner's own zone rather than giving up), and a reset naming no zone at
 all, read against the runner's own zone rather than falling to the one-hour-away
 treatment. A time with no date is the next occurrence of that clock time after
 the session ended, in the named zone; a limit the session named but whose time
@@ -6573,9 +6577,12 @@ other way round: room left in that window clears
 the wait outright, this same pass, whatever instant the sentence gave; a reset
 instant that disagrees with the one carried in replaces it, in either
 direction; and a probe with no session window at all - or no answer at all -
-touches nothing, leaving the sentence standing. A correction says itself once,
-the same "out of Claude usage until ..." line the sentence itself prints, and
-not again merely because a later probe lands on the same corrected reading.
+touches nothing, leaving the sentence standing. The probe's own instant
+carries no zone of its own, so the correction converts it into the runner's
+own local clock as it replaces the carried one - the same "out of Claude
+usage until ..." line the sentence itself prints is shown in the runner's own
+clock either way. A correction says itself once, and not again merely because
+a later probe lands on the same corrected reading.
 
 **The wait cannot outlast the window.** The reset instant above is only
 ever a guess, and the "next occurrence of that clock time" rule it is
@@ -6589,6 +6596,17 @@ whether or not a probe has said anything to the contrary. A ticket a
 still-spent account refuses costs one session, not the rest of the window;
 the three-in-a-row stall machinery is what catches a spawn that keeps
 being refused.
+
+A session reset further away than its own window is the same guess gone the
+other way. A session never resets more than five hours out, so a sentence with
+no date whose next occurrence is more than the window plus an hour away - a
+`resets 7:40pm` read at 7:41pm, the account's own reset trailing the minute it
+names - is read as *just passed*, not as tomorrow. The wait then ends five
+minutes after the session ended, in the zone the sentence named, and the
+console line, the outcome and the ticket's comment all say that the named reset
+had just passed and when the runner tries again. A dated sentence is taken as
+given, so a weekly limit is unchanged; an undated per-model weekly sentence
+lands here too, which costs one refused spawn every five minutes.
 
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see

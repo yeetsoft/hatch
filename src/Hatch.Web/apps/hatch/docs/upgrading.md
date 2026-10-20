@@ -22,7 +22,7 @@ Download the runner again from the Runner page after an upgrade. The page
 prints the revision it was built from, which is how you can tell whether the
 one on your `PATH` is the one this board expects.
 
-If you run the container runner, add `--profile runner` to the line above:
+If you run [the container runner](the-container-runner), add `--profile runner` to the line above:
 Compose only rebuilds and only restarts the services the profile it was given
 turns on, and without it the runner container would sit on the version you
 started with.

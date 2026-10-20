@@ -5,7 +5,7 @@ namespace Hatch.Cli;
 /// account ran out of usage - everything <see cref="Lifecycle.LeaveAsync"/>
 /// needs to push what it left and write the one comment about it.
 /// </summary>
-public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, string? SessionId);
+public sealed record UsageLimitInfo(DateTimeOffset ResetAt, bool ResetKnown, string? SessionId, bool Passed = false);
 
 /// <summary>
 /// What the board's preemption notice said, when the session ended because a
@@ -297,7 +297,9 @@ public sealed class Lifecycle(Runtime runtime)
     private string UsageLimitBody(
         UsageLimitInfo limit, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
     {
-        var body = limit.ResetKnown
+        var body = limit.Passed
+            ? $"This runner ran out of {runtime.Adapter.DisplayName} usage, and the reset it named had just passed - it expects to resume at {UsageLimit.Clock(limit.ResetAt, known: true)}."
+            : limit.ResetKnown
             ? $"This runner ran out of {runtime.Adapter.DisplayName} usage. It expects to resume at {UsageLimit.Clock(limit.ResetAt, known: true)}."
             : $"This runner ran out of {runtime.Adapter.DisplayName} usage, and the reset time it gave could not be read - "
               + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt, known: false, runtime.Clock)}.";
