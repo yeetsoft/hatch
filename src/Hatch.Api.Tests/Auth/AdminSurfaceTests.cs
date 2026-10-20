@@ -561,6 +561,10 @@ public class AdminSurfaceTests
         // that from being a widening is a second gate the attribute cannot
         // express: the action refuses everyone, key or person, wherever the
         // wall is up. See Hatch.Api.Modules.Hatch.SettingsController.
+        // GetCredential answers the same for any supported agent, and
+        // GetClaudeToken is the older route kept for an older container: both
+        // are cut the same way.
+        "SettingsController.GetCredential",
         "SettingsController.GetClaudeToken",
 
         // The runner the image hands out, cut the same way as the settings
