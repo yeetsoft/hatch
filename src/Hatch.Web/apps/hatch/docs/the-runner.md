@@ -228,8 +228,8 @@ merged. Filing stories in order is not the same as saying they are ordered.
 `hatch answer` walks the open questions serially on purpose: six printed at once
 get answered in aggregate, which is how a wrong assumption gets in.
 
-Every command takes `-h` for what it accepts, and `cli-reference` has each one
-in full.
+Every command takes `-h` for what it accepts, and [CLI
+reference](cli-reference) has each one in full.
 
 ## Coming
 
@@ -238,4 +238,3 @@ Pages this one names that are not written yet:
 - `people-roles-and-keys`
 - `environment-variables`
 - `questions-and-decisions`
-- `cli-reference`
