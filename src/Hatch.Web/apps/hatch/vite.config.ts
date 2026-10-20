@@ -33,7 +33,21 @@ export default defineConfig({
         // Monaco chunk, in particular) that did not themselves change. A tab
         // left open across that deploy then asks for a file that is gone. In
         // a chunk of its own, the helper's name changes only when it does.
-        codeSplitting: { groups: [{ name: 'vite-preload', test: /vite\/preload-helper/ }] },
+        codeSplitting: {
+          groups: [
+            { name: 'vite-preload', test: /vite\/preload-helper/ },
+            // dompurify is used both by the entry (lib/markdown.ts, eager) and
+            // inside mermaid's own bundle (a compatible version, so npm hoists
+            // one copy). Left here, Rolldown inlines it into the entry chunk
+            // and gives every mermaid-side chunk that needs it an import edge
+            // back to the entry's own hashed name - so a deploy that touches
+            // anything in the entry (nearly all of them) renames the mermaid
+            // chunk too, though mermaid itself did not change. A chunk of its
+            // own breaks that: its name moves only when dompurify's own
+            // version does.
+            { name: 'dompurify', test: /node_modules\/dompurify/ },
+          ],
+        },
       },
     },
   },
