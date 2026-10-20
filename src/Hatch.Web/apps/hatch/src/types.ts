@@ -1543,10 +1543,14 @@ export interface Me {
 
 // ---- Settings ----
 
-/** The two settings a Hatch install of its own has. Mirrors HatchSettingsDto. */
+/** The settings a Hatch install of its own has. Mirrors HatchSettingsDto. */
 export interface HatchSettings {
   /** Dots when a token is set, empty when none is - never the token itself. */
   claudeSubscriptionToken: string;
+  /** Dots when a Codex API key is set, empty when none is - never the key itself. */
+  codexApiKey: string;
+  /** Dots when a Grok Build (xAI) API key is set, empty when none is - never the key itself. */
+  xaiApiKey: string;
   /** Whether there is a name here to set at all: false wherever the wall is up,
       because there the name comes from the grant and the field would be a lie. */
   localPersonNameApplies: boolean;
@@ -1554,10 +1558,12 @@ export interface HatchSettings {
   localPersonName: string;
 }
 
-/** An edit to either setting, or both. A field left out is left alone; `''`
-    clears one - the same rule the issues bulk endpoint states. */
+/** An edit to any of the settings, or several. A field left out is left alone;
+    `''` clears one - the same rule the issues bulk endpoint states. */
 export interface HatchSettingsWriteRequest {
   claudeSubscriptionToken?: string;
+  codexApiKey?: string;
+  xaiApiKey?: string;
   localPersonName?: string;
 }
 
