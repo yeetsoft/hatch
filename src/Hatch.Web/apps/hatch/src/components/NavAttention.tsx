@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { attentionLabel, attentionTone } from '../lib/attention';
+import { attentionLabel, attentionTone, closesOnPress } from '../lib/attention';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useAttentionNow } from '../lib/useAttentionNow';
 import { AttentionPanel } from './AttentionPanel';
@@ -57,6 +57,15 @@ export function NavAttention() {
          no Tab handling and no preventDefault anywhere near it. */
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
+      /* A row followed closes it, as `Menu.Item` does: nothing else would, since
+         the link is inside the container (no outside press) and keeps focus (no
+         blur), and on a phone the panel would sit over the page it just loaded.
+         One handler here rather than a callback through every row. The click
+         is not stopped, so the link navigates as it was going to. */
+      onClick={(e) => {
+        const link = (e.target as Element).closest('.hatch-attention-panel a');
+        if (closesOnPress(link as HTMLAnchorElement | null, e.nativeEvent)) setOpen(false);
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape' || !open) return;

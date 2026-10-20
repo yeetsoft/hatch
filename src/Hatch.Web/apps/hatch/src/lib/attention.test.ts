@@ -6,6 +6,7 @@ import {
   attentionTone,
   buildIconTone,
   buildIconWords,
+  closesOnPress,
   conflictEmptyWords,
   deadlockedEmptyWords,
   failingBuildEmptyWords,
@@ -515,5 +516,36 @@ describe('resetWords', () => {
 
   it('is unknown for a time that cannot be read', () => {
     expect(resetWords('not a date', NOW)).toBe('resets at an unknown time');
+  });
+});
+
+describe('closesOnPress', () => {
+  const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+
+  it('closes on a same-tab link', () => {
+    expect(closesOnPress({ href: '/issues/HA-12', target: null }, plain)).toBe(true);
+    expect(closesOnPress({ href: '/issues/HA-12', target: '_self' }, plain)).toBe(true);
+  });
+
+  it('stays open for a link that opens a new tab', () => {
+    expect(closesOnPress({ href: 'https://example.test/pull/1', target: '_blank' }, plain)).toBe(false);
+  });
+
+  it('stays open for a button, which has no link', () => {
+    expect(closesOnPress(null, plain)).toBe(false);
+  });
+
+  it('stays open for an anchor with nowhere to go', () => {
+    expect(closesOnPress({ href: null, target: null }, plain)).toBe(false);
+    expect(closesOnPress({ href: '', target: null }, plain)).toBe(false);
+  });
+
+  it('stays open for a press that opens elsewhere', () => {
+    const link = { href: '/issues/HA-12', target: null };
+    expect(closesOnPress(link, { ...plain, metaKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, ctrlKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, shiftKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, altKey: true })).toBe(false);
+    expect(closesOnPress(link, { ...plain, button: 1 })).toBe(false);
   });
 });
