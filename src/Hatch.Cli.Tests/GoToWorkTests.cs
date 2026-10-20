@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Time.Testing;
 
@@ -1549,7 +1550,13 @@ public sealed class GoToWorkTests
     [Fact]
     public async Task A_probed_reset_that_disagrees_with_the_carried_instant_replaces_it_and_says_so_once()
     {
-        using var h = new Harness();
+        // HA-1107: the probe's resets_at carries no zone of its own - usually
+        // Z - so the printed reading must come out in the runner's own zone,
+        // not the one the probe answered in. A FrozenClock cannot stand in
+        // for the runner here (see the real-time note below), so this is a
+        // LiveZoneClock: real GetUtcNow(), a fixed offset for LocalTimeZone.
+        var offset = TimeSpan.FromHours(-4);
+        using var h = new Harness(clock: new LiveZoneClock(offset));
         OneTicket(h);
 
         var start = DateTimeOffset.UtcNow;
@@ -1573,7 +1580,14 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1"], default));
 
         Assert.Single(fake.Inner.Spawned);
-        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(correctedAt, known: true), StringComparison.Ordinal));
+
+        // A literal built by hand from correctedAt and the fixed offset,
+        // rather than through UsageLimit.Clock(correctedAt, known: true) -
+        // that call reads correctedAt's own carried (UTC) offset and would
+        // say the same thing whether or not the conversion this ticket adds
+        // ever ran.
+        var shownInRunnersZone = correctedAt.ToOffset(offset).ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
+        Assert.Contains(h.Say.Said, l => l.Contains(shownInRunnersZone, StringComparison.Ordinal));
         Assert.DoesNotContain(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
         Assert.Single(h.Say.Said, l => l.Contains("out of Claude usage until", StringComparison.Ordinal));
     }

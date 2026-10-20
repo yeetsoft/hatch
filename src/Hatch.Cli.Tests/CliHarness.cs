@@ -58,3 +58,17 @@ public sealed class FrozenClock(DateTimeOffset now) : TimeProvider
 
     public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.CreateCustomTimeZone("test", now.Offset, "test", "test");
 }
+
+/// <summary>
+/// A clock for a wait that naps against the runtime clock and so cannot take
+/// a <see cref="FrozenClock"/> - its <c>GetUtcNow()</c> runs for real, same as
+/// <see cref="TimeProvider.System"/>, while its <see cref="LocalTimeZone"/>
+/// alone is fixed at a particular offset, the one thing a test needs to put
+/// the runner outside UTC.
+/// </summary>
+public sealed class LiveZoneClock(TimeSpan offset) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => TimeProvider.System.GetUtcNow();
+
+    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.CreateCustomTimeZone("test", offset, "test", "test");
+}
