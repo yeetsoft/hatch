@@ -46,4 +46,19 @@ describe('the docs page styles', () => {
     expect(img['max-width']).toBe('100%');
     expect(img['height']).toBe('auto');
   });
+
+  it('keeps the sidebar sticky on the desk', () => {
+    // declarationsOf merges the @media rule's declarations over the outer
+    // rule's, since both share the selector string - the first match, the
+    // one outside the media query, is the desk rule this checks.
+    const first = docs.find((r) => r.selectors.includes('.hatch-docs-sidebar'));
+    expect(first).toBeDefined();
+    const props: Record<string, string> = {};
+    for (const statement of first!.body.split(';')) {
+      const colon = statement.indexOf(':');
+      if (colon === -1) continue;
+      props[statement.slice(0, colon).trim()] = statement.slice(colon + 1).trim();
+    }
+    expect(props['position']).toBe('sticky');
+  });
 });

@@ -55,10 +55,15 @@ function h2Ids(markdown: string): string[] {
   return ids;
 }
 
-/** The `href="#…"` targets inside the first <nav>…</nav>, or the <details>. */
+/** The `href="#…"` targets inside the outline's own nav - matched by its class
+    directly, since the sidebar renders a <nav> of its own now too, and the
+    outline's is a bare <nav> on the desk but a <nav> nested inside a
+    <details> on a phone. */
 function outlineHrefs(html: string): string[] {
-  const nav = html.slice(html.indexOf('<nav'), html.indexOf('</nav>'));
-  return [...nav.matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
+  const nav = /<nav class="hatch-docs-outline"[^>]*>([\s\S]*?)<\/nav>/.exec(html);
+  if (nav) return [...nav[1].matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
+  const details = /<details class="hatch-docs-outline">([\s\S]*?)<\/details>/.exec(html);
+  return [...(details?.[1] ?? '').matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
 }
 
 describe('DocsPage', () => {
@@ -100,6 +105,19 @@ describe('DocsPage', () => {
       });
     }
 
+    it('orders the sidebar, then the outline, then the article in markup - CSS places them on the desk', () => {
+      const page = DOC_PAGES[0];
+      const html = renderAt(`/docs/${page.slug}`);
+
+      const sidebar = html.indexOf('class="hatch-docs-sidebar"');
+      const outline = html.indexOf('class="hatch-docs-outline"');
+      const article = html.indexOf('class="hatch-docs-body"');
+
+      expect(sidebar).toBeGreaterThanOrEqual(0);
+      expect(sidebar).toBeLessThan(outline);
+      expect(outline).toBeLessThan(article);
+    });
+
     it("outlines the page's ## headings and not the ones inside fenced code", () => {
       const page = DOC_PAGES[0];
       const outline = renderDocs(page.body).outline;
@@ -126,17 +144,25 @@ describe('DocsPage', () => {
         expect(html).toContain('href="/docs"');
         expect(html).not.toContain('hatch-docs-body');
       });
+
+      it(`sits the sidebar beside the not-found message for ${path}`, () => {
+        const html = renderAt(path);
+
+        expect(html).toContain('class="hatch-docs-sidebar"');
+      });
     }
   });
 
-  it('folds the outline into a closed details on a phone, still one nav', () => {
+  // A phone renders two <nav>s now - the sidebar's own, plus the outline's -
+  // where the desk's sidebar and outline are the only two to begin with.
+  it('folds the outline into a closed details on a phone, still two navs', () => {
     const page = DOC_PAGES[0];
     const html = renderAt(`/docs/${page.slug}`, true);
     const outline = renderDocs(page.body).outline;
 
-    expect(html).toContain('<details');
-    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    expect(html).toContain('<details class="hatch-docs-outline">');
+    expect(html).toContain('<details class="hatch-docs-sidebar-phone">');
     expect(outlineHrefs(html)).toEqual(outline.map((entry) => entry.id));
-    expect(html.split('<nav').length - 1).toBe(1);
+    expect(html.split('<nav').length - 1).toBe(2);
   });
 });
