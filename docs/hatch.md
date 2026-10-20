@@ -950,7 +950,8 @@ other's load twice.
 Written only through `PATCH /api/hatch/issues/{key}/wip` with `{ limit }` as a
 string — `""` clears it back to the default, a whole number of one or more
 sets it, anything else is refused with a sentence, and anything but an epic
-is refused with a sentence saying only an epic takes one — by a person and
+or a reflection is refused with a sentence saying only an epic or a
+reflection takes a limit on its children at once — by a person and
 never a key, the same cut as [expedite](#expedite) and
 [express](#pre-approval): see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). Each change writes
