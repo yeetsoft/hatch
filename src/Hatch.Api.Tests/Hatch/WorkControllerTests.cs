@@ -1568,6 +1568,72 @@ public class WorkControllerTests
         Assert.False(work.InReview);
     }
 
+    // ---- HA-1036: AsksReleaseNote ----
+
+    [Fact]
+    public async Task AsksReleaseNote_IsTrueForAParentlessLeafMovingFromImplementationIntoReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a leaf, no parent", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.True(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsTrueForAParentlessEpicsCloseout()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("epic", "an epic, no open children", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.True(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAChild()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the parent", h.InProgress);
+        var issue = await h.FileAsync("task", "a child, otherwise ready to advance", h.InProgress, parentId: parent.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.False(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAMoveIntoAnyOtherColumn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not yet in implementation", h.Todo);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("in progress", work.ToStatus!.Name);
+        Assert.False(work.AsksReleaseNote);
+    }
+
+    [Fact]
+    public async Task AsksReleaseNote_IsFalseForAConflictsDispatch()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "ready for a verdict", h.Review);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(WorkKinds.Conflicts, work.Kind);
+        Assert.False(work.AsksReleaseNote);
+    }
+
     [Fact]
     public async Task Work_StillRefusesTheTerminalNextColumnForAnyOtherColumn()
     {
