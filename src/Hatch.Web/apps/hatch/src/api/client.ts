@@ -308,6 +308,15 @@ export const setOnePr = (key: string, value: 'on' | 'off' | 'inherit') =>
     ...asJson({ value }),
   });
 
+/** Its own route rather than a field on the patch, because the patch carries
+    no field for it - see IssueReleaseNoteController. An empty string clears
+    the note. */
+export const setReleaseNote = (key: string, note: string) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/release-note`, {
+    method: 'PUT',
+    ...asJson({ note }),
+  });
+
 /** The approve press given in advance. Its own route rather than a field on
     the patch, and for the same reason priority has one: writing it is closed
     to an API key, because pre-approval decides which gates the loop may pass

@@ -564,6 +564,8 @@ export interface Issue {
   onePrOwn: boolean | null;
   /** See IssueCard.onePrFrom and IssueDto.OnePrFrom. */
   onePrFrom: string | null;
+  /** See IssueDto.ReleaseNote. */
+  releaseNote: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCard.stalledAt and IssueDto.StalledAt. */
   stalledAt: string | null;
@@ -680,6 +682,7 @@ export type IssueEventKind =
   | 'express_changed'
   | 'pre_approval_changed'
   | 'one_pr_changed'
+  | 'release_note_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
