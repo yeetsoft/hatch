@@ -5,6 +5,7 @@ import { PageHeader } from '@hatch/ui';
 import {
   DOC_PAGES,
   docLinkTarget,
+  docNeighbours,
   docPage,
   docSections,
   hashId,
@@ -103,6 +104,7 @@ function DocsArticle({ page }: { page: DocPage }) {
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
   const doc = useMemo(() => renderedDoc(page), [page]);
+  const { previous, next } = docNeighbours(DOC_PAGES, page.slug);
 
   // On a fresh load, on a hash change, and on moving from one docs page to another
   // - Back included. The route element is the same for every docs page, so
@@ -157,6 +159,20 @@ function DocsArticle({ page }: { page: DocPage }) {
           </nav>
         )}
         <article className="hatch-docs-body" onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: doc.html }} />
+        <nav className="hatch-docs-pager" aria-label="Previous and next">
+          {previous && (
+            <Link className="hatch-docs-pager-link hatch-docs-pager-previous" to={`/docs/${previous.slug}`}>
+              <span className="hatch-docs-pager-label">Previous</span>
+              <span className="hatch-docs-pager-title">{previous.title}</span>
+            </Link>
+          )}
+          {next && (
+            <Link className="hatch-docs-pager-link hatch-docs-pager-next" to={`/docs/${next.slug}`}>
+              <span className="hatch-docs-pager-label">Next</span>
+              <span className="hatch-docs-pager-title">{next.title}</span>
+            </Link>
+          )}
+        </nav>
       </div>
     </div>
   );

@@ -3289,6 +3289,33 @@ input.hatch-inline-title-input {
   font-size: var(--t-label);
 }
 
+.hatch-docs-pager {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-4);
+  border-top: thin solid var(--line);
+}
+
+.hatch-docs-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-docs-pager-next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.hatch-docs-pager-label {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 .hatch-docs-body h2,
 .hatch-docs-body h3,
 .hatch-docs-body h4 {
@@ -3504,6 +3531,16 @@ input.hatch-inline-title-input {
   .hatch-docs-outline summary {
     cursor: pointer;
     font-weight: 600;
+  }
+
+  .hatch-docs-pager {
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+
+  .hatch-docs-pager-next {
+    text-align: left;
+    margin-left: 0;
   }
 }
 

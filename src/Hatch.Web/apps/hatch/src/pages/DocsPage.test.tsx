@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { DOC_PAGES, createSlugger, docPage, docSections, renderDocs } from '../lib/docs';
+import { DOC_PAGES, createSlugger, docNeighbours, docPage, docSections, renderDocs } from '../lib/docs';
 import { DocsPage } from './DocsPage';
 
 // The real sanitizer needs a DOM, which this workspace's tests do not have -
@@ -66,6 +66,17 @@ function outlineHrefs(html: string): string[] {
   return [...(details?.[1] ?? '').matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
 }
 
+/** The `Previous`/`Next` targets inside the pager nav, by the link's own class -
+    not by position, since one side is absent at either end of `DOC_PAGES`. */
+function pagerHrefs(html: string): { previous: string | null; next: string | null } {
+  const side = (which: 'previous' | 'next'): string | null => {
+    const tag = new RegExp(`<a[^>]*class="[^"]*hatch-docs-pager-${which}[^"]*"[^>]*>`).exec(html);
+    if (!tag) return null;
+    return /href="([^"]+)"/.exec(tag[0])?.[1] ?? null;
+  };
+  return { previous: side('previous'), next: side('next') };
+}
+
 describe('DocsPage', () => {
   describe('the landing', () => {
     const html = renderAt('/docs');
@@ -73,6 +84,10 @@ describe('DocsPage', () => {
     it('titles the page Docs, once', () => {
       expect(html).toContain('<h1>Docs</h1>');
       expect(html.split('<h1').length - 1).toBe(1);
+    });
+
+    it('has no pager', () => {
+      expect(html).not.toContain('hatch-docs-pager');
     });
 
     it('lists every section, in docSections order', () => {
@@ -105,17 +120,58 @@ describe('DocsPage', () => {
       });
     }
 
-    it('orders the sidebar, then the outline, then the article in markup - CSS places them on the desk', () => {
+    it('orders the sidebar, then the outline, then the article, then the pager in markup - CSS places them on the desk', () => {
       const page = DOC_PAGES[0];
       const html = renderAt(`/docs/${page.slug}`);
 
       const sidebar = html.indexOf('class="hatch-docs-sidebar"');
       const outline = html.indexOf('class="hatch-docs-outline"');
       const article = html.indexOf('class="hatch-docs-body"');
+      const pager = html.indexOf('class="hatch-docs-pager"');
 
       expect(sidebar).toBeGreaterThanOrEqual(0);
       expect(sidebar).toBeLessThan(outline);
       expect(outline).toBeLessThan(article);
+      expect(article).toBeLessThan(pager);
+    });
+
+    it('has a Next to the second page and no Previous, at the first page', () => {
+      const html = renderAt(`/docs/${DOC_PAGES[0].slug}`);
+      const { previous, next } = pagerHrefs(html);
+
+      expect(previous).toBeNull();
+      expect(next).toBe(`/docs/${DOC_PAGES[1].slug}`);
+    });
+
+    it('has a Previous to the second-to-last page and no Next, at the last page', () => {
+      const last = DOC_PAGES[DOC_PAGES.length - 1];
+      const secondToLast = DOC_PAGES[DOC_PAGES.length - 2];
+      const html = renderAt(`/docs/${last.slug}`);
+      const { previous, next } = pagerHrefs(html);
+
+      expect(previous).toBe(`/docs/${secondToLast.slug}`);
+      expect(next).toBeNull();
+    });
+
+    it("crosses into the next section's first page, at a section's last page", () => {
+      const sections = docSections(DOC_PAGES);
+      const lastOfFirstSection = sections[0].pages[sections[0].pages.length - 1];
+      const firstOfSecondSection = sections[1].pages[0];
+      const html = renderAt(`/docs/${lastOfFirstSection.slug}`);
+
+      expect(pagerHrefs(html).next).toBe(`/docs/${firstOfSecondSection.slug}`);
+    });
+
+    it('matches docNeighbours for every page', () => {
+      for (const page of DOC_PAGES) {
+        const { previous, next } = docNeighbours(DOC_PAGES, page.slug);
+        const html = renderAt(`/docs/${page.slug}`);
+
+        expect(pagerHrefs(html)).toEqual({
+          previous: previous ? `/docs/${previous.slug}` : null,
+          next: next ? `/docs/${next.slug}` : null,
+        });
+      }
     });
 
     it("outlines the page's ## headings and not the ones inside fenced code", () => {
@@ -143,6 +199,7 @@ describe('DocsPage', () => {
         expect(html).toContain('class="hatch-docs"');
         expect(html).toContain('href="/docs"');
         expect(html).not.toContain('hatch-docs-body');
+        expect(html).not.toContain('hatch-docs-pager');
       });
 
       it(`sits the sidebar beside the not-found message for ${path}`, () => {
@@ -153,9 +210,10 @@ describe('DocsPage', () => {
     }
   });
 
-  // A phone renders two <nav>s now - the sidebar's own, plus the outline's -
-  // where the desk's sidebar and outline are the only two to begin with.
-  it('folds the outline into a closed details on a phone, still two navs', () => {
+  // A phone renders three <nav>s now - the sidebar's own, the outline's, and the
+  // pager's - where the desk's sidebar, outline and pager are the only three to
+  // begin with.
+  it('folds the outline into a closed details on a phone, still three navs', () => {
     const page = DOC_PAGES[0];
     const html = renderAt(`/docs/${page.slug}`, true);
     const outline = renderDocs(page.body).outline;
@@ -163,6 +221,6 @@ describe('DocsPage', () => {
     expect(html).toContain('<details class="hatch-docs-outline">');
     expect(html).toContain('<details class="hatch-docs-sidebar-phone">');
     expect(outlineHrefs(html)).toEqual(outline.map((entry) => entry.id));
-    expect(html.split('<nav').length - 1).toBe(2);
+    expect(html.split('<nav').length - 1).toBe(3);
   });
 });
