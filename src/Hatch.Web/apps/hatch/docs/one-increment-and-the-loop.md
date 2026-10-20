@@ -417,7 +417,6 @@ section.
 
 Pages this one names that are not written yet:
 
-- `watching-the-loop`
 - `flow-wip-and-the-battery`
 - `what-a-session-is-told`
 - `the-container-runner`
