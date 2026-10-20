@@ -1198,6 +1198,13 @@ public record ReviewDto(
 /// an agent's to fix, so a row here is a person's, every time. Defaults to null
 /// so an older client still reads.
 /// </param>
+/// <param name="Deadlocked">
+/// Every issue the work queue marks deadlocked - a ring of dependency edges,
+/// or a wait on a parent's gate, that can never clear without a person - judged
+/// board-wide and listed in the queue's own order, with the queue's own
+/// sentence. Empty, not null, when there is none, on every board shape. Defaults
+/// to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1209,7 +1216,8 @@ public record AttentionDto(
     IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null,
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
-    IReadOnlyList<LandingHeldDto>? LandingHeld = null);
+    IReadOnlyList<LandingHeldDto>? LandingHeld = null,
+    IReadOnlyList<DeadlockedDto>? Deadlocked = null);
 
 /// <summary>
 /// One runner out of Claude usage, for the top of the attention panel.
@@ -1262,6 +1270,13 @@ public record ApprovedWaitingDto(string Key, string Title, string Type, string? 
 /// </summary>
 /// <param name="Sentence">The judge's own words for why it is held.</param>
 public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One issue the work queue marks deadlocked: waiting, directly or through a
+/// chain, on something that is itself waiting on it.
+/// </summary>
+/// <param name="Sentence">The queue's own words, starting <c>deadlocked - </c>.</param>
+public record DeadlockedDto(string Key, string Title, string Type, string Sentence);
 
 // ---- The board ----
 
