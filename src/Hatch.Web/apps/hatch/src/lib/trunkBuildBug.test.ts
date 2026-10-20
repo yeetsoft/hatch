@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bugRequest, defaultBugFields, fileBug } from './trunkBuildBug';
+import { bugRequest, defaultBugFields, fileBug, loadBugChoices } from './trunkBuildBug';
 import type { BugFields } from './trunkBuildBug';
-import type { Issue, Status } from '../types';
+import type { AssigneeDirectory, Issue, Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
   id,
@@ -109,5 +109,37 @@ describe('fileBug', () => {
     const result = await fileBug(9, fields, post);
 
     expect(result).toEqual({ ok: false, error: 'no project bound to this repository' });
+  });
+});
+
+describe('loadBugChoices', () => {
+  const DIRECTORY: AssigneeDirectory = { me: null, assignees: [] };
+
+  it('resolves ok with the columns and the directory', async () => {
+    const result = await loadBugChoices(async () => BOARD, async () => DIRECTORY);
+
+    expect(result).toEqual({ ok: true, statuses: BOARD, directory: DIRECTORY });
+  });
+
+  it('still resolves ok, with no directory, when only the directory read fails', async () => {
+    const result = await loadBugChoices(
+      async () => BOARD,
+      async () => {
+        throw new Error('GET /api/hatch/assignees failed: 500 Internal Server Error');
+      },
+    );
+
+    expect(result).toEqual({ ok: true, statuses: BOARD, directory: null });
+  });
+
+  it('resolves, rather than rejects, with the sentence when the columns cannot be read', async () => {
+    const result = await loadBugChoices(
+      async () => {
+        throw new Error('GET /api/hatch/statuses failed: 503 Service Unavailable');
+      },
+      async () => DIRECTORY,
+    );
+
+    expect(result).toEqual({ ok: false, error: 'GET /api/hatch/statuses failed: 503 Service Unavailable' });
   });
 });

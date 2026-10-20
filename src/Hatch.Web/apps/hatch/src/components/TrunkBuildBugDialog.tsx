@@ -3,7 +3,7 @@ import { Button, Field, Modal } from '@hatch/ui';
 import { fileTrunkBuildBug, getAssignees, getStatuses } from '../api/client';
 import { boardColumns } from '../lib/columns';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { defaultBugFields, fileBug, type BugFields } from '../lib/trunkBuildBug';
+import { defaultBugFields, fileBug, loadBugChoices, type BugFields } from '../lib/trunkBuildBug';
 import { ExpressControl } from './ExpressControl';
 import { PriorityControl } from './PriorityControl';
 import type { AssigneeDirectory, Issue, Status } from '../types';
@@ -47,11 +47,17 @@ export function TrunkBuildBugDialog({
     setSaving(false);
     setFields(defaultBugFields(null));
     let alive = true;
-    Promise.all([getStatuses(), getAssignees().then((d) => d, () => null)]).then(([ss, dir]) => {
+    // A failed column read lands in `error`, shown under the still-disabled
+    // form, so the dialog says why it cannot file rather than sitting idle.
+    void loadBugChoices(getStatuses, getAssignees).then((loaded) => {
       if (!alive) return;
-      setStatuses(ss);
-      setDirectory(dir);
-      setFields(defaultBugFields(ss));
+      if (!loaded.ok) {
+        setError(loaded.error);
+        return;
+      }
+      setStatuses(loaded.statuses);
+      setDirectory(loaded.directory);
+      setFields(defaultBugFields(loaded.statuses));
     });
     return () => {
       alive = false;
