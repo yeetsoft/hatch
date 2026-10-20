@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Hatch.Cli;
 
 /// <summary>The codex CLI, behind <see cref="IAgentAdapter"/>.</summary>
-public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
+public sealed class CodexAdapter(string? configured = null, string? path = null) : IAgentAdapter
 {
     /// <summary>The binary <see cref="CanSpawn"/> found, and null until it has.</summary>
     private string? _bin;
@@ -25,7 +25,7 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
             return true;
         }
 
-        if (!TryFind(configured, out var found, out refusal)) return false;
+        if (!TryFind(configured, path, out var found, out refusal)) return false;
 
         _bin = found;
         return true;
@@ -253,7 +253,7 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
             ? value.GetString()
             : null;
 
-    private static bool TryFind(string? configured, out string bin, out string refusal)
+    private static bool TryFind(string? configured, string? path, out string bin, out string refusal)
     {
         refusal = "";
 
@@ -267,7 +267,7 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
         }
 
         bin = "codex";
-        if (Reach.Find("codex", Environment.GetEnvironmentVariable("PATH")) is { } found)
+        if (Reach.Find("codex", path ?? Environment.GetEnvironmentVariable("PATH")) is { } found)
         {
             bin = found;
             return true;
