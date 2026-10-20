@@ -1793,6 +1793,14 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// for this transition. Null for a project that is not repo-sourced, or for
 /// one where no good copy was found at all.
 /// </param>
+/// <param name="AsksReleaseNote">
+/// True where this dispatch is the one HA-659 means by a release note being
+/// due: the issue has no parent, the dispatch is not a hop, <paramref name="Kind"/>
+/// is <see cref="WorkKinds.Advance"/>, and it moves into
+/// <c>Columns.AwaitingReview</c> - a parentless leaf's own move into review,
+/// or a parentless epic's closeout. False for a child, whose release note is
+/// its story's or epic's to write, and false for any other dispatch.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1819,7 +1827,8 @@ public record WorkDto(
     string? BranchTitle = null,
     string? LastCheckFindings = null,
     string? FailStatusName = null,
-    PlaybookFileReferenceDto? PlaybookFile = null);
+    PlaybookFileReferenceDto? PlaybookFile = null,
+    bool AsksReleaseNote = false);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
