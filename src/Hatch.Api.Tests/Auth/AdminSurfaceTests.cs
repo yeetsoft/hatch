@@ -339,6 +339,11 @@ public class AdminSurfaceTests
         // see OvernightController.PostSeen.
         "OvernightController.PostSeen",
 
+        // What shipped, a window at a time - Hatch-scoped and open to a
+        // person the same way OvernightController's read is. See
+        // ChangelogController.
+        "ChangelogController.GetChangelog",
+
         // Playbooks are guarded twice over. Reading one is Hatch-scoped like
         // the rest; writing one names no scope at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its

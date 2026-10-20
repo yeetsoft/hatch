@@ -2567,6 +2567,45 @@ public record OvernightRowDto(
     DateTimeOffset LandedAt,
     int DescendantCount);
 
+// ---- Changelog ----
+
+/// <summary>
+/// The newest window of days that shipped something - see
+/// <c>Changelog.ResolveWindow</c> for how the window is cut.
+/// </summary>
+/// <param name="Days">Newest day first; empty when nothing has ever closed in range.</param>
+/// <param name="HasOlder">Whether a day older than <c>Days</c>' oldest exists at all.</param>
+/// <param name="Oldest">That oldest day's own date, as <c>?before=</c> takes it; null when <c>Days</c> is empty.</param>
+/// <param name="Months">Every closed month, newest first - not only the window's.</param>
+public record ChangelogDto(
+    IReadOnlyList<ChangelogDayDto> Days,
+    bool HasOlder,
+    string? Oldest,
+    IReadOnlyList<ChangelogMonthDto> Months);
+
+/// <summary>One day's worth of closes - every parentless issue that closed that day, split in two.</summary>
+/// <param name="Date">That day, in UTC, as <c>yyyy-MM-dd</c>.</param>
+/// <param name="Features">The epics that closed that day.</param>
+/// <param name="Fixes">Every other parentless issue that closed that day - stories, bugs, tasks.</param>
+public record ChangelogDayDto(
+    string Date,
+    IReadOnlyList<ChangelogEntryDto> Features,
+    IReadOnlyList<ChangelogEntryDto> Fixes);
+
+/// <summary>One parentless, closed issue, as a day draws it.</summary>
+/// <param name="DescendantCount">Every issue below this one, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
+public record ChangelogEntryDto(
+    string Key,
+    string Title,
+    string Type,
+    string ProjectKey,
+    string? ReleaseNote,
+    DateTimeOffset ClosedAt,
+    int DescendantCount);
+
+/// <summary>One calendar month and how many issues closed in it - the jump control's own count.</summary>
+public record ChangelogMonthDto(string Month, int Count);
+
 // ---- Runners ----
 
 /// <summary>
