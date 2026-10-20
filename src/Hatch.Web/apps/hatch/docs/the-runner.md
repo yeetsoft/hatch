@@ -2,7 +2,7 @@
 title: The runner
 section: Running agents
 order: 10
-summary: Getting the runner onto your machine, pointing it at a board, and where its settings and its name live.
+summary: Getting the runner onto your machine, pointing it at a board, where its settings and its name live, and the commands that read and drive the board by hand.
 ---
 
 The board is a board; the **runner** is what works the tickets. It is one
@@ -144,6 +144,93 @@ issue or a paste. `scripts/.env` is git-ignored for that reason, and the
 sight. The per-user file sits outside every repository. The
 [CLAUDE.md block](the-claudemd-block) tells an agent the same.
 
+## Reading the board, spending nothing
+
+Only `work`, `go-to-work` and `do-my-work` need a checkout or a workspace to
+clone into. Everything here is one request and a sentence about the answer, so
+`hatch board` from anywhere is the ordinary case.
+
+```
+hatch board                       the columns, and how many cards in each
+hatch queue                       every card a pass would look at, in the order it looks
+hatch queue AER-1                 ...under one epic
+hatch queue --mine                ...only your own
+hatch next                        top workable card of "todo"
+hatch next "in progress"          ...or of any column
+hatch show AER-12                 the brief, plus its comments
+hatch comments AER-12             the comments, without the brief
+hatch questions                   everything waiting on an answer
+hatch questions AER-12            ...or just this ticket's
+hatch changelog                   what shipped, as markdown
+hatch changelog --days 30 --before 2026-09-01 --project AER --json
+```
+
+`hatch queue` is the dry run for the loop, and the answer to "why did it not
+pick up the ticket I meant": each line is a key, a type, a column, and either
+the reason the pass would fold past it or the transition it is clear for. It
+spawns nothing and writes nothing. With `--mine` it shows what a `--mine` pass
+would take, and folds past everything else, naming whose it is. An empty board
+says so in a sentence rather than printing a blank line: "there is nothing" and
+"something went wrong and printed nothing" look identical otherwise.
+
+`hatch changelog` prints a heading per day and a bullet per feature, with an
+*Also* list of that day's fixes. `--days <n>` is the newest *n* days that
+shipped something, not the last *n* calendar days; seven by default. `--before`
+moves the window back to end before a date, `--project` narrows it to one key
+and refuses a key nobody has, and `--json` prints the endpoint's own answer and
+nothing else. A window with nothing in it prints one sentence saying so.
+
+Columns are found by name rather than by id, on the letters and digits alone,
+so `todo` reaches the column the board calls `To Do`. `hatch next` takes the
+same.
+
+## Driving a ticket by hand
+
+```
+hatch start AER-12                move it to "in progress"
+hatch move AER-12 todo            ...or to any non-terminal column
+hatch comment AER-12 "sha abc123 on branch aer-12-thing"
+hatch pr AER-12                   where it is being reviewed
+hatch pr AER-12 https://...       ...or say where, having opened one
+hatch pr AER-12 --clear           ...or take it off the one it has
+hatch landed AER-12 [<sha>] [--repo <path>]    on a project that lands on the trunk, the sha it reached
+hatch depends AER-12              what it waits on, and what waits on it
+hatch depends AER-13 AER-12       AER-13 waits on AER-12
+hatch depends AER-13 --remove AER-12        ...no longer
+hatch one-pr AER-5                whether the story's tasks share its branch and one PR
+hatch one-pr AER-5 on             ...turn it on for this story (or off, or inherit)
+hatch ask AER-12 "how should retries be scoped?"     --recommend "Per-node: one budget per node, so a slow node cannot starve"     --option "Global: one budget for the drain, simpler to reason about"
+hatch verdict AER-12 pass|fail ["findings"]
+hatch answer                      answer the open questions, one at a time, here
+hatch api GET /api/hatch/issues?statusId=2
+hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
+```
+
+`hatch ask` is for a choice between things you can name: each `--option`
+becomes something the operator presses, and `--recommend` is the one you would
+take. One question a call, so each can be answered on its own, and then stop:
+an open question blocks the ticket from being dispatched at all (see
+`questions-and-decisions`).
+
+`hatch verdict` records a check session's own verdict, and a person rarely
+types it. Anything but `pass` or `fail` is refused before a request is made.
+
+`hatch landed` is for a project that lands on the trunk, where there is no pull
+request to record. It records the sha the work reached the trunk at, in this
+checkout's origin remote, at `<sha>` or `HEAD`; a sha not on the trunk is
+refused before anything is sent.
+
+`hatch depends` with one key reads: what that issue waits on, and what waits on
+it. With two it writes an edge, and an edge gates one move, the one into the
+column where the code gets written. It clears when the issue it names is
+merged. Filing stories in order is not the same as saying they are ordered.
+
+`hatch answer` walks the open questions serially on purpose: six printed at once
+get answered in aggregate, which is how a wrong assumption gets in.
+
+Every command takes `-h` for what it accepts, and `cli-reference` has each one
+in full.
+
 ## Coming
 
 Pages this one names that are not written yet:
@@ -153,3 +240,5 @@ Pages this one names that are not written yet:
 - `watching-the-loop`
 - `people-roles-and-keys`
 - `environment-variables`
+- `questions-and-decisions`
+- `cli-reference`

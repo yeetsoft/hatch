@@ -5,18 +5,6 @@ order: 90
 summary: Every `hatch` command, what it does, and what it costs to run.
 ---
 
-Everything below runs against the board you pointed it at with `hatch config`.
-Only `work` and `go-to-work` need a checkout or a workspace to clone into — the
-one you are standing in, one named with `--repo` or `HATCH_REPOS`, or
-`--workspace`/`HATCH_WORKSPACE` to clone what is missing — and the rest are one
-request and a sentence about the answer, so `hatch board` from anywhere is the
-ordinary case.
-
-```
-hatch --help                 every command, from the program itself
-hatch <command> -h           ...and what one of them takes
-```
-
 ## One increment: `hatch work`
 
 Asks the board for a ticket, claims it, spawns one headless `claude` session
@@ -265,52 +253,6 @@ so that a session never has to work out its own base:
 The practical consequence: work that matters is work that is committed. Do not
 leave something half-finished in the tree and then start the loop in the same
 checkout.
-
-## Reading the board, spending nothing
-
-```
-hatch board                       the columns, and how many cards in each
-hatch queue                       every card a pass would look at, in the order it looks
-hatch queue AER-1                 ...under one epic
-hatch next                        top workable card of "todo"
-hatch next "in progress"          ...or of any column
-hatch show AER-12                 the brief, plus its comments
-hatch comments AER-12             the comments, without the brief
-hatch questions                   everything waiting on an answer
-hatch questions AER-12            ...or just this ticket's
-```
-
-`hatch queue` is the dry run for the loop, and the answer to "why did it not
-pick up the ticket I meant": each line is a key, a type, a column, and either
-the reason the pass would fold past it or the transition it is clear for. It
-spawns nothing and writes nothing. An empty board says so in a sentence rather
-than printing a blank line — "there is nothing" and "something went wrong and
-printed nothing" look identical otherwise.
-
-Columns are found by name rather than by id, on the letters and digits alone,
-so `todo` reaches the column the board calls `To Do`.
-
-## Driving a ticket by hand
-
-```
-hatch start AER-12                move it to "in progress"
-hatch move AER-12 todo            ...or to any non-terminal column
-hatch comment AER-12 "sha abc123 on branch aer-12-thing"
-hatch pr AER-12                   where it is being reviewed
-hatch pr AER-12 https://...       ...or say where, having opened one
-hatch pr AER-12 --clear           ...or take it off the one it has
-hatch landed AER-12 [<sha>] [--repo <path>]    ...or, on a project that lands on the trunk, the sha it reached
-hatch depends AER-13 AER-12       AER-13 waits on AER-12
-hatch depends AER-13 --remove AER-12        ...no longer
-hatch one-pr AER-5                whether the story's tasks share its branch and one PR
-hatch one-pr AER-5 on             ...turn it on for this story (or off, or inherit)
-hatch answer                      answer the open questions, one at a time, here
-hatch api GET /api/hatch/issues?statusId=2
-hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
-```
-
-`hatch answer` walks the open questions serially on purpose: six printed at once
-get answered in aggregate, which is how a wrong assumption gets in.
 
 ## Where the prompt comes from
 
