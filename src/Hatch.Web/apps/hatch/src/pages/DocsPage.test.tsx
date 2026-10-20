@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '@hatch/ui';
-import { DOC_PAGES, createSlugger, docNeighbours, docPage, docSections, renderDocs } from '../lib/docs';
+import { CHANGELOG_LINK, DOC_PAGES, createSlugger, docNeighbours, docPage, docSections, renderDocs } from '../lib/docs';
 import { DocsPage } from './DocsPage';
 
 // The real sanitizer needs a DOM, which this workspace's tests do not have -
@@ -112,6 +112,18 @@ describe('DocsPage', () => {
         expect(html).toContain(escapeText(page.title));
         expect(html).toContain(escapeText(page.summary));
       }
+    });
+
+    it('leads Reference with Changelog, ahead of its first real page', () => {
+      const sections = docSections(DOC_PAGES);
+      const reference = sections.find((s) => s.section === 'Reference');
+      expect(reference).toBeDefined();
+
+      const changelog = html.indexOf(`href="${CHANGELOG_LINK.to}"`);
+      const firstPage = html.indexOf(`href="/docs/${reference!.pages[0].slug}"`);
+      expect(changelog).toBeGreaterThan(-1);
+      expect(changelog).toBeLessThan(firstPage);
+      expect(html).toContain(`>${CHANGELOG_LINK.title}<`);
     });
   });
 

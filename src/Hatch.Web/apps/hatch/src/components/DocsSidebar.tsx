@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { DocsSearch } from './DocsSearch';
-import { DOC_PAGES, docSections } from '../lib/docs';
+import { CHANGELOG_LINK, DOC_PAGES, docSections } from '../lib/docs';
 import { usePhone } from '../lib/viewport';
 
 /** The docs sidebar: a search field, a link back to the landing, then every
@@ -23,6 +23,11 @@ export function DocsSidebar() {
         <details key={section} open>
           <summary>{section}</summary>
           <ul className="hatch-docs-sidebar-list">
+            {section === 'Reference' && (
+              <li>
+                <NavLink to={CHANGELOG_LINK.to}>{CHANGELOG_LINK.title}</NavLink>
+              </li>
+            )}
             {pages.map((page) => (
               <li key={page.slug}>
                 <NavLink to={`/docs/${page.slug}`}>{page.title}</NavLink>

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { DOC_PAGES, docSections } from '../lib/docs';
+import { CHANGELOG_LINK, DOC_PAGES, docSections } from '../lib/docs';
 import { DocsSidebar } from './DocsSidebar';
 
 const state = vi.hoisted(() => ({ phone: false }));
@@ -67,6 +67,18 @@ describe('DocsSidebar', () => {
 
     expect(html).toContain('<details class="hatch-docs-sidebar-phone">');
     expect([...html.matchAll(/<details[^>]*\sopen/g)].length).toBe(sections.length);
+  });
+
+  it('leads Reference with Changelog, ahead of its first real page', () => {
+    const html = renderAt(`/docs/${current.slug}`);
+    const reference = sections.find((s) => s.section === 'Reference');
+    expect(reference).toBeDefined();
+
+    const changelog = html.indexOf(`href="${CHANGELOG_LINK.to}"`);
+    const firstPage = html.indexOf(`href="/docs/${reference!.pages[0].slug}"`);
+    expect(changelog).toBeGreaterThan(-1);
+    expect(changelog).toBeLessThan(firstPage);
+    expect(html).toContain(`>${CHANGELOG_LINK.title}<`);
   });
 
   it('puts the search field ahead of the Docs home link, on the desk and inside the phone fold', () => {

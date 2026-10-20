@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { PageHeader, useTheme } from '@hatch/ui';
 import {
+  CHANGELOG_LINK,
   DOC_PAGES,
   docLinkTarget,
   docNeighbours,
@@ -119,6 +120,11 @@ function DocsLanding() {
             <section key={section}>
               <h2>{section}</h2>
               <ul className="hatch-docs-landing-list">
+                {section === 'Reference' && (
+                  <li>
+                    <Link to={CHANGELOG_LINK.to}>{CHANGELOG_LINK.title}</Link>
+                  </li>
+                )}
                 {pages.map((page) => (
                   <li key={page.slug}>
                     <Link to={`/docs/${page.slug}`}>{page.title}</Link>
