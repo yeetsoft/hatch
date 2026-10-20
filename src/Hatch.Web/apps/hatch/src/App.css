@@ -5002,6 +5002,19 @@ button.hatch-option.chosen {
   gap: var(--sp-3);
 }
 
+.hatch-changelog-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-5);
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-changelog-older {
+  margin-top: var(--sp-5);
+}
+
 .hatch-changelog-day + .hatch-changelog-day {
   margin-top: var(--sp-5);
 }
