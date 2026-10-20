@@ -61,3 +61,53 @@ The hops the board makes are:
   and would merge cleanly, goes into the column ticked **Merges PR**.
 - **Close** — a pre-approved parent in review with every child done goes into
   the first Done column to its right.
+
+## Column flags
+
+A column's behaviour is a set of flags, ticked on the **Statuses** screen.
+There are nine, and a column carries whichever of them it needs.
+
+- **Done column** — landing here means the work shipped. Nothing is dispatched
+  into one, it stamps the issue's closed time, and a dependency waits on it.
+  The stock Done column ships with it ticked. A person or a key may tick it,
+  and it is refused while **Protected** or **Merges PR** is ticked on the
+  column.
+- **Deferred** — parked work. A Deferred column is not drawn on the board and
+  has no drop target; the issue page's status bar is the only way in. No
+  session starts work there, and the rollup leaves it out of every total. No
+  stock column ships with it, any number of columns may carry it, and a person
+  or a key may tick it. It is refused while **Protected** or **Merges PR** is
+  ticked.
+- **WIP** — whether a story, bug or epic standing in the column counts toward
+  the limits in the WIP limits card above the table. In Progress and In Review
+  ship with it ticked, and only a person may tick it. A tick left on a
+  Deferred or Done column is ignored. An upgrade ticks the two only where the
+  board still has columns of those names.
+- **Express skips** — an express issue standing here with no unanswered
+  question is carried to the next column with no session. The Done column is
+  never entered, and the flag says nothing about whose column anything is.
+  Backlog ships with it ticked, on a board that is still exactly the stock
+  seven. Only a person may tick it.
+- **Parent pulls** — a child standing here is carried to the next column with
+  no session while its parent stands in the column where code gets written.
+  Backlog ships with it ticked. Only a person may tick it.
+- **Agent files here** — an issue filed by a program is born in this column
+  instead of the leftmost one. Backlog ships with it ticked. Only a person may
+  tick it, one column at a time: ticking it unticks the old one. A Deferred or
+  Done column is refused. With none ticked, agent-filed issues are born
+  leftmost.
+- **Code written here** — the column where code gets written. A dependency
+  holds the move into it, a story's open tasks hold the move out of it, and
+  **Parent pulls** reads the parent's position against it. No stock column is
+  seeded with it ticked. Only a person may tick it, one column at a time, and
+  a Deferred or Done column is refused. With none ticked, Hatch uses the
+  column just left of review, which is In Progress on the stock board.
+- **Protected** — only an owner or approver of the issue's project may move
+  work into this column by hand: never a key, never a hop, never a dispatch.
+  No stock column ships with it. Only a person may tick it, never a key. A
+  Deferred or Done column is refused, and it cannot be unticked while **Merges
+  PR** is ticked.
+- **Merges PR** — the runner merges an issue's pull request once it stands in
+  this column, current and green, with no session. No stock column ships with
+  it. Only a person may tick it, never a key. It needs **Protected** ticked
+  first, and a Deferred or Done column is refused.
