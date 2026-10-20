@@ -174,3 +174,18 @@ and [the loop, `hatch go-to-work`](the-hatch-cli-command-by-command#the-loop-hat
 which runs increments back to back. How the binary gets onto a machine and finds
 its board is in
 [getting the runner and pointing it at the board](getting-the-runner-and-pointing-it-at-the-board).
+
+## What to read next
+
+- [Welcome](welcome), for what Hatch is and the one rule behind it, if you want that first.
+- [How work flows](how-work-flows), for a ticket's path across the board, end to end (until `the-lifecycle-of-a-ticket` replaces it).
+- [The hatch CLI, command by command](the-hatch-cli-command-by-command), for every command, flag and exit code the runner has.
+- [Putting a front door on it](putting-a-front-door-on-it), for signing in and running this somewhere more than one person reaches.
+- [Letting the loop merge for you](letting-the-loop-merge-for-you), for what has to be true before an approved pull request merges with nobody watching.
+- [Hatch on your phone](hatch-on-your-phone), for installing it as an app, and what it can and cannot do there.
+- [The CLAUDE.md block](the-claudemd-block), for the block to paste into this repository's own `CLAUDE.md` so an agent can reach the board.
+
+## Coming
+
+- [The board and its columns](the-board-and-its-columns)
+- `the-lifecycle-of-a-ticket`
