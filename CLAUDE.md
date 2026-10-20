@@ -12,7 +12,7 @@ where work is described, and it is reachable programmatically — so a link to a
 ticket is a complete instruction, and the ticket is where the answer goes back.
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`,
+`queue`, `changelog`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`,
 `depends`, `one-pr`, `ask`, `questions`, `answer`, `config`, `work`,
 `go-to-work`, `do-my-work`, and `api` for everything else. It finds a column
 by name rather than by id, on the letters and digits alone, so `todo` reaches
