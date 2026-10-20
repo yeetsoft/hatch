@@ -37,7 +37,8 @@ hatch work --workspace /clones           clone what the board binds, into /clone
 ```
 
 - `--dry-run` claims nothing, spawns nothing and clones nothing, even where a
-  workspace is set. It beats `-i`.
+  workspace is set, and prints the prompt a session would be handed ([what a
+  session is told](what-a-session-is-told)). It beats `-i`.
 - `-i` runs the session in your terminal instead of headless. There is no
   readout then, since the terminal is the session's.
 - `--quiet` prints nothing until the increment is finished.
