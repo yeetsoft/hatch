@@ -176,7 +176,7 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
    `claude` can), the loop asks it, at most every two minutes and after an
    increment, so the bars are the account's and not the last session's.
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
-   and reads back what **Runners** would like it to do: paused, stopping, a
+   and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
    (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
    This is the one moment no claim is held.
@@ -254,7 +254,7 @@ to reach for from another terminal or another machine: with no pid to find and
 no signal that could land mid-push, `touch /tmp/stop` ends the loop after the
 increment in flight.
 
-The same bounds are controls on **Runners**, and a value set there is folded
+The same bounds are controls on **Agents → Runners**, and a value set there is folded
 in on the next heartbeat, including being cleared (*Watching the loop*).
 
 **Ctrl-C** lets go of the claim on the way out, prints the night, and exits 0
@@ -268,7 +268,7 @@ Other things end a run without a bound having been reached:
 ```
 three increments in a row failed        whatever is broken is broken for every ticket
 the workspace could not be reset        every ticket after it would be built on the wrong tree
-the board asked this runner to stop     the Runners page, mid-night
+the board asked this runner to stop     the Agents → Runners page, mid-night
 there is no agent CLI to spawn          nothing was ever going to run
 the keyboard asked (s)                  after the increment in flight
 a --mine pass the board refused         the key belongs to nobody
@@ -419,4 +419,3 @@ the prompt section by section.
 Pages this one names that are not written yet:
 
 - `flow-wip-and-the-battery`
-- `the-container-runner`
