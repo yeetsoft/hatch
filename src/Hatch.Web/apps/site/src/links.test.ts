@@ -33,7 +33,7 @@ function isOwnFile(ref: string): boolean {
 
 const fileOf = (path: string): string => (path.endsWith('/') ? `${path.slice(1)}index.html` : path.slice(1))
 
-describe.each(['index.html', '404.html', 'docs/index.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
+describe.each(['index.html', '404.html', 'docs/index.html', 'docs/getting-started/index.html', 'setup/index.html'])('%s', (file: string) => {
   let html: string
   beforeAll(() => {
     html = withoutComments(site.read(file))
