@@ -89,20 +89,21 @@ public interface IUsageProbe
 /// <summary>
 /// Picks the <see cref="ISessionRunner"/> an agent id names - <c>claude</c>
 /// behind <see cref="ClaudeAdapter"/>, <c>codex</c> behind
-/// <see cref="CodexAdapter"/> and <c>grok</c> behind
-/// <see cref="GrokAdapter"/>, each wrapped in the generic
-/// <see cref="AgentSessionRunner"/>. This is what makes <c>HATCH_AGENT</c>
-/// and <c>--agent</c> refuse an unknown id before anything is spawned.
+/// <see cref="CodexAdapter"/>, <c>grok</c> behind <see cref="GrokAdapter"/>
+/// and <c>ollama</c> behind <see cref="OllamaAdapter"/>, each wrapped in the
+/// generic <see cref="AgentSessionRunner"/>. This is what makes
+/// <c>HATCH_AGENT</c> and <c>--agent</c> refuse an unknown id before
+/// anything is spawned.
 /// </summary>
 public static class Agents
 {
     public static bool Resolve(
-        string id, string? claudeBin, string? codexBin, string? grokBin, Action<string>? warn,
+        string id, Settings settings, Action<string>? warn,
         out ISessionRunner runner, out IAgentAdapter adapter, out string refusal)
     {
         if (id == "claude")
         {
-            adapter = new ClaudeAdapter(claudeBin, warn);
+            adapter = new ClaudeAdapter(settings.ClaudeBin, warn);
             runner = new AgentSessionRunner(adapter);
             refusal = "";
             return true;
@@ -110,7 +111,7 @@ public static class Agents
 
         if (id == "codex")
         {
-            adapter = new CodexAdapter(codexBin);
+            adapter = new CodexAdapter(settings.CodexBin);
             runner = new AgentSessionRunner(adapter);
             refusal = "";
             return true;
@@ -118,7 +119,15 @@ public static class Agents
 
         if (id == "grok")
         {
-            adapter = new GrokAdapter(grokBin, warn);
+            adapter = new GrokAdapter(settings.GrokBin, warn);
+            runner = new AgentSessionRunner(adapter);
+            refusal = "";
+            return true;
+        }
+
+        if (id == "ollama")
+        {
+            adapter = new OllamaAdapter(settings.OllamaHost, settings.OllamaTiers, warn, settings.CodexBin);
             runner = new AgentSessionRunner(adapter);
             refusal = "";
             return true;

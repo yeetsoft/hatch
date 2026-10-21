@@ -704,6 +704,22 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
     }
 
+    /// <summary>Ollama spawns through the codex binary, so a missing one refuses the same way codex itself does.</summary>
+    [Fact]
+    public async Task A_night_with_no_ollama_CLI_to_spawn_names_ollama_rather_than_claude()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var missing = Path.Combine(h.Temp, "nowhere", "codex");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { CodexBin = missing } };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--agent", "ollama"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("there is no ollama CLI to spawn", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
+    }
+
     [Fact]
     public async Task An_interrupt_gives_the_ticket_back_and_still_prints_the_tally()
     {
