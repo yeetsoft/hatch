@@ -91,7 +91,7 @@ There are nine, and a column carries whichever of them it needs.
   the limits in the WIP limits card above the table. In Progress and In Review
   ship with it ticked, and only a person may tick it. A tick left on a
   Deferred or Done column is ignored. An upgrade ticks the two only where the
-  board still has columns of those names. `flow-wip-and-the-battery` covers
+  board still has columns of those names. [Flow, WIP and the battery](flow-wip-and-the-battery#wip-limits) covers
   what the limit is for and how to read the card above the table.
 - **Express skips** — an express issue standing here with no unanswered
   question is carried to the next column with no session. The Done column is
@@ -146,9 +146,3 @@ on its own page, not repeated here:
 
 Columns and their flags are the shape of the board. [Issues](issues) is what
 moves across them: dependencies, deferring, and closing a subtree.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `flow-wip-and-the-battery`

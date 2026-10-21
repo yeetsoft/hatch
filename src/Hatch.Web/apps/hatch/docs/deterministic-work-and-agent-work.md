@@ -16,8 +16,8 @@ Everything the board can decide from its own shape — a column, a flag, a date,
 - **Express** — [pre-approval](issues#pre-approval), read live from the nearest ancestor that sets one, that lets a ticket skip a column marked to let it, as long as nothing on it is an open question.
 - **The merge train** — one order per project's merge column, head to tail, that lets an approved pull request merge, get brought current with the trunk, or get carried back to review for a conflict or a failed build — each on the board's own say, with no session reading the diff. [Review, pull requests and the merge train](review-pull-requests-and-the-merge-train) covers riding it.
 - **Stalls and let-go** — an increment that ends with its ticket exactly where it found it is let go once, quietly; each one after that marks it and holds the next dispatch for fifteen minutes, after which the board resumes it on its own — until three have stalled in a row, when it holds for a person instead. [One increment and the loop](one-increment-and-the-loop#stalls) has the counts.
-- **The WIP gates** — a limit on how many stories, bugs and epics may stand in the columns marked WIP at once, read off the board's own load and held until something leaves; an epic can carry a limit of its own on top of the section's. `flow-wip-and-the-battery` has the numbers.
-- **The battery** — the account an unattended pass would spend, read before it will touch anything at economy or low priority, so a quiet night never spends past what is actually left. `flow-wip-and-the-battery` covers the reading.
+- **The WIP gates** — a limit on how many stories, bugs and epics may stand in the columns marked WIP at once, read off the board's own load and held until something leaves; an epic can carry a limit of its own on top of the section's. [Flow, WIP and the battery](flow-wip-and-the-battery#wip-limits) has the numbers.
+- **The battery** — the account an unattended pass would spend, read before it will touch anything at economy or low priority, so a quiet night never spends past what is actually left. [Flow, WIP and the battery](flow-wip-and-the-battery#the-battery) covers the reading.
 - **The build and merge checks** — what a runner found when it looked at a branch: whether it merges cleanly with the trunk, and whether the build on its tip passed. A session is dispatched into review for one of the two gone wrong, and for nothing else. [Review, pull requests and the merge train](review-pull-requests-and-the-merge-train#the-build-check-and-the-merge-check) covers reading them.
 
 ## What a session does
@@ -79,9 +79,3 @@ A night is increments back to back, with hops between them costing nothing, wait
 | The WIP gates | the board | every move into a column marked WIP | nothing |
 | The battery | the board | before an unattended pass will touch economy or low work | nothing |
 | The build and merge checks | the board | continuously, as a runner reports what it found | one increment, once a check fails |
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `flow-wip-and-the-battery`
