@@ -1,4 +1,5 @@
 using Hatch.Api.Tests.Hatch;
+using Xunit.Abstractions;
 
 namespace Hatch.Api.Tests.E2e;
 
@@ -11,7 +12,7 @@ namespace Hatch.Api.Tests.E2e;
 /// installed, the same as <see cref="BoardRendersTests"/> is for Chromium.
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
-public class BoardRendersPhoneTests
+public class BoardRendersPhoneTests(ITestOutputHelper output)
 {
     private const int CaseBudgetSeconds = 60;
 
@@ -39,6 +40,10 @@ public class BoardRendersPhoneTests
             await harness.OpenBoardAsync(deadline, baseUrl);
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForFirstColumnAsync(deadline);
+
+            // Printed, not asserted: what the bar looks like at the phone profile is read before it is judged.
+            var bar = await harness.MeasureBarAsync(deadline);
+            output.WriteLine(bar.ToString());
 
             harness.AssertNoPageErrors();
         }
