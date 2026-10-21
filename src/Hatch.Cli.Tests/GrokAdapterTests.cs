@@ -370,6 +370,13 @@ public sealed class GrokAdapterTests : IDisposable
     }
 
     [Fact]
+    public void CanServe_answers_true_for_every_model()
+    {
+        Assert.True(((IAgentAdapter)Adapter()).CanServe("anything:7b", out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
     public void HookOutput_matches_claudes_own_writer_byte_for_byte()
     {
         var grok = Adapter().HookOutput;

@@ -178,6 +178,24 @@ public sealed class OllamaAdapter : CodexAdapter
     protected override string? ModelFlag(string model) => _tiers.TryGetValue(model, out var id) ? id : model;
 
     /// <summary>
+    /// A pinned id or mapped alias not in the list <see cref="CanSpawn"/> cached
+    /// skips the row. A null or empty model, an unmapped alias, and a list never
+    /// read all answer true: Hatch never pulls, and never guesses at a list it
+    /// has not read.
+    /// </summary>
+    public override bool CanServe(string? model, out string refusal)
+    {
+        refusal = "";
+        if (string.IsNullOrEmpty(model) || _models is null) return true;
+
+        var id = _tiers.TryGetValue(model, out var mapped) ? mapped : model;
+        if (id is null || _models.Contains(id)) return true;
+
+        refusal = $"pinned to {id}, which this runner's ollama has not pulled - ollama pull {id} would";
+        return false;
+    }
+
+    /// <summary>
     /// <c>exec resume</c> takes both provider flags; interactive <c>resume</c>
     /// takes neither (codex-cli 0.163.0, 2026-10-21, per <c>--help</c>). The host
     /// is not on the line: it is the operator's environment.

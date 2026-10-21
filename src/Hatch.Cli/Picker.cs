@@ -174,8 +174,8 @@ public sealed class Picker(
         var clear = queue.Where(q => q.Blocked is null).ToList();
         if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
-        // A row pinned to another agent's model, or whose denied-tools this
-        // agent cannot honour, is passed over before it is claimed - a claim
+        // A row pinned to another agent's model, whose denied-tools this
+        // agent cannot honour, or whose model its server has not pulled, is passed over before it is claimed - a claim
         // taken only to be let go would fold the row for every other runner
         // meanwhile. A hop row spawns nothing, so it stays.
         var skipped = new List<string>();
@@ -186,6 +186,8 @@ public sealed class Picker(
                 skipped.Add($"  {entry.Issue.Key}  {why}");
             else if (!entry.Hop && adapter is not null && !adapter.CanDeny(entry.DeniedTools ?? [], out var denied))
                 skipped.Add($"  {entry.Issue.Key}  {denied}");
+            else if (!entry.Hop && adapter is not null && !adapter.CanServe(entry.Model, out var unserved))
+                skipped.Add($"  {entry.Issue.Key}  {unserved}");
             else
                 remaining.Add(entry);
         }

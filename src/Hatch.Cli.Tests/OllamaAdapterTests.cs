@@ -376,6 +376,77 @@ public sealed class OllamaAdapterTests : IDisposable
         Assert.Equal("hatch: HATCH_CODEX_BIN is not there: /does/not/exist", refusal);
     }
 
+    private const string Unpulled =
+        "pinned to qwen3-coder:30b, which this runner's ollama has not pulled - ollama pull qwen3-coder:30b would";
+
+    private static TagsWire Pulled(string name = Pinned) => new(body: $$"""{"models":[{"name":"{{name}}"}]}""");
+
+    [Fact]
+    public void CanServe_a_pinned_id_in_the_pulled_list_is_true()
+    {
+        IAgentAdapter adapter = Adapter(wire: Pulled());
+
+        Assert.True(adapter.CanServe(Pinned, out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public void CanServe_a_pinned_id_not_in_the_pulled_list_refuses_with_the_sentence()
+    {
+        IAgentAdapter adapter = Adapter(wire: Pulled("llama3:8b"));
+
+        Assert.False(adapter.CanServe(Pinned, out var refusal));
+        Assert.Equal(Unpulled, refusal);
+    }
+
+    [Fact]
+    public void CanServe_an_alias_mapped_to_a_pulled_id_is_true()
+    {
+        IAgentAdapter adapter = Adapter(tiers: new Dictionary<string, string?> { ["sonnet"] = Pinned }, wire: Pulled());
+
+        Assert.True(adapter.CanServe("sonnet", out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public void CanServe_an_alias_mapped_to_an_unpulled_id_refuses_naming_the_id_and_not_the_alias()
+    {
+        IAgentAdapter adapter = Adapter(
+            tiers: new Dictionary<string, string?> { ["sonnet"] = Pinned }, wire: Pulled("llama3:8b"));
+
+        Assert.False(adapter.CanServe("sonnet", out var refusal));
+        Assert.Equal(Unpulled, refusal);
+    }
+
+    [Fact]
+    public void CanServe_an_unmapped_alias_is_true_even_against_an_empty_list()
+    {
+        IAgentAdapter adapter = Adapter();
+
+        Assert.True(adapter.CanServe("opus", out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void CanServe_no_model_is_true(string? model)
+    {
+        IAgentAdapter adapter = Adapter(wire: Pulled("llama3:8b"));
+
+        Assert.True(adapter.CanServe(model, out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public void CanServe_before_the_list_has_been_read_is_true_for_a_pinned_id()
+    {
+        IAgentAdapter adapter = new OllamaAdapter(configured: _bin);
+
+        Assert.True(adapter.CanServe(Pinned, out var refusal));
+        Assert.Equal("", refusal);
+    }
+
     [Fact]
     public void The_warning_names_all_four_aliases_when_none_is_mapped()
     {

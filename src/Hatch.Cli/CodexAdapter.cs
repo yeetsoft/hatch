@@ -17,6 +17,13 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
 
     public IHookOutputWriter HookOutput { get; } = new CodexHookOutputWriter();
 
+    /// <summary>Codex serves whatever the CLI is given; <see cref="OllamaAdapter"/> overrides this against its server's pulled list.</summary>
+    public virtual bool CanServe(string? model, out string refusal)
+    {
+        refusal = "";
+        return true;
+    }
+
     public virtual bool CanSpawn(out string refusal)
     {
         if (_bin is not null)

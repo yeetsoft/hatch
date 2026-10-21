@@ -274,6 +274,91 @@ public sealed class PickerTests
         await unrefusing.Claim!.ReleaseAsync();
     }
 
+    private const string Unpulled =
+        "pinned to qwen3-coder:30b, which this runner's ollama has not pulled - ollama pull qwen3-coder:30b would";
+
+    [Fact]
+    public async Task A_row_whose_model_its_adapter_cannot_serve_is_skipped_before_it_is_claimed()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var adapter = new FakeAdapter { CanServeRefusal = Unpulled };
+
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-1", model: "qwen3-coder:30b"), Fixtures.Row("AER-2"),
+        });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, agent: "ollama", adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Equal([$"  AER-1  {Unpulled}"], picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_board_whose_only_clear_row_is_unserved_by_the_adapter_is_skipped_and_nothing_is_claimed()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { CanServeRefusal = Unpulled };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "qwen3-coder:30b") });
+
+        var picked = await MakePicker(h, agent: "ollama", adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Skipped, picked.Outcome);
+        Assert.Equal([$"  AER-1  {Unpulled}"], picked.Skipped);
+        Assert.Empty(picked.Busy);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_hop_row_unserved_by_the_adapter_is_not_skipped()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { CanServeRefusal = Unpulled };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "qwen3-coder:30b") });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Null(picked.Skipped);
+    }
+
+    [Fact]
+    public async Task A_pinned_row_is_never_skipped_with_no_adapter_or_one_that_does_not_refuse()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "qwen3-coder:30b") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, agent: "ollama").PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Null(picked.Skipped);
+        await picked.Claim!.ReleaseAsync();
+
+        var unrefusing = await MakePicker(h, agent: "ollama", adapter: new FakeAdapter())
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, unrefusing.Outcome);
+        Assert.Null(unrefusing.Skipped);
+        await unrefusing.Claim!.ReleaseAsync();
+    }
+
     [Fact]
     public void The_skipped_report_names_the_header_then_each_row()
     {
