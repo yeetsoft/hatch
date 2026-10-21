@@ -63,10 +63,13 @@ columns.
    anywhere, including in comments; read the pattern file a plan names before
    writing the thing it patterns.
 
-5. **Green before pushed.** Lint, build and tests are the implementer's
-   definition of done — the operator does all browser and UI verification, so
-   do not claim a screen works, only that it builds. If something is red and
-   you cannot fix it, stop at step 6 and say so rather than pushing red.
+5. **Green before pushed.** Lint, build and tests green is the floor. If you
+   changed anything under `src/Hatch.Web`, render it in the driver as
+   `docs/browser-testing.md` describes, then comment the page, the profile and
+   what you saw on the ticket. The operator's look still has the last word, so
+   say a screen renders only as far as you saw it, never from the build alone.
+   If something is red and you cannot fix it, stop at step 6 and say so
+   rather than pushing red.
 
 6. **Commit and push.** This command is the standing ask for both — the usual
    "never commit unless asked" is satisfied by the invocation, and it covers

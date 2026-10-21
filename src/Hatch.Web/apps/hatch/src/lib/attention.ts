@@ -61,6 +61,24 @@ export function attentionCount(attention: Attention | null): number {
   );
 }
 
+/**
+ * What the bar's attention pills add up to at phone width, where they fold
+ * into one count: exactly the four sections that draw a pill - deadlocked,
+ * trunk, review and question. Deliberately not `attentionCount`, which also
+ * counts `approvedHeld` and `landingHeld`: those light the control and have
+ * a row in the panel, but no pill, so a total that included them would not
+ * be the sum of the pills it stands in for.
+ */
+export function pillCount(attention: Attention | null): number {
+  if (attention === null) return 0;
+  return (
+    (attention.deadlocked?.length ?? 0) +
+    (attention.trunkBuilds?.length ?? 0) +
+    attention.reviews.length +
+    attention.questions.length
+  );
+}
+
 /** Loud only when there is something a person can act on. Nothing read yet is
     resting, not a third state: "we have not asked yet" and "nothing is waiting"
     are the same thing to draw. */

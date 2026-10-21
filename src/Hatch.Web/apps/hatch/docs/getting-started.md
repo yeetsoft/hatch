@@ -20,7 +20,7 @@ The rest of this page is those two sentences, in order.
 - **On Windows, either PowerShell** — 5.1, the blue one that ships with the OS,
   or 7 (`pwsh`). Where the two shells differ, the line is shown for each.
   Backing up needs 7: see
-  [where the data is and how to back it up](where-the-data-is-and-how-to-back-it-up).
+  [restoring](backup-restore-and-replication#restoring).
 - **git**, and the **`claude` CLI, logged in**. Neither is needed to run the
   board; both are needed by the runner, which branches, commits and pushes from
   a checkout and spends each increment inside a `claude` session. The Runner
@@ -84,8 +84,8 @@ not gone — it can still be found by searching: press `/` on the board and take
 the trailing **Search everything** row, or follow the column's own `last 2 days`
 note, which opens Search already filtered to what closed there.
 
-Unless you put up the wall ([putting a front door on it](putting-a-front-door-on-it)),
-there is no sign-in. A Hatch started this way does not ask who you are and has
+Unless you put up the wall ([the wall, off, on and
+required](the-wall-off-on-and-required)), there is no sign-in. A Hatch started this way does not ask who you are and has
 nowhere to look it up, so it signs what you do with whatever your shell already
 called you (`USER` on macOS and Linux, `USERNAME` on Windows), and calls you
 `friend` when neither is set. The nav bar says which it used.
@@ -132,7 +132,7 @@ columns before anything is chosen to be built:
 That is where this page stops. Choosing what to start — Backlog to the column
 after it — is the first decision that is yours;
 [the board and its columns](the-board-and-its-columns) and
-`the-lifecycle-of-a-ticket` take it from there.
+[the lifecycle of a ticket](the-lifecycle-of-a-ticket) take it from there.
 
 ## Getting the runner
 
@@ -160,7 +160,7 @@ hatch work
 with its wall off needs no key, and `hatch config` takes a blank when it asks.
 With the wall up, the runner needs an API key — an admin mints one under
 **Manage → API keys**, and
-[putting a front door on it](putting-a-front-door-on-it) (step 5) has the line
+[putting a front door on it](the-wall-off-on-and-required#putting-a-front-door-on-it) (step 5) has the line
 that hands it over.
 
 `hatch work` is one increment: it claims the next actionable ticket, runs one
@@ -178,16 +178,10 @@ its board is in [the runner](the-runner).
 ## What to read next
 
 - [Welcome](welcome), for what Hatch is and the one rule behind it, if you want that first.
-- [How work flows](how-work-flows), for a ticket's path across the board, end to end (until `the-lifecycle-of-a-ticket` replaces it).
+- [The lifecycle of a ticket](the-lifecycle-of-a-ticket), for a ticket's path across the board, end to end.
 - [The board and its columns](the-board-and-its-columns), for what happens in each column and who moves work out of it.
 - [One increment and the loop](one-increment-and-the-loop), for what `hatch work` and `hatch go-to-work` do, every flag they take, and how a night ends.
-- [Putting a front door on it](putting-a-front-door-on-it), for signing in and running this somewhere more than one person reaches.
+- [The wall, off, on and required](the-wall-off-on-and-required), for signing in and running this somewhere more than one person reaches.
 - [Letting the loop merge for you](letting-the-loop-merge-for-you), for what has to be true before an approved pull request merges with nobody watching.
 - [Hatch on your phone](hatch-on-your-phone), for installing it as an app, and what it can and cannot do there.
 - [The CLAUDE.md block](the-claudemd-block), for the block to paste into this repository's own `CLAUDE.md` so an agent can reach the board.
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `the-lifecycle-of-a-ticket`

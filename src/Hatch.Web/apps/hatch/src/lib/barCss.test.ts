@@ -1,6 +1,7 @@
 /* The phone-width bar: the battery beside an attention and an overnight
    control that carry no min-width at phone width, all three 44px on a coarse
-   pointer, and the attention control's two states still measuring the same.
+   pointer, the attention control's two states still measuring the same, and
+   its four pills folded into one total.
    Read as text, the way touchCss.test.ts, wipCss.test.ts and
    confirmationsCss.test.ts read App.css - there is no DOM in this runner to
    lay anything out in. */
@@ -67,15 +68,58 @@ function declarationsWithin(mediaQuery: string, selector: string, required = tru
   return props;
 }
 
+/** The declarations of every rule naming `selector`, with every `@media { }`
+    block's text removed first (same depth-counting walk as declarationsWithin,
+    discarding the block instead of reading it) - copied from
+    statusStepCss.test.ts (and topBarCss.test.ts). Needed once the phone query
+    sets `.hatch-attention-control` and `.hatch-overnight-control` too:
+    declarationsOf would merge the phone block's `min-width: auto` straight
+    over the desk's `136px`, since both rules name the same selector and the
+    phone block comes later in the file. */
+function declarationsOutsideMedia(selector: string): Record<string, string> {
+  let plain = '';
+  let i = 0;
+  while (i < css.length) {
+    const at = css.indexOf('@media', i);
+    if (at === -1) {
+      plain += css.slice(i);
+      break;
+    }
+    plain += css.slice(i, at);
+    const openBrace = css.indexOf('{', at);
+    let depth = 0;
+    let end = openBrace;
+    for (; end < css.length; end++) {
+      if (css[end] === '{') depth++;
+      else if (css[end] === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    i = end + 1;
+  }
+
+  const props: Record<string, string> = {};
+  for (const [, selectors, body] of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!selectors.split(',').some((s) => s.trim() === selector)) continue;
+    for (const statement of body.split(';')) {
+      const colon = statement.indexOf(':');
+      if (colon === -1) continue;
+      props[statement.slice(0, colon).trim()] = statement.slice(colon + 1).trim().replace(/\s+/g, ' ');
+    }
+  }
+  return props;
+}
+
 describe('the attention and overnight controls at phone width', () => {
-  it('carry no min-width inside the phone query', () => {
-    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-control', false)).not.toHaveProperty('min-width');
-    expect(declarationsWithin('max-width: 40rem', '.hatch-overnight-control', false)).not.toHaveProperty('min-width');
+  it('reset to min-width: auto inside the phone query', () => {
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-control')['min-width']).toBe('auto');
+    expect(declarationsWithin('max-width: 40rem', '.hatch-overnight-control')['min-width']).toBe('auto');
   });
 
   it('still set min-width: 136px outside it', () => {
-    expect(declarationsOf('.hatch-attention-control')['min-width']).toBe('136px');
-    expect(declarationsOf('.hatch-overnight-control')['min-width']).toBe('136px');
+    expect(declarationsOutsideMedia('.hatch-attention-control')['min-width']).toBe('136px');
+    expect(declarationsOutsideMedia('.hatch-overnight-control')['min-width']).toBe('136px');
   });
 
   it('still measures the same resting as asking - neither state sets its own width', () => {
@@ -83,6 +127,25 @@ describe('the attention and overnight controls at phone width', () => {
     expect(declarationsOf('.hatch-attention-rest')).not.toHaveProperty('min-width');
     expect(declarationsOf('.hatch-attention-asking')).not.toHaveProperty('width');
     expect(declarationsOf('.hatch-attention-asking')).not.toHaveProperty('min-width');
+  });
+});
+
+describe('the attention pills at phone width', () => {
+  it('fold into one total: the pills are hidden and the total drawn inside the phone query', () => {
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-pills').display).toBe('none');
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-pill-total').display).toBe('inline-flex');
+  });
+
+  it('draw the pills, and not the total, outside it', () => {
+    expect(declarationsOutsideMedia('.hatch-attention-pills').display).toBe('flex');
+    expect(declarationsOutsideMedia('.hatch-attention-pill-total').display).toBe('none');
+  });
+
+  it('give the total the colours of the review pill', () => {
+    const total = declarationsOf('.hatch-attention-pill-total');
+    const review = declarationsOf('.hatch-attention-pill-review');
+    expect(total.background).toBe(review.background);
+    expect(total.color).toBe(review.color);
   });
 });
 
