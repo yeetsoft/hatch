@@ -33,7 +33,7 @@ which one you're holding tells you where it goes.
 | | Example | Where it lives |
 |---|---|---|
 | **Structural** — true for every installation | "the API talks to Postgres on 5432", the Quartz DDL, `compose.yaml`'s shape, a pinned tool version | Committed to git |
-| **Operator values** — differs per installation, not sensitive | the base port (`HATCH_PORT`), the checkout path (`HATCH_CHECKOUT`), a runner's name | Environment variables, supplied per install — `compose.yaml` and `docs/hatch-at-home.md` list the full set |
+| **Operator values** — differs per installation, not sensitive | the base port (`HATCH_PORT`), the checkout path (`HATCH_CHECKOUT`), a runner's name | Environment variables, supplied per install — `compose.yaml` and the [Environment variables](../src/Hatch.Web/apps/hatch/docs/environment-variables.md) docs page list the full set |
 | **Operator secrets** — differs per installation, sensitive | a Claude API key, a git push credential, an API key minted for an agent | `src/Hatch.Api/.env.json` (gitignored) or an environment variable, never committed |
 
 The failure mode to watch for is a structural-looking file quietly carrying an
@@ -67,9 +67,10 @@ The pattern is already established and should be followed rather than reinvented
 
 **Domain and port.** `HATCH_PORT` and the reverse-proxy domain in front of it
 are environment variables, read by `compose.yaml` and documented in
-[`hatch-at-home.md`](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md). No
-document or manifest hardcodes a real domain; docs that need to show one write
-`<domain>` or `${DOMAIN}`.
+[Environment variables](../src/Hatch.Web/apps/hatch/docs/environment-variables.md)
+and [The wall: off, on and required](../src/Hatch.Web/apps/hatch/docs/the-wall-off-on-and-required.md#behind-a-reverse-proxy).
+No document or manifest hardcodes a real domain; docs that need to show one
+write `<domain>` or `${DOMAIN}`.
 
 **Secrets.** A Claude API key, a git push credential, and any key minted for an
 agent are supplied as environment variables or in the gitignored

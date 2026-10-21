@@ -3,7 +3,7 @@ import { Command } from './Command';
 
 /**
  * The line at the top of the Docs page, for whoever is reading it to pass on.
- * Not in hatch-at-home.md: the address is the build's (see lib/setupPrompt.ts),
+ * Not on a docs page: the address is the build's (see lib/setupPrompt.ts),
  * and a markdown file shipped in the repository cannot know it. A build
  * stamped with no address draws nothing here.
  */

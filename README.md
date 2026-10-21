@@ -32,7 +32,7 @@ Quick start of this repository's website, linked from the repository page.
 
 Hatch has a sign-in wall, off by default, with Google as the way in. To put it
 up, follow *Putting a front door on it* in
-[hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md).
+[The wall: off, on and required](src/Hatch.Web/apps/hatch/docs/the-wall-off-on-and-required.md#putting-a-front-door-on-it).
 
 Stop it (`down` keeps your data; `down -v` throws it away):
 
@@ -41,9 +41,9 @@ docker compose down
 ```
 
 The full walkthrough — naming yourself, backup and restore, upgrading,
-troubleshooting — is
-[hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md), also
-linked from **Docs** under the gear inside the running app.
+troubleshooting — is the board's own **Docs**, in the top bar, at
+http://localhost:8080/apps/hatch/docs/, with the pages' source in
+[`src/Hatch.Web/apps/hatch/docs/`](src/Hatch.Web/apps/hatch/docs/).
 
 ## Get an agent working tickets
 
@@ -82,7 +82,7 @@ refuses, neither works and the policy is the thing to change.
 
 Or run the runner as a container instead of a local binary — see the
 `runner` service in [`compose.yaml`](compose.yaml) and
-[hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md):
+[The container runner](src/Hatch.Web/apps/hatch/docs/the-container-runner.md):
 
 ```
 HATCH_CHECKOUT=/path/to/a/checkout \
