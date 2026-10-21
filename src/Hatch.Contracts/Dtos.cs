@@ -2249,7 +2249,7 @@ public record TimelineDto(
 
 /// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column then.</summary>
 /// <param name="At">The grid point, in <see cref="CumulativeFlowDto.Step"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
-/// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>.</param>
+/// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>. A terminal column counts only what closed inside the window, so it starts at zero at the grid's first point rather than at whatever it already held.</param>
 public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts);
 
 /// <summary>

@@ -2824,7 +2824,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -3665,6 +3665,11 @@ back before anything existed does not draw an empty stretch. `unresolved`
 counts stretches the same way the timeline's does: a stretch naming a column
 no longer on the board, because it was renamed since and the event predates
 the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
+A terminal column — the board's flag, never a name — counts only what closed
+inside the window: a stretch there that was already open before `from`
+contributes nothing, so the done band starts at zero at the chart's left edge
+and grows only as issues close inside it, rather than opening already full of
+work finished long before the range being asked about.
 
 The page is at `/reports/cumulative-flow`: one band per column, stacked
 bottom-up with the board's last column at the baseline, each in its column's

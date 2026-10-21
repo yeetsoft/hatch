@@ -677,7 +677,7 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/reports/timeline` | The top-level epics active in a range, and the work beneath each as stretches across the board's columns |
-| GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid |
+| GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid; a terminal column baselines at zero at the window start and counts only what closed inside it |
 | GET | `/reports/flow` | How work moved through the board in a range: per column what entered, left and stands, and how long it dwelled, plus the window's drops, hops, send-backs, questions and sessions - counts and durations only |
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
