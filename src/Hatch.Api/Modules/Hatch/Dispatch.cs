@@ -219,7 +219,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts.TryGetValue(i.Id, out var v) ? v : [],
                 builds.TryGetValue(i.Id, out var b) ? b : [],
-                i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now));
+                i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
+                pullRequestHeadSince: i.PullRequestHeadSince));
             var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
             var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
             trainSlots = Train(merging, judged, effective, verdicts, statusChanges);
@@ -328,7 +329,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
                         sentence is null && hopKind == HopKinds.Approve
-                            ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now).Sentence
+                            ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince).Sentence
                             : sentence is null && issue.StalledAt is not null
                             ? ResumedClearNote(issue.StalledAt.Value, claimed.Now, claimed.Claims!.StallResumeSeconds)
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
@@ -760,7 +761,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         from.MergesPullRequest
             ? MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now).Kind
+                merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
+                pullRequestHeadSince: issue.PullRequestHeadSince).Kind
             : to is not null && to.Id == from.Id
                 ? landing?.Kind ?? ReviewWork.Judge(issue, merges, builds).Kind
                 : WorkKinds.Advance;
@@ -1048,7 +1050,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var judgement = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now,
-                Columns.AwaitingReview(statuses)?.Name);
+                Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince);
 
             // A held or pushed-back row already explains itself, and so does
             // the head's own row - its kind word (merge/update/pending) says
@@ -1353,7 +1355,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && issue.PullRequestUrl is { Length: > 0 }
             && MergeWork.Judge(
                    issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                   verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now).Kind is WorkKinds.Merge or WorkKinds.Update)
+                   verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
+                   pullRequestHeadSince: issue.PullRequestHeadSince).Kind is WorkKinds.Merge or WorkKinds.Update)
             return HopKinds.Approve;
 
         if (Columns.AwaitingReview(statuses)?.Id == from.Id

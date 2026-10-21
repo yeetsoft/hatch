@@ -97,6 +97,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.Project.ChecksRequired,
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
+                i.PullRequestHeadSince,
             })
             .ToListAsync(ct);
 
@@ -238,7 +239,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 string? heldSentence = null;
                 if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
                 {
-                    var judged = MergeWork.Judge(repos, merges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name);
+                    var judged = MergeWork.Judge(repos, merges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince);
                     if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) return null;
                     heldSentence = judged.Sentence;
                 }
@@ -317,7 +318,8 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
                 var j = MergeWork.Judge(
                     issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                    merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, time.GetUtcNow(), review.Name);
+                    merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, time.GetUtcNow(), review.Name,
+                    pullRequestHeadSince: issue.PullRequestHeadSince);
 
                 var key = IssueKey.Format(issue.Project!.Key, issue.Number);
                 if (j.Kind is WorkKinds.Hold or WorkKinds.Pushback)
