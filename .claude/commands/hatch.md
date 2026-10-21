@@ -61,7 +61,9 @@ columns.
    build with `make` (`make build`, `make test-api`, `make test-web`) and never
    a bare `dotnet`; no hardcoded domains, addresses, hostnames or people
    anywhere, including in comments; read the pattern file a plan names before
-   writing the thing it patterns.
+   writing the thing it patterns; the docs page naming what you changed is
+   updated in the same pull request (the House rules in `CLAUDE.md` name the
+   tests that refuse an omission).
 
 5. **Green before pushed.** Lint, build and tests green is the floor. If you
    changed anything under `src/Hatch.Web`, render it in the driver as
