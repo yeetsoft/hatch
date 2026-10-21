@@ -4857,20 +4857,38 @@ the order the judge checks them:
 7. A clean branch whose build, read about that same merge check's own sha,
    is `failed`: **pushback**, *"its build on `<sha>` failed - back to
    `<review>` to fix it"*.
-8. Clean but not holding the trunk: **update**, *"bringing its branch
+8. The forge has not caught up with the branch: `mergeStateSha` not null, and
+   no counted clean verdict's branch sha equals it: **pending**, *"waiting
+   for the forge to catch up with its branch - its pull request names
+   `<mergeStateSha>`, its branch is at `<tip-sha>`"*. The clock is the build
+   check read about the tip's own sha; past `MergeWork.ForgeCatchUpWindow`
+   (fifteen minutes) since that build was first read, with no fresher one:
+   **hold** instead, *"its pull request has not caught up with its branch in
+   15 minutes - it names `<mergeStateSha>`, its branch is at `<tip-sha>`"*.
+   With no build check at all about the tip there is no clock, and the row
+   stays **pending** regardless of how long it has waited. This runs before
+   item 9 (**update**), so a branch the forge has not caught up with is
+   never handed to `MergeTrain.UpdateApprovedAsync`, which would otherwise
+   comment "skipping until a fresh verdict" and never try that sha again.
+9. Clean but not holding the trunk: **update**, *"bringing its branch
    current from `<trunk>`"*.
-9. A build about that sha still `pending`: **pending**, *"its build on
-   `<sha>` is still running"*.
-10. A build read, but about a different sha than the merge check's own:
+10. A build about that sha still `pending`: **pending**, *"its build on
+    `<sha>` is still running"*.
+11. A build read, but about a different sha than the merge check's own:
     **pending**, *"no runner has read its build on `<sha>` yet"*.
-11. Holding the trunk, with no build checks at all yet: **pending**, *"its
+12. Holding the trunk, with no build checks at all yet: **pending**, *"its
     branch holds `<trunk>` - no checks have run on it yet"*.
-12. Every counted build `passed`: **merge**, *"its branch holds `<trunk>`
+13. Every counted build `passed`: **merge**, *"its branch holds `<trunk>`
     and its build passes"*.
-13. What is left is a build that read no checks at all. Inside
+14. What is left is a build that read no checks at all. Inside
     `MergeWork.SettleWindow` (ten minutes, the same settling a push's checks
-    are given elsewhere): **pending**, *"its branch holds `<trunk>` and no
-    checks ran on it"*. Past it, in this order:
+    are given elsewhere) - counted from the later of the build's own
+    `ShaSince` and `PullRequestHeadSince`, the time the forge's pull request
+    reached that same sha, when the two agree on the sha; a mismatch has
+    already returned at item 8 above, and an issue read before HA-1299's
+    migration has no `PullRequestHeadSince` and counts from `ShaSince` alone,
+    exactly as it always did: **pending**, *"its branch holds `<trunk>` and
+    no checks ran on it"*. Past it, in this order:
     **merge**, *"its branch holds `<trunk>`; this project requires no
     checks"*, where the project's `checksRequired` is off; **merge**, *"its
     branch holds `<trunk>`, no checks ran on it, and nothing is required of
@@ -4885,7 +4903,7 @@ the order the judge checks them:
     answer those. This item qualifies HA-289's *"Zero checks is not green"*.
 
 **A flagged path holds, not merges.** Each of three **merge** outcomes
-above - item 12, and the two **merge** sub-cases of item 13 - is
+above - item 13, and the two **merge** sub-cases of item 14 - is
 **hold** instead, *"its pull request changes `<path>` - a person
 merges it on the forge after reading it"*, when any counted clean
 verdict names a path (HA-431). Every other item above - the pushback,

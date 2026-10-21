@@ -18,6 +18,9 @@ public static class MergeWork
     /// <summary>How long a build check that reads <c>none</c> is given before its wait reads as stuck rather than settling, matching the CLI poll's own <c>NoneWindow</c> for the same reason: a push's checks take a few seconds to appear.</summary>
     public static readonly TimeSpan SettleWindow = TimeSpan.FromMinutes(10);
 
+    /// <summary>How long the forge's pull request state may lag behind the branch it is about before the wait for it to catch up reads as stuck rather than settling.</summary>
+    public static readonly TimeSpan ForgeCatchUpWindow = TimeSpan.FromMinutes(15);
+
     public static Judgement Judge(
         IReadOnlyList<EfHatchProjectRepository> bound,
         IReadOnlyList<EfHatchMergeCheck> merges,
@@ -27,7 +30,8 @@ public static class MergeWork
         string? mergeState,
         string? mergeStateSha,
         DateTimeOffset now,
-        string? reviewColumn = null)
+        string? reviewColumn = null,
+        DateTimeOffset? pullRequestHeadSince = null)
     {
         if (pullRequestClosedAt is not null)
             return Hold("its pull request was closed without merging");
@@ -66,6 +70,17 @@ public static class MergeWork
         if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Failed) is { } failed)
             return new Judgement(WorkKinds.Pushback, $"its build on {Short(failed.Sha)} failed - back to {reviewColumn ?? "review"} to fix it");
 
+        var tip = clean[0];
+
+        if (mergeStateSha is not null && !clean.Any(m => string.Equals(m.BranchSha, mergeStateSha, StringComparison.Ordinal)))
+        {
+            var aboutTip = builds.FirstOrDefault(b => b.Canonical == tip.Canonical && b.Sha == tip.BranchSha);
+            if (aboutTip is not null && now - aboutTip.ShaSince >= ForgeCatchUpWindow)
+                return Hold($"its pull request has not caught up with its branch in {ForgeCatchUpWindow.TotalMinutes:N0} minutes - it names {Short(mergeStateSha)}, its branch is at {Short(tip.BranchSha)}");
+
+            return Pending($"waiting for the forge to catch up with its branch - its pull request names {Short(mergeStateSha)}, its branch is at {Short(tip.BranchSha)}");
+        }
+
         if (clean.Any(m => m.HoldsTrunk != true))
             return new Judgement(WorkKinds.Update, $"bringing its branch current from {trunk}");
 
@@ -85,7 +100,15 @@ public static class MergeWork
         if (about.All(b => b.Verdict == BuildVerdicts.Passed))
             return MergeOr($"its branch holds {trunk} and its build passes");
 
-        if (!about.All(b => now - b.ShaSince >= SettleWindow))
+        DateTimeOffset Since(EfHatchBuildCheck b) =>
+            pullRequestHeadSince is { } since
+            && mergeStateSha is not null
+            && string.Equals(mergeStateSha, b.Sha, StringComparison.Ordinal)
+            && since > b.ShaSince
+                ? since
+                : b.ShaSince;
+
+        if (!about.All(b => now - Since(b) >= SettleWindow))
             return Pending($"its branch holds {trunk} and no checks ran on it");
 
         if (!checksRequired)

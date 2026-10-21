@@ -7604,6 +7604,64 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task MergeColumn_WithAnotherHeadAheadOfACleanOne_PastTheCatchUpWindowTheCleanOneIsTheHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var waiting = await h.FileAsync("task", "the forge has not caught up with its branch", approved.Id, rank: 1024);
+        await h.VerdictAsync(waiting, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(waiting, BuildVerdicts.None);
+        await h.SetPullRequestStateAsync(waiting, null, new string('f', 40));
+
+        var clean = await h.FileAsync("task", "ready to merge, behind the other head", approved.Id, rank: 2048);
+        await h.VerdictAsync(clean, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clean, BuildVerdicts.Passed);
+
+        h.Time.Advance(TimeSpan.FromMinutes(16));
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            "its pull request has not caught up with its branch in 15 minutes - it names fffffff, its branch is at bbbbbbb",
+            entries.Single(e => e.Issue.Key == Key(waiting)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(clean)).Blocked);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+        Assert.True(rows.Single(r => r.Key == Key(clean)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(waiting)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithAnotherHeadAheadOfACleanOne_UnderTheCatchUpWindowTheOtherHeadIsStillTheHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var waiting = await h.FileAsync("task", "the forge has not caught up with its branch", approved.Id, rank: 1024);
+        await h.VerdictAsync(waiting, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(waiting, BuildVerdicts.None);
+        await h.SetPullRequestStateAsync(waiting, null, new string('f', 40));
+
+        var clean = await h.FileAsync("task", "ready to merge, behind the other head", approved.Id, rank: 2048);
+        await h.VerdictAsync(clean, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clean, BuildVerdicts.Passed);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+        var waitingRow = rows.Single(r => r.Key == Key(waiting)).MergeWork!;
+        Assert.Equal(WorkKinds.Pending, waitingRow.Kind);
+        Assert.True(waitingRow.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(clean)).MergeWork!.IsHead);
+    }
+
+    [Fact]
     public async Task MergeColumn_WithAClosedPullRequestAheadOfTwoCleanRows_TheFirstCleanRowIsHead()
     {
         var h = await NewAsync();
@@ -8078,13 +8136,21 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task NoChecks_AForgeStateAboutAnotherShaChangesNothing()
+    public async Task NoChecks_AForgeStateAboutAnotherShaWaitsThenHolds()
     {
         var h = await NewAsync();
         var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
         await h.SetPullRequestStateAsync(issue, MergeStates.Clean, new string('f', 40));
 
-        Assert.Equal((WorkKinds.Hold, NoChecksHold), await MergeWorkOfAsync(h, issue));
+        Assert.Equal(
+            (WorkKinds.Pending, "waiting for the forge to catch up with its branch - its pull request names fffffff, its branch is at bbbbbbb"),
+            await MergeWorkOfAsync(h, issue));
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.Equal(
+            (WorkKinds.Hold, "its pull request has not caught up with its branch in 15 minutes - it names fffffff, its branch is at bbbbbbb"),
+            await MergeWorkOfAsync(h, issue));
     }
 
     [Fact]
