@@ -96,6 +96,8 @@ HATCH_RUNNER         what the board calls this runner (default: a cast-list
 HATCH_ROOT           the checkout to work in (default: upwards from here)
 HATCH_REPOS          checkouts a loop with no checkout of its own serves,
                      joined on : (Unix) or ; (Windows)
+HATCH_TAGS           the tags this runner advertises, comma-separated (default:
+                     none)
 HATCH_WORKSPACE      where it clones what the board binds (unset: a per-user
                      default; off: never clone)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
@@ -122,7 +124,29 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   the `.env` path, or the per-user file;
 - the key masked, never in full;
 - `HATCH_REPOS` as a path a line;
+- `HATCH_TAGS` as a comma-separated list, or `<unset>`;
 - for an unset `HATCH_WORKSPACE`, the directory clones would go to.
+
+## What a runner advertises
+
+A tag is a word a project's runner tags require. A project that requires `gpu`
+is only worked by a runner that carries `gpu`. The runner says its tags in
+every heartbeat and the heartbeat replaces the row whole, so removing a tag
+from the config takes it off the board on the next beat. The board reads them
+again on every dispatch.
+
+A runner carries at most 8 tags. Each is at most 32 characters, with no space
+or comma inside, and is trimmed and lowercased. A tag that breaks the rule
+refuses every command, with the rule's sentence.
+
+```
+HATCH_TAGS=gpu,linux
+hatch config --tag gpu --tag linux
+```
+
+`--tag` is repeatable, and bare `--tag` clears them. It needs no checkout. An
+empty `HATCH_TAGS` reads as unset, so a runner that sets nothing advertises
+nothing.
 
 ## The runner's name
 
