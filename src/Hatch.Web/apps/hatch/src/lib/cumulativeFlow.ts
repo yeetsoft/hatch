@@ -12,7 +12,7 @@
 
    It imports `xOf` from ./timeline and never copies it. */
 
-import { type Scale, xOf } from './timeline';
+import { CHART_UNITS, type Scale, xOf } from './timeline';
 import { statusVars } from './color';
 import type { Status } from '../types';
 import type { CumulativeFlow, CumulativeFlowPoint } from '../types';
@@ -115,27 +115,47 @@ export function slots(points: CumulativeFlowPoint[], scale: Scale): { x: number;
   });
 }
 
-/** What a point says on hover: `12 Oct 14:00 - To Do 14, In Progress 3, Done
-    40`. Day-only when `step` is not `hour`; a column no longer on `statuses`
-    (the same split `bucketLabel`, lib/spend.ts, makes for a bucket's own
-    moment) names as `Unknown`. */
-export function pointTitle(
+/** The index of the point whose slot (`slots()`) an `x` in pane units falls
+    in, clamped to `[0, CHART_UNITS]` first - a fast pointer move can report a
+    clientX just outside the measured rect. `null` when there are no points.
+    `slots()`'s own last cell stops at the last point's own x rather than
+    `CHART_UNITS`, so past that edge this still resolves to the last index
+    rather than null; on an exact slot boundary the right-hand cell wins. */
+export function pointIndexAt(points: CumulativeFlowPoint[], scale: Scale, x: number): number | null {
+  if (points.length === 0) return null;
+
+  const clamped = Math.min(CHART_UNITS, Math.max(0, x));
+  const cells = slots(points, scale);
+  const index = cells.findIndex((cell) => clamped < cell.x + cell.width);
+
+  return index === -1 ? cells.length - 1 : index;
+}
+
+/** One point as the hover card lists it: each column in board order with its
+    name and count, plus the total. A column no longer on `statuses` (the
+    same split `bucketLabel`, lib/spend.ts, makes for a bucket's own moment)
+    names as `Unknown`. */
+export function breakdown(
   point: CumulativeFlowPoint,
   columns: number[],
-  step: CumulativeFlow['step'],
   statuses: Status[],
-  locale?: string,
-): string {
-  const at = new Date(point.at);
-  const day = at.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
-  const when =
-    step === 'hour' ? `${day} ${at.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : day;
+): { rows: { columnId: number; name: string; count: number }[]; total: number } {
+  const rows = columns.map((columnId, i) => ({
+    columnId,
+    name: statuses.find((status) => status.id === columnId)?.name ?? 'Unknown',
+    count: point.counts[i],
+  }));
 
-  const counts = columns
-    .map((columnId, i) => `${statuses.find((status) => status.id === columnId)?.name ?? 'Unknown'} ${point.counts[i]}`)
-    .join(', ');
+  return { rows, total: rows.reduce((sum, row) => sum + row.count, 0) };
+}
 
-  return `${when} - ${counts}`;
+/** A moment's label: the day alone on a `day` or `week` step, the day plus the
+    time on `hour`. */
+export function momentLabel(at: string, step: CumulativeFlow['step'], locale?: string): string {
+  const date = new Date(at);
+  const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+
+  return step === 'hour' ? `${day} ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : day;
 }
 
 /** The custom properties a band is painted with - its column's own colour,

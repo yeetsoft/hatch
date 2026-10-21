@@ -7801,6 +7801,7 @@ public class WorkControllerTests
         Assert.Null(row.PullRequestMergeState);
         Assert.Null(row.PullRequestReviewDecision);
         Assert.Null(row.PullRequestHeadSha);
+        Assert.Null(row.PullRequestHeadSince);
     }
 
     [Fact]
@@ -7812,6 +7813,7 @@ public class WorkControllerTests
         issue.PullRequestMergeState = MergeStates.Behind;
         issue.PullRequestReviewDecision = ReviewDecisions.ReviewRequired;
         issue.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        issue.PullRequestHeadSince = Now;
         await h.Db.SaveChangesAsync();
 
         var row = Assert.Single(Value(await h.Work.GetReview(null, true, default)));
@@ -7819,6 +7821,7 @@ public class WorkControllerTests
         Assert.Equal(MergeStates.Behind, row.PullRequestMergeState);
         Assert.Equal(ReviewDecisions.ReviewRequired, row.PullRequestReviewDecision);
         Assert.Equal("0123456789abcdef0123456789abcdef01234567", row.PullRequestHeadSha);
+        Assert.Equal(Now, row.PullRequestHeadSince);
     }
 
     /// <summary>

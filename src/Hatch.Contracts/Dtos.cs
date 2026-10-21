@@ -2077,6 +2077,7 @@ public record QueueEntryDto(
 /// <param name="PullRequestMergeState">What the board holds of the pull request's merge state - one of <see cref="MergeStates"/> - so a runner can tell whether what the forge answered is news. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestReviewDecision">What the board holds of the pull request's review decision - one of <see cref="ReviewDecisions"/> - for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
+/// <param name="PullRequestHeadSince">The moment the board first saw the pull request at that head - when the forge's pull request reached the branch tip, as far as the board can tell. Null where none is held, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -2092,7 +2093,8 @@ public record ReviewCheckDto(
     LandingWorkDto? LandingWork = null,
     string? PullRequestMergeState = null,
     string? PullRequestReviewDecision = null,
-    string? PullRequestHeadSha = null);
+    string? PullRequestHeadSha = null,
+    DateTimeOffset? PullRequestHeadSince = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
@@ -2256,7 +2258,7 @@ public record TimelineDto(
 
 /// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column then.</summary>
 /// <param name="At">The grid point, in <see cref="CumulativeFlowDto.Step"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
-/// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>.</param>
+/// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>. A terminal column counts only what closed inside the window, so it starts at zero at the grid's first point rather than at whatever it already held.</param>
 public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts);
 
 /// <summary>

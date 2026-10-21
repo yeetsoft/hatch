@@ -278,6 +278,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<DateTimeOffset?>("PullRequestHeadSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PullRequestMergeState")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
