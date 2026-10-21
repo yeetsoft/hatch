@@ -971,6 +971,121 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.RepoSourcedAt);
     }
 
+    // ---- Runner tags ----
+
+    [Fact]
+    public async Task AnOwnerSettingRunnerTags_StoresCaseFoldedAndDeduplicatedInTheOrderSent()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["GPU", "gpu", "Windows"]), default));
+
+        Assert.Equal(["gpu", "windows"], written.RunnerTags);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsRunnerTagsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+
+        Assert.Equal(["gpu", "windows"], read.RunnerTags);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutRunnerTagsNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu"]), default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.Equal("[]", (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPutRunnerTags()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutRunnerTags(h.ProjectId, new ProjectRunnerTagsWriteRequest(["gpu"]), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task ATagBreakingTheRule_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["needs gpu"]), default);
+
+        Assert.Contains("no space or comma", Reason(result.Result));
+        Assert.Equal("[]", (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags);
+    }
+
+    [Fact]
+    public async Task TooManyRunnerTags_IsRefused400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var tags = Enumerable.Range(1, RunnerTags.MaxCount + 1).Select(i => $"tag{i}").ToArray();
+
+        var result = await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(tags), default);
+
+        Assert.Contains("at most 8", Reason(result.Result));
+        Assert.Equal("[]", (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags);
+    }
+
+    [Fact]
+    public async Task ResendingTheSameRunnerTags_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default);
+        var countBefore = await h.Db.Projects.CountAsync();
+
+        var result = Value(await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default));
+
+        Assert.Equal(countBefore, await h.Db.Projects.CountAsync());
+        Assert.Equal(["gpu", "windows"], result.RunnerTags);
+    }
+
+    [Fact]
+    public async Task APutOfAnEmptyList_ClearsTheStoredTags()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu"]), default);
+
+        var written = Value(await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest([]), default));
+
+        Assert.Empty(written.RunnerTags);
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Empty(read.RunnerTags);
+    }
+
+    [Fact]
+    public async Task PatchProject_LeavesRunnerTagsAlone()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu"]), default);
+
+        var patched = Value(await h.Projects.PatchProject(created.Id, new ProjectPatchRequest("Renamed"), default));
+
+        Assert.Equal(["gpu"], patched.RunnerTags);
+    }
+
     private static async Task AddPlaybookRowsAsync(Harness h, int projectId, int count)
     {
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
