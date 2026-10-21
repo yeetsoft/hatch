@@ -13,6 +13,7 @@ import type {
   ProjectPatchRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepositoryWriteRequest,
+  ProjectRunnerTagsWriteRequest,
 } from '../types';
 
 export interface ProjectDraft {
@@ -30,6 +31,7 @@ export interface ProjectDraft {
     autoHealBugPreApproval: PreApproval;
     autoHealBugStatusId: number | null;
     repoSourced: boolean;
+    runnerTags: string[];
   };
   name: string;
   key: string;
@@ -44,6 +46,7 @@ export interface ProjectDraft {
   autoHealBugPreApproval: PreApproval;
   autoHealBugStatusId: number | null;
   repoSourced: boolean;
+  runnerTags: string;
 }
 
 export interface ProjectDraftDiff {
@@ -58,6 +61,7 @@ function sameRepositories(a: ProjectRepositoryWriteRequest[], b: ProjectReposito
 
 export function openProjectDraft(project: Project): ProjectDraft {
   const repositories = project.repositories.map(({ remote, baseBranch }) => ({ remote, baseBranch }));
+  const runnerTags = project.runnerTags ?? [];
   return {
     known: {
       name: project.name,
@@ -73,6 +77,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       autoHealBugPreApproval: project.autoHealBugPreApproval,
       autoHealBugStatusId: project.autoHealBugStatusId,
       repoSourced: project.repoSourced,
+      runnerTags,
     },
     name: project.name,
     key: project.key,
@@ -87,6 +92,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     autoHealBugPreApproval: project.autoHealBugPreApproval,
     autoHealBugStatusId: project.autoHealBugStatusId,
     repoSourced: project.repoSourced,
+    runnerTags: runnerTagsDraft(runnerTags),
   };
 }
 
@@ -133,4 +139,41 @@ export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequ
     playbooks from its repository, never folded into projectLandingDiff. */
 export function projectRepoSourcedDiff(draft: ProjectDraft): ProjectRepoSourcedWriteRequest | null {
   return draft.repoSourced !== draft.known.repoSourced ? { repoSourced: draft.repoSourced } : null;
+}
+
+/** What the runner tags field shows: one tag per line, blank for any runner. */
+export function runnerTagsDraft(tags: string[]): string {
+  return tags.join('\n');
+}
+
+/** The field, split into tags for the wire: one per line, trimmed, blanks dropped. */
+export function runnerTagsRequest(draft: string): string[] {
+  return draft
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+}
+
+/** The non-owner read-out, after the landing sentence: "Any runner." with
+    nothing required, or "Runners tagged a and b." - no comma for two, none
+    before "and" for more, the join lib/playbooks.ts's andList already uses;
+    reimplemented rather than imported, so this project-domain file does not
+    reach into the playbooks one for one line. */
+export function runnerTagsSentence(tags: string[]): string {
+  if (tags.length === 0) return 'Any runner.';
+  const joined = tags.length < 2 ? tags.join('') : `${tags.slice(0, -1).join(', ')} and ${tags[tags.length - 1]}`;
+  return `Runners tagged ${joined}.`;
+}
+
+function sameTags(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((tag, i) => tag === b[i]);
+}
+
+/** Its own route and its own request shape, like projectRepoSourcedDiff -
+    compared against the committed list, not the raw textarea text, so a
+    stray blank line in the box is not a change; order still matters,
+    matching PutRunnerTags' own SequenceEqual on the server. */
+export function projectRunnerTagsDiff(draft: ProjectDraft): ProjectRunnerTagsWriteRequest | null {
+  const tags = runnerTagsRequest(draft.runnerTags);
+  return sameTags(tags, draft.known.runnerTags) ? null : { tags };
 }
