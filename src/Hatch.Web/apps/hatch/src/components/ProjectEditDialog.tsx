@@ -13,6 +13,7 @@ import {
   putProjectMember,
   putProjectPlaybooksSource,
   putProjectRepositories,
+  putProjectRunnerTags,
 } from '../api/client';
 import { message } from '../lib/errors';
 import { boardColumns } from '../lib/columns';
@@ -22,6 +23,8 @@ import {
   projectDraftKeyObjection,
   projectLandingDiff,
   projectRepoSourcedDiff,
+  projectRunnerTagsDiff,
+  runnerTagsSentence,
   type ProjectDraft,
 } from '../lib/projectDraft';
 import {
@@ -129,12 +132,14 @@ export function ProjectEditDialog({
     const diff = projectDraftDiff(draft!);
     const landingDiff = projectLandingDiff(draft!);
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
+    const runnerTagsDiff = projectRunnerTagsDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
       diff.patch === null &&
       diff.repositories === null &&
       landingDiff === null &&
       repoSourcedDiff === null &&
+      runnerTagsDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
       membersDiff.deletes.length === 0
@@ -149,6 +154,7 @@ export function ProjectEditDialog({
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
+      if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
@@ -400,13 +406,28 @@ export function ProjectEditDialog({
                 set by {project.repoSourcedBy} on {project.repoSourcedAt ? new Date(project.repoSourcedAt).toLocaleDateString() : ''}
               </p>
             )}
+            <Field
+              label="Runner tags"
+              hint="One tag per line. Only a runner advertising every one of these is handed this project's implementation work. Blank means any runner."
+              as="div"
+            >
+              <textarea
+                rows={2}
+                className="hatch-grows"
+                value={draft.runnerTags}
+                onChange={(e) => setDraft((d) => d && { ...d, runnerTags: e.target.value })}
+              />
+            </Field>
           </>
         ) : (
-          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}, auto-heal ${
-            draft.autoHealBugEnabled
-              ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
-              : 'off'
-          }, playbooks ${draft.repoSourced ? 'sourced from the repository' : 'written on the board'}.`}</p>
+          <>
+            <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}, auto-heal ${
+              draft.autoHealBugEnabled
+                ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
+                : 'off'
+            }, playbooks ${draft.repoSourced ? 'sourced from the repository' : 'written on the board'}.`}</p>
+            <p>{runnerTagsSentence(project.runnerTags ?? [])}</p>
+          </>
         )}
 
         <h2 className="hatch-section-title">Members</h2>
