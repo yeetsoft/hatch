@@ -96,20 +96,215 @@ docker compose up -d</code></pre>
           anywhere Docker runs, under your own domain, with Google sign-in when you put the wall up; there is no
           account to make and no service in the middle.
         </p>
-        <!-- The moving parts: you, the board, the runner, a Claude Code session and
-             your repository on the forge, the loop drawn as
-             ticket -> dispatch -> increment -> pull request -> review -> merge.
-             Inline SVG using the tokens' CSS variables, per the epic (HA-715). -->
+        <!-- The moving parts: you, the board, the runner, a Claude Code session and your repository
+             on the forge, drawn twice as inline SVG (narrow below 64rem, wide from it). -->
         <figure class="site-figure" data-diagram="moving-parts">
+          <svg class="site-diagram-narrow" role="img" aria-labelledby="moving-parts-narrow-title moving-parts-narrow-desc" viewBox="0 0 326 530" width="326" height="530">
+            <title id="moving-parts-narrow-title">The moving parts</title>
+            <desc id="moving-parts-narrow-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to a Claude Code session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
+            <g>
+              <rect class="site-diagram-node" x="88" y="20" width="150" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="52">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="88" y="128" width="150" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="160">the board</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="88" y="236" width="150" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="268">the runner</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="88" y="344" width="150" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="369">a Claude Code</text>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="383">session</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="88" y="452" width="150" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="477">your repository</text>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="491">on the forge</text>
+            </g>
+            <path class="site-diagram-edge" d="M 163 76 V 120"/>
+            <path class="site-diagram-head" d="M 163 128 l -4 -8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 163 184 V 228"/>
+            <path class="site-diagram-head" d="M 163 236 l -4 -8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 163 292 V 336"/>
+            <path class="site-diagram-head" d="M 163 344 l -4 -8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 163 400 V 444"/>
+            <path class="site-diagram-head" d="M 163 452 l -4 -8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 238 480 H 296 V 48 H 246"/>
+            <path class="site-diagram-head" d="M 238 48 l 8 -4 l 0 8 z"/>
+            <path class="site-diagram-edge" d="M 88 48 H 40 V 480 H 80"/>
+            <path class="site-diagram-head" d="M 88 480 l -8 -4 l 0 8 z"/>
+            <text class="site-diagram-label" text-anchor="start" x="171" y="106">ticket</text>
+            <text class="site-diagram-label" text-anchor="start" x="171" y="214">dispatch</text>
+            <text class="site-diagram-label" text-anchor="start" x="171" y="322">increment</text>
+            <text class="site-diagram-label" text-anchor="start" x="171" y="430">pull request</text>
+            <text class="site-diagram-label" text-anchor="end" x="290" y="266">review</text>
+            <text class="site-diagram-label" text-anchor="start" x="46" y="266">merge</text>
+          </svg>
+          <svg class="site-diagram-wide" role="img" aria-labelledby="moving-parts-wide-title moving-parts-wide-desc" viewBox="0 0 870 260" width="870" height="260">
+            <title id="moving-parts-wide-title">The moving parts</title>
+            <desc id="moving-parts-wide-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to a Claude Code session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
+            <g>
+              <rect class="site-diagram-node" x="20" y="20" width="140" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="90" y="52">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="250" y="20" width="140" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="320" y="52">the board</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="480" y="20" width="140" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="550" y="52">the runner</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="710" y="20" width="140" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="780" y="45">a Claude Code</text>
+              <text class="site-diagram-text" text-anchor="middle" x="780" y="59">session</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="710" y="150" width="140" height="56" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="780" y="175">your repository</text>
+              <text class="site-diagram-text" text-anchor="middle" x="780" y="189">on the forge</text>
+            </g>
+            <path class="site-diagram-edge" d="M 160 48 H 242"/>
+            <path class="site-diagram-head" d="M 250 48 l -8 -4 l 0 8 z"/>
+            <path class="site-diagram-edge" d="M 390 48 H 472"/>
+            <path class="site-diagram-head" d="M 480 48 l -8 -4 l 0 8 z"/>
+            <path class="site-diagram-edge" d="M 620 48 H 702"/>
+            <path class="site-diagram-head" d="M 710 48 l -8 -4 l 0 8 z"/>
+            <path class="site-diagram-edge" d="M 780 76 V 142"/>
+            <path class="site-diagram-head" d="M 780 150 l -4 -8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 710 178 H 90 V 84"/>
+            <path class="site-diagram-head" d="M 90 76 l -4 8 l 8 0 z"/>
+            <path class="site-diagram-edge" d="M 50 76 V 230 H 780 V 214"/>
+            <path class="site-diagram-head" d="M 780 206 l -4 8 l 8 0 z"/>
+            <text class="site-diagram-label" text-anchor="middle" x="205" y="40">ticket</text>
+            <text class="site-diagram-label" text-anchor="middle" x="435" y="40">dispatch</text>
+            <text class="site-diagram-label" text-anchor="middle" x="665" y="40">increment</text>
+            <text class="site-diagram-label" text-anchor="end" x="772" y="118">pull request</text>
+            <text class="site-diagram-label" text-anchor="middle" x="400" y="170">review</text>
+            <text class="site-diagram-label" text-anchor="middle" x="415" y="222">merge</text>
+          </svg>
           <figcaption>The moving parts</figcaption>
         </figure>
-        <!-- The life of a ticket: the stock columns left to right (Draft, Breakdown,
-             Backlog, To Do, In Progress, In Review, Done - docs/hatch.md, Status),
-             each marked with whose it is - you at Draft, Backlog, In Review and
-             Done; the agent at Breakdown, To Do and In Progress - the merge train
-             crossing the last gate (In Review -> Done) on its own.
-             Inline SVG using the tokens' CSS variables, per the epic (HA-715). -->
+        <!-- The life of a ticket: the seven stock columns and whose each is, drawn twice as inline SVG (narrow below 64rem, wide from it). -->
         <figure class="site-figure" data-diagram="life-of-a-ticket">
+          <svg class="site-diagram-narrow" role="img" aria-labelledby="life-of-a-ticket-narrow-title life-of-a-ticket-narrow-desc" viewBox="0 0 326 582" width="326" height="582">
+            <title id="life-of-a-ticket-narrow-title">The life of a ticket</title>
+            <desc id="life-of-a-ticket-narrow-desc">A ticket crosses seven columns in order: Draft, Breakdown, Backlog, To Do, In Progress, In Review and Done. You keep Draft, Backlog, In Review and Done; an agent works Breakdown, To Do and In Progress, and steps into In Review only to fix a conflict or a failed build. You may add a column of your own between In Review and Done, where the merge train merges an approved pull request with no session; on a board without one the ticket reaches Done when its pull request merges.</desc>
+            <g>
+              <rect class="site-diagram-node" x="18" y="20" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="46">Draft</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="46">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="18" y="78" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="104">Breakdown</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="104">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="18" y="136" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="162">Backlog</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="162">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="18" y="194" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="220">To Do</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="220">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="18" y="252" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="278">In Progress</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="278">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="18" y="310" width="290" height="72" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="336">In Review</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="336">you</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="354">the agent steps in only to fix</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="370">a conflict or a failed build</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-optional" x="18" y="396" width="290" height="108" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="422">Approved</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="422">optional</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="440">a column you add</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="458">name is yours</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="482">the merge train merges an approved</text>
+              <text class="site-diagram-note" text-anchor="start" x="34" y="500">pull request, with no session</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="18" y="518" width="290" height="44" rx="8"/>
+              <text class="site-diagram-text" text-anchor="start" x="34" y="544">Done</text>
+              <text class="site-diagram-owner" text-anchor="end" x="292" y="544">you</text>
+            </g>
+            <path class="site-diagram-edge" d="M 163 64 V 78"/>
+            <path class="site-diagram-edge" d="M 163 122 V 136"/>
+            <path class="site-diagram-edge" d="M 163 180 V 194"/>
+            <path class="site-diagram-edge" d="M 163 238 V 252"/>
+            <path class="site-diagram-edge" d="M 163 296 V 310"/>
+            <path class="site-diagram-edge" d="M 163 382 V 396"/>
+            <path class="site-diagram-edge" d="M 163 504 V 518"/>
+          </svg>
+          <svg class="site-diagram-wide" role="img" aria-labelledby="life-of-a-ticket-wide-title life-of-a-ticket-wide-desc" viewBox="0 0 884 200" width="884" height="200">
+            <title id="life-of-a-ticket-wide-title">The life of a ticket</title>
+            <desc id="life-of-a-ticket-wide-desc">A ticket crosses seven columns in order: Draft, Breakdown, Backlog, To Do, In Progress, In Review and Done. You keep Draft, Backlog, In Review and Done; an agent works Breakdown, To Do and In Progress, and steps into In Review only to fix a conflict or a failed build. You may add a column of your own between In Review and Done, where the merge train merges an approved pull request with no session; on a board without one the ticket reaches Done when its pull request merges.</desc>
+            <g>
+              <rect class="site-diagram-node" x="20" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="65" y="66">Draft</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="65" y="88">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="122" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="167" y="66">Breakdown</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="167" y="88">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="224" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="269" y="66">Backlog</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="269" y="88">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="326" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="371" y="66">To Do</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="371" y="88">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-agent" x="428" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="473" y="66">In Progress</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="473" y="88">agent</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="530" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="575" y="66">In Review</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="575" y="88">you</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node site-diagram-node-optional" x="632" y="26" width="130" height="92" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="697" y="48">Approved</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="697" y="66">optional</text>
+              <text class="site-diagram-note" text-anchor="middle" x="697" y="84">a column you add</text>
+              <text class="site-diagram-note" text-anchor="middle" x="697" y="102">name is yours</text>
+            </g>
+            <g>
+              <rect class="site-diagram-node" x="774" y="40" width="90" height="64" rx="8"/>
+              <text class="site-diagram-text" text-anchor="middle" x="819" y="66">Done</text>
+              <text class="site-diagram-owner" text-anchor="middle" x="819" y="88">you</text>
+            </g>
+            <path class="site-diagram-edge" d="M 110 72 H 122"/>
+            <path class="site-diagram-edge" d="M 212 72 H 224"/>
+            <path class="site-diagram-edge" d="M 314 72 H 326"/>
+            <path class="site-diagram-edge" d="M 416 72 H 428"/>
+            <path class="site-diagram-edge" d="M 518 72 H 530"/>
+            <path class="site-diagram-edge" d="M 620 72 H 632"/>
+            <path class="site-diagram-edge" d="M 762 72 H 774"/>
+              <text class="site-diagram-note" text-anchor="start" x="20" y="150">the agent steps in only to fix</text>
+              <text class="site-diagram-note" text-anchor="start" x="20" y="168">a conflict or a failed build</text>
+              <text class="site-diagram-note" text-anchor="end" x="864" y="150">the merge train merges an approved</text>
+              <text class="site-diagram-note" text-anchor="end" x="864" y="168">pull request, with no session</text>
+          </svg>
           <figcaption>The life of a ticket</figcaption>
         </figure>
       </section>

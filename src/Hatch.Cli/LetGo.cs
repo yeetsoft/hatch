@@ -27,19 +27,17 @@ public static class LetGo
     /// The increment ran to the end and still left the ticket where it found
     /// it - the first time in a row that happens, which costs one quiet
     /// comment rather than a flag: see <see cref="Increment"/>'s stall guard
-    /// for why a second one in a row is treated differently. <paramref name="untouched"/>
-    /// is false when the board shows the ticket moved or gained children anyway,
-    /// under a session whose own account cannot be trusted: the opening then
-    /// does not claim it was left where it was found.
+    /// for why a second one in a row is treated differently. A ticket the
+    /// board shows moved or gained children is not a stall at all any more,
+    /// whatever the session's own account said, so this is only ever reached
+    /// for one genuinely left untouched.
     /// </summary>
     public static Task LeftAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string why, string? sessionId,
-        CancellationToken ct, bool untouched = true) =>
+        CancellationToken ct) =>
         WriteAsync(
             board, say, adapter, key,
-            untouched
-                ? $"An unattended increment left {key} where it found it and let it go: {why}."
-                : $"An unattended increment worked on {key}, but its account of that cannot be trusted, and let {key} go: {why}.",
+            $"An unattended increment left {key} where it found it and let it go: {why}.",
             sessionId, "There is no session to resume: the run ended before it said what its id was.", ct);
 
     private static async Task WriteAsync(

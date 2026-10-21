@@ -88,6 +88,14 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_HEARTBEAT` | Seconds of silence before the renderer says what it is still waiting on. `0` turns it off |
 | `HATCH_RETRY_SECONDS` | Seconds a call keeps retrying while Hatch does not answer, backing off between tries. `90` by default, `0` for exactly one attempt |
 
+A project's owner can require runner tags, on the Projects page. Where it does,
+the dispatcher hands that project's implementation work only to a runner
+advertising every one of them - set yours with `HATCH_TAGS` or `hatch config
+--tag`. A runner that falls short is not refused outright: `hatch queue` shows
+the row folded and says what is missing - *"AER-12 is implemented only by a
+runner advertising macos and xcode - this runner advertises linux"* (*"...
+advertises none"* when the runner advertises no tags at all).
+
 **The key lives outside the artifact**: never a tracked file, never a value in
 a commit, never pasted into a ticket. Hatch is built to be cloned by other
 operators, and a credential in the repository is one operator's credential

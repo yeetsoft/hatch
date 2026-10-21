@@ -343,6 +343,5 @@ the spawn - so it is neither lost nor delivered twice.
 
 Pages this one names that are not written yet:
 
-- `playbooks`
 - `questions-and-decisions`
 - `review-pull-requests-and-the-merge-train`

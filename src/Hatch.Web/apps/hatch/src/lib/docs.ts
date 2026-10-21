@@ -52,14 +52,18 @@ function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+export type DocHrefResolver = (slug: string, fragment: string) => string;
+
 /** Renders the document to HTML whose `##`-`####` headings carry an id and a `#`
     anchor, and lists the `##`/`###` headings as an outline. One pass: the outline
     and the ids come from the same slugger run in document order, so they cannot
     disagree. The output is not sanitized - that is the page's job, and a separate
-    step. Links to other pages resolve to `/docs/<slug>` addresses. A local
-    `Marked`, so the global instance `markdown.ts` uses is untouched. */
+    step. Links to other pages resolve through `resolveHref`, by default to
+    `/docs/<slug>` addresses. A local `Marked`, so the global instance
+    `markdown.ts` uses is untouched. */
 export function renderDocs(
   source: string,
+  resolveHref: DocHrefResolver = (slug, fragment) => `${APP_BASENAME}/docs/${slug}${fragment}`,
 ): { html: string; outline: OutlineEntry[]; ids: string[]; mermaidCount: number } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
@@ -67,7 +71,10 @@ export function renderDocs(
   let mermaidCount = 0;
   const marked = new Marked({
     walkTokens(token) {
-      if (token.type === 'link') token.href = resolveDocHref(token.href);
+      if (token.type === 'link') {
+        const parsed = parseDocLink(token.href);
+        if (parsed) token.href = resolveHref(parsed.name, parsed.fragment);
+      }
     },
     renderer: {
       heading(token: Tokens.Heading) {
@@ -154,17 +161,26 @@ export interface DocPage {
 const DOC_KEYS = ['title', 'section', 'order', 'summary'] as const;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** Where a link to another docs page goes: `slug`, `slug.md`, `./slug` or
-    `./slug.md`, with an optional `#fragment`, become `${APP_BASENAME}/docs/slug`
-    with the fragment kept as written. Anything else - a scheme, an absolute or
-    parent path, a query, a name that is not a slug - comes back unchanged. */
-export function resolveDocHref(href: string): string {
+/** Parses a link to another docs page: `slug`, `slug.md`, `./slug` or
+    `./slug.md`, with an optional `#fragment`, into the slug and the fragment
+    (kept as written, including its leading `#`). Anything else - a scheme, an
+    absolute or parent path, a query, a name that is not a slug - is `null`. */
+function parseDocLink(href: string): { name: string; fragment: string } | null {
   const hash = href.indexOf('#');
   const path = hash === -1 ? href : href.slice(0, hash);
   const fragment = hash === -1 ? '' : href.slice(hash);
   let name = path.startsWith('./') ? path.slice(2) : path;
   if (name.endsWith('.md')) name = name.slice(0, -'.md'.length);
-  return SLUG.test(name) ? `${APP_BASENAME}/docs/${name}${fragment}` : href;
+  return SLUG.test(name) ? { name, fragment } : null;
+}
+
+/** Where a link to another docs page goes: `slug`, `slug.md`, `./slug` or
+    `./slug.md`, with an optional `#fragment`, become `${APP_BASENAME}/docs/slug`
+    with the fragment kept as written. Anything else - a scheme, an absolute or
+    parent path, a query, a name that is not a slug - comes back unchanged. */
+export function resolveDocHref(href: string): string {
+  const parsed = parseDocLink(href);
+  return parsed ? `${APP_BASENAME}/docs/${parsed.name}${parsed.fragment}` : href;
 }
 
 /** Reads one markdown file, as the glob hands it over, into a page. Every way the

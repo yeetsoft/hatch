@@ -16,6 +16,13 @@ const ABSOLUTE_URL = /https?:\/\//
 const PROTOCOL_RELATIVE = /(?:url\(|["'=])\/\//
 const SAME_ORIGIN_SRC = /^(?:\/(?!\/)|\.\.?\/|[^:/]+$)/
 
+// The rendered markdown inside a docs page is the repository's own committed
+// prose (HA-1219's "no sanitiser" call) and may link out by design - cli.github.com,
+// a localhost example, and so on. The leak this file guards against is the frame
+// loading a third-party resource, not a doc page's own anchor text, so the
+// body renderDocs() produced is cut out before the URL checks run.
+const withoutDocsBody = (html: string): string => html.replace(/<article class="hatch-docs-body">[\s\S]*?<\/article>/, '')
+
 let site: Site
 let assets: string[]
 
@@ -27,15 +34,16 @@ beforeAll(async () => {
   assets = readdirSync(join(site.dir, 'assets'))
 })
 
-describe.each(['index.html', '404.html'])('%s', (file: string) => {
+describe.each(['index.html', '404.html', 'docs/index.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
   let html: string
   beforeAll(() => {
     html = withoutComments(site.read(file))
   })
 
-  it('names no absolute or protocol-relative URL', () => {
-    expect(html).not.toMatch(ABSOLUTE_URL)
-    expect(html).not.toMatch(PROTOCOL_RELATIVE)
+  it('names no absolute or protocol-relative URL outside a doc\'s own body', () => {
+    const frame = withoutDocsBody(html)
+    expect(frame).not.toMatch(ABSOLUTE_URL)
+    expect(frame).not.toMatch(PROTOCOL_RELATIVE)
   })
 
   it('has at most two scripts, each a module from this origin', () => {

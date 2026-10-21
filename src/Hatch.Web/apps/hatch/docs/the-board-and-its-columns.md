@@ -8,7 +8,7 @@ summary: The seven columns a stock board ships with, and who moves work out of e
 This is the stock board. An operator may rename its columns, add more and
 reorder them, so nothing below depends on a name: each column is described by
 what happens in it, and the names are only what a fresh install calls them.
-[How work flows](how-work-flows) follows a ticket across them.
+[The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows a ticket across them.
 
 ## The seven stock columns
 
@@ -53,17 +53,23 @@ The hops the board makes are:
 
 - **Express skips** — an express issue is carried past a column ticked
   **Express skips**.
-- **Parent pulls** — a child is carried on, out of a column ticked **Parent
-  pulls**, while its parent stands in the column where code gets written.
 - **Epics** — an epic is carried toward the column where code gets written
   once it has children.
+- **Under** — a story or bug in a column ticked **Express skips** is carried
+  on, with no session, while its parent epic stands in the column where code
+  gets written.
+- **Parent pulls** — a child is carried on, out of a column ticked **Parent
+  pulls**, while its parent stands in the column where code gets written.
+- **Sendback** — a childless issue whose brief is too long for its playbook is
+  carried back to the column that feeds the column where code gets written. It
+  is the one hop that moves a ticket left.
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
 - **Close** — a pre-approved parent in review with every child done goes into
   the first Done column to its right.
 
-`the-lifecycle-of-a-ticket` follows one ticket across every column and hop
-above, start to finish.
+[The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
+across every column and hop above, start to finish.
 
 ## Column flags
 
@@ -145,6 +151,5 @@ moves across them: dependencies, deferring, and closing a subtree.
 
 Pages this one links to that are not written yet:
 
-- `the-lifecycle-of-a-ticket`
 - `flow-wip-and-the-battery`
 - `review-pull-requests-and-the-merge-train`

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using System.Net;
+using System.Text.Json;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
 namespace Hatch.Api.Tests.E2e;
@@ -32,6 +33,17 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>A column of the board, <c>apps/hatch/src/pages/BoardPage.tsx</c>.</summary>
     public const string Column = ".hatch-column";
 
+    /// <summary>The bar's controls, named by <see cref="BarMeasurement.Controls"/> and in bar order: <c>TopBar.tsx</c>, <c>UtilizationBattery.tsx</c>, <c>NavOvernight.tsx</c>, <c>NavAttention.tsx</c>, and the gear <c>Menu</c> trigger.</summary>
+    public const string BrandSelector = ".hatch-topbar__brand";
+
+    public const string BatterySelector = ".hatch-battery";
+
+    public const string OvernightSelector = ".hatch-overnight-control";
+
+    public const string AttentionSelector = ".hatch-attention-control";
+
+    public const string GearSelector = "header.hatch-topbar button[aria-label=\"Settings and theme\"]";
+
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
     public const string EmptyBoard = "This board has no columns yet.";
 
@@ -39,6 +51,33 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     private const int ViewportWidth = 1280;
 
     private const int ViewportHeight = 800;
+
+    /// <summary>
+    /// Runs in the page and reads it as it stands. A <c>DOMRect</c> does not
+    /// serialise, so each box is copied to a plain object; a selector that finds
+    /// nothing is <c>null</c>. <c>PrimaryNav</c> is left out of the tree on a
+    /// phone, so its presence is a fact worth reading (<c>lib/viewport.ts</c>).
+    /// </summary>
+    private const string MeasureBarScript = """
+        (selectors) => {
+          const box = (selector) => {
+            const element = document.querySelector(selector);
+            if (element === null) return null;
+            const r = element.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+          };
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            phoneQueryMatches: window.matchMedia('(max-width: 40rem)').matches,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            primaryNavDrawn: document.querySelector('.hatch-primary-nav') !== null,
+            controls: selectors.map(([name, selector]) => [name, box(selector)]),
+          };
+        }
+        """;
 
     private static readonly TimeSpan CleanupBudget = TimeSpan.FromSeconds(30);
 
@@ -53,6 +92,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     private IBrowserContext? context;
     private IPage? page;
     private bool failed;
+    private DeviceProfile? profile;
 
     /// <summary>The host's log so far, for <see cref="Deadline"/>'s failure message.</summary>
     public Func<string> LogsSoFar => () => string.Join(Environment.NewLine, logs.Messages);
@@ -70,21 +110,26 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         Path.Combine(MinimalDatabases.RepositoryRoot(), "src", "Hatch.Api.Tests", "TestResults", "e2e", $"{name}-{Environment.ProcessId}");
 
     /// <summary>
-    /// Headless Chromium. A browser nobody has installed is a skip naming the
-    /// command that installs it, not a failure: CI's api job has none until
-    /// the job that runs these cases does. Anything else propagates.
+    /// Headless, on the profile's engine (Chromium with no profile). A browser
+    /// nobody has installed is a skip naming the command that installs it, not
+    /// a failure: CI's api job has none until the job that runs these cases
+    /// does. Anything else propagates.
     /// </summary>
-    public async Task LaunchBrowserAsync(Deadline deadline)
+    public async Task LaunchBrowserAsync(Deadline deadline, DeviceProfile? profile = null)
     {
+        this.profile = profile;
+        var engine = profile?.Engine ?? "chromium";
+
         playwright = await deadline.BoundAsync("starting Playwright", Playwright.CreateAsync);
+        var type = playwright[engine];
 
         try
         {
-            browser = await deadline.BoundAsync("launching Chromium", () => playwright.Chromium.LaunchAsync(new() { Headless = true }));
+            browser = await deadline.BoundAsync($"launching {engine}", () => type.LaunchAsync(new() { Headless = true }));
         }
         catch (PlaywrightException e) when (e.Message.Contains("Executable doesn't exist", StringComparison.Ordinal))
         {
-            throw new SkipException("Chromium is not installed for Playwright: run `make browsers`");
+            throw new SkipException($"{type.Name} is not installed for Playwright: run `make browsers`");
         }
     }
 
@@ -117,25 +162,49 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     }
 
     /// <summary>A fresh context with tracing on and <c>PageError</c> recorded from before the first navigation, then the board's address.</summary>
-    public async Task OpenBoardAsync(Deadline deadline, string baseUrl)
+    public Task OpenBoardAsync(Deadline deadline, string baseUrl) =>
+        OpenAsync(deadline, baseUrl, "/apps/hatch/");
+
+    /// <summary>
+    /// A fresh context - the launch profile's device, or 1280x800 with none -
+    /// with tracing on and <c>PageError</c> recorded from before the first
+    /// navigation, then the given path under the SPA's own address.
+    /// <paramref name="beforeNavigate"/> runs once the context exists and before
+    /// the first request, so a case's routes are in place for it.
+    /// </summary>
+    public async Task OpenAsync(Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null)
     {
-        await deadline.BoundAsync("opening the board", async () =>
+        await deadline.BoundAsync("opening the page", async () =>
         {
-            context = await browser!.NewContextAsync(new()
-            {
-                BaseURL = baseUrl,
-                ViewportSize = new() { Width = ViewportWidth, Height = ViewportHeight },
-            });
+            var options = profile is null
+                ? new BrowserNewContextOptions { BaseURL = baseUrl, ViewportSize = new() { Width = ViewportWidth, Height = ViewportHeight } }
+                : new BrowserNewContextOptions(playwright!.Devices[profile.Device]) { BaseURL = baseUrl };
+
+            context = await browser!.NewContextAsync(options);
             await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true });
+
+            if (beforeNavigate is not null) await beforeNavigate(context);
 
             page = await context.NewPageAsync();
             page.SetDefaultTimeout(0);
             page.SetDefaultNavigationTimeout(0);
             page.PageError += (_, message) => { lock (pageErrors) pageErrors.Add(message); };
 
-            await page.GotoAsync("/apps/hatch/");
+            await page.GotoAsync(path);
         });
     }
+
+    /// <summary>Any path under <c>/apps/hatch/</c>, in the context <see cref="OpenBoardAsync"/> or <see cref="OpenAsync"/> already opened.</summary>
+    public Task GoToAsync(Deadline deadline, string path) =>
+        deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
+
+    /// <summary>Drops every route a case installed, so the next load meets the real host: one context goes from a stubbed state to the state at rest.</summary>
+    public Task UnrouteAllAsync(Deadline deadline) =>
+        deadline.BoundAsync("removing the routes", () => context!.UnrouteAllAsync());
+
+    /// <summary>The first element matching <paramref name="selector"/>, visible; the selector is in the phase so a stall names what it waited for.</summary>
+    public Task WaitForVisibleAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"waiting for {selector}", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Visible }));
 
     public Task WaitForTopBarAsync(Deadline deadline) =>
         deadline.BoundAsync("waiting for the top bar", () => page!.Locator(TopBar).WaitForAsync(new() { State = WaitForSelectorState.Visible }));
@@ -154,6 +223,43 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         if (await columns.CountAsync() == 0)
             throw new InvalidOperationException($"The board said \"{EmptyBoard}\": the module migrations did not run against the scratch database.");
     }
+
+    /// <summary>
+    /// The top bar's geometry as the page stands: nothing is scrolled or
+    /// resized first, so a case that wants a settled page waits for it before
+    /// calling.
+    /// </summary>
+    public async Task<BarMeasurement> MeasureBarAsync(Deadline deadline)
+    {
+        (string Name, string Selector)[] controls =
+        [
+            ("brand", BrandSelector),
+            ("battery", BatterySelector),
+            ("overnight", OvernightSelector),
+            ("attention", AttentionSelector),
+            ("gear", GearSelector),
+        ];
+
+        var read = await deadline.BoundAsync("measuring the top bar", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureBarScript, controls.Select(c => new[] { c.Name, c.Selector }).ToArray()));
+
+        return new BarMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("phoneQueryMatches").GetBoolean(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            read.GetProperty("primaryNavDrawn").GetBoolean(),
+            read.GetProperty("controls").EnumerateArray().ToDictionary(
+                pair => pair[0].GetString()!,
+                pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));
+    }
+
+    private static Box ReadBox(JsonElement box) => new(
+        box.GetProperty("x").GetDouble(),
+        box.GetProperty("y").GetDouble(),
+        box.GetProperty("width").GetDouble(),
+        box.GetProperty("height").GetDouble());
 
     /// <summary>Uncaught exceptions only: console messages and failed requests are not render failures, and an offline runner would make the latter flaky.</summary>
     public void AssertNoPageErrors()

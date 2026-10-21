@@ -646,6 +646,27 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task Rows_folded_for_their_tag_are_grouped_and_counted_on_the_servers_sentence()
+    {
+        using var h = new Harness();
+        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-7", sentence),
+            Fixtures.Row("AER-8", sentence),
+            Fixtures.Row("AER-9", "AER-7 has not merged"),
+        });
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains("3 issue(s) were on the dispatcher's path", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains($"2  {sentence}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("1  AER-7 has not merged", StringComparison.Ordinal));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
     public async Task A_night_with_no_CLI_to_spawn_ends_before_it_reads_the_board()
     {
         using var h = new Harness();

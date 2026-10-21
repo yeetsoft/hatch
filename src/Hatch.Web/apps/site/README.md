@@ -35,6 +35,11 @@ The build writes to `apps/site/dist/`. `vite preview` serves `index.html` and
 answers an unknown path with 404, the way the real deploy does — but it does
 not serve `404.html` itself; open `/404.html` directly to see that page.
 
+The docs landing at `/docs/` and the pages under `/docs/<slug>/` are virtual build inputs
+(`vite-plugin-docs.ts`), so `npm run dev` does not serve them — only `build`
+and `preview` do. Each docs page carries a sidebar, an outline and a
+previous/next pager, all built in `vite-plugin-docs.ts` with no script.
+
 ### Environment variables
 
 Four variables, none of which a dev checkout sets, shape the build:

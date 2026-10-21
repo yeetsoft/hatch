@@ -252,6 +252,180 @@ public class DispatchTests
         Assert.Equal(BlockedKinds.Other, RowFor(scan, issue).BlockedKind);
     }
 
+    // ---- Tags: a project's required tags against the runner's declared ones ----
+
+    private const string TagSentence = "AER-1 is implemented only by a runner advertising";
+
+    [Theory]
+    [InlineData(new string[0], "macos and xcode", "none")]
+    [InlineData(new[] { "linux" }, "macos and xcode", "linux")]
+    [InlineData(new[] { "macos" }, "macos and xcode", "macos")]
+    [InlineData(new[] { "xcode", "linux" }, "macos and xcode", "xcode and linux")]
+    public async Task ScanAsync_AnImplementationRowWhoseProjectRequiresTagsTheCallerLacks_FoldsWithTheTagSentence(
+        string[] has, string required, string advertised)
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
+
+        var row = RowFor(scan, issue);
+        Assert.Equal($"{TagSentence} {required} - this runner advertises {advertised}", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+        Assert.Null(row.WaitsOn);
+    }
+
+    [Theory]
+    [InlineData("macos,xcode")]
+    [InlineData("xcode,macos,linux")]
+    public async Task ScanAsync_AnImplementationRowWhoseRequiredTagsTheCallerHas_IsClear(string declared)
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of(declared.Split(',')));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ThreeRequiredTags_ReadAsACommaListWithAnAnd()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("a", "b", "c");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        Assert.Equal($"{TagSentence} a, b and c - this runner advertises none", RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AProjectRequiringNothing_IsClearForADeclarationOfNone()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheMoveIntoImplementation_IsNotTagGated()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_NoDeclarationOrAnUnjudgedOne_FoldsNothingOnTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+
+        Assert.Null(RowFor(none, issue).Blocked);
+        Assert.Null(RowFor(unjudged, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AReviewRowWithAConflict_FoldsOnTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "in review", h.Review);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Conflicted);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        var row = RowFor(scan, issue);
+        Assert.Equal($"{TagSentence} macos and xcode - this runner advertises none", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AReviewRowNobodyHasChecked_IsFoldedByTheReviewJudgeNotTheTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "in review", h.Review);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        Assert.Equal("no runner has checked its branch against the trunk yet", RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ARepositoryTheCallerLacksAndTagsItLacks_NamesTheRepositoryFirst()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddRepositoryAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.From(["https://example.com/other"], false, false), false, default,
+            tags: TagDeclaration.Of([]));
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it", RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ATagFoldedRow_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Unjudged);
+        var judged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Of([]));
+
+        foreach (var scan in new[] { unjudged, judged })
+            foreach (var issue in new[] { p, c, x })
+                Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(judged, p).Blocked);
+        Assert.Contains("is implemented only by a runner advertising", RowFor(judged, p).Blocked);
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
@@ -363,7 +537,7 @@ public class DispatchTests
         private int next = 1;
         private int nextRepoOrder;
 
-        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null)
+        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null, long? parentId = null)
         {
             var issue = new EfHatchIssue
             {
@@ -374,6 +548,7 @@ public class DispatchTests
                 Description = "",
                 StatusId = statusId,
                 Rank = rank,
+                ParentId = parentId,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
@@ -382,6 +557,20 @@ public class DispatchTests
             Db.Issues.Add(issue);
             await Db.SaveChangesAsync();
             return issue;
+        }
+
+        /// <summary>One issue made to wait on another, written straight to the table.</summary>
+        public async Task DependsAsync(EfHatchIssue issue, EfHatchIssue blocker)
+        {
+            Db.Dependencies.Add(new EfHatchIssueDependency
+            {
+                IssueId = issue.Id,
+                DependsOnId = blocker.Id,
+                CreatedBy = "hatch-agent",
+                CreatedAt = Now,
+            });
+
+            await Db.SaveChangesAsync();
         }
 
         public async Task<int> AddProjectAsync(string key)
@@ -396,6 +585,39 @@ public class DispatchTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
             project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task RequireTagsAsync(params string[] tags)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.RunnerTags = EfHatchProject.WriteRunnerTags(tags);
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A runner's verdict, written straight to the table. A project binding
+        /// no repository counts every verdict, so any remote will do.
+        /// </summary>
+        public async Task AddMergeCheckAsync(EfHatchIssue issue, string verdict)
+        {
+            var remote = "https://example.com/o/r";
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.MergeChecks.Add(new EfHatchMergeCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = "main",
+                TrunkSha = new string('a', 40),
+                Verdict = verdict,
+                Branch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-thing" : null,
+                BranchSha = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+
             await Db.SaveChangesAsync();
         }
 
