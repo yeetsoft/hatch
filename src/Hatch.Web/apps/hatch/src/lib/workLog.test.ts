@@ -199,6 +199,9 @@ describe('resumeCommand', () => {
     expect(resumeCommand('claude', 'abc-123')).toBe('claude --resume abc-123');
     expect(resumeCommand('codex', 'abc-123')).toBe('codex exec resume abc-123');
     expect(resumeCommand('grok', 'abc-123')).toBe('grok -r abc-123');
+    expect(resumeCommand('ollama', 'abc-123')).toBe(
+      'codex exec resume --oss --local-provider ollama abc-123',
+    );
   });
 
   it('is null for an agent the table does not recognise, or none at all', () => {

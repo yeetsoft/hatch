@@ -140,8 +140,11 @@ public sealed class Picker(
     /// </summary>
     public static string? WrongAgent(string? model, string agent, ModelFamilies families) =>
         families.AgentOf(model) is { } owner && owner != agent
-            ? $"pinned to {model}, a {owner} model - this runner's agent is {agent}"
+            ? $"pinned to {model}, {Article(owner)} {owner} model - this runner's agent is {agent}"
             : null;
+
+    /// <summary>"an" before a vowel-initial word, "a" otherwise.</summary>
+    private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
 
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)

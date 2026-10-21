@@ -2949,7 +2949,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -3790,6 +3790,11 @@ back before anything existed does not draw an empty stretch. `unresolved`
 counts stretches the same way the timeline's does: a stretch naming a column
 no longer on the board, because it was renamed since and the event predates
 the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
+A terminal column — the board's flag, never a name — counts only what closed
+inside the window: a stretch there that was already open before `from`
+contributes nothing, so the done band starts at zero at the chart's left edge
+and grows only as issues close inside it, rather than opening already full of
+work finished long before the range being asked about.
 
 The page is at `/reports/cumulative-flow`: one band per column, stacked
 bottom-up with the board's last column at the baseline, each in its column's
@@ -5368,16 +5373,20 @@ families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
 validates against (the board's playbook, a repository's playbook file and an
 issue's override all refuse in one sentence naming the aliases and the
 families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
-supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.7 for grok) - not "nonsense-1"`) and the CLI
+supported agent (claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not "nonsense-1"`) and the CLI
 reads. **Pinning an id is choosing an agent.** A runner whose agent
 (`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
 it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
 refuses with the same sentence, `--dry-run` prints it, and the ticket waits for
 a runner of that agent (a board with none leaves it sitting). The sentence is
-`pinned to {model}, a {agent} model - this runner's agent is {agent}`. An alias,
-or no model, is never skipped, and `--model <alias>` on `work` beats the
-playbook and proceeds. (`claude-…` is the Claude family's shape, not the shape
-of a pinned id in general; `gpt-…` is the Codex family's shape.)
+`pinned to {model}, a {agent} model - this runner's agent is {agent}` (`an
+ollama model` before a vowel). An alias, or no model, is never skipped, and
+`--model <alias>` on `work` beats the playbook and proceeds. (`claude-…` is
+the Claude family's shape, not the shape of a pinned id in general; `gpt-…`
+is the Codex family's shape; `name:tag` - for example `qwen3-coder:30b` - is
+Ollama's, with the tag required, no `ollama/` prefix (the id is what `ollama
+list` prints), and the whole id at most 60 characters: a bare `llama3.3` is
+not a pinned id.)
 `Effort` is exactly what the CLI's `--effort` accepts, because a value it does
 not recognise is one it refuses at spawn time, long after the operator has
 stopped looking at the page they typed it on.
@@ -5532,7 +5541,12 @@ and records or opens its pull request, rather than implementing it again.
 current text byte for byte — the same guard every reword before it used — and
 left an edited row exactly as it was. From the prescribed-text split on, a stock
 reword is a change to `DefaultPrompt` and needs no such guard (see *A row says
-when its prompt is the operator's own*, above).
+when its prompt is the operator's own*, above). `RewordImplementationPlaybook`
+is the first to take that shape: it tells the implementation row's
+green-before-pushed bullet to render a changed screen in the headless driver
+(`docs/browser-testing.md`) rather than leaving all browser verification to
+the operator, guarded and written on `DefaultPrompt` alone — no row's own
+`Prompt` is read or touched, and `UpdatedAt` does not move.
 
 **A board that wants a code review adds a check column; it does not widen the
 review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,

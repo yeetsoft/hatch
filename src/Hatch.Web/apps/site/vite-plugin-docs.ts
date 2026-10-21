@@ -3,6 +3,7 @@ import { runnerImport } from 'vite'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { escapeHtml } from './vite-plugin-site'
+import { renderFrame } from './frame'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -44,6 +45,23 @@ interface DocsModule {
   ): { html: string; outline: OutlineEntry[]; mermaidCount: number }
 }
 
+/** One entry of the search index, as `apps/hatch/src/lib/docsIndex.ts` exports it. */
+interface DocEntry {
+  slug: string
+  title: string
+  summary: string
+  heading: string | null
+  anchor: string | null
+  text: string
+}
+
+/** The shape `apps/hatch/src/lib/docsIndex.ts` exports, read through `runnerImport`
+    for the same reason `docs.ts` is: it imports `DOC_PAGES` from `docs.ts`, which
+    uses `import.meta.glob`. */
+interface DocsIndexModule {
+  docIndex(pages: DocsPage[]): DocEntry[]
+}
+
 /** The two pages HA-663 has yet to write. A link to one of these still becomes
     a site address and does not fail the build - everything else does. */
 export const PENDING_PAGES = new Set([
@@ -67,66 +85,6 @@ export function checkDocsLinks(links: readonly BrokenDocsLink[]): void {
   const broken = links.filter((l) => !PENDING_PAGES.has(l.slug))
   if (broken.length === 0) return
   throw new Error(broken.map((l) => `${l.page}.md links to "${l.slug}", which has no docs page`).join('\n'))
-}
-
-interface Frame {
-  title: string
-  description: string
-  main: string
-  /** The `../` prefix from the page's directory to `packages/ui/src/assets/`. */
-  up: string
-  /** Whether the page carries at least one mermaid fence - draws the one extra
-      script that renders them. Omitted by `renderLanding`, which is never
-      fenced. */
-  mermaid?: boolean
-}
-
-/** The document every docs page shares - head, header, skip link, footer - so the
-    footer's `<!--site:repository-->` block cannot drift between the landing and
-    the pages. `title` and `description` are escaped here; `main` is trusted
-    markup. */
-function renderFrame({ title, description, main, up, mermaid }: Frame): string {
-  const safeTitle = escapeHtml(title)
-  const safeDescription = escapeHtml(description)
-  const icon = `${up}packages/ui/src/assets/hatch-logo.png`
-  const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${safeTitle}</title>
-    <meta name="description" content="${safeDescription}" />
-    <meta property="og:title" content="${safeTitle}" />
-    <meta property="og:description" content="${safeDescription}" />
-    <meta property="og:type" content="website" />
-    <link rel="icon" type="image/png" href="${icon}" />
-    <link rel="stylesheet" href="/src/site.css" />
-    <script type="module" src="/src/theme.ts"></script>${diagramsScript}
-  </head>
-  <body>
-    <a class="site-skip" href="#main">Skip to content</a>
-    <header class="site-header site-column">
-      <a class="site-brand" href="%BASE_URL%">
-        <img class="site-mark" src="${icon}" alt="" width="40" height="40" />
-        <span>Hatch</span>
-      </a>
-      <nav class="site-nav" aria-label="Primary">
-        <a href="%BASE_URL%docs/">Docs</a>
-      </nav>
-    </header>
-    <main id="main" class="site-column">
-${main}
-    </main>
-    <footer class="site-footer site-column">
-      <!--site:repository-->
-      <p>Hatch is open source.</p>
-      <a href="{{repository-url}}">Source</a>
-      <!--/site:repository-->
-    </footer>
-  </body>
-</html>
-`
 }
 
 /** The docs sidebar: every section's pages as links, in order, twice from one
@@ -177,6 +135,27 @@ export function renderPager(base: string, previous: DocsPage | null, next: DocsP
     `<a class="site-docs-pager-link site-docs-pager-${direction}" rel="${direction === 'previous' ? 'prev' : 'next'}" href="${escapeHtml(docHref(base, page.slug, ''))}"><span class="site-docs-pager-label">${direction === 'previous' ? 'Previous' : 'Next'}</span><span class="site-docs-pager-title">${escapeHtml(page.title)}</span></a>`
   const links = [previous && link(previous, 'previous'), next && link(next, 'next')].filter(Boolean).join('')
   return `      <nav class="site-docs-pager" aria-label="Previous and next">${links}</nav>`
+}
+
+// The sitemap protocol's own namespace, stable since 2005 - structural, true
+// of every installation, not this one's.
+const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9' // ethos:allow
+
+/** `sitemap.xml`'s body: the home page, the docs landing, then one address per
+    slug, each once, under `canonical` (already `siteEnv`-normalised, so it
+    ends in `/`). Pure, so a test can call it with no build involved. */
+export function renderSitemap(canonical: string, slugs: readonly string[]): string {
+  const locs = [canonical, `${canonical}docs/`, ...slugs.map((slug) => `${canonical}docs/${slug}/`)]
+  const urls = locs.map((loc) => `<url><loc>${escapeHtml(loc)}</loc></url>`).join('')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="${SITEMAP_NAMESPACE}">${urls}</urlset>\n`
+}
+
+/** `robots.txt`'s body: every page allowed, naming `sitemap.xml` only when
+    `canonical` is set. Pure, so a test can call it with no build involved. */
+export function renderRobots(canonical: string | undefined): string {
+  const lines = ['User-agent: *', 'Allow: /']
+  if (canonical !== undefined) lines.push('', `Sitemap: ${canonical}sitemap.xml`)
+  return `${lines.join('\n')}\n`
 }
 
 function renderPage(
@@ -258,10 +237,17 @@ ${blocks.join('\n')}
  * The virtual inputs are registered in `config`, the hook that can still edit
  * `config.build` - but each page's HTML, which needs `base` to build its
  * hrefs, is only rendered in `configResolved`, once `base` is final.
+ *
+ * `canonical` (`siteEnv`'s own, `undefined` with no `base_url`) gates a
+ * `sitemap.xml` written in `generateBundle`, once the build has a real
+ * address to make every page's address absolute under; `robots.txt` is
+ * written there on every build regardless, naming that sitemap only when
+ * `canonical` is set.
  */
-export function docsHtml(): Plugin {
+export function docsHtml(canonical: string | undefined): Plugin {
   const pages = new Map<string, string>()
   let docsModule: DocsModule | undefined
+  let docsIndexModule: DocsIndexModule | undefined
 
   return {
     name: 'docs-html',
@@ -272,6 +258,13 @@ export function docsHtml(): Plugin {
         logLevel: 'silent',
       })
       docsModule = module
+
+      const { module: indexModule } = await runnerImport<DocsIndexModule>(resolve(__dirname, '../hatch/src/lib/docsIndex.ts'), {
+        configFile: false,
+        root: __dirname,
+        logLevel: 'silent',
+      })
+      docsIndexModule = indexModule
 
       config.build ??= {}
       config.build.rolldownOptions ??= {}
@@ -308,6 +301,26 @@ export function docsHtml(): Plugin {
     },
     load(id) {
       return pages.get(id)
+    },
+    generateBundle() {
+      // A crawler reads robots.txt only at the root of a host. On a Pages
+      // project site it is served under /<repo>/ and does nothing until the
+      // custom domain (HA-728) puts the site at a root. Written anyway.
+      this.emitFile({ type: 'asset', fileName: 'robots.txt', source: renderRobots(canonical) })
+
+      const module = docsModule!
+      this.emitFile({
+        type: 'asset',
+        fileName: 'docs/search-index.json',
+        source: JSON.stringify(docsIndexModule!.docIndex(module.DOC_PAGES)),
+      })
+
+      if (canonical === undefined) return
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sitemap.xml',
+        source: renderSitemap(canonical, module.DOC_PAGES.map((p) => p.slug)),
+      })
     },
   }
 }

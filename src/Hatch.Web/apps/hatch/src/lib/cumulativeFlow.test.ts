@@ -3,9 +3,11 @@ import {
   bandPolygon,
   bandStyle,
   bands,
+  breakdown,
   isEmpty,
+  momentLabel,
   peakLabel,
-  pointTitle,
+  pointIndexAt,
   slots,
   stackAt,
   tallestTotal,
@@ -139,28 +141,66 @@ describe('slots', () => {
   });
 });
 
-describe('pointTitle', () => {
-  // Noon UTC, as lib/spend.test.ts's own fixtures are: the day is the same one
-  // regardless of which zone the test runs in, which the hour component is
-  // not and is asserted loosely instead.
-  it('names the hour alongside the day, and every column by name and count', () => {
-    const p = point(Date.parse('2026-10-12T12:00:00.000Z'), [14, 3, 40]);
-    const title = pointTitle(p, [1, 2, 3], 'hour', statuses, 'en-GB');
-
-    expect(title).toContain('12 Oct');
-    expect(title).toMatch(/^12 Oct \d{2}:\d{2} - To Do 14, In Progress 3, Done 40$/);
+describe('pointIndexAt', () => {
+  it('is null with no points', () => {
+    expect(pointIndexAt([], scale, 50)).toBeNull();
   });
 
-  it('drops the time on a day or week step', () => {
-    const p = point(Date.parse('2026-10-12T12:00:00.000Z'), [14, 3, 40]);
+  it('gives the one point at both edges', () => {
+    const points = [point(40, [1])];
 
-    expect(pointTitle(p, [1, 2, 3], 'day', statuses, 'en-GB')).toBe('12 Oct - To Do 14, In Progress 3, Done 40');
+    expect(pointIndexAt(points, scale, 0)).toBe(0);
+    expect(pointIndexAt(points, scale, 100)).toBe(0);
+  });
+
+  it('gives the first point at the left edge and the last past its own slot', () => {
+    const points = [point(10, [1]), point(50, [1]), point(90, [1])];
+
+    expect(pointIndexAt(points, scale, 0)).toBe(0);
+    expect(pointIndexAt(points, scale, 100)).toBe(2);
+  });
+
+  it('resolves an exact slot boundary to the right-hand point', () => {
+    const points = [point(20, [1]), point(80, [1])];
+
+    expect(pointIndexAt(points, scale, 50)).toBe(1);
+  });
+});
+
+describe('breakdown', () => {
+  it('lists every column in board order, with the total', () => {
+    expect(breakdown(point(0, [3, 1, 2]), [1, 2, 3], statuses)).toEqual({
+      rows: [
+        { columnId: 1, name: 'To Do', count: 3 },
+        { columnId: 2, name: 'In Progress', count: 1 },
+        { columnId: 3, name: 'Done', count: 2 },
+      ],
+      total: 6,
+    });
   });
 
   it('names a column no longer on the board Unknown', () => {
-    const p = point(Date.parse('2026-10-12T12:00:00.000Z'), [5, 2]);
+    expect(breakdown(point(0, [5, 2]), [1, 99], statuses)).toEqual({
+      rows: [
+        { columnId: 1, name: 'To Do', count: 5 },
+        { columnId: 99, name: 'Unknown', count: 2 },
+      ],
+      total: 7,
+    });
+  });
+});
 
-    expect(pointTitle(p, [1, 99], 'day', statuses, 'en-GB')).toBe('12 Oct - To Do 5, Unknown 2');
+describe('momentLabel', () => {
+  // Noon UTC, as lib/spend.test.ts's own fixtures are: the day is the same one
+  // regardless of which zone the test runs in, which the hour component is
+  // not and is asserted loosely instead.
+  it('names the hour alongside the day on an hour step', () => {
+    expect(momentLabel('2026-10-12T12:00:00.000Z', 'hour', 'en-GB')).toMatch(/^12 Oct \d{2}:\d{2}$/);
+  });
+
+  it('drops the time on a day or week step', () => {
+    expect(momentLabel('2026-10-12T12:00:00.000Z', 'day', 'en-GB')).toBe('12 Oct');
+    expect(momentLabel('2026-10-12T12:00:00.000Z', 'week', 'en-GB')).toBe('12 Oct');
   });
 });
 
