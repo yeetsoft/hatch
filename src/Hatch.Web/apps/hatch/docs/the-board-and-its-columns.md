@@ -5,9 +5,10 @@ order: 10
 summary: The seven columns a stock board ships with, and who moves work out of each.
 ---
 
-This is the stock board. An operator may rename its columns, add more and
-reorder them, so nothing below depends on a name: each column is described by
-what happens in it, and the names are only what a fresh install calls them.
+This is the stock board, which is what **Board** in the primary nav draws. An
+operator may rename its columns, add more and reorder them, so nothing below
+depends on a name: each column is described by what happens in it, and the
+names are only what a fresh install calls them.
 [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows a ticket across them.
 
 ## The seven stock columns
