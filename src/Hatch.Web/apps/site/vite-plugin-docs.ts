@@ -41,10 +41,9 @@ interface DocsModule {
   renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string; outline: OutlineEntry[] }
 }
 
-/** The four pages HA-663 has yet to write. A link to one of these still becomes
+/** The three pages HA-663 has yet to write. A link to one of these still becomes
     a site address and does not fail the build - everything else does. */
 export const PENDING_PAGES = new Set([
-  'playbooks',
   'questions-and-decisions',
   'review-pull-requests-and-the-merge-train',
   'flow-wip-and-the-battery',
