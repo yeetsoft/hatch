@@ -1056,6 +1056,165 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>", Said);
     }
 
+    // ---- --tag ----
+
+    [Fact]
+    public async Task Tag_writes_the_joined_list_and_touches_nothing_else()
+    {
+        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_TAGS=gpu,linux", written);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+    }
+
+    [Fact]
+    public async Task Tag_is_normalised_lowercased_and_deduplicated()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "GPU", "--tag", "gpu"], default));
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Tag_alone_clears_what_was_there()
+    {
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag"], default));
+
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_TAGS=", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("gpu big")]
+    [InlineData("a,b")]
+    [InlineData("123456789012345678901234567890123")]
+    public async Task A_tag_that_breaks_RunnerTags_is_refused_with_nothing_written(string badTag)
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", badTag], default));
+
+        Assert.Contains("a tag", Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Nine_tags_are_refused_with_nothing_written()
+    {
+        var args = new List<string>();
+        for (var i = 0; i < 9; i++)
+        {
+            args.Add("--tag");
+            args.Add($"tag{i}");
+        }
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync([.. args], default));
+
+        Assert.Contains("at most 8 tags", Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_refused_tag_leaves_an_existing_file_untouched()
+    {
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        var before = File.ReadAllBytes(ConfigPath);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu big"], default));
+
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Tag_shaped_wrong_is_refused_and_nothing_is_written()
+    {
+        // A trailing bare --tag.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag"], default));
+        Assert.False(File.Exists(ConfigPath));
+
+        // Two values with no --tag between them.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "linux"], default));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Tag_needs_no_checkout_and_no_reachable_board()
+    {
+        var probed = false;
+        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
+        {
+            probed = true;
+            return Task.FromResult<string?>(null);
+        });
+
+        Assert.Equal(0, await cmd.RunAsync(["--tag", "gpu"], default));
+        Assert.False(probed);
+    }
+
+    [Fact]
+    public async Task Show_lists_the_tags_with_the_layer()
+    {
+        await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_TAGS:        gpu, linux  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_no_tags_says_unset()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+        Assert.Contains("HATCH_TAGS:        <unset>", Said);
+    }
+
+    [Fact]
+    public async Task Origin_after_tag_leaves_the_tags_in_the_file()
+    {
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+
+        await Command(new Replies()).RunAsync(["--origin", "https://new"], default);
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Key_after_tag_leaves_the_tags_in_the_file()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Repo_after_tag_leaves_the_tags_in_the_file()
+    {
+        var a = Tree("a");
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+
+        await Command(new Replies()).RunAsync(["--repo", a], default);
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Workspace_after_tag_leaves_the_tags_in_the_file()
+    {
+        var dir = Path.Combine(_temp, "clones");
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+
+        await Command(new Replies()).RunAsync(["--workspace", dir], default);
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
+    }
+
     public void Dispose()
     {
         try

@@ -127,7 +127,7 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
-var board = new Board(client);
+var board = new Board(client, settings.Tags);
 
 // Every way out through one door. A signal that is not handled kills the
 // process outright, and the increment that ends in an interrupt is exactly the
@@ -461,6 +461,8 @@ internal partial class Program
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",
+        "  HATCH_TAGS         comma-separated tags this runner advertises; a project's",
+        "                     runner tags need them",
         "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
         "                     repository the board binds that it has no checkout of;",
         "                     unset means a per-user default, `off` means never clone",

@@ -1214,6 +1214,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// somebody set at midnight survives the loop's own half-hourly restart -
     /// and sending them each time is what makes the row show the truth from its
     /// first appearance without the runner having to know whether it is new.
+    /// The tags are, like <c>Remotes</c>, sent every time so the row follows the
+    /// config: an empty list is serialised as <c>"tags":[]</c>, which
+    /// overwrites, so a removed tag leaves the row on the next beat.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
@@ -1229,6 +1232,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxSpend: tally.MaxSpend,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
+                Tags: runtime.Settings.Tags,
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
