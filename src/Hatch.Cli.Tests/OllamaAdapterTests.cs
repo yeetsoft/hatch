@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -13,9 +15,10 @@ public sealed class OllamaAdapterTests : IDisposable
 
     public void Dispose() => File.Delete(_bin);
 
-    private OllamaAdapter Adapter(OllamaHost? host = null, IReadOnlyDictionary<string, string?>? tiers = null)
+    private OllamaAdapter Adapter(
+        OllamaHost? host = null, IReadOnlyDictionary<string, string?>? tiers = null, HttpMessageHandler? wire = null)
     {
-        var adapter = new OllamaAdapter(host, tiers, _warnings.Add, _bin);
+        var adapter = new OllamaAdapter(host, tiers, _warnings.Add, _bin, handler: wire ?? new TagsWire());
         Assert.True(adapter.CanSpawn(out _));
         return adapter;
     }
@@ -295,6 +298,85 @@ public sealed class OllamaAdapterTests : IDisposable
     }
 
     [Fact]
+    public void CanSpawn_with_models_in_the_body_answers_true()
+    {
+        var adapter = new OllamaAdapter(
+            configured: _bin, handler: new TagsWire(body: """{"models":[{"name":"qwen3-coder:30b"}]}"""));
+
+        Assert.True(adapter.CanSpawn(out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_refuses_when_the_wire_cannot_be_reached()
+    {
+        var adapter = new OllamaAdapter(configured: _bin, handler: new ThrowingWire(new HttpRequestException("refused")));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            $"hatch: ollama is not answering at {OllamaHost.Default.Url} - start it, or point HATCH_OLLAMA_HOST at one that is",
+            refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_refuses_when_the_wire_times_out()
+    {
+        var adapter = new OllamaAdapter(
+            configured: _bin,
+            handler: new ThrowingWire(new TaskCanceledException("the request was canceled due to the configured HttpClient.Timeout")));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            $"hatch: ollama is not answering at {OllamaHost.Default.Url} - start it, or point HATCH_OLLAMA_HOST at one that is",
+            refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_refuses_on_a_non_2xx_answer()
+    {
+        var adapter = new OllamaAdapter(configured: _bin, handler: new TagsWire(status: HttpStatusCode.ServiceUnavailable));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            $"hatch: ollama is not answering at {OllamaHost.Default.Url} - start it, or point HATCH_OLLAMA_HOST at one that is",
+            refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_names_an_explicit_host_in_the_refusal()
+    {
+        var host = new OllamaHost("http://h:1234", true);
+        var adapter = new OllamaAdapter(host, configured: _bin, handler: new ThrowingWire(new HttpRequestException("refused")));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal(
+            "hatch: ollama is not answering at http://h:1234 - start it, or point HATCH_OLLAMA_HOST at one that is",
+            refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_asks_the_wire_only_once_across_three_calls()
+    {
+        var wire = new TagsWire();
+        var adapter = new OllamaAdapter(configured: _bin, handler: wire);
+
+        Assert.True(adapter.CanSpawn(out _));
+        Assert.True(adapter.CanSpawn(out _));
+        Assert.True(adapter.CanSpawn(out _));
+
+        Assert.Equal(1, wire.Calls);
+    }
+
+    [Fact]
+    public void CanSpawn_with_a_missing_configured_binary_never_asks_the_wire()
+    {
+        var adapter = new OllamaAdapter(configured: "/does/not/exist", handler: new ThrowingWire(new HttpRequestException("refused")));
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal("hatch: HATCH_CODEX_BIN is not there: /does/not/exist", refusal);
+    }
+
+    [Fact]
     public void The_warning_names_all_four_aliases_when_none_is_mapped()
     {
         _ = Adapter();
@@ -420,5 +502,27 @@ public sealed class OllamaAdapterTests : IDisposable
     {
         Assert.Equal(sentence, OllamaAdapter.ParseTiers(raw, out var tiers));
         Assert.Empty(tiers);
+    }
+
+    /// <summary>A wire that answers <c>GET /api/tags</c> with a scripted status and body.</summary>
+    private sealed class TagsWire(HttpStatusCode status = HttpStatusCode.OK, string body = """{"models":[]}""") : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body),
+            });
+        }
+    }
+
+    /// <summary>A wire that fails to answer at all, the way a dead or slow Ollama would.</summary>
+    private sealed class ThrowingWire(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            throw exception;
     }
 }

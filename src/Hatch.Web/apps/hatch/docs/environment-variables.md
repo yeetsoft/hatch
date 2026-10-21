@@ -58,6 +58,7 @@ saying so; those are read from the environment alone.
 | `HATCH_CLAUDE_BIN` | `hatch` | unset: found on `PATH` | The `claude` CLI, if it is not on `PATH`. Settings file: yes. |
 | `HATCH_CODEX_BIN` | `hatch` | unset: found on `PATH` | The `codex` CLI, if it is not on `PATH`. Settings file: yes. |
 | `HATCH_GROK_BIN` | `hatch` | unset: found on `PATH` | The `grok` CLI, if it is not on `PATH`. Settings file: yes. |
+| `HATCH_OLLAMA_HOST` | `hatch`, through `OllamaHost.Resolve` | unset: falls back to Ollama's own `OLLAMA_HOST`, then `http://127.0.0.1:11434` | Hatch's own override for where an `ollama` agent's server is. `CanSpawn` asks it once for `GET /api/tags`, and names it in the refusal when the host is not answering. Settings file: no. |
 | `HATCH_BASE_BRANCH` | `hatch` | unset: the branch origin calls its default | The trunk `go-to-work` resets to between increments. It has no `hatch config` flag. Settings file: yes. |
 | `HATCH_RUNNER` | `hatch` | unset: a cast-list name, chosen once per checkout | What the board calls this runner ([the runner](the-runner#the-runners-name)). Settings file: yes. |
 | `HATCH_REPOS` | `hatch` | empty | The checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows). Blanks are dropped. Settings file: yes. |

@@ -235,6 +235,34 @@ public static class Fixtures
         string? projectKey = null) =>
         new(key, repositories, checks, builds, pullRequestUrl, mergeWork, projectKey ?? key[..key.IndexOf('-')]);
 
+    /// <summary>The canonical identity of the one repository <see cref="MergeRow"/> binds.</summary>
+    public const string MergeCanonical = "example.test/repo";
+
+    /// <summary>
+    /// A row in the merges column, judged <paramref name="kind"/>: the project's
+    /// one repository, bound so <c>where.Canonical</c> resolves to
+    /// <see cref="MergeCanonical"/>, and a clean merge check on <paramref name="branch"/>
+    /// whose shas already match origin - so Poll's own merge-check half vouches for
+    /// it and fetches nothing, leaving only the merge train to ask anything of <c>gh</c>.
+    /// Null <paramref name="kind"/> is an ordinary review row: no <c>MergeWork</c> at all.
+    /// </summary>
+    public static ReviewCheckDto MergeRow(
+        string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null,
+        bool isHead = true, string? projectKey = null, IReadOnlyList<BuildCheckDto>? builds = null)
+    {
+        var sha = judgedSha ?? new string('b', 40);
+        var repo = Repository("https://example.test/repo.git", MergeCanonical);
+        var stored = MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = new string('a', 40), Branch = branch, BranchSha = sha,
+        };
+
+        return Review(
+            key, [repo], [stored], builds ?? [], pullRequestUrl,
+            kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes", isHead),
+            projectKey);
+    }
+
     /// <summary>An issue in review whose branch has stopped merging, and the queue row that says to resolve it.</summary>
     public static QueueEntryDto ConflictRow(string key, string trunk = "main", params string[] files) =>
         new(
