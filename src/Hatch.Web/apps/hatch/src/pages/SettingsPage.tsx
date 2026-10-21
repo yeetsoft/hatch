@@ -201,6 +201,11 @@ export function SettingsPage() {
           </Card>
         ))}
 
+      <p className="text-muted">
+        An <code>ollama</code> runner needs no credential here: it is configured on the runner
+        itself, by <code>HATCH_OLLAMA_HOST</code>.
+      </p>
+
       {/* Absent wherever the wall is up, which is every cluster install: there
           a person is a person because they enrolled, and their name is already
           on everything they write. A box that could not change that would be a
