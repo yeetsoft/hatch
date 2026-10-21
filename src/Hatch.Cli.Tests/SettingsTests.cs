@@ -113,6 +113,80 @@ public sealed class SettingsTests : IDisposable
         Assert.Contains("codex", Settings.KnownAgentIds);
     }
 
+    /// <summary>The same three layers the other agent bins read through, for the Ollama host.</summary>
+    [Fact]
+    public void Ollama_host_reads_from_HATCH_OLLAMA_HOST_through_the_three_layers()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository");
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_OLLAMA_HOST", "http://box:1234")), out var settings, out _, user));
+
+        Assert.Equal("http://box:1234", settings.OllamaHost.Url);
+        Assert.True(settings.OllamaHost.Explicit);
+    }
+
+    /// <summary>
+    /// Ollama's own variable is read straight out of the process environment,
+    /// never through the checkout or per-user file.
+    /// </summary>
+    [Fact]
+    public void Ollama_host_falls_back_to_OLLAMA_HOST_when_HATCH_OLLAMA_HOST_is_unset()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(null, Env(("OLLAMA_HOST", "http://box:4321")), out var settings, out _, user));
+
+        Assert.Equal("http://box:4321", settings.OllamaHost.Url);
+        Assert.True(settings.OllamaHost.Explicit);
+    }
+
+    /// <summary>
+    /// `OLLAMA_HOST` is not on the allowlist, so a settings file naming it is
+    /// ignored the same way any other unknown name is - it never reaches
+    /// <see cref="Settings.OllamaHost"/>.
+    /// </summary>
+    [Fact]
+    public void A_checkout_file_naming_OLLAMA_HOST_is_ignored()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository", "OLLAMA_HOST=http://box:9999");
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, user));
+
+        Assert.Equal(OllamaHost.Default, settings.OllamaHost);
+    }
+
+    [Fact]
+    public void Known_agent_ids_include_ollama()
+    {
+        Assert.Contains("ollama", Settings.KnownAgentIds);
+    }
+
+    [Fact]
+    public void A_bad_HATCH_OLLAMA_TIERS_refuses_the_load()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.False(Settings.TryLoad(
+            null, Env(("HATCH_OLLAMA_TIERS", "nope")), out _, out var refusal, user));
+
+        Assert.Contains("HATCH_OLLAMA_TIERS", refusal);
+        Assert.Contains(OllamaAdapter.ParseTiers("nope", out _)!, refusal);
+    }
+
+    [Fact]
+    public void A_good_HATCH_OLLAMA_TIERS_parses_into_OllamaTiers()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_OLLAMA_TIERS", "sonnet=qwen3-coder:30b")), out var settings, out _, user));
+
+        Assert.Equal("qwen3-coder:30b", settings.OllamaTiers["sonnet"]);
+    }
+
     [Fact]
     public void Codex_bin_is_read_from_the_environment()
     {

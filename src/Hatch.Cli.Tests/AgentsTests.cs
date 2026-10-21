@@ -22,6 +22,6 @@ public sealed class AgentsTests
     {
         Assert.False(Agents.Resolve("nope", null, null, null, null, out _, out _, out var refusal));
 
-        Assert.Equal("hatch: no such agent \"nope\" - known: claude, codex, grok", refusal);
+        Assert.Equal("hatch: no such agent \"nope\" - known: claude, codex, grok, ollama", refusal);
     }
 }

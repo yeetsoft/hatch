@@ -168,12 +168,15 @@ public sealed class CredentialCommandTests
     /// <summary>
     /// A fourth agent added to <see cref="Settings.KnownAgentIds"/> without a
     /// variable here would be one whose container never got a credential, and
-    /// said so only as a usage error at runtime.
+    /// said so only as a usage error at runtime - except <c>ollama</c>, whose
+    /// server is local rather than token-authenticated, and whose
+    /// <c>runner-credential</c> support (if any) is HA-1254's own task to
+    /// decide, not this one's.
     /// </summary>
     [Fact]
     public void Every_known_agent_has_a_variable()
     {
-        foreach (var agent in Settings.KnownAgentIds)
+        foreach (var agent in Settings.KnownAgentIds.Where(a => a != "ollama"))
             Assert.False(string.IsNullOrWhiteSpace(CredentialCommand.Variable(agent)), $"no variable for {agent}");
     }
 
