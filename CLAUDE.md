@@ -184,5 +184,8 @@ so the trail says who did what without anybody being asked to record it.
 - Never commit unless asked.
 - No hardcoded domains, addresses, hostnames, or people, anywhere — including
   in plans and comments. See [`docs/ethos.md`](docs/ethos.md).
-- The operator does all browser and UI verification. The implementer's
-  definition of done is lint, build and tests green.
+- Lint, build and tests green are the floor. A change under `src/Hatch.Web` is
+  also rendered in the driver ([`docs/browser-testing.md`](docs/browser-testing.md)),
+  and the ticket gets the page, the profile and what was seen. The operator's
+  own look is still the last word: never claim a screen works from the build
+  alone.
