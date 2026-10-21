@@ -53,6 +53,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     private IBrowserContext? context;
     private IPage? page;
     private bool failed;
+    private DeviceProfile? profile;
 
     /// <summary>The host's log so far, for <see cref="Deadline"/>'s failure message.</summary>
     public Func<string> LogsSoFar => () => string.Join(Environment.NewLine, logs.Messages);
@@ -70,21 +71,26 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         Path.Combine(MinimalDatabases.RepositoryRoot(), "src", "Hatch.Api.Tests", "TestResults", "e2e", $"{name}-{Environment.ProcessId}");
 
     /// <summary>
-    /// Headless Chromium. A browser nobody has installed is a skip naming the
-    /// command that installs it, not a failure: CI's api job has none until
-    /// the job that runs these cases does. Anything else propagates.
+    /// Headless, on the profile's engine (Chromium with no profile). A browser
+    /// nobody has installed is a skip naming the command that installs it, not
+    /// a failure: CI's api job has none until the job that runs these cases
+    /// does. Anything else propagates.
     /// </summary>
-    public async Task LaunchBrowserAsync(Deadline deadline)
+    public async Task LaunchBrowserAsync(Deadline deadline, DeviceProfile? profile = null)
     {
+        this.profile = profile;
+        var engine = profile?.Engine ?? "chromium";
+
         playwright = await deadline.BoundAsync("starting Playwright", Playwright.CreateAsync);
+        var type = playwright[engine];
 
         try
         {
-            browser = await deadline.BoundAsync("launching Chromium", () => playwright.Chromium.LaunchAsync(new() { Headless = true }));
+            browser = await deadline.BoundAsync($"launching {engine}", () => type.LaunchAsync(new() { Headless = true }));
         }
         catch (PlaywrightException e) when (e.Message.Contains("Executable doesn't exist", StringComparison.Ordinal))
         {
-            throw new SkipException("Chromium is not installed for Playwright: run `make browsers`");
+            throw new SkipException($"{type.Name} is not installed for Playwright: run `make browsers`");
         }
     }
 
@@ -117,15 +123,23 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     }
 
     /// <summary>A fresh context with tracing on and <c>PageError</c> recorded from before the first navigation, then the board's address.</summary>
-    public async Task OpenBoardAsync(Deadline deadline, string baseUrl)
+    public Task OpenBoardAsync(Deadline deadline, string baseUrl) =>
+        OpenAsync(deadline, baseUrl, "/apps/hatch/");
+
+    /// <summary>
+    /// A fresh context - the launch profile's device, or 1280x800 with none -
+    /// with tracing on and <c>PageError</c> recorded from before the first
+    /// navigation, then the given path under the SPA's own address.
+    /// </summary>
+    public async Task OpenAsync(Deadline deadline, string baseUrl, string path)
     {
-        await deadline.BoundAsync("opening the board", async () =>
+        await deadline.BoundAsync("opening the page", async () =>
         {
-            context = await browser!.NewContextAsync(new()
-            {
-                BaseURL = baseUrl,
-                ViewportSize = new() { Width = ViewportWidth, Height = ViewportHeight },
-            });
+            var options = profile is null
+                ? new BrowserNewContextOptions { BaseURL = baseUrl, ViewportSize = new() { Width = ViewportWidth, Height = ViewportHeight } }
+                : new BrowserNewContextOptions(playwright!.Devices[profile.Device]) { BaseURL = baseUrl };
+
+            context = await browser!.NewContextAsync(options);
             await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true });
 
             page = await context.NewPageAsync();
@@ -133,9 +147,13 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             page.SetDefaultNavigationTimeout(0);
             page.PageError += (_, message) => { lock (pageErrors) pageErrors.Add(message); };
 
-            await page.GotoAsync("/apps/hatch/");
+            await page.GotoAsync(path);
         });
     }
+
+    /// <summary>Any path under <c>/apps/hatch/</c>, in the context <see cref="OpenBoardAsync"/> or <see cref="OpenAsync"/> already opened.</summary>
+    public Task GoToAsync(Deadline deadline, string path) =>
+        deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
 
     public Task WaitForTopBarAsync(Deadline deadline) =>
         deadline.BoundAsync("waiting for the top bar", () => page!.Locator(TopBar).WaitForAsync(new() { State = WaitForSelectorState.Visible }));
