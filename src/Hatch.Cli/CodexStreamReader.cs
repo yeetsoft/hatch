@@ -31,6 +31,9 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
     public long PeakContextTokens => _peakContext;
 
+    // A stub for the interface; the Codex reads task (HA-1266) replaces it.
+    public IReadOnlyList<WorkLogReadDto> Reads => [];
+
     /// <summary>
     /// Always empty - Codex's <c>ThreadEvent</c> has no <c>rate_limit_event</c>
     /// equivalent, confirmed from its own source rather than from documentation
