@@ -5096,18 +5096,22 @@ and sits beside the new prescribed text. The reworded text does not say the merg
 for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
-Nine rows are seeded, for the same reason the columns are: a Hatch whose agent
+Ten rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken.
 Seven come from `Playbooks.cs` (20260903204217) directly: the three
 breakdown rows, the epic start, the analysis row, the implementation row and
 the epic verification row. The eighth is the stock review playbook, which
 `SeedConflictPlaybook` (20260928015312) adds, for every type, at `sonnet` and
 `high`. The ninth is the closeout row `SeedCloseoutPlaybook` (20260930235751)
-adds beside the implementation row, which it narrows to `leaf`. A feature that
+adds beside the implementation row, which it narrows to `leaf`. The tenth is
+the stock reflection row `SeedReflectionPlaybook` (20261020234815) adds, on the
+same `Breakdown` → `Backlog` transition as the three breakdown rows, for
+`reflection` alone, at the epic-breakdown row's own `fable` and `max` — the first
+seeded row to carry a `deniedTools` list. A feature that
 does nothing until somebody fills in a table is the same failure as the loop
 that cannot run, so the review migration seeds its row only where no row from
 the review column to itself exists; an operator who deletes it turns conflict
-and build work off, and nothing puts it back. The other eight cover every
+and build work off, and nothing puts it back. The other nine cover every
 transition an agent owns, so `go-to-work` on a fresh install needs no
 configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
@@ -5134,13 +5138,14 @@ every word of its `Prompt`, and where it still opened with a stock text's first
 line learned that text as its `DefaultPrompt`; a row whose opening sentence had
 been rewritten learned none. Neither pass touched `UpdatedAt`.
 
-Every one of the nine either edits the tree or judges it:
+Every one of the ten either edits the tree or judges it:
 
 | Transition | Types / Shape | Name | Edits or judges |
 |---|---|---|---|
 | Breakdown → Backlog | `epic` | breakdown (epic) | judges |
 | Breakdown → Backlog | `story` | breakdown (story) | judges |
 | Breakdown → Backlog | `task,bug` | breakdown (task/bug) | judges |
+| Breakdown → Backlog | `reflection` | breakdown (reflection) | judges |
 | To Do → In Progress | `epic` | epic-start | judges |
 | To Do → In Progress | `''` (any type) | analysis | judges |
 | In Progress → In Review | `''`, shape `leaf` | implementation | **edits** |
@@ -5148,10 +5153,15 @@ Every one of the nine either edits the tree or judges it:
 | In Progress → In Review | `epic` | verify-epic | judges |
 | Review → Review | every type | the review row | **edits** |
 
-*Judges* here means by instruction only. None of the seven is enforced by
-`IsCheck` or `deniedTools`: each is told in its prompt to specify, verify or
-report rather than to write the code, and nothing but the prompt keeps a
-session to that. Only a [check playbook](#check), paired with denied tools, takes the write tools away.
+*Judges* here means by instruction only, with one exception. None of the other
+nine is enforced by `IsCheck` or `deniedTools`: each is told in its prompt to
+specify, verify or report rather than to write the code, and nothing but the
+prompt keeps a session to that. The exception is the reflection row, whose
+`deniedTools` list removes the file writers (`Edit`, `Write`, `NotebookEdit`)
+and the git writers. It is still not a check — no migration sets `IsCheck` on
+it — and it keeps `Read`, plain `Bash` and the `hatch` verbs, so it still reads
+the repository and its files and moves its own ticket. Only a [check
+playbook](#check), paired with denied tools, takes the write tools away.
 
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
@@ -5169,7 +5179,7 @@ epic](#running-an-epic). `VerifyEpicPlaybook` rewrote the row only where it
 still read the seeded text, byte for byte, and left a retuned model or
 effort alone; it seeded the row only where nothing already covered an epic on
 that move and that shape, which is the one place it added a row, and only on a
-board that did not already have one — so the count stays at nine on a
+board that did not already have one — so the count stays at ten on a
 standard fresh install.
 
 **The epic row on `To Do → In Progress`, seeded with the text *"you are
