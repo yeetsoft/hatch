@@ -99,7 +99,7 @@ These are the steps a person does in the browser and the terminal once the
 stack is running. They are in the order to do them in.
 
 {:.steps}
-1. **Name yourself.** There is no sign-in on a board started this way (the wall is optional; see *Putting a front door on it* in the walkthrough). It
+1. **Name yourself.** There is no sign-in on a board started this way (the wall is optional; see *Putting a front door on it* in *The wall: off, on and required*, on the board's own Docs page). It
    signs what you do with your shell's user name and calls you `friend` if it
    has none. **Settings → Your name** fixes that, and every comment and event
    from then on carries it.

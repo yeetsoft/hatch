@@ -6,6 +6,8 @@
 # password - and a token works as either against every forge that takes one, so
 # this answers both with the same thing rather than trying to read the prompt.
 #
-# Only wired up when HATCH_GIT_TOKEN is set; see entrypoint.sh, and
-# src/Hatch.Web/apps/hatch/public/hatch-at-home.md for the two credential shapes that need none of this.
+# Only wired up when HATCH_GIT_TOKEN is set; see entrypoint.sh, and the Docs
+# page "The container runner"
+# (src/Hatch.Web/apps/hatch/docs/the-container-runner.md#letting-it-push) for
+# the two credential shapes that need none of this.
 echo "${HATCH_GIT_TOKEN:-}"
