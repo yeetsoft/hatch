@@ -33,6 +33,13 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     [Fact]
+    public void CanServe_answers_true_for_every_model()
+    {
+        Assert.True(((IAgentAdapter)Adapter()).CanServe("anything:7b", out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
     public void BuildHeadless_with_no_hooks_and_no_denied_tools_grants_approval_alone()
     {
         var args = Adapter().BuildHeadless(Request()).ArgumentList;

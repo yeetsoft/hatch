@@ -794,7 +794,8 @@ public sealed class WorkCommand(Runtime runtime)
     /// agent's model, where the flag, when given, is the whole answer to
     /// "what model" since it beats the playbook the same way it does
     /// everywhere else named is resolved; or carrying denied-tools rules this
-    /// agent's adapter cannot honour.
+    /// agent's adapter cannot honour; or pinned to a model its server has not
+    /// pulled.
     /// </summary>
     private bool RefuseRow(WorkDto work, string? model)
     {
@@ -807,6 +808,12 @@ public sealed class WorkCommand(Runtime runtime)
         if (!runtime.Adapter.CanDeny(work.Playbook?.DeniedTools ?? [], out var denied))
         {
             runtime.Say.Complain($"hatch: {work.Issue.Key} - {denied}");
+            return true;
+        }
+
+        if (!runtime.Adapter.CanServe(model ?? work.Playbook?.Model, out var unserved))
+        {
+            runtime.Say.Complain($"hatch: {work.Issue.Key} - {unserved}");
             return true;
         }
 

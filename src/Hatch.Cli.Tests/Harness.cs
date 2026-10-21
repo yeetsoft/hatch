@@ -138,6 +138,24 @@ public sealed class FakeAdapter : IAgentAdapter
         return true;
     }
 
+    /// <summary>
+    /// Set to make <see cref="CanServe"/> refuse a row pinned to any model at
+    /// all, with this sentence; null, or a row with no model, takes it.
+    /// </summary>
+    public string? CanServeRefusal { get; set; }
+
+    public bool CanServe(string? model, out string refusal)
+    {
+        if (!string.IsNullOrEmpty(model) && CanServeRefusal is { } why)
+        {
+            refusal = why;
+            return false;
+        }
+
+        refusal = "";
+        return true;
+    }
+
     public bool PromptOnStdin { get; set; } = true;
 
     public bool CanHook { get; set; } = true;

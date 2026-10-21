@@ -36,6 +36,20 @@ public interface IAgentAdapter
         return true;
     }
 
+    /// <summary>
+    /// Whether this agent can serve a row pinned to <paramref name="model"/> -
+    /// a pinned id or a mapped alias, as <see cref="QueueEntryDto.Model"/>
+    /// carries it. False with the sentence naming what is missing, asked
+    /// before a claim is taken for the same reason as <see cref="CanSpawn"/>
+    /// and <see cref="CanDeny"/>. The default says yes, for every adapter with
+    /// no server-side model list to miss.
+    /// </summary>
+    bool CanServe(string? model, out string refusal)
+    {
+        refusal = "";
+        return true;
+    }
+
     /// <summary>The unattended spawn - stdout read by a caller, stdin closed once the prompt is written.</summary>
     ProcessStartInfo BuildHeadless(SessionRequest request);
 

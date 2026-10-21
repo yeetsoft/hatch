@@ -20,6 +20,13 @@ public sealed class ClaudeAdapterTests : IDisposable
     }
 
     [Fact]
+    public void CanServe_answers_true_for_every_model()
+    {
+        Assert.True(((IAgentAdapter)Adapter()).CanServe("anything:7b", out var refusal));
+        Assert.Equal("", refusal);
+    }
+
+    [Fact]
     public void BuildHeadless_quiet_with_no_hooks_and_no_denied_tools()
     {
         var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true);
