@@ -674,14 +674,17 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 |---|---|---|
 | GET | `/reports/timeline` | The top-level epics active in a range, and the work beneath each as stretches across the board's columns |
 | GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid |
+| GET | `/reports/flow` | How work moved through the board in a range: per column what entered, left and stands, and how long it dwelled, plus the window's drops, hops, send-backs, questions and sessions - counts and durations only |
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
-All four a key's. `timeline` takes `from`, `to` (default the ninety days
+All five a key's. `timeline` takes `from`, `to` (default the ninety days
 ending now), `projectId` and `createdBy`; `cumulative-flow` takes only
-`from`/`to`, the same ninety-day default. Neither query is itself bounded by
-the range - the fold needs an issue's first move even where it falls outside
-it - but the ranges' bounds are. `utilization` answers a
+`from`/`to`, the same ninety-day default; `flow` takes `from`/`to` the same
+way, plus `projectId` and `type`, and 400s an unknown `type` or `projectId`.
+None of the three queries is itself bounded by the range - the fold needs an
+issue's first move even where it falls outside it - but the ranges' bounds
+are. `utilization` answers a
 `UtilizationReading(State, ReadAt, Limits)` off whatever this caller's own
 runners last reported on their own heartbeat, never the account's endpoint
 directly, and `204`s for a caller with no runner ever reporting one, which

@@ -2302,8 +2302,11 @@ replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
 stopped at, same as `letGo` above), `imported`.
 
-Only `status_changed` is read back, by the [Timeline](#the-timeline); no other
-kind is drawn anywhere. All of it has been written since the first release
+Only two kinds are read back. `status_changed` is read by the
+[Timeline](#the-timeline) and by both flow reports ([the cumulative
+flow](#the-cumulative-flow) and [the flow](#the-flow)); `claim_released` is read
+by the flow report alone, for its `outcome`. No other kind is drawn or counted
+anywhere. All of it has been written since the first release
 anyway, because an event log is the one feature that cannot be
 added retroactively: turned on in March, it answers nothing about February. The
 cost is a row per edit.
@@ -2795,6 +2798,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -3468,8 +3472,10 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There are two reports: the
-Timeline and the Cumulative flow. A new report is one more entry in that index
+per report, each stating the question it answers. There are two reports with a
+card each: the Timeline and the Cumulative flow. A **third read, the
+[flow](#the-flow), has no page and no index card** — it is for a program, not a
+person at a screen. A new report with a page is one more entry in that index
 and a route; neither report gets a nav entry of its own, and the index card
 stays the only way in.
 
@@ -3640,6 +3646,94 @@ writes**, and the absence is the guarantee rather than a convention, as it is
 for [the timeline](#the-timeline). There is **no CLI subcommand** for it
 either; a script reaches the same answer with
 `hatch api GET /api/hatch/reports/cumulative-flow?...`, which is the
+[API surface](#api-surface)'s row for it.
+
+### The flow
+
+```
+GET /api/hatch/reports/flow?from=&to=&projectId=&type=
+```
+
+The timeline says when one epic's work sat where, and the cumulative flow says
+how many issues stood in each column at each instant. The flow says **what
+moved, and how long it took**: across a range, per column, how often work came
+in and went out and how long it stayed, and across the whole window how often
+it was dropped, hopped, sent back, asked about and run. It is **for a
+program**: counts and durations only, with **no page** and no index card, so a
+session can read the whole answer in one call.
+
+`from` and `to` are the timeline's own bounds — instants, the 90 days ending
+now by default, the same `400`s for an unparseable or inverted range, and `from`
+clamped forward to the first issue's creation the way the timeline's is.
+`projectId` narrows to one project and `type` to one issue type; a `projectId`
+that names no project and a `type` that is not one of the issue types are each
+a `400`, the latter naming the types that are. The route is open to a person or
+to a key with the `hatch` scope.
+
+It answers `{ from, to, columns, window, unresolved }`. `from` and `to` are the
+range as the server resolved it. Each entry in `columns` is the board's own
+column, in board order — every status that is not deferred, terminal columns
+included — as:
+
+- `statusId` and `name`;
+- `entered` — how many stretches in the column **began** in the window;
+- `left` — how many stretches in the column **ended** in the window;
+- `dwelled` — how many of those stretches have a dwell to measure, which is the
+  ones that ended in the window, so it is `left`'s count;
+- `medianDwellSeconds` and `p90DwellSeconds` — the median and the ninetieth
+  percentile of those dwells, the latter by nearest rank, both `null` when
+  `dwelled` is `0`;
+- `standing` — how many issues are in the column at `to`.
+
+`window` is the tallies that belong to no one column:
+
+- `dropped` — claims let go with the outcome `dropped`;
+- `hops` — one `{ kind, count }` for each of the seven kinds, **always all
+  seven**, in the fixed order `express`, `parent`, `epic`, `under`, `sendback`,
+  `approve`, `close`. `approve` and `close` are one flag on the event
+  (`preapproved`) and are told apart by the destination: a terminal column is a
+  `close`, anything else an `approve`. A move that carries no hop flag — a drag,
+  a merge, a push back, a landing, a check's verdict — is not a hop;
+- `sendBacks` — any move to a column **left** of the one it came from, in board
+  order, so the `sendback` hop is counted here as well as in `hops`;
+- `questionsAsked` and `questionsAnswered` — questions whose own time falls in
+  the window, and `medianAnswerWaitSeconds` and `longestAnswerWaitSeconds`, the
+  wait from the ask to its earliest answer (never below `0`), both `null` when
+  nothing was answered in the window;
+- `sessions` and `sessionErrors` — work-log sessions that **ended** in the
+  window, and how many of them ended in error.
+
+`unresolved` is the timeline's count: stretches that name a column no longer on
+the board, left out of every column above.
+
+#### The rules
+
+- **The window is half-open**, `[from, to)`: an instant at `from` is in, an
+  instant at `to` is out.
+- **Creation is entry to the first column.** An issue's first stretch begins when
+  it was made, so it counts in `entered` for the board's first column.
+- **Dwell is of stretches that ended in the window**, and is the stretch's whole
+  length: it is **never clipped** to `from`, so a stretch that began long before
+  the range and ended inside it is measured from where it began. A stretch still
+  open at `to` has no dwell yet; it is `standing`.
+- **`standing` is read at `to`**, not at the window's last instant: a stretch
+  that begins exactly at `to` is standing there without having entered.
+- **`projectId` and `type` filter the issues themselves**, not the roots the
+  timeline filters. Every count in the answer, `unresolved` included, is over the
+  issues that were kept.
+- **The rebuild is the timeline's**, and so is its one hole: see [the rebuild,
+  and its one hole](#the-rebuild-and-its-one-hole). A stretch that cannot be
+  placed on a current column is counted in `unresolved` and nowhere else.
+- **Questions are read from comments**, because the `asked` event carries no
+  question id: an ask and its answer cannot be paired from the trail alone, so
+  the fold pairs them from the comments that carry them.
+- **Only `status_changed` and `claim_released` are read** from the
+  [issue event](#issue-event) trail; sessions come from the work log.
+
+**No row names an issue, and there is no flag that adds them**, so what a
+session reads is the whole answer and cannot be widened by a parameter. There is
+**no page** and **no CLI subcommand**; a script reaches it with
+`hatch api GET /api/hatch/reports/flow?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ## The overnight
