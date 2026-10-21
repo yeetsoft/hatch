@@ -5368,16 +5368,20 @@ families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
 validates against (the board's playbook, a repository's playbook file and an
 issue's override all refuse in one sentence naming the aliases and the
 families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
-supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.7 for grok) - not "nonsense-1"`) and the CLI
+supported agent (claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not "nonsense-1"`) and the CLI
 reads. **Pinning an id is choosing an agent.** A runner whose agent
 (`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
 it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
 refuses with the same sentence, `--dry-run` prints it, and the ticket waits for
 a runner of that agent (a board with none leaves it sitting). The sentence is
-`pinned to {model}, a {agent} model - this runner's agent is {agent}`. An alias,
-or no model, is never skipped, and `--model <alias>` on `work` beats the
-playbook and proceeds. (`claude-…` is the Claude family's shape, not the shape
-of a pinned id in general; `gpt-…` is the Codex family's shape.)
+`pinned to {model}, a {agent} model - this runner's agent is {agent}` (`an
+ollama model` before a vowel). An alias, or no model, is never skipped, and
+`--model <alias>` on `work` beats the playbook and proceeds. (`claude-…` is
+the Claude family's shape, not the shape of a pinned id in general; `gpt-…`
+is the Codex family's shape; `name:tag` - for example `qwen3-coder:30b` - is
+Ollama's, with the tag required, no `ollama/` prefix (the id is what `ollama
+list` prints), and the whole id at most 60 characters: a bare `llama3.3` is
+not a pinned id.)
 `Effort` is exactly what the CLI's `--effort` accepts, because a value it does
 not recognise is one it refuses at spawn time, long after the operator has
 stopped looking at the page they typed it on.
