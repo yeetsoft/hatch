@@ -40,6 +40,17 @@ describe('site.css', () => {
   it('writes every @media prelude in rem', () => {
     expect(stripComments(siteCss)).not.toMatch(/@media[^{]*\d+px/)
   })
+
+  it('gives every grid track minmax(0, …), so a long word cannot widen the page', () => {
+    const columns = [...stripComments(siteCss).matchAll(/grid-template-columns:([^;}]*)/g)].map(([, value]) => value)
+    expect(columns.length).toBeGreaterThan(0)
+    for (const value of columns) expect(value).toMatch(/^\s*(repeat\(\d+,\s*)?minmax\(0,/)
+  })
+
+  it('lets the install block wrap anywhere', () => {
+    const pre = rulesOf(siteCss).find(({ selectors }) => selectors.endsWith(' pre'))
+    expect(pre?.body).toMatch(/overflow-wrap:\s*anywhere/)
+  })
 })
 
 describe('violations', () => {

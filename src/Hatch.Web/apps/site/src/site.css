@@ -56,6 +56,179 @@
   padding-block: var(--sp-8);
 }
 
+/* A page read, not a console scanned: body copy takes the section step rather
+   than the 14px base.css sets for an app. An element rule, so 404 reads the
+   same. */
+main {
+  font-size: var(--t-section);
+}
+
+/* base.css styles buttons and inputs, not links, so link text is drawn here.
+   Placed before the .site-action rules so the action classes win. */
+main a {
+  color: var(--primary-ink);
+}
+
+.site-hero,
+.site-section {
+  padding-block: var(--sp-10);
+}
+
+.site-section h2 {
+  margin-block-end: var(--sp-6);
+}
+
+.site-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+/* A phone gets the display step; the hero step starts where a line has room. */
+.site-hero h1 {
+  font-size: var(--t-display);
+  overflow-wrap: anywhere;
+}
+
+.site-lede {
+  max-width: var(--measure-prose);
+  margin: 0;
+}
+
+.site-tagline {
+  margin: 0;
+  color: var(--muted);
+}
+
+.site-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  max-width: 100%;
+}
+
+.site-run {
+  min-width: 0;
+  max-width: var(--measure-prose);
+}
+
+/* The opened install takes its own row. */
+.site-run[open] {
+  flex-basis: 100%;
+}
+
+/* The two actions are an <a> and a <summary>; neither is a button, so the
+   look base.css gives a button is restated. */
+.site-action {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-ctl);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+summary.site-action {
+  list-style: none;
+}
+
+summary.site-action::-webkit-details-marker {
+  display: none;
+}
+
+.site-action--primary {
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  color: var(--on-accent);
+}
+
+.site-action--primary:hover {
+  background: var(--primary-ink);
+  border-color: var(--primary-ink);
+}
+
+.site-action--secondary {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  color: var(--primary-ink);
+}
+
+.site-action--secondary:hover {
+  background: var(--primary-bg);
+}
+
+/* base.css draws a 3px ring on inputs; site.css has no 3px, so the ring is a
+   hairline outline with the --primary-bg halo one spacing step out. The gap
+   keeps it visible on the filled primary button. */
+.site-action:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: var(--sp-1);
+  box-shadow: 0 0 0 var(--sp-1) var(--primary-bg);
+}
+
+/* Wraps, so the install cannot make a horizontal scrollbar on a phone. */
+.site-run pre {
+  min-width: 0;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.site-run pre code {
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+/* One column on a phone, then two, then three. Tracks are minmax(0, 1fr) so a
+   long word cannot widen the page. */
+.site-points {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-points li {
+  min-width: 0;
+  padding: var(--sp-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow-wrap: break-word;
+}
+
+.site-points strong {
+  display: block;
+  margin-block-end: var(--sp-2);
+  color: var(--ink);
+}
+
+@media (min-width: 40rem) {
+  .site-hero h1 {
+    font-size: var(--t-hero);
+  }
+
+  .site-points {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .site-points {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 40rem) {
   .site-column {
     padding-inline: var(--sp-4);

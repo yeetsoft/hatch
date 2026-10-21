@@ -49,6 +49,18 @@ describe('tokens.css', () => {
     }
   });
 
+  /* A type step is not themed: the public site's headline size is on :root
+     alone, and sits between the display step and a page-sized heading. */
+  it('declares --t-hero on :root only, between 40px and 48px', () => {
+    expect(darkAttr).not.toHaveProperty('--t-hero');
+    expect(darkMedia).not.toHaveProperty('--t-hero');
+    expect(light).toHaveProperty('--t-hero');
+    const size = Number.parseFloat(light['--t-hero']);
+    expect(light['--t-hero']).toMatch(/px$/);
+    expect(size).toBeGreaterThanOrEqual(40);
+    expect(size).toBeLessThanOrEqual(48);
+  });
+
   /* Fixed tokens: the console is dark in both themes. Somebody tidying the
      dark blocks "for completeness" would turn it white in one of them. */
   it('declares the console tokens on :root and in neither dark block', () => {
