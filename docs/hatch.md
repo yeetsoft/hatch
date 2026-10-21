@@ -238,8 +238,10 @@ one pull request, which a story can override either way - see
 `.hatch/playbooks.yaml` on its primary repository's trunk instead of from
 rows naming it on the Playbooks page - see [Playbooks](#playbooks)), with
 `RepoSourcedBy` and `RepoSourcedAt` beside it - who set it last and when, a
-name and an instant, null until the first write. A project may also carry an
-uploaded logo, in its own table — see [Logo](#logo).
+name and an instant, null until the first write, and `RunnerTags` (a JSON array
+of strings, `"[]"` default - which runners may implement the project's work,
+written through its own route, `PUT /projects/{id}/runner-tags`). A project may
+also carry an uploaded logo, in its own table — see [Logo](#logo).
 
 An owner alone sets how a project's work lands. `Landing`, `ChecksRequired` and
 `OnePullRequest` are written through `PUT /projects/{id}/landing`
@@ -269,6 +271,21 @@ playbook rows are untouched either way, on or off. `PlaybooksController`
 refuses to create a row naming a repo-sourced project, or to re-point one at
 it: *"project `<KEY>` reads its playbooks from .hatch/playbooks.yaml on its
 trunk, not from a row here"* (`PlaybooksController.cs:73-74`, `:158-159`).
+
+`RunnerTags` is written the same way, through its own route, `PUT
+/projects/{id}/runner-tags` (`ProjectsController.PutRunnerTags`), guarded
+exactly the way `PutPlaybooksSource` is - `[RequireRole(User)]`, `NotAPerson`
+checked again in the action, then an owner check answering `403` naming the
+project's key (*"only an owner of `<KEY>` may change which runners may
+implement its work"*) to anyone else. The list is replaced whole, and run
+through `RunnerTags.Normalise` in `Hatch.Contracts` first: trimmed, folded to
+lower case and deduplicated, at most 8 tags, each at most 32 characters with no
+space or comma inside. A tag that breaks that rule - a blank one included - or a
+list over 8 is refused `400`, naming the tag (the count refusal names the limit
+instead). Re-sending the list the project already holds, the same tags in the
+same order, writes nothing, and an empty list clears it.
+`ProjectPatchRequest` carries no field for it, so this route is the only way in
+or out.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -2723,6 +2740,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired?, onePullRequest? }` — `onePullRequest` is the project's default for [one pull request](#one-pull-request); `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/runner-tags` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ tags }` — the whole list, replaced; trimmed, lower-cased and deduplicated, at most 8 tags of at most 32 characters, none with a space or comma. `403` naming the project's key from anybody but an owner, `400` naming the tag that breaks the rule (or the limit, on a list over 8), `404` on an unknown project. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
