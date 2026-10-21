@@ -5532,7 +5532,12 @@ and records or opens its pull request, rather than implementing it again.
 current text byte for byte — the same guard every reword before it used — and
 left an edited row exactly as it was. From the prescribed-text split on, a stock
 reword is a change to `DefaultPrompt` and needs no such guard (see *A row says
-when its prompt is the operator's own*, above).
+when its prompt is the operator's own*, above). `RewordImplementationPlaybook`
+is the first to take that shape: it tells the implementation row's
+green-before-pushed bullet to render a changed screen in the headless driver
+(`docs/browser-testing.md`) rather than leaving all browser verification to
+the operator, guarded and written on `DefaultPrompt` alone — no row's own
+`Prompt` is read or touched, and `UpdatedAt` does not move.
 
 **A board that wants a code review adds a check column; it does not widen the
 review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,
