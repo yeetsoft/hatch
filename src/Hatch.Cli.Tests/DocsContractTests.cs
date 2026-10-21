@@ -33,7 +33,7 @@ public sealed class DocsContractTests
             .Where(command => !Names(block, command)).ToArray();
 
         Assert.True(missing.Length == 0,
-            $"src/Hatch.Web/apps/hatch/public/hatch-at-home.md's CLAUDE.md block does not name: {string.Join(", ", missing)}. " +
+            $"src/Hatch.Web/apps/hatch/docs/the-claudemd-block.md's CLAUDE.md block does not name: {string.Join(", ", missing)}. " +
             "Either the command was renamed and the doc was not, or the block was edited down.");
     }
 
@@ -49,7 +49,7 @@ public sealed class DocsContractTests
         var leaked = Program.Internal.Where(command => Names(block, command)).ToArray();
 
         Assert.True(leaked.Length == 0,
-            $"src/Hatch.Web/apps/hatch/public/hatch-at-home.md's CLAUDE.md block names: {string.Join(", ", leaked)}. " +
+            $"src/Hatch.Web/apps/hatch/docs/the-claudemd-block.md's CLAUDE.md block names: {string.Join(", ", leaked)}. " +
             "Those are the container entrypoint's own commands - an agent has no work to do with them.");
     }
 
@@ -102,11 +102,11 @@ public sealed class DocsContractTests
         var doc = File.ReadAllText(Doc());
 
         var from = doc.IndexOf(Start, StringComparison.Ordinal);
-        Assert.True(from >= 0, $"src/Hatch.Web/apps/hatch/public/hatch-at-home.md has no {Start} marker.");
+        Assert.True(from >= 0, $"src/Hatch.Web/apps/hatch/docs/the-claudemd-block.md has no {Start} marker.");
         from += Start.Length;
 
         var to = doc.IndexOf(End, from, StringComparison.Ordinal);
-        Assert.True(to >= 0, $"src/Hatch.Web/apps/hatch/public/hatch-at-home.md has no {End} marker after the start one.");
+        Assert.True(to >= 0, $"src/Hatch.Web/apps/hatch/docs/the-claudemd-block.md has no {End} marker after the start one.");
 
         return doc[from..to];
     }
@@ -151,7 +151,7 @@ public sealed class DocsContractTests
     /// </summary>
     private static string Doc()
     {
-        const string relative = "src/Hatch.Web/apps/hatch/public/hatch-at-home.md";
+        const string relative = "src/Hatch.Web/apps/hatch/docs/the-claudemd-block.md";
 
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
