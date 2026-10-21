@@ -254,6 +254,46 @@ describe('resolveDocHref', () => {
   });
 });
 
+describe('renderDocs with a resolver', () => {
+  it('defaults to the app address with no second argument', () => {
+    expect(renderDocs('[a](./x)').html).toContain('href="/apps/hatch/docs/x"');
+  });
+
+  it('calls the resolver with the parsed slug and fragment, for all four link forms', () => {
+    const resolveHref = (slug: string, fragment: string) => `R:${slug}:${fragment}`;
+    for (const form of ['x', 'x.md', './x', './x.md']) {
+      expect(renderDocs(`[a](${form})`, resolveHref).html).toContain('href="R:x:"');
+      expect(renderDocs(`[a](${form}#y)`, resolveHref).html).toContain('href="R:x:#y"');
+    }
+  });
+
+  it('never calls the resolver for anything else', () => {
+    const resolveHref = (): string => {
+      throw new Error('should not be called');
+    };
+    for (const href of [
+      '',
+      '#x',
+      '/abs',
+      '//host/x',
+      'https://cli.github.com/',
+      'mailto:a@b.c',
+      '../x',
+      'a/b.md',
+      'Upgrading.md',
+      'a_b',
+      'a.md.md',
+      '.md',
+      '././a',
+      'upgrading.md?x=1',
+      'upgrading?x=1#y',
+      '/apps/hatch/runner',
+    ]) {
+      expect(renderDocs(`[a](${href})`, resolveHref).html).toContain(`href="${href}"`);
+    }
+  });
+});
+
 describe('hashId', () => {
   it('is empty for no fragment', () => {
     expect(hashId('')).toBe('');
