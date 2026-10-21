@@ -2,7 +2,7 @@
    phone copies. Regex over the built text, the same as docsLanding.test.ts. */
 /// <reference types="node" />
 import { beforeAll, describe, expect, it } from 'vitest'
-import { DOC_PAGES, docSections, renderDocs } from '../../hatch/src/lib/docs'
+import { DOC_PAGES, docNeighbours, docSections, renderDocs } from '../../hatch/src/lib/docs'
 import { escapeHtml } from '../vite-plugin-site'
 import { buildSite } from './testing/buildSite'
 import { attr, tagsOf, withoutComments } from './testing/html'
@@ -107,6 +107,37 @@ describe.each(DOC_PAGES.map((p) => [p.slug, p] as const))('docs page %s', (slug,
     })
   })
 
+  describe('previous and next', () => {
+    const { previous, next } = docNeighbours(DOC_PAGES, slug)
+
+    it('has a Previous link to the page before, and a Next link to the page after, or neither', () => {
+      const navs = blocks(html(), 'Previous and next')
+      if (previous === null && next === null) {
+        expect(navs).toHaveLength(0)
+        return
+      }
+      expect(navs).toHaveLength(1)
+      const links = tagsOf(navs[0], 'a')
+      const labelled = (label: string) => navs[0].includes(`>${label}</span>`)
+      expect(links).toHaveLength((previous ? 1 : 0) + (next ? 1 : 0))
+      expect(labelled('Previous')).toBe(previous !== null)
+      expect(labelled('Next')).toBe(next !== null)
+      if (previous) {
+        expect(linkHrefs(navs[0])).toContain(`/docs/${previous.slug}/`)
+        expect(navs[0]).toContain(`>${escapeHtml(previous.title)}</span>`)
+      }
+      if (next) {
+        expect(linkHrefs(navs[0])).toContain(`/docs/${next.slug}/`)
+        expect(navs[0]).toContain(`>${escapeHtml(next.title)}</span>`)
+      }
+    })
+
+    it('puts the pager after the article, inside the frame', () => {
+      if (previous === null && next === null) return
+      expect(html().indexOf('</article>')).toBeLessThan(html().indexOf('class="site-docs-pager"'))
+    })
+  })
+
   it('adds no script of its own', () => {
     if (html().includes('hatch-docs-mermaid')) return
     expect(tagsOf(html(), 'script')).toHaveLength(1)
@@ -139,6 +170,36 @@ describe('docs landing outline', () => {
   })
 })
 
+describe('previous and next across the whole set', () => {
+  /** The Previous or Next link's href in a page's pager, or undefined. */
+  const pagerLink = (slug: string, label: 'Previous' | 'Next'): string | undefined => {
+    const nav = blocks(pages.get(slug)!, 'Previous and next')[0] ?? ''
+    const tag = tagsOf(nav, 'a').find((t) => nav.slice(nav.indexOf(t)).startsWith(t + '<span class="site-docs-pager-label">' + label))
+    return tag === undefined ? undefined : attr(tag, 'href')!
+  }
+
+  it('gives the first page no Previous and the last page no Next', () => {
+    expect(pagerLink(DOC_PAGES[0].slug, 'Previous')).toBeUndefined()
+    expect(pagerLink(DOC_PAGES[DOC_PAGES.length - 1].slug, 'Next')).toBeUndefined()
+  })
+
+  it('runs on across a section boundary, both ways', () => {
+    const boundaries = DOC_PAGES.map((_, i) => i).filter(
+      (i) => i + 1 < DOC_PAGES.length && DOC_PAGES[i].section !== DOC_PAGES[i + 1].section,
+    )
+    expect(boundaries.length).toBeGreaterThan(0)
+    for (const i of boundaries) {
+      expect(pagerLink(DOC_PAGES[i].slug, 'Next')).toBe(`/docs/${DOC_PAGES[i + 1].slug}/`)
+      expect(pagerLink(DOC_PAGES[i + 1].slug, 'Previous')).toBe(`/docs/${DOC_PAGES[i].slug}/`)
+    }
+  })
+
+  it('is absent from the landing', () => {
+    expect(blocks(landing, 'Previous and next')).toHaveLength(0)
+    expect(landing).not.toContain('site-docs-pager')
+  })
+})
+
 describe('under a base path', () => {
   it('links the sidebar under the base', async () => {
     const site = await buildSite({ base_path: 'project' })
@@ -146,5 +207,12 @@ describe('under a base path', () => {
     for (const nav of blocks(html, 'Docs')) {
       expect(linkHrefs(nav)).toEqual(DOC_PAGES.map((p) => `/project/docs/${p.slug}/`))
     }
+  })
+
+  it('links the pager under the base', async () => {
+    const site = await buildSite({ base_path: 'project' })
+    const html = withoutComments(site.read(`docs/${DOC_PAGES[1].slug}/index.html`))
+    const hrefs = blocks(html, 'Previous and next').flatMap(linkHrefs)
+    expect(hrefs).toEqual([`/project/docs/${DOC_PAGES[0].slug}/`, `/project/docs/${DOC_PAGES[2].slug}/`])
   })
 })

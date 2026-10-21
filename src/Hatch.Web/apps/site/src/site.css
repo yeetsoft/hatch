@@ -665,3 +665,52 @@ summary.site-action::-webkit-details-marker {
     grid-row: 1;
   }
 }
+
+/* Previous and next at the foot of a docs page, across sections. Mirrors the
+   .hatch-docs-pager* rules in apps/hatch/src/App.css on the site's own names.
+   Stacked below 40rem; from there a row in the body's column, with the grid's
+   own gap above the rule, so the block-layout margin is dropped. */
+.site-docs-pager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.site-docs-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.site-docs-pager-label {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+@media (min-width: 40rem) {
+  .site-docs-pager {
+    grid-column: 2;
+    max-width: 68ch;
+    margin-top: 0;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .site-docs-pager-next {
+    margin-left: auto;
+    text-align: right;
+  }
+}
+
+@media (min-width: 64rem) {
+  .site-docs--outlined .site-docs-pager {
+    grid-row: 2;
+  }
+
+  .site-docs--outlined .site-docs-sidebar {
+    grid-row: 1 / span 2;
+  }
+}
