@@ -286,6 +286,11 @@ instead). Re-sending the list the project already holds, the same tags in the
 same order, writes nothing, and an empty list clears it.
 `ProjectPatchRequest` carries no field for it, so this route is the only way in
 or out.
+The project dialog carries it the same way: where `canAdminister` is false it
+reads the list out as a sentence after the landing one - *"Any runner."*
+where it is empty, *"Runners tagged macos and xcode."* where it is not - and
+otherwise shows an owner a *Runner tags* textarea, one tag per line
+(`ProjectEditDialog.tsx`).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
