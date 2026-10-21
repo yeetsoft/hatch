@@ -154,7 +154,9 @@ services:
       # The tags this container advertises, comma-separated (gpu,linux). Empty
       # advertises none.
       HATCH_TAGS: "${HATCH_TAGS:-}"
-      # Which agent this container's loop spawns: claude, codex or grok. Its
+      HATCH_OLLAMA_HOST: "${HATCH_OLLAMA_HOST:-}"
+      HATCH_OLLAMA_TIERS: "${HATCH_OLLAMA_TIERS:-}"
+      # Which agent this container's loop spawns: claude, codex, grok or ollama. Its
       # credential is read from the Settings page, not set here.
       HATCH_AGENT: "${HATCH_AGENT:-claude}"
       HATCH_ROOT: /checkout

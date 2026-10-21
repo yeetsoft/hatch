@@ -170,7 +170,12 @@ ENV PATH="/root/.local/bin:/root/.grok/bin:${PATH}"
 # container, via bubblewrap (now installed above; it fell back to its own
 # bundled copy first, with a warning, before that). No user namespace or
 # landlock error, no security_opt or cap_add needed. The adapter never passes
-# codex's bypass-the-sandbox flag to make it go, and that stays true.
+# codex's bypass-the-sandbox flag to make it go, and that stays true. That proof
+# holds under ollama too: OllamaAdapter (src/Hatch.Cli/OllamaAdapter.cs) is a
+# CodexAdapter underneath, spawning the same binary with the same
+# --approve-for-me grant through the same bubblewrap - only the provider flags
+# (--oss --local-provider ollama) and the CODEX_OSS_BASE_URL environment
+# variable differ.
 ENV IS_SANDBOX=1
 
 COPY --from=build /out/hatch /usr/local/bin/hatch
