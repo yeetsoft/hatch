@@ -33,8 +33,8 @@ address — there isn't one the repository can know.
   names what happens in each column and who moves work out of it.
 - **Running agents** — [The runner](the-runner) gets the binary onto your
   machine and aimed at this board.
-- **Deploying and operating** — [Putting a front door on
-  it](putting-a-front-door-on-it) covers signing in and running this
-  somewhere more than one person reaches.
+- **Deploying and operating** — [Deployment overview](deployment-overview)
+  covers running this somewhere more than one person reaches, and [the
+  wall](the-wall-off-on-and-required) covers signing in.
 - **Reference** — [The CLAUDE.md block](the-claudemd-block) is the block to
   paste into a repository's own `CLAUDE.md` so an agent can reach the board.

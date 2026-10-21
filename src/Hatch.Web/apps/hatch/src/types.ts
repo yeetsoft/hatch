@@ -63,6 +63,10 @@ export interface Project {
   repoSourcedBy: string | null;
   /** When repoSourced was last set, or null until the first write. */
   repoSourcedAt: string | null;
+  /** Which runners may implement this project's work, normalised - trimmed,
+      lower-cased, deduplicated; empty means any runner. Absent from a
+      project that predates it. See ProjectDto.RunnerTags. */
+  runnerTags?: string[];
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -865,6 +869,11 @@ export interface ProjectLandingWriteRequest {
 
 export interface ProjectRepoSourcedWriteRequest {
   repoSourced: boolean;
+}
+
+/** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
+export interface ProjectRunnerTagsWriteRequest {
+  tags: string[];
 }
 
 export interface StatusCreateRequest {
