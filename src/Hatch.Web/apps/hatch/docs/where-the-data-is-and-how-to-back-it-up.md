@@ -1,7 +1,7 @@
 ---
 title: Where the data is, and how to back it up
 section: Deploying and operating
-order: 30
+order: 80
 summary: Where a Hatch keeps its data, and how to back it up and restore it safely.
 ---
 
