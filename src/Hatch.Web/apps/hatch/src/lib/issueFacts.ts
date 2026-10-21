@@ -11,7 +11,6 @@
 
 import type { Assignee } from '../types';
 import type { Priority } from '../components/PriorityControl';
-import { DEFAULT_EPIC_WIP_LIMIT } from './wip';
 
 export function assigneeFact(assignee: Assignee | null): string {
   if (!assignee) return '—';
@@ -50,5 +49,5 @@ export function effortFact(effortOverride: string | null): string {
 }
 
 export function wipLimitFact(wipLimit: number | null): string {
-  return wipLimit === null ? `${DEFAULT_EPIC_WIP_LIMIT} (default)` : String(wipLimit);
+  return wipLimit === null ? 'no limit' : String(wipLimit);
 }

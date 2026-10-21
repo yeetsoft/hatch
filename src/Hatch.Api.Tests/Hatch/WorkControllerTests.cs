@@ -9857,9 +9857,28 @@ public class WorkControllerTests
     //
     // HA-112: a story or a bug moving from outside the section to inside it,
     // whose parent is an epic, is held to that epic's own WipLimit (null
-    // reading as one) - the same fold as above, with the epic's own numbers,
-    // asked beside the section-wide one and on by default wherever the
-    // section exists at all, with no WipLimits row of its own needed.
+    // reading as no limit) - the same fold as above, with the epic's own numbers,
+    // asked beside the section-wide one and only where a person has typed a
+    // number, with no WipLimits row of its own needed.
+
+    [Fact]
+    public async Task EpicFold_FoldsNothingOfAnEpicWithNoLimit()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
+        await h.FileAsync("story", "S1, already inside", h.InProgress, rank: 512, parentId: epic.Id);
+
+        var s2 = await h.FileAsync("story", "S2, waiting", h.Todo, rank: 1024, parentId: epic.Id);
+        var s3 = await h.FileAsync("story", "S3, waiting", h.Todo, rank: 2048, parentId: epic.Id);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+        Assert.Null(queue[Key(s2)]);
+        Assert.Null(queue[Key(s3)]);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
+    }
 
     [Fact]
     public async Task EpicFold_FoldsAnEpicsSecondAndThirdStoryWhileItsFirstIsInTheSection()

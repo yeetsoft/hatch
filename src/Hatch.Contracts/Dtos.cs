@@ -474,8 +474,7 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="WipLimit">
 /// How many of an epic's stories may be in progress at once, or null for
-/// <see cref="IssueWipLimitRequest.DefaultLimit"/> - meaningful on an epic and
-/// on nothing else. Readable by a key, like every other field a dispatch
+/// no limit - meaningful on an epic and on nothing else. Readable by a key, like every other field a dispatch
 /// needs, and writable only by a person through
 /// <see cref="IssueWipLimitController"/>: a key that could raise its own
 /// epic's ceiling could pull more of its own stories into progress at once.
@@ -1536,20 +1535,10 @@ public record IssuePlaybookRequest(string? Model, string? Effort);
 
 /// <summary>
 /// How many of an epic's stories may run at once. Null leaves it alone, and
-/// <c>""</c> clears it back to <see cref="DefaultLimit"/> - the same bulk rule
-/// every other clearable field in Hatch follows.
+/// <c>""</c> clears it to no limit - the same bulk rule every other
+/// clearable field in Hatch follows.
 /// </summary>
-/// <remarks>
-/// The default lives here, not on the entity, because the CLI prints it and
-/// cannot see <c>EfHatchIssue</c> - <c>EfHatchIssue.DefaultEpicWipLimit</c>
-/// aliases it, the way <c>EfHatchIssue.MaxClaimRunnerLength</c> aliases
-/// <see cref="ClaimRequest.MaxRunnerLength"/>.
-/// </remarks>
-public record IssueWipLimitRequest(string? Limit)
-{
-    /// <summary>What a null limit reads as: one story at a time.</summary>
-    public const int DefaultLimit = 1;
-}
+public record IssueWipLimitRequest(string? Limit);
 
 /// <summary>
 /// Who an issue is to belong to. Both fields null is the unassign; exactly one

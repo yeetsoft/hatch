@@ -488,14 +488,14 @@ public class WipTests
     // ---- EpicsAsync ----
 
     [Fact]
-    public async Task EpicsAsync_ANullLimitReadsAsOne()
+    public async Task EpicsAsync_ANullLimitIsAbsent()
     {
         var h = await NewAsync();
         var epic = await h.IssueAsync("epic", h.Backlog);
 
         var epics = await Wip.EpicsAsync(h.Db, [epic], default);
 
-        Assert.Equal(1, epics[epic].Limit);
+        Assert.False(epics.ContainsKey(epic));
     }
 
     [Fact]

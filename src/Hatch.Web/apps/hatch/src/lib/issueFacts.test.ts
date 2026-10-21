@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from './issueFacts';
-import { DEFAULT_EPIC_WIP_LIMIT } from './wip';
 import type { Assignee } from '../types';
 
 const person = (name: string, id = `p-${name}`): Assignee => ({ kind: 'person', id, name });
@@ -77,7 +76,7 @@ describe('wipLimitFact', () => {
     expect(wipLimitFact(3)).toBe('3');
   });
 
-  it('names the default when unset', () => {
-    expect(wipLimitFact(null)).toBe(`${DEFAULT_EPIC_WIP_LIMIT} (default)`);
+  it('says no limit when unset', () => {
+    expect(wipLimitFact(null)).toBe('no limit');
   });
 });

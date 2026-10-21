@@ -483,8 +483,21 @@ public class WipMoveTests
     //
     // HA-112: a story or a bug moving from outside the section to inside it,
     // whose parent is an epic, is held to that epic's own WipLimit (null
-    // reading as one) - independent of the section-wide slice above, and on
-    // by default wherever the section exists at all.
+    // reading as no limit) - independent of the section-wide slice above, and
+    // held only where a person has typed a number.
+
+    [Fact]
+    public async Task AMoveIntoAnEpicWithNoLimit_Lands()
+    {
+        var h = await NewAsync(withLimit: false);
+        var epic = await h.EpicAsync(h.InProgress);
+        await h.StoryAsync(h.InProgress, epic);
+        var moving = await h.StoryAsync(h.ToDo, epic);
+
+        var result = await h.Issues.MoveIssue(moving, new IssueMoveRequest(h.InProgress, null, null), default);
+
+        Assert.Equal(h.InProgress, Value(result).StatusId);
+    }
 
     [Fact]
     public async Task AMoveIntoAnEpicAtItsLimit_Is409NamingTheEpicAndWritesNothing()
