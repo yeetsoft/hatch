@@ -240,9 +240,27 @@ public class ReportsController(
             .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
             .ToList();
 
-        // Two plain queries joined here rather than a subquery for the
-        // earliest answer: comments rather than events, since the `asked`
-        // event carries no question id.
+        // Plain queries joined here rather than a subquery for the earliest
+        // answer: comments rather than events, since the `asked` event carries
+        // no question id. A lapse is the one answer the board writes itself, a
+        // comment and an `answered` event {questionId, lapsed: true} at the
+        // same instant; the comment carries no marker, so the event names it.
+        // The wait figures are over a person's answers, so that comment is set
+        // aside and the question is counted as lapsed instead.
+        var lapseAt = new Dictionary<long, DateTimeOffset>();
+        var lapseEvents = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.Answered && e.Payload != null && e.Payload.Contains("lapsed"))
+            .Select(e => new { e.At, e.Payload })
+            .ToListAsync(ct);
+
+        foreach (var e in lapseEvents)
+        {
+            if (!LetGo.IsLapsedAnswer(e.Payload)) continue;
+            if (IssueEventPayload.Parse(e.Payload) is { } payload
+                && payload.TryGetProperty("questionId", out var id) && id.TryGetInt64(out var questionId))
+                lapseAt[questionId] = e.At;
+        }
+
         var asked = await db.Comments.AsNoTracking()
             .Where(c => c.Kind == EfHatchComment.Question)
             .Select(c => new { c.Id, c.IssueId, c.CreatedAt })
@@ -254,13 +272,15 @@ public class ReportsController(
             .ToListAsync(ct);
 
         var earliestAnswer = answers
+            .Where(a => !(lapseAt.TryGetValue(a.AnswersId, out var lapsedAt) && lapsedAt == a.CreatedAt))
             .GroupBy(a => a.AnswersId)
             .ToDictionary(g => g.Key, g => g.Min(a => a.CreatedAt));
 
         var questions = asked
             .Select(q => new FlowReport.Question(
                 q.IssueId, q.Id, q.CreatedAt,
-                earliestAnswer.TryGetValue(q.Id, out var answeredAt) ? answeredAt : null))
+                earliestAnswer.TryGetValue(q.Id, out var answeredAt) ? answeredAt : null,
+                !earliestAnswer.ContainsKey(q.Id) && lapseAt.TryGetValue(q.Id, out var lapsedAt) ? lapsedAt : null))
             .ToList();
 
         var sessions = (await db.WorkLog.AsNoTracking()
@@ -290,6 +310,7 @@ public class ReportsController(
                 result.Window.SendBacks,
                 result.Window.QuestionsAsked,
                 result.Window.QuestionsAnswered,
+                result.Window.QuestionsLapsed,
                 result.Window.MedianAnswerWaitSeconds,
                 result.Window.LongestAnswerWaitSeconds,
                 result.Window.Sessions,

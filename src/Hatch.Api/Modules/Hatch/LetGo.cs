@@ -97,7 +97,7 @@ public static class LetGo
     }
 
     /// <summary>Whether an <c>answered</c> event's payload marks it as written by a lapse rather than by a person.</summary>
-    private static bool IsLapsedAnswer(string? payload)
+    internal static bool IsLapsedAnswer(string? payload)
     {
         if (string.IsNullOrWhiteSpace(payload)) return false;
 

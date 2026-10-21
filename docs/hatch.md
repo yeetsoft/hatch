@@ -1,5 +1,47 @@
 # Hatch
 
+## Section index
+
+This file is larger than a context window (about 500 KB, 18 top-level
+sections), so do not read it whole. Find the section below, or list the
+headings with `grep -n '^## ' docs/hatch.md`, then read from that heading to
+the next heading of the same level and stop.
+
+- [Summary](#summary) - What is Hatch, and which four properties carry the
+  design?
+- [Goals](#goals) - What is Hatch for, in four things it must do?
+- [Non-goals](#non-goals) - What is absent on purpose, and what does each
+  absence cost to add later?
+- [Where it lives](#where-it-lives) - Which module, app and project hold the
+  backend, the frontend and the wire contract?
+- [Domain model](#domain-model) - Which entities exist, and what are the
+  rules on each?
+- [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
+  may reach Hatch, and how does an API key differ from a person?
+- [API surface](#api-surface) - Which routes exist under `/api/hatch`, and
+  who may call each?
+- [The battery](#the-battery) - How much Claude is left, and when does it
+  come back?
+- [What is waiting on you](#what-is-waiting-on-you) - Has the loop stopped on
+  a person, and which links unblock it?
+- [The leaderboard](#the-leaderboard) - What did the nights cost, and on
+  which epics?
+- [Reports](#reports) - When did things happen on the board, which the board
+  as it stands cannot say?
+- [The overnight](#the-overnight) - What did the loop actually land while
+  nobody was watching?
+- [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
+- [The unattended loop](#the-unattended-loop) - How does `go-to-work` run
+  increments back to back, and what does it do when nothing is left?
+- [The level above the board](#the-level-above-the-board) - Which running
+  project is nearest the line?
+- [The importer](#the-importer) - How does a markdown plan become an epic
+  with stories and tasks?
+- [The operator and Claude contract](#the-operator-and-claude-contract) -
+  What may an agent do to a ticket, and what only a person?
+- [Deferred on purpose](#deferred-on-purpose) - What is deliberately not
+  built yet?
+
 ## Summary
 
 The house project tracker: a kanban board at `hatch.${DOMAIN}`, issues with
@@ -2326,7 +2368,8 @@ names the comment and the runner), `asked`, `answered` (payload `{ questionId,
 lapsed }` - `lapsed: true` only on a row written before the stall mark
 replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
-stopped at, same as `letGo` above), `imported`.
+stopped at, same as `letGo` above, and counted apart from a person's answers
+by the flow report), `imported`.
 
 Only two kinds are read back. `status_changed` is read by the
 [Timeline](#the-timeline) and by both flow reports ([the cumulative
@@ -2796,8 +2839,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=` and `?tag=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=` and `?tag=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. Nor does it read `?tag=`: a hop is never gated by [runner tags](#project). `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
@@ -3723,10 +3766,16 @@ included — as:
   a merge, a push back, a landing, a check's verdict — is not a hop;
 - `sendBacks` — any move to a column **left** of the one it came from, in board
   order, so the `sendback` hop is counted here as well as in `hops`;
-- `questionsAsked` and `questionsAnswered` — questions whose own time falls in
-  the window, and `medianAnswerWaitSeconds` and `longestAnswerWaitSeconds`, the
-  wait from the ask to its earliest answer (never below `0`), both `null` when
-  nothing was answered in the window;
+- `questionsAsked`, `questionsAnswered` and `questionsLapsed` — questions whose
+  own time falls in the window, and `medianAnswerWaitSeconds` and
+  `longestAnswerWaitSeconds`, the wait from the ask to its earliest answer
+  (never below `0`), both `null` when nothing was answered in the window.
+  `questionsAnswered` and both waits are over a **person's** answers only: an
+  answer the board wrote itself by lapsing the question (the `answered` event
+  with `lapsed: true`) is counted in `questionsLapsed` and nowhere else, so a
+  lapse minutes after the ask cannot pull the wait down. A lapsed question is
+  in `questionsAsked` and `questionsLapsed` only, unless a person answered it
+  afterwards, when it counts as answered and the wait is to that answer;
 - `sessions` and `sessionErrors` — work-log sessions that **ended** in the
   window, and how many of them ended in error.
 
@@ -4233,6 +4282,12 @@ The rest of that section is unchanged. The attach is best-effort: when it
 fails, the runner complains and keeps the claim, which then names no playbook,
 so the move is not refused and `hatch verdict` answers `400`.
 
+Outside a check, the *Reaching Hatch* block prints `hatch start` only on the
+increment bound for the implementation column - the one whose destination is
+the column named by `FailStatusName`. Every other increment is told the claim
+is the marker and that the ticket moves once, at the end, to the column named
+under *Where this increment ends*.
+
 **The verdict is a record, not a move.** `POST /issues/{key}/verdicts`, open to
 a key and to a person, takes `pass` or `fail` and optional findings, and writes
 a [verdict](#verdict) row and a `verdict_recorded` event. It is a `400` unless
@@ -4312,6 +4367,18 @@ and over 40 KiB leaves the findings out whole rather than cutting them.
 `WorkDto.FailStatusName` is the implementation column's name, set on every
 dispatch; for a check, `hatch work --dry-run` prints `# check: pass -> X, fail
 -> Y`, with `?` for a missing name.
+
+**The next row's limit rides along too.** `WorkDto.NextBriefLimit` is the
+`BriefLimit` of the playbook row that covers this issue's type out of the
+column *after* the one this dispatch moves it to — the limit the session
+after this one will be spawned under. Null wherever that row has none, the
+dispatch is not a plain advance (a hop, a send-back, or anything other than
+`Kind: advance`), or the issue has children, whose briefs are the children's
+own. `QueueEntryDto`, `hatch queue` and the queue page carry none of this — a
+queued row still answers only for the move it is itself waiting on. A
+send-back for an over-long brief is unchanged by any of it: this is the
+*next* row's limit, read in advance, not a change to how this one is judged.
+The prompt is where it is spent — printed for the session that follows.
 
 **Tick the build column.** `Columns.Implementation` is the ticked column, or
 else the column whose next move is into review. On a board with check columns

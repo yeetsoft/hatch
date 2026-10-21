@@ -115,7 +115,11 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
         // Separately from whether this item failed: the last agent_message
         // wins, for a run that ends before a result event could say so itself.
-        if (type == "agent_message" && Text(item, "text") is { } said) facts.LastAssistantText = said;
+        if (type == "agent_message" && Text(item, "text") is { } said)
+        {
+            facts.LastAssistantText = said;
+            facts.Scan(said);
+        }
 
         var status = Text(item, "status");
         var failed = type == "error" || (status != "completed" && status != "in_progress");
@@ -169,7 +173,7 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
             Requests += 1;
         }
 
-        var (title, summary) = StreamRender.WorkLog(facts.LastAssistantText ?? "");
+        var (title, summary) = facts.WorkLogFrom(facts.LastAssistantText ?? "");
         facts.ReleaseNote = StreamRender.ReleaseNote(facts.LastAssistantText ?? "");
         facts.Result = new WorkLogEntryRequest(
             SessionId: facts.SessionId ?? "",
