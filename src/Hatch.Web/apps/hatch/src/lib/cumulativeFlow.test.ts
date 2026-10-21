@@ -7,6 +7,7 @@ import {
   isEmpty,
   momentLabel,
   peakLabel,
+  pinAfter,
   pointIndexAt,
   slots,
   stackAt,
@@ -211,6 +212,53 @@ describe('bandStyle', () => {
 
   it('falls back to the default grey for a column not among the statuses', () => {
     expect(bandStyle(statuses, 404)).toEqual(statusVars(undefined));
+  });
+});
+
+describe('pinAfter', () => {
+  it('pins the index a press names', () => {
+    expect(pinAfter(null, 3, { type: 'press', index: 1 })).toBe(1);
+  });
+
+  it('repoints the pin a move names', () => {
+    expect(pinAfter(1, 3, { type: 'move', index: 2 })).toBe(2);
+  });
+
+  it('clamps a press or a move past either end', () => {
+    expect(pinAfter(null, 3, { type: 'press', index: 5 })).toBe(2);
+    expect(pinAfter(null, 3, { type: 'move', index: -1 })).toBe(0);
+  });
+
+  it('leaves the pin alone when a press or a move names no index', () => {
+    expect(pinAfter(1, 3, { type: 'press', index: null })).toBe(1);
+    expect(pinAfter(1, 3, { type: 'move', index: null })).toBe(1);
+    expect(pinAfter(null, 3, { type: 'move', index: null })).toBeNull();
+  });
+
+  it('steps from nothing pinned to the last point, whichever way delta points', () => {
+    expect(pinAfter(null, 3, { type: 'step', delta: 1 })).toBe(2);
+    expect(pinAfter(null, 3, { type: 'step', delta: -1 })).toBe(2);
+  });
+
+  it('steps the pin one point', () => {
+    expect(pinAfter(1, 3, { type: 'step', delta: 1 })).toBe(2);
+    expect(pinAfter(1, 3, { type: 'step', delta: -1 })).toBe(0);
+  });
+
+  it('clamps a step at both ends', () => {
+    expect(pinAfter(2, 3, { type: 'step', delta: 1 })).toBe(2);
+    expect(pinAfter(0, 3, { type: 'step', delta: -1 })).toBe(0);
+  });
+
+  it('clears the pin on a new answer', () => {
+    expect(pinAfter(1, 3, { type: 'answer' })).toBeNull();
+  });
+
+  it('is null for every action once count is 0', () => {
+    expect(pinAfter(0, 0, { type: 'press', index: 0 })).toBeNull();
+    expect(pinAfter(0, 0, { type: 'move', index: 0 })).toBeNull();
+    expect(pinAfter(0, 0, { type: 'step', delta: 1 })).toBeNull();
+    expect(pinAfter(0, 0, { type: 'answer' })).toBeNull();
   });
 });
 
