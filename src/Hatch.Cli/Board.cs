@@ -9,9 +9,15 @@ namespace Hatch.Cli;
 /// the trail says who did what without anybody being asked to record it. The
 /// work log is the deliberate exception - a meter reading is not a decision.
 /// </remarks>
-public sealed class Board(HatchClient client)
+public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null)
 {
     public HatchClient Client { get; } = client;
+
+    /// <summary>
+    /// The tags this runner declares on every dispatch read, one <c>tag=</c> each;
+    /// none where it has none.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; } = tags ?? [];
 
     /// <summary>
     /// This machine's offset from UTC in minutes, which is what the API wants in
@@ -168,6 +174,7 @@ public sealed class Board(HatchClient client)
         var parts = new List<string>();
         if (heldToken is { } token) parts.Add($"heldToken={token}");
         parts.AddRange(DeclareParts(checkouts, clones));
+        parts.AddRange(TagParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
@@ -316,11 +323,16 @@ public sealed class Board(HatchClient client)
     /// <summary>
     /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
     /// per checkout that has one, and <c>standing=true</c> where one of them is
-    /// the process's own. Prefixed with <c>&amp;</c> for a query that already has
+    /// the process's own, then a repeatable <c>tag=</c> per tag this runner
+    /// carries. Prefixed with <c>&amp;</c> for a query that already has
     /// something in it, which every caller's does.
     /// </summary>
-    private static string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
-        DeclareParts(checkouts, clones) is { Count: > 0 } parts ? $"&{string.Join('&', parts)}" : "";
+    private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
+        DeclareParts(checkouts, clones).Concat(TagParts()).ToList() is { Count: > 0 } parts
+            ? $"&{string.Join('&', parts)}"
+            : "";
+
+    private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
 
     private static List<string> DeclareParts(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false)
     {

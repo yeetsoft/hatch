@@ -36,6 +36,61 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.StartsWith("# AER-1 In Progress -> In Review", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_one_off_heartbeat_and_the_named_read_carry_the_tags(bool tagged)
+    {
+        string[] tags = tagged ? ["gpu", "linux"] : [];
+        using var h = new Harness(tags: tags);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+            .Read<RunnerHeartbeatRequest>();
+        Assert.NotNull(beat.Tags);
+        Assert.Equal(tags, beat.Tags);
+
+        var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];
+        Assert.Contains("remote=", call.Query);
+        if (tagged)
+        {
+            Assert.Contains("tag=gpu", call.Query);
+            Assert.Contains("tag=linux", call.Query);
+        }
+        else
+        {
+            Assert.DoesNotContain("tag=", call.Query);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_next_read_carries_the_tags(bool tagged)
+    {
+        using var h = new Harness(tags: tagged ? ["gpu", "c++"] : null);
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        var call = h.Wire.To("GET", "/api/hatch/work/next")[0];
+        Assert.Contains("remote=", call.Query);
+        if (tagged)
+        {
+            Assert.Contains("tag=gpu", call.Query);
+            Assert.Contains($"tag={Uri.EscapeDataString("c++")}", call.Query);
+        }
+        else
+        {
+            Assert.DoesNotContain("tag=", call.Query);
+        }
+    }
+
     [Fact]
     public async Task A_dry_run_on_a_hop_prints_no_prompt()
     {
