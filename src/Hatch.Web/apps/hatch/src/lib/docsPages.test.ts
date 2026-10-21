@@ -77,7 +77,7 @@ describe('the CLAUDE.md block', () => {
   it.runIf(whole !== null && page !== null)('is the same block on its page as in hatch-at-home.md', () => {
     expect(
       page,
-      'the block in docs/the-claudemd-block.md has drifted: copy the block from public/hatch-at-home.md, which DocsContractTests holds to the CLI',
+      'hatch-at-home.md has drifted from docs/the-claudemd-block.md, which DocsContractTests holds to the CLI: copy the block from the page into public/hatch-at-home.md',
     ).toBe(whole);
   });
 });
