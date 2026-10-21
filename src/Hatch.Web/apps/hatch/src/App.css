@@ -5290,7 +5290,8 @@ button.hatch-option.chosen {
    when something arrived would shove the battery leftwards and move the bar
    out from under whatever the pointer was aimed at. Resting is monochrome -
    --on-accent ink, no fill, no border, a glyph and one word - and asking is a
-   lit glyph and a count pill per non-empty section over a tinted ground.
+   lit glyph and a count pill per non-empty section over a tinted ground. At
+   phone width the pills fold into one total (.hatch-attention-pill-total).
 
    Every colour here is a token, both themes, and the tokens flip themselves.
    A literal in this block would be a bug - see the note at the top of this
@@ -5340,8 +5341,13 @@ button.hatch-option.chosen {
 /* At phone width (where the battery sits beside this control, HA-257) this
    control carries no min-width at all: a phone has no cursor to protect from
    a width change, and the row has no width to spend holding one steady, so it
-   measures its loudest state the way .hatch-battery already does. Do not
-   restore a floor here - lib/barCss.test.ts asserts there is none. */
+   measures its loudest state the way .hatch-battery already does. The reset
+   is here, in the one licensed phone-width breakpoint. */
+@media (max-width: 40rem) {
+  .hatch-attention-control {
+    min-width: auto;
+  }
+}
 
 /* Nothing is waiting. Furniture: the same --on-chrome ink the nav wears, so a
    quiet control is not a third thing competing with it. */
@@ -5476,6 +5482,31 @@ button.hatch-option.chosen {
   background: var(--danger);
 }
 
+/* The four pills folded into one, for a phone. Four two-digit pills are the
+   widest thing in the bar's widest state - with the battery drawn and the
+   overnight control counting, they push the row past what 393px holds and the
+   brand link is squeezed to a sliver (HA-1228). So at phone width the pills
+   are hidden and this stands in for them: their sum, in the review pill's
+   colours, which are neutral rather than any one section's. Hidden on the
+   desk, which has the room. The panel and the control's accessible name are
+   unchanged and still say which section is which. The fit is measured, by
+   BarFitsPhoneTests in Hatch.Api.Tests/E2e. */
+.hatch-attention-pill-total {
+  display: none;
+  background: var(--on-chrome);
+  color: var(--chrome);
+}
+
+@media (max-width: 40rem) {
+  .hatch-attention-pills {
+    display: none;
+  }
+
+  .hatch-attention-pill-total {
+    display: inline-flex;
+  }
+}
+
 /* The overnight control, beside this one in the bar's trailing slot - a
    thing to go and look at, not to do. Mirrors .hatch-attention-control for
    its three carried-over decisions: on the desk quiet and loud share one
@@ -5508,6 +5539,12 @@ button.hatch-option.chosen {
 .hatch-overnight-control:focus-visible {
   outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
+}
+
+@media (max-width: 40rem) {
+  .hatch-overnight-control {
+    min-width: auto;
+  }
 }
 
 .hatch-overnight-rest {

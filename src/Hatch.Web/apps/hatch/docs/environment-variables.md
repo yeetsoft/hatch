@@ -14,8 +14,8 @@ public value or a plain setting. The few variables that carry a secret are
 named as such, and the value belongs in your shell or a `.env` beside
 `compose.yaml`, never in a file you commit. The configuration keys these
 variables land on inside the API (`Auth__*`, `Apps__*`, `Hatch__*` and
-`ConnectionStrings__*`) belong to *Deployment overview*, not to this page; it
-is under *Coming* below.
+`ConnectionStrings__*`) belong to [Deployment overview](deployment-overview),
+not to this page.
 
 ## Every variable
 
@@ -30,7 +30,7 @@ saying so; those are read from the environment alone.
 |---|---|---|---|
 | **The stack's, which you set** | | | |
 | `HATCH_PORT` | `compose.yaml`, for the `api` service | `8080` | The port on this machine the API is published at. |
-| `HATCH_AUTH` | `compose.yaml`, for `migrate` and `api` (as `Auth__Enabled`) | `false` | Whether the wall is up. Turning it on is [putting a front door on it](putting-a-front-door-on-it). |
+| `HATCH_AUTH` | `compose.yaml`, for `migrate` and `api` (as `Auth__Enabled`) | `false` | Whether the wall is up. Turning it on is [putting a front door on it](the-wall-off-on-and-required#putting-a-front-door-on-it). |
 | `HATCH_GOOGLE_CLIENT_ID` | `compose.yaml`, for `migrate` and `api` | empty | The Google sign-in client's id, for a Hatch with its wall up. |
 | `HATCH_GOOGLE_CLIENT_SECRET` | `compose.yaml`, for `migrate` and `api` | empty | **A secret.** The Google sign-in client's secret. |
 | `HATCH_GOOGLE_REDIRECT_URI` | `compose.yaml`, for `migrate` and `api` | empty: derived from the request | Where Google sends a person back to. Set it behind a TLS proxy, where the scheme and host the API sees are not the ones Google has registered. |
@@ -116,9 +116,3 @@ The `hatch` binary reads these and does not own them.
 | `TERM` | `dumb` turns the readout off. |
 | `PATH` | Where the agent CLIs and `rtk` are found when their `HATCH_*_BIN` variable is not set. |
 | `CODEX_HOME` | Read to find the operator's Codex home. A `codex` session is spawned with its own overlay of it. |
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `deployment-overview`

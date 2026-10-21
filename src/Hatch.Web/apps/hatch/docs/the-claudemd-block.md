@@ -232,7 +232,7 @@ has one: move it to in progress before starting, comment the commit sha and the
 branch, and record the pull request with `hatch pr`, or the sha it reached the
 trunk at with `hatch landed` in a project that lands there. Without those
 comments a ticket changes under nobody's eye, and the person who looks six
-months later finds code and no account of it. [How work flows](how-work-flows) is the long form.
+months later finds code and no account of it. [The lifecycle of a ticket](the-lifecycle-of-a-ticket) is the long form.
 
 **What only the operator does** is the list of things a session must not do,
 and why a refusal there is not a fault. A terminal or deferred column, a

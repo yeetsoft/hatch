@@ -14,7 +14,7 @@ const CANONICAL_RE = /^([ \t]*)<!--site:canonical-->[ \t]*\r?\n?/m
 const REPOSITORY_RE = /^[ \t]*<!--site:repository-->[ \t]*\r?\n?([\s\S]*?)^[ \t]*<!--\/site:repository-->[ \t]*\r?\n?/m
 const CLONE_URL_RE = /<!--site:clone-url-->/g
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
