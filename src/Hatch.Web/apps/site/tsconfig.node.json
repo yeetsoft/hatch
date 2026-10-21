@@ -9,5 +9,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vite-plugin-site.ts"]
+  "include": ["vite.config.ts", "vite-plugin-site.ts", "src/siteEnv.ts"]
 }
