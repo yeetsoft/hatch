@@ -49,6 +49,22 @@ describe('the sitemap, under an environment', () => {
     expect(() => site.read('sitemap.xml')).toThrow()
     expect(site.read('index.html')).not.toContain('sitemap')
   })
+
+  it('names the sitemap in robots.txt, with a base_url', async () => {
+    const site = await buildSite({ base_url: ORIGIN })
+    const robots = site.read('robots.txt')
+    expect(robots).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`)
+    expect(robots).toMatch(/^Allow: \/$/m)
+    expect(robots).not.toMatch(/Disallow:/)
+  })
+
+  it('writes robots.txt with no Sitemap line and no base_url set', async () => {
+    const site = await buildSite()
+    const robots = site.read('robots.txt')
+    expect(robots).toMatch(/^User-agent: \*$/m)
+    expect(robots).toMatch(/^Allow: \/$/m)
+    expect(robots).not.toContain('Sitemap')
+  })
 })
 
 describe('renderSitemap', () => {
