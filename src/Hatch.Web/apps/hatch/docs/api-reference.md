@@ -52,6 +52,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | POST | `/projects/{id}/claim` | **person** | Takes ownership of a project with none |
 | PUT | `/projects/{id}/landing` | **person** | Sets `landing`, `checksRequired`, `onePullRequest` default, and the four `autoHealBug*` fields |
 | PUT | `/projects/{id}/playbooks-source` | **person** | Toggles `repoSourced` |
+| PUT | `/projects/{id}/reflection` | **person** | Sets `reflectionCadenceDays` |
 | PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
@@ -64,7 +65,10 @@ body is `ProjectLandingWriteRequest`: `Landing?`, `ChecksRequired?`,
 `OnePullRequest?`, `AutoHealBugEnabled?`, `AutoHealBugPriority?`,
 `AutoHealBugPreApproval?`, `AutoHealBugStatusId?` - `AutoHealBugStatusId` is
 the one field with a clear sentinel, `""`. The playbooks-source PUT body is
-`ProjectRepoSourcedWriteRequest(RepoSourced)`. The runner-tags PUT body is
+`ProjectRepoSourcedWriteRequest(RepoSourced)`. The reflection PUT body is
+`ProjectReflectionWriteRequest(CadenceDays)` - a positive number of days, or
+null to turn reflection off; it never writes `reflectionLastPeriodStart`,
+only the reflection job does. The runner-tags PUT body is
 `ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. Answers are a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
@@ -79,6 +83,9 @@ or `"trunk"`, anything else 400s; a story that has already started work keeps
 its own `onePullRequest` fixed rather than inheriting a new default. The
 playbooks-source PUT 403s if the caller is not an owner, and 400s if the
 project binds no repository or any playbook row still names it. The
+reflection PUT 403s if the caller is not an owner, 400s on a cadence that is
+zero or negative, and 400s naming the Playbooks page if no playbook row would
+run the reflection a non-null cadence files. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit.
 
@@ -729,7 +736,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **33** person-only paths on this page,
+on this page with both) - there are **34** person-only paths on this page,
 across both halves together:
 
 ```
@@ -741,6 +748,7 @@ DELETE /projects/{id}/members/{personId}
 POST   /projects/{id}/claim
 PUT    /projects/{id}/landing
 PUT    /projects/{id}/playbooks-source
+PUT    /projects/{id}/reflection
 PUT    /statuses/{id}/express-skips
 PUT    /statuses/{id}/parent-pulls
 PUT    /statuses/{id}/agent-files
@@ -768,7 +776,7 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-four belong to a project, a column, the WIP section, a ticket's own
+Twenty-five belong to a project, a column, the WIP section, a ticket's own
 fields, or image upload; the other nine are a runner's own record, the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 and the three playbook writes.
