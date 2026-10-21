@@ -36,7 +36,8 @@ public class PullRequestStateController(
     /// repeats the stored one refreshes the time it was read and writes nothing,
     /// so a poll that looks every interval leaves one entry rather than a
     /// hundred - and does not move the issue's <c>UpdatedAt</c>, which would
-    /// reorder the board on every tick.
+    /// reorder the board on every tick. The time the head arrived moves only with
+    /// the sha: a new merge state or review decision on the same head leaves it.
     /// </remarks>
     [HttpPut]
     public async Task<IActionResult> PutPullRequestState(
@@ -81,9 +82,12 @@ public class PullRequestStateController(
             ? null
             : Side(issue.PullRequestMergeState, issue.PullRequestReviewDecision, issue.PullRequestHeadSha);
 
+        var headMoved = issue.PullRequestHeadSha != headSha;
+
         issue.PullRequestMergeState = mergeState;
         issue.PullRequestReviewDecision = reviewDecision;
         issue.PullRequestHeadSha = headSha;
+        if (headMoved) issue.PullRequestHeadSince = now;
         issue.PullRequestReadAt = now;
 
         if (changed)

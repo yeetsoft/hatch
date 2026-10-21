@@ -413,6 +413,7 @@ summary.site-action::-webkit-details-marker {
 }
 
 .hatch-docs-body code {
+  overflow-wrap: anywhere;
   background: var(--card);
   padding: 0 var(--sp-1);
   border-radius: var(--r-chip);
