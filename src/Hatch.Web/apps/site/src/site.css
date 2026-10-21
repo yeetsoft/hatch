@@ -153,7 +153,7 @@ summary.site-action::-webkit-details-marker {
 
 .site-action--secondary {
   background: var(--card);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--primary-ink);
   color: var(--primary-ink);
 }
 
