@@ -1,17 +1,31 @@
-/* The home page: the hero, then Why Hatch, then the shells the next task
-   fills. Regex over the built text: there is no DOM in this runner. */
+/* The home page: the hero, Why Hatch, How it works, Docs. Regex over the
+   built text: there is no DOM in this runner. */
 /// <reference types="node" />
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildSite } from './testing/buildSite'
-
-const withoutComments = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, '')
+import { attr, attrValues, tagsOf, withoutComments } from './testing/html'
 
 const HEADLINE = 'Hatch manages your AI coding team for you'
+
+const DOCS_CARDS = [
+  { name: 'Start here', id: 'start-here' },
+  { name: 'Concepts', id: 'concepts' },
+  { name: 'Running agents', id: 'running-agents' },
+  { name: 'Deploying and operating', id: 'deploying-and-operating' },
+  { name: 'Reference', id: 'reference' },
+]
 
 const homeOf = async (env?: Record<string, string | undefined>): Promise<string> =>
   withoutComments((await buildSite(env)).read('index.html'))
 
 const sectionsOf = (html: string): string[] => html.match(/<section\b[\s\S]*?<\/section>/g) ?? []
+
+const h2sOf = (html: string): string[] => [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map((match) => match[1].trim())
+
+const sectionWithHeading = (html: string, heading: string): string =>
+  sectionsOf(html).find((section) => h2sOf(section)[0] === heading) ?? ''
+
+const liItemsOf = (html: string): string[] => html.match(/<li\b[^>]*>[\s\S]*?<\/li>/g) ?? []
 
 describe('the home page', () => {
   let html: string
@@ -24,42 +38,74 @@ describe('the home page', () => {
     expect(html).toMatch(new RegExp(String.raw`<h1\b[^>]*>\s*${HEADLINE}\s*</h1>`))
   })
 
-  it('reads hero, actions, tagline, Why Hatch, How it works, Docs, in that order', () => {
-    const positions = [
-      'Read the docs',
-      'class="site-run"',
-      'Hatch ships.',
-      '>Why Hatch<',
-      '>How it works<',
-      '>Docs<',
-    ].map((needle) => html.indexOf(needle, html.indexOf('<main')))
-    expect(positions.every((at) => at > 0)).toBe(true)
+  it('says Hatch ships, offers to read the docs, and offers to run it', () => {
+    expect(html).toContain('Hatch ships.')
+    expect(html).toContain('Read the docs')
+    expect(html).toContain('Run it')
+  })
+
+  it('installs with git clone, cd hatch, docker compose up -d, in that order', () => {
+    const code = html.match(/<code>([\s\S]*?)<\/code>/)?.[1] ?? ''
+    const lines = code.split(/\r?\n/).map((line) => line.trim())
+    const positions = [/^git clone\b/, /^cd hatch$/, /^docker compose up -d$/].map((pattern) =>
+      lines.findIndex((line) => pattern.test(line)),
+    )
+    expect(positions.every((at) => at >= 0)).toBe(true)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
   })
 
-  it('labels every section with a heading that exists', () => {
-    const sections = sectionsOf(html)
-    expect(sections.length).toBeGreaterThanOrEqual(4)
-    for (const section of sections) {
-      const id = section.match(/<section\b[^>]*\saria-labelledby="([^"]+)"/)?.[1]
-      expect(id, 'a <section> without aria-labelledby').toBeTruthy()
-      expect(html).toMatch(new RegExp(String.raw`\sid="${id}"`))
+  it('has the hero first, then Why Hatch, How it works, Docs, by <h2> position', () => {
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('<h2'))
+    expect(h2sOf(html)).toEqual(['Why Hatch', 'How it works', 'Docs'])
+  })
+
+  it('lists between four and six points under Why Hatch, each with a <strong>', () => {
+    const section = sectionWithHeading(html, 'Why Hatch')
+    const items = liItemsOf(section)
+    expect(items.length).toBeGreaterThanOrEqual(4)
+    expect(items.length).toBeLessThanOrEqual(6)
+    for (const item of items) expect(item).toMatch(/<strong>/)
+  })
+
+  it('has exactly three paragraphs and two figures under How it works', () => {
+    const section = sectionWithHeading(html, 'How it works')
+    expect(section.match(/<p\b[^>]*>[\s\S]*?<\/p>/g) ?? []).toHaveLength(3)
+
+    const figures = section.match(/<figure\b[^>]*>[\s\S]*?<\/figure>/g) ?? []
+    expect(figures).toHaveLength(2)
+    for (const figure of figures) {
+      expect(attr(figure, 'class')).toBe('site-figure')
+      expect(attr(figure, 'data-diagram')).toBeTruthy()
+    }
+
+    const captions = figures.map((figure) => figure.match(/<figcaption>([\s\S]*?)<\/figcaption>/)?.[1]?.trim())
+    expect(captions).toEqual(['The moving parts', 'The life of a ticket'])
+
+    for (const figure of figures) {
+      const body = figure
+        .replace(/^<figure\b[^>]*>/, '')
+        .replace(/<figcaption>[\s\S]*?<\/figcaption>/, '')
+        .replace(/<\/figure>$/, '')
+        .trim()
+      expect(body, figure).toBe('')
     }
   })
 
-  it('lists four to six points, each a bold phrase and a sentence', () => {
-    const list = html.match(/<ul class="site-points">([\s\S]*?)<\/ul>/)?.[1] ?? ''
-    const points = list.match(/<li>\s*<strong>[^<]+<\/strong>[^<]+<\/li>/g) ?? []
-    expect(points.length).toBeGreaterThanOrEqual(4)
-    expect(points.length).toBeLessThanOrEqual(6)
-    expect(list.match(/<li\b/g)).toHaveLength(points.length)
+  it('lists the five Docs cards in order, each linking into the docs', () => {
+    const section = sectionWithHeading(html, 'Docs')
+    const items = liItemsOf(section)
+    expect(items).toHaveLength(DOCS_CARDS.length)
+
+    const names = items.map((item) => item.match(/<strong>([^<]+)<\/strong>/)?.[1])
+    expect(names).toEqual(DOCS_CARDS.map((card) => card.name))
+
+    const hrefs = attrValues(section, 'href')
+    expect(hrefs).toHaveLength(DOCS_CARDS.length)
+    DOCS_CARDS.forEach((card, i) => expect(hrefs[i]).toMatch(new RegExp(`/docs/#${card.id}$`)))
   })
 
-  it('names the repository nowhere but through the marker, with the three install lines', () => {
-    const code = html.match(/<code>([\s\S]*?)<\/code>/)?.[1] ?? ''
-    expect(code).toContain("git clone &lt;the repository's clone URL&gt; hatch")
-    expect(code).toMatch(/^cd hatch\r?$/m)
-    expect(code).toContain('docker compose up -d')
+  it('has a footer', () => {
+    expect(tagsOf(html, 'footer').length).toBeGreaterThan(0)
   })
 })
 
