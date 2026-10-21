@@ -2713,6 +2713,13 @@ public class EfHatchRunner
     public string? Agent { get; set; }
 
     /// <summary>
+    /// The tags this runner carries, newline-joined - a fact about the
+    /// running process, overwritten on every heartbeat that names any, the
+    /// same as <see cref="Remotes"/>.
+    /// </summary>
+    public string? Tags { get; set; }
+
+    /// <summary>
     /// This runner's own account ran out of Claude usage, and this is when it
     /// expects to reset - a fact about the process, like <see cref="Mine"/>,
     /// never a person's to set. A heartbeat that names one writes it; a loop

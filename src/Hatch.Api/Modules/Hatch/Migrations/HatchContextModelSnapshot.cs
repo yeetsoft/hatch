@@ -968,6 +968,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("Tags")
+                        .HasColumnType("text");
+
                     b.Property<string>("Under")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
