@@ -126,3 +126,23 @@ Two ports are published.
 
 The log to read for either is the one that failed to start: `docker compose logs
 api` for the board, `docker compose logs db` for the database.
+
+## Signing in
+
+- **The `migrate` log says "Google sign-in is not configured: set
+  Auth__Google__ClientId and Auth__Google__ClientSecret"** (`FirstAdminNotice.cs:16`):
+  nobody can sign in until Google is set up. Set `HATCH_GOOGLE_CLIENT_ID` and
+  `HATCH_GOOGLE_CLIENT_SECRET`, then read `docker compose logs migrate`.
+- **Google shows `redirect_uri_mismatch`:** `HATCH_GOOGLE_REDIRECT_URI` must equal
+  the address registered with Google, character for character. See
+  [Behind a reverse proxy](the-wall-off-on-and-required#behind-a-reverse-proxy).
+- **Signed in, but nothing changes on a LAN address or in Safari:** the sign-in
+  cookie is `Secure`, and a browser holds it back on a plain `http` address. Same
+  link: [Behind a reverse proxy](the-wall-off-on-and-required#behind-a-reverse-proxy).
+- **"An administrator has to approve your account"** (`auth/src/App.tsx:62`): the
+  sign-in worked and the role is `pending`. An admin has to change it; see
+  [People, roles and keys](people-roles-and-keys#roles).
+- **Locked out:** see [Locked out](the-wall-off-on-and-required#locked-out).
+- **Any refusal:** `docker compose logs api` shows a Warning `Auth refused
+  {Reason} for {Host}{Path} from {ClientIp}` (`AuthGate.cs:304`). The reasons are
+  `no_credential`, `unknown_grant` and `unknown_key` (`AuthGate.cs:28-32`).
