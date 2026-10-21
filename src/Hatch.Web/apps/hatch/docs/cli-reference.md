@@ -309,8 +309,8 @@ from being dispatched at all.
 
 Name the choices wherever you can: a menu is answered in a press, and a
 paragraph has to be read twice and replied to. With no options the question is
-open-ended and is answered in prose. `questions-and-decisions` has what happens
-to the ticket from there.
+open-ended and is answered in prose. [Questions and
+decisions](questions-and-decisions) has what happens to the ticket from there.
 
 ### questions
 
@@ -533,4 +533,3 @@ without reading them.
 Pages this one names that are not written yet:
 
 - `environment-variables`
-- `questions-and-decisions`
