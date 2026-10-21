@@ -280,6 +280,10 @@ summary.site-action::-webkit-details-marker {
   stroke: var(--primary);
 }
 
+.site-diagram-node-optional {
+  stroke-dasharray: 6 4;
+}
+
 .site-diagram-edge {
   fill: none;
   stroke: var(--muted);
