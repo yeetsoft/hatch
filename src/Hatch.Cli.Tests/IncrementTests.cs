@@ -898,13 +898,14 @@ public sealed class IncrementTests
     }
 
     /// <summary>
-    /// HA-962: a plain increment's own board-read verdict does not know what
-    /// the session actually said - a session that wrote no work-log title is
-    /// stalled even when the board shows the ticket moved, and the comment
-    /// names the move rather than claiming it was left in place.
+    /// HA-1183: a plain increment's own board-read verdict already knows the
+    /// ticket moved, and a session that wrote no work-log title does not get
+    /// to override that any more - the move stands, the claim is released as
+    /// worked, and the missing fence is left for the work-log row to mark,
+    /// not for a stall comment.
     /// </summary>
     [Fact]
-    public async Task A_session_with_no_work_log_title_is_stalled_even_though_the_board_shows_it_moved()
+    public async Task A_session_with_no_work_log_title_is_not_a_stall_when_the_board_shows_it_moved()
     {
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
@@ -919,35 +920,30 @@ public sealed class IncrementTests
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
         h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
-            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
 
-        Assert.True(report.Stalled);
-        Assert.False(report.Moved);
+        Assert.True(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
-        var body = written.Read<CommentCreateRequest>().Body;
-        Assert.Contains("wrote no work-log", body, StringComparison.Ordinal);
-        Assert.Contains("moved it from", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("where it found it", body, StringComparison.Ordinal);
-
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Contains("wrote no work-log", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+        // No stall mark and no let-go comment - the missing fence is the
+        // work-log row's to show, not a reason to ask a person to look.
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
 
     /// <summary>
-    /// HA-962: the same override, when the board shows a child filed instead
-    /// of a move - the comment names the filed child rather than claiming
-    /// nothing happened.
+    /// HA-1183: the same as above, when the board shows a child filed
+    /// instead of a move - filing is progress whether or not the session
+    /// said so.
     /// </summary>
     [Fact]
-    public async Task A_session_with_no_work_log_title_is_stalled_even_though_the_board_shows_a_child_filed()
+    public async Task A_session_with_no_work_log_title_is_not_a_stall_when_the_board_shows_a_child_filed()
     {
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
@@ -963,35 +959,32 @@ public sealed class IncrementTests
         h.Wire.Json("GET", "/api/hatch/work/AER-1",
             Fixtures.Work("AER-1", letGo: 1, children: [Fixtures.Card("AER-2")]));
         h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
-            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
 
-        Assert.True(report.Stalled);
+        Assert.False(report.Stalled);
         Assert.Single(report.Filed);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
-        var body = written.Read<CommentCreateRequest>().Body;
-        Assert.Contains("wrote no work-log", body, StringComparison.Ordinal);
-        Assert.Contains("filed 1 under it", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("where it found it", body, StringComparison.Ordinal);
+        // The missing fence still shows up in the console/tally outcome text,
+        // since the ticket never moved and so has no "X -> Y" of its own to
+        // report instead.
+        Assert.Equal("the session wrote no work-log, and it filed 1 under it", report.Outcome);
 
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Contains("wrote no work-log", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
 
     /// <summary>
-    /// HA-962: a result event that came back <c>is_error</c> is stalled even
-    /// when it carried a work-log title - the title does not buy back trust
-    /// in the session's own account once the result says it errored.
+    /// HA-1183: a result event that came back <c>is_error</c> gets the same
+    /// treatment as a missing title - the board's own move still stands.
     /// </summary>
     [Fact]
-    public async Task A_titled_result_that_errored_is_stalled_even_though_the_board_shows_it_moved()
+    public async Task A_titled_result_that_errored_is_not_a_stall_when_the_board_shows_it_moved()
     {
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
@@ -1006,6 +999,43 @@ public sealed class IncrementTests
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
         h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-1183: the half of the acceptance criterion the three tests above
+    /// don't cover - a session that wrote no work-log title, and genuinely
+    /// neither moved the ticket nor filed a child under it, still stalls
+    /// exactly as it always has.
+    /// </summary>
+    [Fact]
+    public async Task A_session_with_no_work_log_title_that_neither_moved_nor_filed_is_still_a_stall()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Result(said: "no fence here"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
         h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
@@ -1015,13 +1045,17 @@ public sealed class IncrementTests
 
         Assert.True(report.Stalled);
         Assert.False(report.Moved);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
+        // Nothing here distinguishes a missing fence from any other plain
+        // stall - the board shows no move and no filed child, which is the
+        // whole of what a stall ever needed.
         var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
         var body = written.Read<CommentCreateRequest>().Body;
-        Assert.Contains("ended with an error", body, StringComparison.Ordinal);
+        Assert.Contains("left this issue where it found it", body, StringComparison.Ordinal);
 
         var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Contains("ended with an error", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+        Assert.Contains("without moving it", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
