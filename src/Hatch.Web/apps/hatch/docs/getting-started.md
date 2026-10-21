@@ -130,7 +130,8 @@ columns before anything is chosen to be built:
   chosen. The stories a session files are born here too.
 
 That is where this page stops. Choosing what to start — Backlog to the column
-after it — is the first decision that is yours; `the-board-and-its-columns` and
+after it — is the first decision that is yours;
+[the board and its columns](the-board-and-its-columns) and
 `the-lifecycle-of-a-ticket` take it from there.
 
 ## Getting the runner
@@ -178,6 +179,7 @@ its board is in [the runner](the-runner).
 
 - [Welcome](welcome), for what Hatch is and the one rule behind it, if you want that first.
 - [How work flows](how-work-flows), for a ticket's path across the board, end to end (until `the-lifecycle-of-a-ticket` replaces it).
+- [The board and its columns](the-board-and-its-columns), for what happens in each column and who moves work out of it.
 - [One increment and the loop](one-increment-and-the-loop), for what `hatch work` and `hatch go-to-work` do, every flag they take, and how a night ends.
 - [Putting a front door on it](putting-a-front-door-on-it), for signing in and running this somewhere more than one person reaches.
 - [Letting the loop merge for you](letting-the-loop-merge-for-you), for what has to be true before an approved pull request merges with nobody watching.
@@ -186,5 +188,6 @@ its board is in [the runner](the-runner).
 
 ## Coming
 
-- [The board and its columns](the-board-and-its-columns)
+Pages this one names that are not written yet:
+
 - `the-lifecycle-of-a-ticket`
