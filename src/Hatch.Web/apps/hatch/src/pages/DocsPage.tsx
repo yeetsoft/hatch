@@ -18,55 +18,9 @@ import {
 } from '../lib/docs';
 import { usePhone } from '../lib/viewport';
 import { clientLogger } from '../lib/clientLogger';
+import { drawMermaid } from '../lib/mermaidDraw';
 import { DocsSetupPrompt } from '../components/SetupPromptBox';
 import { DocsSidebar } from '../components/DocsSidebar';
-
-type MermaidModule = typeof import('../lib/mermaid');
-
-// Kept once it has arrived, the same shape as MarkdownEditor.tsx's Monaco
-// loader - asked for once, kept for the next page or pass, cleared on
-// rejection so a failed fetch is retryable (Chrome never retries a failed
-// dynamic import in place).
-let loadedMermaid: MermaidModule | null = null;
-let loadingMermaid: Promise<MermaidModule> | null = null;
-
-function loadMermaid(): Promise<MermaidModule> {
-  if (loadedMermaid) return Promise.resolve(loadedMermaid);
-  loadingMermaid ??= import('../lib/mermaid').then((m) => (loadedMermaid = m));
-  loadingMermaid.catch(() => (loadingMermaid = null));
-  return loadingMermaid;
-}
-
-/** The one line a reader sees above a diagram's source when it could not be
-    drawn - mermaid refused it, or the chunk never arrived. Created once per
-    container and reused, so a second failed pass does not stack a second
-    line. */
-function showMermaidError(container: Element, source: HTMLElement, message: string): void {
-  source.hidden = false;
-  container.querySelector('svg')?.remove();
-  let error = container.querySelector<HTMLParagraphElement>('.hatch-docs-mermaid-error');
-  if (!error) {
-    error = document.createElement('p');
-    error.className = 'hatch-docs-mermaid-error';
-    container.insertBefore(error, source);
-  }
-  error.textContent = message;
-}
-
-/** Writes a drawn diagram's sanitised SVG markup into the container, beside
-    the (now hidden) source `<pre>`, replacing a previous draw's SVG rather
-    than leaving two behind. */
-function showMermaidSvg(container: Element, source: HTMLElement, svgMarkup: string): void {
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = svgMarkup;
-  const svg = wrapper.firstElementChild;
-  if (!svg) return;
-  const existing = container.querySelector('svg');
-  if (existing) existing.replaceWith(svg);
-  else container.appendChild(svg);
-  container.querySelector('.hatch-docs-mermaid-error')?.remove();
-  source.hidden = true;
-}
 
 interface RenderedDoc {
   html: string;
@@ -179,45 +133,8 @@ function DocsArticle({ page }: { page: DocPage }) {
   // by a route that has no diagram. The source <pre> is never removed, only
   // hidden, so a theme-only pass can read it again.
   useEffect(() => {
-    if (doc.mermaidCount === 0) return;
-    const containers = Array.from(pageRef.current?.querySelectorAll<HTMLElement>('.hatch-docs-mermaid') ?? []);
-    if (containers.length === 0) return;
-    let live = true;
-
-    const fail = (message: string) => {
-      for (const container of containers) {
-        const source = container.querySelector<HTMLElement>('.hatch-docs-mermaid-source');
-        if (source) showMermaidError(container, source, message);
-      }
-    };
-
-    loadMermaid().then(
-      (mermaid) => {
-        if (!live) return;
-        mermaid.applyMermaidTheme();
-        for (const container of containers) {
-          const source = container.querySelector<HTMLElement>('.hatch-docs-mermaid-source');
-          if (!source) continue;
-          mermaid.renderMermaidDiagram(source.textContent ?? '').then(
-            (svg) => {
-              if (live) showMermaidSvg(container, source, DOMPurify.sanitize(svg));
-            },
-            (e: unknown) => {
-              clientLogger.error('A mermaid diagram failed to draw', { message: String(e) });
-              if (live) showMermaidError(container, source, 'This diagram could not be drawn.');
-            },
-          );
-        }
-      },
-      (e: unknown) => {
-        clientLogger.error('The mermaid chunk failed to load', { message: String(e) });
-        if (live) fail('This diagram could not be drawn.');
-      },
-    );
-
-    return () => {
-      live = false;
-    };
+    if (doc.mermaidCount === 0 || !pageRef.current) return;
+    return drawMermaid(pageRef.current, (what, e) => clientLogger.error(what, { message: String(e) }));
   }, [doc, resolved]);
 
   // One handler for the whole article. A link into the app goes through the router
