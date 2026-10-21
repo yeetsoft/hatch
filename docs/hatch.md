@@ -301,11 +301,11 @@ certificate fingerprint — supplied as deploy-time config
 `compose.yaml`), never a value this repository could know on an operator's
 behalf.
 
-**Read [`hatch-at-home.md`](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md)**
-for the operator-facing version of the above — the one line, the runner, and
-the block to paste into a friend's own `CLAUDE.md`. It ships inside the Hatch
-bundle itself (`/apps/hatch/hatch-at-home.md`) rather than living only in this
-repository, so it travels with the board it describes.
+**Read the board's own Docs**, [`src/Hatch.Web/apps/hatch/docs/`](../src/Hatch.Web/apps/hatch/docs/),
+served at `/apps/hatch/docs/` and imported into the bundle at build time, for
+the operator-facing version of the above — the one line, the runner, and the
+block to paste into a friend's own `CLAUDE.md`. It travels with the board it
+describes rather than living only in this repository.
 
 ## Domain model
 
@@ -701,7 +701,7 @@ the flag existed.
 
 A board that adds one — ticking `Protected` then `MergesPullRequest` on a
 column between `In Review` and `Done` — is walked through operator-side in
-[Letting the loop merge for you](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md#letting-the-loop-merge-for-you).
+[Letting the loop merge for you](../src/Hatch.Web/apps/hatch/docs/letting-the-loop-merge-for-you.md).
 
 A migration flags `In Progress` and `In Review` on a board that still has
 columns of exactly those names, and writes no limit row — the WIP section is
@@ -2564,9 +2564,10 @@ landing at exactly the mark is the mark, not after it.
 ## The wall, the roles, and API keys
 
 Hatch ships its own wall, off by default (`HATCH_AUTH` in `compose.yaml`), with
-Google sign-in. Turning it on is the walkthrough's *Putting a front door on it*
-(`hatch-at-home.md`). Two boundaries follow: the wall, and the role gate on top
-of it — and the wall has a second lane, the API key.
+Google sign-in. Turning it on is
+[The wall: off, on and required](../src/Hatch.Web/apps/hatch/docs/the-wall-off-on-and-required.md#putting-a-front-door-on-it)'s
+*Putting a front door on it*. Two boundaries follow: the wall, and the role
+gate on top of it — and the wall has a second lane, the API key.
 
 ### The posture
 
@@ -4601,7 +4602,7 @@ accident.
 
 **The GitHub side** is entirely [the approval column](#the-approval-column)'s
 own, walked through operator-side in [Letting the loop merge for
-you](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md#letting-the-loop-merge-for-you);
+you](../src/Hatch.Web/apps/hatch/docs/letting-the-loop-merge-for-you.md);
 linked here rather than repeated.
 
 **The path.** The owner files the epic, sets it
