@@ -79,6 +79,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(PullRequestMergedRequest))]
 [JsonSerializable(typeof(PullRequestClosedRequest))]
 [JsonSerializable(typeof(PullRequestStateRequest))]
+[JsonSerializable(typeof(BroughtCurrentRequest))]
 [JsonSerializable(typeof(PullRequestPushbackRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
