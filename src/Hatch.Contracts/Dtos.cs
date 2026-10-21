@@ -3263,6 +3263,11 @@ public static class RunnerStates
 /// live loop's own heartbeat - see <see cref="Hatch.Api.Modules.Hatch.Runners.DriversAsync"/>.
 /// Empty for a runner driving nothing, including every <c>once</c> runner.
 /// </param>
+/// <param name="Tags">
+/// This runner's own tags, normalised per <see cref="RunnerTags.Normalise"/>.
+/// Empty for a runner carrying none, rather than null, so a client built
+/// against the current shape reads "no tags" without a null to guard.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3284,7 +3289,13 @@ public record RunnerDto(
     string? Where,
     string? Agent,
     DateTimeOffset? ExhaustedUntil = null,
-    IReadOnlyList<string>? Drives = null);
+    IReadOnlyList<string>? Drives = null,
+    IReadOnlyList<string> Tags = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter.
+    public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+}
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -3339,6 +3350,12 @@ public record RunnerDto(
 /// reported, so an idle runner re-sending an hour-old reading on every poll
 /// does not make it look new.
 /// </param>
+/// <param name="Tags">
+/// This runner's own tags, written on every beat like <see cref="Remotes"/> -
+/// refused whole per <see cref="RunnerTags.Normalise"/> rather than capped
+/// or dropped entry by entry, since a tag is a decision and a heartbeat is
+/// not the one to guess it.
+/// </param>
 /// <param name="Standing">
 /// Whether this runner was started inside one of the checkouts it is
 /// serving - a fact about the process, on the terms <see cref="Mine"/>
@@ -3360,7 +3377,8 @@ public record RunnerHeartbeatRequest(
     bool? Exhausted = null,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
-    DateTimeOffset? UsageReadAt = null);
+    DateTimeOffset? UsageReadAt = null,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
