@@ -213,6 +213,32 @@ summary.site-action::-webkit-details-marker {
   color: var(--ink);
 }
 
+/* One column on a phone, then two, then three. Tracks are minmax(0, 1fr) so a
+   long word cannot widen the page. */
+.site-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-card {
+  display: block;
+  min-width: 0;
+  padding: var(--sp-5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-decoration: none;
+}
+
+.site-card strong {
+  display: block;
+  margin-block-end: var(--sp-2);
+}
+
 /* A reserved place for HA-723's diagrams: sized before the SVG arrives, so
    dropping one in moves nothing else on the page. */
 .site-figure {
@@ -237,10 +263,18 @@ summary.site-action::-webkit-details-marker {
   .site-points {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .site-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 64rem) {
   .site-points {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .site-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
