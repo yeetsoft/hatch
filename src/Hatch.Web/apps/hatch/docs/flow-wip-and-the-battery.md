@@ -184,3 +184,10 @@ When it is told, the session is cancelled, the tree is committed and pushed to
 the ticket's branch, one comment names the emergency ticket, and the claim is
 released as `preempted`. That is not a stall and not a failure: the night's tally
 lists it separately.
+
+## Reports
+
+**Reports** turns this page's own mechanics into pictures: the Timeline
+report draws when each epic was in flight and how long its work sat in each
+column; Cumulative flow draws how much work sat in each column over time,
+and where it is piling up.
