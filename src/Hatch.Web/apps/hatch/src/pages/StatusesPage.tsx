@@ -15,6 +15,7 @@ import {
   setProtected,
 } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
+import { COLUMN_FLAGS } from '../lib/columnFlags';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
 import {
@@ -189,29 +190,11 @@ export function StatusesPage() {
               <tr>
                 <th>Name</th>
                 <th>Colour</th>
-                <th>Done column</th>
-                <th title="Parked work. Not drawn on the board and not dragged into - the issue page is the only way in.">
-                  Deferred
-                </th>
-                <th title="Whether a story, bug or epic here counts towards its limit above.">WIP</th>
-                <th title="An express issue standing here is carried on to the next column with no session, as long as it has no unanswered question. The terminal column is never entered.">
-                  Express skips
-                </th>
-                <th title="A child standing here is carried on to the next column with no session while its parent stands in the implementation column.">
-                  Parent pulls
-                </th>
-                <th title="An issue filed by an agent is born in this column rather than the leftmost one. One column at a time - ticking this unticks whichever column held it - and with none ticked, agent-filed issues are born leftmost.">
-                  Agent files here
-                </th>
-                <th title="The column where code gets written: a dependency holds the move into it, and a story's open tasks hold the move out of it. One column at a time - ticking this unticks whichever column held it - and with none ticked, Hatch uses the column just left of review.">
-                  Code written here
-                </th>
-                <th title="Only an owner or approver of the issue's project may move work into this column by hand - never a key, never a hop, never a dispatch.">
-                  Protected
-                </th>
-                <th title="The runner merges an issue's pull request once it stands here, current and green, with no session. Needs Protected ticked first.">
-                  Merges PR
-                </th>
+                {COLUMN_FLAGS.map((flag) => (
+                  <th key={flag.label} title={flag.title}>
+                    {flag.label}
+                  </th>
+                ))}
                 <th>Order</th>
                 <th />
               </tr>
