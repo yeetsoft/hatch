@@ -62,11 +62,9 @@ interface DocsIndexModule {
   docIndex(pages: DocsPage[]): DocEntry[]
 }
 
-/** The two pages HA-663 has yet to write. A link to one of these still becomes
-    a site address and does not fail the build - everything else does. */
-export const PENDING_PAGES = new Set([
-  'flow-wip-and-the-battery',
-])
+/** The pages HA-663 has yet to write - none, now. A link to one of these would
+    still become a site address and not fail the build - everything else does. */
+export const PENDING_PAGES = new Set<string>([])
 
 /** Where a docs link to `slug` (with `fragment`, `#`-included or empty) goes on
     the site, under `base` (`config.base`: always `/` or `/<path>/`). */
