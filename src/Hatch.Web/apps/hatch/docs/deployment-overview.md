@@ -185,8 +185,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 
 `Auth__SignInPath` cannot usefully move: the wall exempts the literal
 `/apps/auth` (`Services/Auth/AuthGate.cs:180`), so pointing it elsewhere opens
-a redirect loop. The wall's own off/on/required states have a page coming,
-`the-wall-off-on-and-required`, below.
+a redirect loop. The wall's own off/on/required states are covered on
+[the wall, off, on and required](the-wall-off-on-and-required).
 
 A malformed `Apps__AssetLinks` entry stops the API at start
 (`Modules/AssetLinksValidation.cs`), unlike `Apps__PublicBaseUrl`, which
@@ -220,4 +220,3 @@ otherwise.
 Pages this one links to that are not written yet:
 
 - `kubernetes`
-- `the-wall-off-on-and-required`

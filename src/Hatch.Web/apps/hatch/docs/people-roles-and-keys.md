@@ -26,8 +26,8 @@ is up with `HATCH_AUTH`. It is off until they turn it on.
 - **On.** People sign in with Google. The runner header is ignored, and a
   request that carries no credential is refused.
 
-[Putting a front door on it](putting-a-front-door-on-it) turns the wall on;
-`the-wall-off-on-and-required` will say what each state changes.
+[The wall, off, on and required](the-wall-off-on-and-required) says what
+each state changes, and how to turn it on.
 
 ## Roles
 
@@ -183,5 +183,4 @@ more about sharing one board between people and keys.
 
 Pages this one links to that are not written yet:
 
-- `the-wall-off-on-and-required`
 - `review-pull-requests-and-the-merge-train`
