@@ -19,6 +19,8 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
         new ModelFamily("claude", "^claude-[a-z0-9][a-z0-9.-]{0,48}$", "claude-opus-5"),
         new ModelFamily("codex", "^gpt-[a-z0-9][a-z0-9.-]{0,48}$", "gpt-6-luna"),
         new ModelFamily("grok", "^grok-[a-z0-9][a-z0-9.-]{0,48}$", "grok-4.7"),
+        // {3,60} bounds the id to EfHatchPlaybook.MaxModelLength, so an over-length id refuses here rather than failing at the database.
+        new ModelFamily("ollama", @"^(?=.{3,60}\z)[A-Za-z0-9][A-Za-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*\z", "qwen3-coder:30b"),
     ]);
 
     /// <summary>

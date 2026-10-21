@@ -2636,6 +2636,11 @@ public record WorkLogSessionDto(
 /// you asked for" without fetching the graph's data to say it.
 /// </param>
 /// <param name="LastSessionAt">The latest, read the same way.</param>
+/// <param name="TopReads">
+/// Every path read by a session in the filtered population, counts summed
+/// across sessions, heaviest-count-first then path ascending, capped at
+/// <see cref="WorkLogRollup.MaxTopReads"/>.
+/// </param>
 public record WorkLogSessionsDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -2643,7 +2648,8 @@ public record WorkLogSessionsDto(
     WorkLogTotalsDto Totals,
     DateTimeOffset? FirstSessionAt,
     DateTimeOffset? LastSessionAt,
-    IReadOnlyList<WorkLogSessionDto> Sessions);
+    IReadOnlyList<WorkLogSessionDto> Sessions,
+    IReadOnlyList<WorkLogReadDto> TopReads);
 
 /// <summary>
 /// The sessions in a range, folded by the playbook they ran under: one row per
@@ -2654,10 +2660,16 @@ public record WorkLogSessionsDto(
 /// half-open, exactly as <see cref="WorkLogSessionsDto"/> echoes it. Every group
 /// in the window is answered - this is neither ranked nor capped.
 /// </remarks>
+/// <param name="TopReads">
+/// Every path read by a session in the filtered population, counts summed
+/// across sessions, heaviest-count-first then path ascending, capped at
+/// <see cref="WorkLogRollup.MaxTopReads"/>.
+/// </param>
 public record WorkLogByPlaybookDto(
     DateTimeOffset From,
     DateTimeOffset To,
-    IReadOnlyList<WorkLogByPlaybookRowDto> Rows);
+    IReadOnlyList<WorkLogByPlaybookRowDto> Rows,
+    IReadOnlyList<WorkLogReadDto> TopReads);
 
 /// <summary>
 /// One playbook/transition/type/model/effort combination, and what its sessions

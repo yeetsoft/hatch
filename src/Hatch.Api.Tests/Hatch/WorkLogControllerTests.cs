@@ -535,6 +535,24 @@ public class WorkLogControllerTests
         Assert.Null(empty.LastSessionAt);
     }
 
+    [Fact]
+    public async Task TheSessionsTopReads_SumsAcrossSessions_RankedHeaviestFirst()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2),
+            reads: [new WorkLogReadDto("a.cs", 3), new WorkLogReadDto("b.cs", 1)]);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1),
+            reads: [new WorkLogReadDto("a.cs", 2), new WorkLogReadDto("c.cs", 5)]);
+
+        var sessions = await h.SessionsAsync();
+
+        Assert.Equal(
+            [("a.cs", 5), ("c.cs", 5), ("b.cs", 1)],
+            sessions.TopReads.Select(r => (r.Path, r.Count)));
+    }
+
     // ---- What the sessions read refuses ----
 
     [Fact]
@@ -704,6 +722,24 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task TheByPlaybookTopReads_SumsAcrossSessions_RankedHeaviestFirst()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), playbookKey: "7",
+            reads: [new WorkLogReadDto("a.cs", 3), new WorkLogReadDto("b.cs", 1)]);
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), playbookKey: "8",
+            reads: [new WorkLogReadDto("a.cs", 2), new WorkLogReadDto("c.cs", 5)]);
+
+        var byPlaybook = await h.ByPlaybookAsync();
+
+        Assert.Equal(
+            [("a.cs", 5), ("c.cs", 5), ("b.cs", 1)],
+            byPlaybook.TopReads.Select(r => (r.Path, r.Count)));
+    }
+
+    [Fact]
     public async Task TheByPlaybookRead_RefusesABadBoundAndAnInvertedRangeInTheSameWords()
     {
         var h = await NewAsync();
@@ -771,7 +807,8 @@ public class WorkLogControllerTests
             string? issueType = null,
             string? model = null,
             string? effort = null,
-            int? promptChars = null)
+            int? promptChars = null,
+            IReadOnlyList<WorkLogReadDto>? reads = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -801,6 +838,7 @@ public class WorkLogControllerTests
                 IssueType = issueType,
                 PlaybookModel = model,
                 PlaybookEffort = effort,
+                Reads = reads is null ? null : WorkLogRollup.WriteReads(reads),
                 CreatedAt = Now,
             };
 
