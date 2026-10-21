@@ -280,6 +280,10 @@ summary.site-action::-webkit-details-marker {
   stroke: var(--primary);
 }
 
+.site-diagram-node-optional {
+  stroke-dasharray: 6 4;
+}
+
 .site-diagram-edge {
   fill: none;
   stroke: var(--muted);
@@ -348,5 +352,119 @@ summary.site-action::-webkit-details-marker {
 @media (max-width: 40rem) {
   .site-column {
     padding-inline: var(--sp-4);
+  }
+}
+
+/* A rendered docs page: renderDocs()'s output, read inside main. Mirrors the
+   .hatch-docs-body rules in apps/hatch/src/App.css, the app's own reading of
+   the same HTML - this page has no card beneath main, so pre/code/th sit on
+   --card rather than App.css's --bg to still read against the page. */
+.hatch-docs-body h2,
+.hatch-docs-body h3,
+.hatch-docs-body h4 {
+  scroll-margin-top: var(--sp-6);
+}
+
+.hatch-docs-body h2 {
+  margin: var(--sp-10) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-docs-body h3 {
+  margin: var(--sp-8) 0 var(--sp-2);
+}
+
+.hatch-docs-body h4 {
+  margin: var(--sp-6) 0 var(--sp-2);
+}
+
+.hatch-docs-body h2:first-child,
+.hatch-docs-body h3:first-child,
+.hatch-docs-body h4:first-child {
+  margin-top: 0;
+}
+
+.hatch-docs-body p,
+.hatch-docs-body ul,
+.hatch-docs-body ol,
+.hatch-docs-body pre,
+.hatch-docs-body blockquote,
+.hatch-docs-body table {
+  margin: 0 0 var(--sp-4);
+}
+
+.hatch-docs-body li + li {
+  margin-top: var(--sp-1);
+}
+
+.hatch-docs-body ul,
+.hatch-docs-body ol {
+  padding-left: var(--sp-6);
+}
+
+.hatch-docs-body pre {
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+}
+
+.hatch-docs-body code {
+  background: var(--card);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-chip);
+  font-size: var(--t-body);
+}
+
+.hatch-docs-body pre code {
+  background: none;
+  padding: 0;
+  font-size: var(--t-label);
+}
+
+.hatch-docs-body blockquote {
+  margin-inline: 0;
+  border-left: var(--sp-1) solid var(--line-strong);
+  padding-left: var(--sp-4);
+  color: var(--muted);
+}
+
+.hatch-docs-body table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.hatch-docs-body th,
+.hatch-docs-body td {
+  border: 1px solid var(--line);
+  padding: var(--sp-1-5) var(--sp-3);
+  text-align: left;
+}
+
+.hatch-docs-body th {
+  background: var(--card);
+}
+
+/* Shown on hover or keyboard focus; a finger has no hover, so it always shows. */
+.hatch-docs-anchor {
+  margin-left: var(--sp-2);
+  opacity: 0;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 400;
+}
+
+.hatch-docs-body :is(h2, h3, h4):hover .hatch-docs-anchor,
+.hatch-docs-anchor:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .hatch-docs-anchor {
+    opacity: 1;
   }
 }
