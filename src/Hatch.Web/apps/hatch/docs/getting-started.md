@@ -20,7 +20,7 @@ The rest of this page is those two sentences, in order.
 - **On Windows, either PowerShell** — 5.1, the blue one that ships with the OS,
   or 7 (`pwsh`). Where the two shells differ, the line is shown for each.
   Backing up needs 7: see
-  [where the data is and how to back it up](where-the-data-is-and-how-to-back-it-up).
+  [restoring](backup-restore-and-replication#restoring).
 - **git**, and the **`claude` CLI, logged in**. Neither is needed to run the
   board; both are needed by the runner, which branches, commits and pushes from
   a checkout and spends each increment inside a `claude` session. The Runner
