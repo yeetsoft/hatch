@@ -2355,6 +2355,14 @@ public record WorkLogModelUseDto(
     decimal? CostUsd);
 
 /// <summary>
+/// One file a session read, and how many times - a path and a count, and never
+/// anything else. No contents, no arguments, no line ranges.
+/// </summary>
+/// <param name="Path">As the agent spelled it, clipped to <c>EfHatchWorkLogEntry.MaxReadPathLength</c>.</param>
+/// <param name="Count">How many times the session read it.</param>
+public record WorkLogReadDto(string Path, int Count);
+
+/// <summary>
 /// One finished session, as the dispatcher reports it.
 /// </summary>
 /// <remarks>
@@ -2387,6 +2395,7 @@ public record WorkLogModelUseDto(
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -2411,7 +2420,8 @@ public record WorkLogEntryRequest(
     int? PlaybookToStatusId = null,
     string? IssueType = null,
     string? PlaybookModel = null,
-    string? PlaybookEffort = null);
+    string? PlaybookEffort = null,
+    IReadOnlyList<WorkLogReadDto>? Reads = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -2433,6 +2443,7 @@ public record WorkLogEntryRequest(
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -2464,7 +2475,8 @@ public record WorkLogEntryDto(
     int? PlaybookToStatusId,
     string? IssueType,
     string? PlaybookModel,
-    string? PlaybookEffort);
+    string? PlaybookEffort,
+    IReadOnlyList<WorkLogReadDto> Reads);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
