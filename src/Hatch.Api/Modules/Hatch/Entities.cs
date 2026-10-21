@@ -2377,6 +2377,8 @@ public class EfHatchWorkLogEntry
     public const int MaxSessionIdLength = 64;
     public const int MaxTitleLength = 200;
     public const int MaxSummaryLength = 2000;
+    public const int MaxReads = 50;
+    public const int MaxReadPathLength = 300;
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
@@ -2527,6 +2529,20 @@ public class EfHatchWorkLogEntry
     /// this column rather than a migration.
     /// </remarks>
     public string? ModelUsage { get; set; }
+
+    /// <summary>
+    /// The files the session read, as <c>jsonb</c>: an ordered list of
+    /// <see cref="WorkLogReadDto"/>, heaviest first, at most
+    /// <see cref="MaxReads"/> long with each path at most
+    /// <see cref="MaxReadPathLength"/> characters. Null when nothing was posted.
+    /// </summary>
+    /// <remarks>
+    /// <c>jsonb</c> and not a table, for the reason <see cref="ModelUsage"/> is:
+    /// it is read whole with the row that owns it. Written and read only through
+    /// <c>WorkLogRollup.WriteReads</c> and <c>ReadReads</c>, so the caps and the
+    /// meaning of the column live in one place.
+    /// </remarks>
+    public string? Reads { get; set; }
 
     /// <summary>When the row landed, which is not when the session ended.</summary>
     public required DateTimeOffset CreatedAt { get; set; }

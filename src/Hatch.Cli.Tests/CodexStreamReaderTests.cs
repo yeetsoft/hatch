@@ -157,6 +157,20 @@ public sealed class CodexStreamReaderTests
     }
 
     [Fact]
+    public void TurnCompleted_KeepsAFenceFromAnEarlierAgentMessageWhenTheFinalOneHasNone()
+    {
+        var (facts, _) = Play(
+            "gpt-5-codex",
+            Fixtures.CodexItemCompleted("agent_message", text: "```work-log\nMiddle title\n\nMiddle body.\n```"),
+            Fixtures.CodexItemStarted("command_execution", command: "hatch pr HA-1 x"),
+            Fixtures.CodexItemCompleted("agent_message", text: "Done."),
+            Fixtures.CodexTurnCompleted());
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+        Assert.Equal("Middle body.", facts.Result.Summary);
+    }
+
+    [Fact]
     public void TurnCompleted_LiftsTheReleaseNoteFenceBesideTheWorkLog()
     {
         var (facts, _) = Play(

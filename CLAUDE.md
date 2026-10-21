@@ -3,11 +3,15 @@
 Notes for Claude. Read [`README.md`](README.md) for what Hatch is,
 [`docs/ethos.md`](docs/ethos.md) for the one rule that constrains every commit
 (*nothing in this repo may be true of exactly one installation*), and
-[`docs/hatch.md`](docs/hatch.md) for the tracker every ticket below comes off.
+[`docs/hatch.md`](docs/hatch.md#section-index) for the tracker every ticket
+below comes off. The file is larger than a context window, so find the
+section you need in the index at its top, or by searching the file with
+`grep -n`, and read that section alone, from its heading to the next heading
+of the same level — never the whole file.
 
 ## Hatch: the ticket is the unit of work
 
-[Hatch](docs/hatch.md) is the house project tracker, at `hatch.${DOMAIN}`. It is
+[Hatch](docs/hatch.md#summary) is the house project tracker, at `hatch.${DOMAIN}`. It is
 where work is described, and it is reachable programmatically — so a link to a
 ticket is a complete instruction, and the ticket is where the answer goes back.
 

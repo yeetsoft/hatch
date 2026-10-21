@@ -1,7 +1,8 @@
 /* The build stamp is the same panel at both widths, so its own rule must not
    set display: none anywhere. Read as text, the way touchCss.test.ts and
    navCss.test.ts read a stylesheet - there is no DOM in this runner to lay
-   anything out in. The real look is the operator's to verify in a browser. */
+   anything out in. The real look renders through docs/browser-testing.md,
+   not the operator alone. */
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
