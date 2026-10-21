@@ -103,6 +103,16 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/pull-request-state", request, ct);
 
     /// <summary>
+    /// That this runner brought an issue's branch current with the trunk - see
+    /// <see cref="BroughtCurrentRequest"/>. The route answers <c>204</c>, so
+    /// there is nothing to read back; a non-2xx throws <see cref="HatchException"/>
+    /// carrying the status, for the caller to tell a board that does not know the
+    /// route from one that refused this write.
+    /// </summary>
+    public Task BroughtCurrentAsync(string key, BroughtCurrentRequest request, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/brought-current", request, ct);
+
+    /// <summary>
     /// What the build on the tip of one issue's branch came to in one repository -
     /// see <see cref="BuildCheckRequest"/>. The remote is spelled the way this
     /// runner has it; the board canonicalises it.

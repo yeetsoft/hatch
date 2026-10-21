@@ -619,6 +619,24 @@ public sealed class MergeTrain : IAsyncDisposable
                             issue.Key, $"Brought its branch current with {judged.Trunk}, as {runtime.RunnerName}.", ct);
                         runtime.Say.Line($"hatch: {UpdateWords(issue.Key, judged.Trunk)}");
 
+                        try
+                        {
+                            await runtime.QuietBoard.BroughtCurrentAsync(
+                                issue.Key, new BroughtCurrentRequest(judged.Trunk, judged.TrunkSha, runtime.RunnerName), ct);
+                        }
+                        catch (HatchException e) when (e.Status == HttpStatusCode.NotFound)
+                        {
+                            complain($"hatch: {issue.Key} - the board does not know it was brought current yet - it will be asked again next tick");
+                        }
+                        catch (HatchException e) when (e.Status == HttpStatusCode.Conflict)
+                        {
+                            // The row changed between the read and the write.
+                        }
+                        catch (HatchException e)
+                        {
+                            complain($"hatch: {issue.Key} - the board would not take the brought-current mark - {e.Message}");
+                        }
+
                         // The fast path: read the pull request again, right
                         // away, in case the forge's merge already finished in
                         // the moment it took to answer the update itself. The
