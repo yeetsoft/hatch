@@ -289,6 +289,15 @@ public static class Fixtures
             message = new { content = new[] { new { type = "tool_use", name, input = new { command } } } },
         });
 
+    /// <summary>A tool call with any input object; a sub-agent's carries its parent's tool use id.</summary>
+    public static string ToolUse(string name, object input, string? parentToolUseId = null) =>
+        JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["type"] = "assistant",
+            ["parent_tool_use_id"] = parentToolUseId,
+            ["message"] = new { content = new[] { new { type = "tool_use", name, input } } },
+        });
+
     /// <summary>One assistant message of a single text block; a sub-agent's carries its parent's tool use id.</summary>
     public static string AssistantText(string text, string? parentToolUseId = null) =>
         JsonSerializer.Serialize(new Dictionary<string, object?>

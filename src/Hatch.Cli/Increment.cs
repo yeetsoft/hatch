@@ -1134,6 +1134,7 @@ public sealed class Increment(
             {
                 Requests = render.Requests,
                 PeakContextTokens = render.PeakContextTokens,
+                Reads = render.Reads,
                 PromptChars = prompt.Length,
             };
 
