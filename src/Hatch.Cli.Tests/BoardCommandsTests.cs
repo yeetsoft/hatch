@@ -322,6 +322,35 @@ public sealed class BoardCommandsTests
     }
 
     /// <summary>
+    /// The tag fold is a sentence the server writes; the queue prints it as it
+    /// prints any other, in the column a blocked row's reason always takes.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_its_tag_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+            new QueueEntryDto(
+                Fixtures.Issue("AER-7", type: "story"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            $"""
+            AER-1  [task]   In Progress  -> In Review
+            AER-7  [story]  In Progress  {sentence}
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    /// <summary>
     /// The review column's move ends in the review column, so an arrow to it
     /// would say nothing. The row says what the increment does instead, and
     /// names the trunk from the verdict that conflicted.
