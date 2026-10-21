@@ -26,7 +26,7 @@ const metaContent = (html: string, key: string, value: string): string | undefin
   return tag === undefined ? undefined : attr(tag, 'content')
 }
 
-describe.each(['index.html', '404.html'])('%s', (file: string) => {
+describe.each(['index.html', '404.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
   let html: string
   beforeAll(() => {
     html = withoutComments(site.read(file))

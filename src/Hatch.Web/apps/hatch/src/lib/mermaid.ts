@@ -2,7 +2,7 @@
    string needs.
 
    THIS IS THE ONLY MODULE THAT MAY IMPORT `mermaid`, and it is only ever
-   reached as `import('../lib/mermaid')`. That dynamic import is what makes
+   reached as `import('./mermaid')`, from `mermaidDraw.ts`. That dynamic import is what makes
    Vite give mermaid a chunk of its own, so a board with no diagram on it
    never downloads one (HA-657, criterion 4). A second importer - static, or
    dynamic from somewhere else - would drag mermaid, and everything it pulls
