@@ -111,9 +111,3 @@ hourglass for them instead, and the issue's own stall panel offers
 [Questions and decisions](questions-and-decisions) covers answering a
 question; [One increment and the loop](one-increment-and-the-loop#stalls)
 covers what a stall is and when the board resumes one on its own.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `flow-wip-and-the-battery`
