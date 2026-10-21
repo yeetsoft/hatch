@@ -11,14 +11,16 @@ import {
   entryTitle,
   errorPhrase,
   hasDescendantSpend,
+  modelEffortPhrase,
   ownPhrase,
   playbookFileShowCommand,
   playbookSourcePhrase,
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
+  transitionPhrase,
 } from '../lib/workLog';
-import type { WorkLog as WorkLogData, WorkLogEntry } from '../types';
+import type { Status, WorkLog as WorkLogData, WorkLogEntry } from '../types';
 
 /**
  * What this ticket cost: one row per agent session, its tokens and its notional
@@ -34,7 +36,15 @@ import type { WorkLog as WorkLogData, WorkLogEntry } from '../types';
  * by the dispatcher with an API key and the server refuses a browser outright.
  * The absence is the guarantee - do not add one for symmetry.
  */
-export function WorkLog({ log, error }: { log: WorkLogData | null; error: string | null }) {
+export function WorkLog({
+  log,
+  error,
+  statuses,
+}: {
+  log: WorkLogData | null;
+  error: string | null;
+  statuses: Status[];
+}) {
   // The section's own failure, said in the section. An issue somebody came here
   // to read should not blank because a meter could not be fetched.
   if (error) {
@@ -70,7 +80,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
       ) : (
         <ul className="hatch-worklog">
           {log.entries.map((entry) => (
-            <Entry key={entry.id} entry={entry} />
+            <Entry key={entry.id} entry={entry} statuses={statuses} />
           ))}
         </ul>
       )}
@@ -79,9 +89,11 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
 }
 
 /** One session. Newest first is the server's ordering and is not re-derived. */
-function Entry({ entry }: { entry: WorkLogEntry }) {
+function Entry({ entry, statuses }: { entry: WorkLogEntry; statuses: Status[] }) {
   const mark = entryMark(entry);
   const resume = resumeCommand(entry.agent, entry.sessionId);
+  const transition = transitionPhrase(entry, statuses);
+  const modelEffort = modelEffortPhrase(entry);
 
   return (
     <li className={`hatch-worklog-entry${mark ? ` hatch-worklog-${mark}` : ''}`}>
@@ -110,6 +122,8 @@ function Entry({ entry }: { entry: WorkLogEntry }) {
       </div>
 
       {playbookSourcePhrase(entry) && <p className="text-muted hatch-worklog-source">{playbookSourcePhrase(entry)}</p>}
+      {transition && <p className="text-muted hatch-worklog-transition">{transition}</p>}
+      {modelEffort && <p className="text-muted hatch-worklog-model">{modelEffort}</p>}
 
       {/* The session id in the form it is used in, rather than as an id
           somebody has to assemble a command around. */}

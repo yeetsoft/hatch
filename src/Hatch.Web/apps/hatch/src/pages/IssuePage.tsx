@@ -863,7 +863,7 @@ export function IssuePage() {
       {/* Between the thread and the trail, and visibly part of neither: a
           comment is somebody talking, an event is something happening, and this
           is the meter. */}
-      <WorkLog log={workLog} error={workLogError} />
+      <WorkLog log={workLog} error={workLogError} statuses={board.statuses} />
 
       <EventTrail events={events} />
 

@@ -9,6 +9,7 @@ import {
   entryTitle,
   errorPhrase,
   hasDescendantSpend,
+  modelEffortPhrase,
   moneyPhrase,
   ownPhrase,
   playbookFileShowCommand,
@@ -16,9 +17,10 @@ import {
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
+  transitionPhrase,
   UNPRICED_TITLE,
 } from './workLog';
-import type { WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
+import type { Status, WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
 
 const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   sessions: 1,
@@ -67,6 +69,39 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   playbookEffort: null,
   ...over,
 });
+
+const statuses: Status[] = [
+  {
+    id: 1,
+    name: 'To Do',
+    sortOrder: 1,
+    isTerminal: false,
+    isDeferred: false,
+    isWip: false,
+    expressSkips: false,
+    parentPulls: false,
+    agentFiles: false,
+    isImplementation: false,
+    isProtected: false,
+    mergesPullRequest: false,
+    color: '#888888',
+  },
+  {
+    id: 2,
+    name: 'In Review',
+    sortOrder: 2,
+    isTerminal: false,
+    isDeferred: false,
+    isWip: false,
+    expressSkips: false,
+    parentPulls: false,
+    agentFiles: false,
+    isImplementation: false,
+    isProtected: false,
+    mergesPullRequest: false,
+    color: '#888888',
+  },
+];
 
 const log = (over: Partial<WorkLog> = {}): WorkLog => ({
   key: 'AER-12',
@@ -205,6 +240,36 @@ describe('playbookSourcePhrase', () => {
 
   it('says nothing for a row with no source at all - an older runner, or a hop', () => {
     expect(playbookSourcePhrase(entry({ playbookSource: null }))).toBeNull();
+  });
+});
+
+describe('transitionPhrase', () => {
+  it('names both columns, resolved against the board', () => {
+    expect(transitionPhrase(entry({ playbookFromStatusId: 1, playbookToStatusId: 2 }), statuses)).toBe(
+      'To Do → In Review',
+    );
+  });
+
+  it('says nothing for a row with no transition at all - an older runner', () => {
+    expect(
+      transitionPhrase(entry({ playbookFromStatusId: null, playbookToStatusId: null }), statuses),
+    ).toBeNull();
+  });
+
+  it('falls back to the raw id for a column the board no longer carries', () => {
+    expect(transitionPhrase(entry({ playbookFromStatusId: 999, playbookToStatusId: 2 }), statuses)).toBe(
+      '999 → In Review',
+    );
+  });
+});
+
+describe('modelEffortPhrase', () => {
+  it('joins the model and the effort', () => {
+    expect(modelEffortPhrase(entry({ playbookModel: 'opus', playbookEffort: 'high' }))).toBe('opus/high');
+  });
+
+  it('says nothing for a row with neither - an older runner', () => {
+    expect(modelEffortPhrase(entry({ playbookModel: null, playbookEffort: null }))).toBeNull();
   });
 });
 
