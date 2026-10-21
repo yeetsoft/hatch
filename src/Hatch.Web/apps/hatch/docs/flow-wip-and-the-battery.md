@@ -2,14 +2,16 @@
 title: Flow, WIP and the battery
 section: Concepts
 order: 80
-summary: How the WIP limits and the fold keep a loop that can work any ticket from working all of them at once.
+summary: How the WIP limits, the fold, stalls, the battery and preemption keep a loop that can work any ticket from working all of them at once.
 ---
 
 A loop that can work any ticket will work all of them at once. Nothing about a
 ticket being ready stops a second one being ready too, and a third, until a
 board that was meant to move one thing forward at a time has a dozen half-done.
 Every mechanism on this page exists to stop that: a limit on how much may be in
-progress, and a rule that an issue the board will not dispatch says so.
+progress, a rule that an issue the board will not dispatch says so, a rule for
+a session that moved nothing, a reading of the account the loop is spending,
+and a way for urgent work to take a runner that is busy with something less.
 
 ## WIP limits
 
@@ -74,3 +76,111 @@ dispatches it.
 its sentence, or nothing where the issue is clear. It is `GET
 /api/hatch/work/queue` underneath, and it is where to look first when a ticket
 you expected to move has not.
+
+## When an increment does nothing
+
+A **stall** is a session that ends with the ticket in the column it found it
+in; a plain advance with no `work-log` counts as not moved. It matters because
+nothing about the board changed, so the next pass would pick the same ticket
+and spend the same money, all night. Stalls escalate, and each is written on
+the ticket:
+
+1. **The first in a row is let go.** One comment says why, with the command to
+   resume the session. There is no mark, and the ticket is free for the very
+   next pass.
+2. **The second is marked.** The comment is joined by a stall mark, which
+   records when and why and blocks the next dispatch. The queue then says the
+   ticket was *stalled N minutes ago* and *resumes itself after 15 minutes*.
+   The wait is `Hatch:StallResumeMinutes`, and `0` never resumes a ticket
+   unattended.
+3. **The third in a row is held for a person.** `Hatch:StallResumeLimit`
+   defaults to 3. After its window the queue's sentence becomes *stalled 3 times
+   in a row … held for a person now*, and the board stops resuming it. A
+   person's **Resume now** or **Hold for me** clears the mark.
+
+The count is of consecutive releases that dropped the ticket. It starts again
+after a release that worked, a change of status, or a person's answer.
+
+Some endings that look like a stall are not one, and count toward nothing:
+
+- Filing issues under the ticket. The ticket is measured against the children
+  it had at dispatch, and a new key is progress.
+- A session that asked a question. The open question is the flag.
+- Running out of usage; the runner waits for the reset.
+- Being preempted, below.
+- Losing the lease.
+- A hop, where no session ran.
+- A hard limit, which published what the session left.
+
+A separate counter ends the night: three increments in a row that exit
+non-zero. The endings above do not count toward it either. See [One increment
+and the loop](one-increment-and-the-loop#stalls) for the escalation as the
+operator of a loop meets it.
+
+## The battery
+
+The battery is how much of the account an unattended pass would spend is left,
+and when it comes back. It is optional by design: a person no runner has ever
+reported for gets no battery at all, with no placeholder and no error — the
+endpoint answers `204`. That is a supported state, and it is the default.
+
+**Where the reading comes from.** The runner reports the account's usage on the
+heartbeat it already sends. During a session the reading comes from the
+session's own stream; between sessions it comes from a `/usage` probe at the top
+of idle passes. Hatch keeps it per person and answers only the caller's own. A
+person with two runners has one account, so the freshest whole reading wins
+rather than a merge of the two.
+
+**What it shows.** The colour is decided on the client from *pace*: the share
+of the allowance spent against the share of the window gone. There are five
+bands, from allowance to spare, through level with the reset, to spending ahead
+of it. The battery takes the worst window, and never the `extra` credit-line
+row. Opened, each window is two bars, spent and time gone; a dashed time bar
+means no reset is known, and a window that has already reset reads as not
+started. A reading is `ok` within five minutes of when it was read and `stale`
+after, still shown with its age; there is no other state. Refresh re-reads
+Hatch's own row only. [Watching the loop](watching-the-loop#the-battery) has the
+panel itself.
+
+**What the loop does as it runs down.** An unattended pass reads the same
+reading before it touches work at the bottom of the [priority](issues#priority)
+scale:
+
+- **Economy** work is taken only if every window of the account is ahead of its
+  own pace with 10 points to spare.
+- **Low** work is taken only if the session window alone is on pace.
+
+Naming the ticket by hand, or a hop, skips both gates. With no reading yet, or
+a key owned by nobody, both gates fold. A runner whose account is spent waits
+for the reset, and none of that is a stall. [One increment and the
+loop](one-increment-and-the-loop#one-pass-in-order) has where the gates sit in a
+pass.
+
+**Not a budget.** Nothing is capped or metered by the battery. It reads the
+account's own limits and decides nothing except those two gates. The cap on
+what a run spends is `--max-spend`; see [bounds, timeouts and
+stopping](one-increment-and-the-loop#bounds-timeouts-and-stopping).
+
+## Preemption
+
+A runner heartbeating on ordinary work can be told it has been **preempted**
+when emergency-level work is actionable and nobody holds it. Nothing is
+nominated or reserved in advance. It is decided at each heartbeat from the board
+as it stands, which is what lets an urgent ticket walk the board on one runner.
+
+The runner is told only when all five of these hold:
+
+1. An emergency ticket is actionable and unclaimed.
+2. The runner's own ticket is below emergency. Emergency work is never
+   preempted.
+3. Its ticket is last in the dispatcher's order among the live claims not yet
+   told: economy before low, and low before normal and expedited.
+4. Fewer runners have already been told than there are emergency tickets
+   waiting.
+5. No live runner is free. A free one takes the emergency ticket on its own next
+   pass, so preempting would spend a session to gain nothing.
+
+When it is told, the session is cancelled, the tree is committed and pushed to
+the ticket's branch, one comment names the emergency ticket, and the claim is
+released as `preempted`. That is not a stall and not a failure: the night's tally
+lists it separately.

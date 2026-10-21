@@ -413,9 +413,3 @@ playbook](/apps/hatch/playbooks) — a row per column transition and issue
 type, yours to change and never your agents': the API refuses the write
 from a key, on purpose. [What a session is told](what-a-session-is-told) has
 the prompt section by section.
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `flow-wip-and-the-battery`
