@@ -2,6 +2,10 @@
    installation (docs/ethos.md): a URL, a dotted-quad IP, an email, or a
    hostname-shaped token. node_modules, dist and *.test.ts are excluded - the
    test files above are where the invented values those tests need live.
+   content/ is excluded too: it is long-form documentation prose, parallel to
+   apps/hatch/docs/ (which this scanner never covers either), and its vendor
+   reference links (install docs, a dependency's own site) are true of every
+   installation by nature of being a guide, not a sign of a hardcoded address.
    A line carrying the EXEMPT_MARKER comment is exempt too - for a literal
    that is true of every installation (a pinned dependency's own vendor URL,
    not this one's), reviewed and left as plain, searchable text rather than
@@ -14,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
-const EXCLUDED_DIRS = new Set(['node_modules', 'dist'])
+const EXCLUDED_DIRS = new Set(['node_modules', 'dist', 'content'])
 
 // A reviewed, genuinely-structural literal (true of every installation, not
 // this one's) can carry this comment on its own line to opt out of the scan.
