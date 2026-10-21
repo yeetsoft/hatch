@@ -584,7 +584,7 @@ public class PlaybooksControllerTests
 
         Assert.Equal(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok) - not \"fake-1\"",
+            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not \"fake-1\"",
             Reason(refusal.Result));
 
         var families = new ModelFamilies([
@@ -597,6 +597,17 @@ public class PlaybooksControllerTests
             new PlaybookCreateRequest(withFamilies.Todo, withFamilies.InProgress, [], "do it", "fake-1", "high"), default));
 
         Assert.Equal("fake-1", created.Model);
+    }
+
+    [Fact]
+    public async Task APinnedId_OfTheOllamaFamily_IsAccepted()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "qwen3-coder:30b", "high"), default));
+
+        Assert.Equal("qwen3-coder:30b", created.Model);
     }
 
     // ---- DefaultPrompt ----

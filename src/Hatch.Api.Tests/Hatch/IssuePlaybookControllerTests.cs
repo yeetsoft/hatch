@@ -118,7 +118,7 @@ public class IssuePlaybookControllerTests
 
         Assert.Equal(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok) - not \"nonsense-1\"",
+            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not \"nonsense-1\"",
             Reason(refusal.Result));
     }
 
@@ -135,6 +135,17 @@ public class IssuePlaybookControllerTests
         var patched = await h.SetAsync(issue.Key, "fake-1", null);
 
         Assert.Equal("fake-1", patched.ModelOverride);
+    }
+
+    [Fact]
+    public async Task APinnedId_OfTheOllamaFamily_IsAccepted()
+    {
+        var h = await NewAsync(ModelFamilies.Default);
+        var issue = await h.FileAsync();
+
+        var patched = await h.SetAsync(issue.Key, "qwen3-coder:30b", null);
+
+        Assert.Equal("qwen3-coder:30b", patched.ModelOverride);
     }
 
     [Fact]
