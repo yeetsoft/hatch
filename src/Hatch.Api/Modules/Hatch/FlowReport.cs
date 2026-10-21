@@ -1,11 +1,12 @@
+using System.Text.Json;
+
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// How issues moved through each board column over a window: how many
 /// entered it, how many left, how long the ones that left dwelled, and how
-/// many still stand there - the per-column half of what a flow report draws.
-/// The window half (hops, send-backs, questions, sessions) is a later task's
-/// and is zero here.
+/// many still stand there - plus the window-wide counts (hops, send-backs,
+/// questions, sessions) that do not belong to any one column.
 ///
 /// Pure in the way <see cref="CumulativeFlowReport"/> is: rows and events in,
 /// a shape out, with no database and no clock, so the rules can be pinned by
@@ -13,23 +14,23 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public static class FlowReport
 {
-    /// <summary>One raw issue event, as the fold needs it - only <c>status_changed</c> ones are read.</summary>
+    /// <summary>One raw issue event, as the fold needs it - <c>status_changed</c> and <c>claim_released</c> are read.</summary>
     public sealed record Event(long IssueId, long EventId, string Kind, DateTimeOffset At, string? Payload);
 
-    /// <summary>One question asked of an issue - unused until the window half is filled in.</summary>
+    /// <summary>One question asked of an issue.</summary>
     public sealed record Question(long IssueId, long Id, DateTimeOffset AskedAt, DateTimeOffset? AnsweredAt);
 
-    /// <summary>One work-log session against an issue - unused until the window half is filled in.</summary>
+    /// <summary>One work-log session against an issue.</summary>
     public sealed record Session(long IssueId, DateTimeOffset EndedAt, bool IsError);
 
     /// <summary>One board column's counts over the window.</summary>
     public sealed record Column(int StatusId, int Entered, int Left, int Dwelled,
         long? MedianDwellSeconds, long? P90DwellSeconds, int Standing);
 
-    /// <summary>How many times one hop kind carried an issue across the window - always zero here.</summary>
+    /// <summary>How many times one hop kind carried an issue across the window.</summary>
     public sealed record Hop(string Kind, int Count);
 
-    /// <summary>The window-wide half of a flow report - all zero and null until a later task fills it in.</summary>
+    /// <summary>The window-wide half of a flow report, over the issues the filters keep.</summary>
     public sealed record Window(int Dropped, IReadOnlyList<Hop> Hops, int SendBacks,
         int QuestionsAsked, int QuestionsAnswered, long? MedianAnswerWaitSeconds, long? LongestAnswerWaitSeconds,
         int Sessions, int SessionErrors);
@@ -48,9 +49,10 @@ public static class FlowReport
     /// </summary>
     /// <remarks>
     /// <paramref name="events"/>, <paramref name="questions"/> and
-    /// <paramref name="sessions"/> are accepted for the window half this task
-    /// leaves zero; only <paramref name="events"/> is read, and only its
-    /// <c>status_changed</c> rows.
+    /// <paramref name="sessions"/> feed the <see cref="Window"/> half too,
+    /// each scoped to a kept row's <see cref="TimelineReport.Row.Id"/> - an
+    /// event, question or session against an issue the filters drop counts
+    /// nothing.
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<TimelineReport.Row> rows, IReadOnlyList<Event> events, IReadOnlyList<Question> questions,
@@ -64,6 +66,8 @@ public static class FlowReport
 
         var board = TimelineReport.IndexOf(statuses);
         var eventsByIssue = events.ToLookup(e => e.IssueId);
+        var questionsByIssue = questions.ToLookup(q => q.IssueId);
+        var sessionsByIssue = sessions.ToLookup(s => s.IssueId);
 
         var entered = new int[columns.Count];
         var left = new int[columns.Count];
@@ -72,6 +76,15 @@ public static class FlowReport
         for (var i = 0; i < dwell.Length; i++) dwell[i] = [];
 
         var kept = rows.Where(r => (projectId is null || r.ProjectId == projectId) && (type is null || r.Type == type));
+
+        var dropped = 0;
+        var hopCounts = HopKindOrder.ToDictionary(k => k, _ => 0);
+        var sendBacks = 0;
+        var questionsAsked = 0;
+        var questionsAnswered = 0;
+        var waits = new List<long>();
+        var sessionCount = 0;
+        var sessionErrors = 0;
 
         var unresolved = 0;
         foreach (var row in kept)
@@ -98,6 +111,49 @@ public static class FlowReport
 
                 if (s.From <= to && (s.To is null || s.To > to)) standing[at]++;
             }
+
+            foreach (var e in eventsByIssue[row.Id])
+            {
+                if (e.At < from || e.At >= to) continue;
+
+                if (e.Kind == EfHatchIssueEvent.StatusChanged)
+                {
+                    if (HopKindOf(e.Payload, board) is { } kind) hopCounts[kind]++;
+
+                    if (TimelineReport.ParseChange(e.IssueId, e.EventId, e.At, e.Payload) is { } change
+                        && TimelineReport.Resolve(change.From, change.FromId, board) is ({ } fromId, true)
+                        && TimelineReport.Resolve(change.To, change.ToId, board) is ({ } toId, true)
+                        && slot.TryGetValue(fromId, out var fromSlot)
+                        && slot.TryGetValue(toId, out var toSlot)
+                        && toSlot < fromSlot)
+                    {
+                        sendBacks++;
+                    }
+                }
+                else if (e.Kind == EfHatchIssueEvent.ClaimReleased && IsDropped(e.Payload))
+                {
+                    dropped++;
+                }
+            }
+
+            foreach (var q in questionsByIssue[row.Id])
+            {
+                if (q.AskedAt >= from && q.AskedAt < to) questionsAsked++;
+
+                if (q.AnsweredAt is { } answeredAt && answeredAt >= from && answeredAt < to)
+                {
+                    questionsAnswered++;
+                    waits.Add(Math.Max(0, (long)Math.Round((answeredAt - q.AskedAt).TotalSeconds)));
+                }
+            }
+
+            foreach (var ses in sessionsByIssue[row.Id])
+            {
+                if (ses.EndedAt < from || ses.EndedAt >= to) continue;
+
+                sessionCount++;
+                if (ses.IsError) sessionErrors++;
+            }
         }
 
         var cols = columns
@@ -105,12 +161,47 @@ public static class FlowReport
             .ToList();
 
         var window = new Window(
-            Dropped: 0, Hops: HopKindOrder.Select(k => new Hop(k, 0)).ToList(), SendBacks: 0,
-            QuestionsAsked: 0, QuestionsAnswered: 0, MedianAnswerWaitSeconds: null, LongestAnswerWaitSeconds: null,
-            Sessions: 0, SessionErrors: 0);
+            Dropped: dropped, Hops: HopKindOrder.Select(k => new Hop(k, hopCounts[k])).ToList(), SendBacks: sendBacks,
+            QuestionsAsked: questionsAsked, QuestionsAnswered: questionsAnswered,
+            MedianAnswerWaitSeconds: Median(waits), LongestAnswerWaitSeconds: waits.Count == 0 ? null : waits.Max(),
+            Sessions: sessionCount, SessionErrors: sessionErrors);
 
         return new Result(cols, window, unresolved);
     }
+
+    /// <summary>
+    /// A <c>status_changed</c> payload's hop flag, or null where it carries
+    /// none - a person's drag, a <c>merged</c>/<c>pushback</c>/<c>landed</c>
+    /// move and a check verdict move all write no flag and so are not hops.
+    /// The approve and close hops share one flag, <c>preapproved</c>; only the
+    /// destination - terminal or not - tells them apart.
+    /// </summary>
+    internal static string? HopKindOf(string? payload, TimelineReport.BoardIndex board)
+    {
+        if (IssueEventPayload.Parse(payload) is not { ValueKind: JsonValueKind.Object } json) return null;
+
+        if (json.TryGetProperty("sendback", out var sendback) && sendback.ValueKind == JsonValueKind.True) return HopKinds.SendBack;
+        if (json.TryGetProperty("pulled", out var pulled) && pulled.ValueKind == JsonValueKind.True) return HopKinds.Parent;
+        if (json.TryGetProperty("epic", out var epic) && epic.ValueKind == JsonValueKind.True) return HopKinds.Epic;
+        if (json.TryGetProperty("under", out _)) return HopKinds.Under;
+        if (json.TryGetProperty("express", out var express) && express.ValueKind == JsonValueKind.True) return HopKinds.Express;
+
+        if (json.TryGetProperty("preapproved", out var preapproved) && preapproved.ValueKind == JsonValueKind.True)
+        {
+            var change = TimelineReport.ParseChange(0, 0, default, payload);
+            return TimelineReport.Resolve(change?.To, change?.ToId, board) is ({ } toId, true) && board.Terminal.Contains(toId)
+                ? HopKinds.Close
+                : HopKinds.Approve;
+        }
+
+        return null;
+    }
+
+    /// <summary>A <c>claim_released</c> payload's own outcome, matched ordinal against <see cref="ClaimOutcomes.Dropped"/>.</summary>
+    private static bool IsDropped(string? payload) =>
+        IssueEventPayload.Parse(payload) is { ValueKind: JsonValueKind.Object } json
+        && json.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.String
+        && outcome.GetString() == ClaimOutcomes.Dropped;
 
     /// <summary>
     /// The middle value, sorted ascending: the middle one on an odd count, or
