@@ -543,6 +543,7 @@ public class AdminSurfaceTests
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
         "ProjectsController.PutPlaybooksSource",
+        "ProjectsController.PutRunnerTags",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -684,6 +685,7 @@ public class AdminSurfaceTests
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
         "ProjectsController.PutPlaybooksSource",
+        "ProjectsController.PutRunnerTags",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

@@ -619,6 +619,42 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
     }
 
+    /// <summary>
+    /// Replaces <see cref="EfHatchProject.RunnerTags"/> whole - the tags a runner
+    /// must carry to implement this project's work. Only an owner may call this.
+    /// An empty list clears it, and sending the stored list again changes nothing.
+    /// This route is the only way to write the list; <c>PATCH</c> does not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/runner-tags")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutRunnerTags(int id, ProjectRunnerTagsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change which runners may implement its work") { StatusCode = StatusCodes.Status403Forbidden };
+
+        var tagError = RunnerTags.Normalise(request.Tags, out var normalized);
+        if (tagError is not null) return BadRequest(tagError);
+
+        var current = EfHatchProject.ReadRunnerTags(project.RunnerTags);
+        if (!current.SequenceEqual(normalized))
+        {
+            project.RunnerTags = EfHatchProject.WriteRunnerTags(normalized);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} runner tags set to {RunnerTags} by {Actor}", project.Key, string.Join(",", normalized), await caller.ActorNameAsync(ct));
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
