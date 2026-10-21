@@ -35,6 +35,20 @@ The build writes to `apps/site/dist/`. `vite preview` serves `index.html` and
 answers an unknown path with 404, the way the real deploy does — but it does
 not serve `404.html` itself; open `/404.html` directly to see that page.
 
+### Environment variables
+
+Four variables, none of which a dev checkout sets, shape the build:
+
+- `base_path` — the site's base path, e.g. `/hatch`. Everything the build
+  emits is rooted under it.
+- `base_url` — the canonical origin. Adds a `<link rel="canonical">` and an
+  `og:url` meta tag pointing at it.
+- `GITHUB_SERVER_URL` and `GITHUB_REPOSITORY` — together, the link to the
+  source repository in the footer and the clone URL on the home page.
+
+With none of them set, the build writes no canonical URL, no repository
+link, and a base path of `/`.
+
 ## Not plumbed into Hatch.Api
 
 Unlike `apps/design` and `apps/hatch`, this app is not served by `Hatch.Api` —
