@@ -239,20 +239,78 @@ summary.site-action::-webkit-details-marker {
   margin-block-end: var(--sp-2);
 }
 
-/* A reserved place for HA-723's diagrams: sized before the SVG arrives, so
-   dropping one in moves nothing else on the page. */
+/* A figure holds inline SVG drawn 1:1 from its viewBox, so the figure carries
+   no padding (the viewBox has its own margin) and takes its height from the
+   drawing. Two drawings per figure, a narrow one below 64rem and a wide one
+   from it; display:none also drops the hidden one from the accessibility tree. */
 .site-figure {
   width: 100%;
   min-width: 0;
-  aspect-ratio: 16 / 9;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r);
 }
 
 .site-figure svg {
-  width: 100%;
+  display: block;
+  max-width: 100%;
   height: auto;
+  margin-inline: auto;
+}
+
+.site-figure figcaption {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--muted);
+  font-size: var(--t-body);
+}
+
+.site-figure .site-diagram-wide {
+  display: none;
+}
+
+/* The parts of a diagram: colour from tokens only, text sized by class since
+   main would otherwise hand every <text> its section size. */
+.site-diagram-node {
+  fill: var(--card);
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+
+.site-diagram-node-agent {
+  stroke: var(--primary);
+}
+
+.site-diagram-edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.site-diagram-head {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.site-diagram-text {
+  fill: var(--ink);
+  font-size: var(--t-label);
+}
+
+.site-diagram-label {
+  fill: var(--muted);
+  font-size: var(--t-label);
+}
+
+.site-diagram-owner {
+  fill: var(--primary-ink);
+  font-size: var(--t-label);
+}
+
+.site-diagram-note {
+  fill: var(--muted);
+  font-size: var(--t-label);
 }
 
 @media (min-width: 40rem) {
@@ -270,6 +328,14 @@ summary.site-action::-webkit-details-marker {
 }
 
 @media (min-width: 64rem) {
+  .site-figure .site-diagram-narrow {
+    display: none;
+  }
+
+  .site-figure .site-diagram-wide {
+    display: block;
+  }
+
   .site-points {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

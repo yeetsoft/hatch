@@ -61,6 +61,7 @@ const PAIRS: { fg: string; bg: string; floor: number }[] = [
   { fg: '--primary-ink', bg: '--card', floor: 4.5 },
   { fg: '--on-accent', bg: '--primary', floor: 4.5 },
   { fg: '--primary', bg: '--bg', floor: 3 }, // the focus ring
+  { fg: '--primary', bg: '--card', floor: 3 }, // an agent's column stroke
 ]
 
 // Referenced by site.css but not a resting foreground/background pair.
