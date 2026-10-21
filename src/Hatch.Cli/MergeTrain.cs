@@ -151,7 +151,9 @@ public sealed class MergeTrain : IAsyncDisposable
 
     /// <summary>
     /// The pull request half: for every issue in review that carries a
-    /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads and, on <c>merged</c>,
+    /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads - from one list of the
+    /// checkout's open pull requests, or, for a row the list does not account
+    /// for, from a read of that pull request alone - and, on <c>merged</c>,
     /// advance the issue; on <c>open</c>, put the forge's head, merge state and
     /// review decision on the board where they differ from what it holds (see
     /// <see cref="PutPullRequestStateAsync"/>). There is no stored verdict and no
@@ -165,7 +167,13 @@ public sealed class MergeTrain : IAsyncDisposable
     /// but a pull request url is one field on one issue however many
     /// repositories its project binds - so the checkout is only somewhere for
     /// <c>gh</c> to run, taken as the first one <see cref="Checkouts.ToPoll"/>
-    /// yields for the issue. <c>failed</c> is the per-checkout dedupe the other
+    /// yields for the issue. The list is per checkout too: asked at most once a
+    /// tick, by the first row that resolves to the path, and kept for the rest.
+    /// A row is accounted for by it when its url is listed with a merge state
+    /// that is not <see cref="MergeStates.Unknown"/>; any other row - absent
+    /// because merged, closed, past the list's limit or in another repository,
+    /// or listed before the forge had computed its mergeability - falls back to
+    /// the read of its own. <c>failed</c> is the per-checkout dedupe the other
     /// halves get for free by being grouped by checkout already: the first
     /// failing <c>gh</c> call for a path adds it, and every later issue on that
     /// path is skipped silently for the rest of this tick. The outer try/catch
@@ -176,6 +184,7 @@ public sealed class MergeTrain : IAsyncDisposable
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
     {
         var failed = new HashSet<string>();
+        var lists = new Dictionary<string, PullRequestListAnswer>();
         try
         {
             foreach (var issue in review)
@@ -189,7 +198,24 @@ public sealed class MergeTrain : IAsyncDisposable
                 if (where is null || failed.Contains(where.Path)) continue;
 
                 var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
-                var answer = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                var forge = runtime.Forge(where.Path, where.Canonical);
+
+                if (!lists.TryGetValue(where.Path, out var list))
+                    lists[where.Path] = list = await forge.ReadOpenPullRequestsAsync(ct);
+
+                if (list.Open is null)
+                {
+                    failed.Add(where.Path);
+                    if (list.Why is { } listWhy) complain($"hatch: could not read pull requests in {name} - {listWhy}");
+                    continue;
+                }
+
+                // A row the list does not hold, or holds with a merge state the forge had not yet
+                // computed, is read on its own: absence cannot tell merged from closed from past
+                // the limit, and only pr view can.
+                var answer = list.Find(url) is { MergeState: not MergeStates.Unknown } listed
+                    ? listed
+                    : await forge.ReadPullRequestAsync(url, ct);
                 if (answer.State is not { } state)
                 {
                     failed.Add(where.Path);
@@ -562,7 +588,16 @@ public sealed class MergeTrain : IAsyncDisposable
 
                 if (state != PullRequestStates.Open || pr.HeadSha != judgedSha)
                 {
-                    if (alreadySeen) continue;
+                    if (alreadySeen)
+                    {
+                        // Our own update landing, read on a later tick: the
+                        // forge's background merge has now finished, and
+                        // what it produced is a fact we already hold, not a
+                        // question to ask git.
+                        await TryWriteUpdateMergeCheckAsync(runtime, issue, where, judged, dedupeKey, pr, ct);
+                        continue;
+                    }
+
                     _seenUpdate[dedupeKey] = judgedSha;
                     await runtime.QuietBoard.CommentAsync(
                         issue.Key,
@@ -583,6 +618,14 @@ public sealed class MergeTrain : IAsyncDisposable
                         await runtime.QuietBoard.CommentAsync(
                             issue.Key, $"Brought its branch current with {judged.Trunk}, as {runtime.RunnerName}.", ct);
                         runtime.Say.Line($"hatch: {UpdateWords(issue.Key, judged.Trunk)}");
+
+                        // The fast path: read the pull request again, right
+                        // away, in case the forge's merge already finished in
+                        // the moment it took to answer the update itself. The
+                        // slow path above is what catches it otherwise, on a
+                        // later tick.
+                        var fresh = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                        await TryWriteUpdateMergeCheckAsync(runtime, issue, where, judged, dedupeKey, fresh, ct);
                         break;
 
                     case UpdateOutcomes.Conflicted:
@@ -601,6 +644,47 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             complain($"hatch: could not bring approved branches current - {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Writes the merge check an update's own success already answers, from
+    /// <paramref name="pr"/>'s freshest read - the fast path's second read in
+    /// the same tick, or the slow path's top-of-loop one on a later tick. A
+    /// success at the forge <em>is</em> <c>holdsTrunk: true</c> at the new
+    /// sha, because the forge performed that merge itself: this runs no git
+    /// and asks the board once, naming the new sha.
+    /// </summary>
+    /// <remarks>
+    /// Writes nothing, and advances <see cref="_seenUpdate"/> not at all, when
+    /// the read does not yet show a sha other than <paramref name="judged"/>'s
+    /// own - the forge's background merge has not finished, see
+    /// <see cref="GhForge.UpdateAsync"/>'s own remarks for why that can still
+    /// be true on this same read - when the pull request is no longer open,
+    /// or when the read carries no base branch or sha (an older <c>gh</c>, or
+    /// a fake that answers neither); the caller's own dedupe and comment,
+    /// where it has one, is what a true refusal falls back to.
+    /// <paramref name="judged"/>'s own <c>PlaybookFilePath</c> is carried
+    /// forward unchanged onto the new check: an update merges the trunk's
+    /// changes into the branch, never the branch's own changes into the
+    /// trunk, so a branch that already changed the playbook file still
+    /// changes it at the new sha, and one that did not cannot start to -
+    /// carrying the value forward can only keep a row held that was already
+    /// held, never release one that should not be.
+    /// </remarks>
+    private async Task TryWriteUpdateMergeCheckAsync(
+        Runtime runtime, ReviewCheckDto issue, Checkouts.Polled where, MergeCheckDto judged,
+        (string Path, string Key) dedupeKey, PullRequestAnswer pr, CancellationToken ct)
+    {
+        if (pr.State != PullRequestStates.Open || pr.HeadSha is not { } sha || sha == judged.BranchSha
+            || pr.Base is not { } baseRef || pr.BaseSha is not { } baseSha) return;
+
+        _seenUpdate[dedupeKey] = sha;
+        await runtime.QuietBoard.MergeCheckAsync(
+            issue.Key,
+            new MergeCheckRequest(
+                where.Remote!, baseRef, baseSha, MergeVerdicts.Clean, judged.Branch, sha, [], runtime.RunnerName,
+                true, judged.PlaybookFilePath),
+            ct);
     }
 
     /// <summary>

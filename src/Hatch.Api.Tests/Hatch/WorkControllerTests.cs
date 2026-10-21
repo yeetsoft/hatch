@@ -7672,6 +7672,113 @@ public class WorkControllerTests
             entries.Single(e => e.Issue.Key == Key("OTH", waitingB)).Blocked);
     }
 
+    // ---- A row the train brought current keeps the head ----
+
+    private static readonly string CleanTrunkSha = new('a', 40);
+
+    /// <summary>
+    /// Two rows in a merges column: the first (ahead in order) needs its branch
+    /// brought current, the second holds the trunk and builds green. The
+    /// second is marked as brought current at <paramref name="markedSha"/>.
+    /// </summary>
+    private static async Task<(EfHatchIssue First, EfHatchIssue Second)> MarkedBehindAnUpdateAsync(
+        Harness h, string markedSha = "", string? secondVerdict = null)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var first = await h.FileAsync("task", "needs updating, first in order", approved.Id, rank: 1024);
+        await h.VerdictAsync(first, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var second = await h.FileAsync("task", "brought current by the train", approved.Id, rank: 2048);
+        await h.VerdictAsync(second, secondVerdict ?? MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(second, BuildVerdicts.Passed);
+
+        second.BroughtCurrentAt = Now;
+        second.BroughtCurrentTrunkSha = markedSha.Length == 0 ? CleanTrunkSha : markedSha;
+        await h.Db.SaveChangesAsync();
+        return (first, second);
+    }
+
+    [Fact]
+    public async Task MergeColumn_ARowTheTrainBroughtCurrent_KeepsTheHeadOverAnEarlierRowThatNeedsUpdating()
+    {
+        var h = await NewAsync();
+        var (first, second) = await MarkedBehindAnUpdateAsync(h);
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(second)).Blocked);
+        Assert.Equal(
+            $"bringing its branch current from main - waiting its turn behind {Key(second)}, position 1 in the train",
+            entries.Single(e => e.Issue.Key == Key(first)).Blocked);
+        Assert.True(rows.Single(r => r.Key == Key(second)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(first)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithoutAMark_TheEarlierRowThatNeedsUpdatingIsHead()
+    {
+        var h = await NewAsync();
+        var (first, second) = await MarkedBehindAnUpdateAsync(h);
+        second.BroughtCurrentAt = null;
+        second.BroughtCurrentTrunkSha = null;
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(first)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(second)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task MergeColumn_AMarkOnAHeldRow_StopsCounting()
+    {
+        var h = await NewAsync();
+        var (first, second) = await MarkedBehindAnUpdateAsync(h, secondVerdict: MergeVerdicts.None);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(first)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(second)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task MergeColumn_AMarkNamingAnOlderTrunkSha_StopsCounting()
+    {
+        var h = await NewAsync();
+        var (first, second) = await MarkedBehindAnUpdateAsync(h, markedSha: new string('c', 40));
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(first)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(second)).MergeWork!.IsHead);
+    }
+
+    [Fact]
+    public async Task MergeColumn_AMarkOlderThanTheRowsLastMoveBetweenColumns_StopsCounting()
+    {
+        var h = await NewAsync();
+        var (first, second) = await MarkedBehindAnUpdateAsync(h);
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = second.Id,
+            Actor = "operator",
+            Kind = EfHatchIssueEvent.StatusChanged,
+            At = Now.AddMinutes(5),
+        });
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.True(rows.Single(r => r.Key == Key(first)).MergeWork!.IsHead);
+        Assert.False(rows.Single(r => r.Key == Key(second)).MergeWork!.IsHead);
+    }
+
     // ---- The review read ----
 
     [Fact]

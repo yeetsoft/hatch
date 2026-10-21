@@ -77,3 +77,13 @@ The playbook tells the session to read whichever section is there and find the f
 It is not a check. A check playbook is the one kind of row that cannot move its own ticket at all; the review row can move its ticket, and is told not to. See [playbooks](playbooks) and [the lifecycle of a ticket](the-lifecycle-of-a-ticket).
 
 Starting and ending in the same column, such an increment cannot be judged by whether it moved the ticket the way an advance is. A conflict increment is judged by the verdict git gives the branch on origin afterwards: nothing conflicts is resolved, not a stall; still conflicts is a stall, naming the files. A build increment is judged first by whether it pushed, since CI has not run by the time it ends: a new tip reads as "fix pushed, build pending"; a tip that did not move is a stall. Before either is spawned, the runner re-reads the branch, or the build on its tip, and spawns nothing if the problem it was dispatched for has already gone.
+
+## Protected columns, and who may move into them
+
+A protected column is one of the flags [Column flags](the-board-and-its-columns#column-flags) defines, alongside **Merges PR**, which always carries it too — this section is about who may act once a column carries it, not about the flag itself.
+
+Only an owner or an approver of the issue's project may move work into a protected column by hand — never a key, never a dispatch. A key attempting it is refused outright, whatever column: moving work into a protected column is an owner's or approver's call, not an agent's. A person without the role is named instead: only an owner or approver of the project may move work into it.
+
+Of the board's own hops, only the approve hop crosses a protected column's gate. A pre-approval is that owner's or approver's own permission, already given on the ticket in advance; the hop carries it out the moment the board can see it is true, and decides nothing for itself. Every other hop that would land in a protected column is refused the same way a person without the role is.
+
+Trying the move any other way answers with a 403 — the gate working, not a scope being wrong.

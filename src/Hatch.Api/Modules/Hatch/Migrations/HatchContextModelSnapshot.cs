@@ -187,6 +187,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<Guid?>("AssigneePersonId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("BroughtCurrentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BroughtCurrentTrunkSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ClaimChatter")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
