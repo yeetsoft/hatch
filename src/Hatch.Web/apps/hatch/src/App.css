@@ -5340,8 +5340,13 @@ button.hatch-option.chosen {
 /* At phone width (where the battery sits beside this control, HA-257) this
    control carries no min-width at all: a phone has no cursor to protect from
    a width change, and the row has no width to spend holding one steady, so it
-   measures its loudest state the way .hatch-battery already does. Do not
-   restore a floor here - lib/barCss.test.ts asserts there is none. */
+   measures its loudest state the way .hatch-battery already does. The reset
+   is here, in the one licensed phone-width breakpoint. */
+@media (max-width: 40rem) {
+  .hatch-attention-control {
+    min-width: auto;
+  }
+}
 
 /* Nothing is waiting. Furniture: the same --on-chrome ink the nav wears, so a
    quiet control is not a third thing competing with it. */
@@ -5508,6 +5513,12 @@ button.hatch-option.chosen {
 .hatch-overnight-control:focus-visible {
   outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
+}
+
+@media (max-width: 40rem) {
+  .hatch-overnight-control {
+    min-width: auto;
+  }
 }
 
 .hatch-overnight-rest {
