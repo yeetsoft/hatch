@@ -85,6 +85,12 @@ describe('the built assets', () => {
     const chunks = site.output.filter((chunk) => chunk.type === 'chunk')
     const facade = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith('src/lib/mermaid.ts')))!
     const mermaidSubtree = reachable(chunks, [facade.fileName])
+    // docsSearchField.ts (HA-1280) is the one script allowed a real fetch(): it
+    // reads HA-1279's own index, at a path pinned below, and nothing else in
+    // its chunk graph calls fetch at all - so one call site in the subtree,
+    // naming that path somewhere in the same chunk, is what "pinned" means here.
+    const searchEntry = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith('src/docsSearchField.ts')))!
+    const searchSubtree = reachable(chunks, [searchEntry.fileName])
 
     const scripts = assetsEnding('.js')
     expect(scripts.length).toBeGreaterThan(0)
@@ -97,13 +103,19 @@ describe('the built assets', () => {
         expect(js, script).not.toMatch(ABSOLUTE_URL)
       }
       expect(js, script).not.toMatch(/react-dom|jsx-runtime/)
+      expect(js, script).not.toMatch(/XMLHttpRequest/)
       // A real `fetch()` call always carries an argument - katex (one of
       // mermaid's dependencies) names its own LaTeX token-reader method
       // `fetch()` on its Parser class, both as `this.fetch()` calls and as
       // the method's own definition (`fetch(){...}`, indistinguishable from
       // a call once minified), and every occurrence of either is
-      // zero-argument, so this needs no exception by chunk name.
-      expect(js, script).not.toMatch(/\bfetch\([^)]|XMLHttpRequest/)
+      // zero-argument, so this needs no exception by chunk name there.
+      if (searchSubtree.has(`assets/${script}`)) {
+        expect(js.match(/\bfetch\(/g) ?? [], script).toHaveLength(1)
+        expect(js, script).toMatch('/docs/search-index.json')
+      } else {
+        expect(js, script).not.toMatch(/\bfetch\([^)]/)
+      }
     }
   })
 
