@@ -795,22 +795,46 @@ public sealed class Poll
         target.PullRequestHeadSha is { } head && !string.Equals(head, sha, StringComparison.Ordinal);
 
     /// <summary>
+    /// Whether the board's stored build still vouches for a sha: the row-blind
+    /// rule the merge train's own head-build read uses (<see cref="MergeTrain"/>),
+    /// since it already holds the one current sha from the head's clean merge
+    /// check and has no <see cref="Target"/> to ask the merging row's rule of.
+    /// </summary>
+    internal static bool VouchesBuild(BuildCheckDto? stored, string sha) =>
+        stored is not null && stored.Sha == sha && Concluded(stored);
+
+    /// <summary>
     /// Whether a verdict is past asking about, short of a re-run: <c>passed</c>
     /// and <c>failed</c> always, <c>none</c> once it was read ten minutes or more
-    /// after the window began. <c>CheckedAt</c> and not now: it stops asking only
-    /// after a read that was itself taken past the window. A review row counts
-    /// the window from when the board first heard about the sha; a merging row
-    /// from when the pull request reached it if that is later, and never while
-    /// the pull request names another head.
+    /// after the board first heard about the sha. <c>CheckedAt</c> and not now:
+    /// it stops asking only after a read that was itself taken past the window.
+    /// The row-blind rule - what the merge train's own head-build read uses,
+    /// and what a review row's rule in <see cref="Concluded(BuildCheckDto,Target,string)"/>
+    /// reduces to.
+    /// </summary>
+    internal static bool Concluded(BuildCheckDto check) => check.Verdict switch
+    {
+        BuildVerdicts.Passed or BuildVerdicts.Failed => true,
+        BuildVerdicts.None => check.CheckedAt - check.ShaSince >= NoneWindow,
+        _ => false,
+    };
+
+    /// <summary>
+    /// The row-aware version <see cref="ReadBuildsAsync"/> asks: a review row is
+    /// exactly <see cref="Concluded(BuildCheckDto)"/>; a merging row counts the
+    /// window from the later of <c>ShaSince</c> and the pull request reaching
+    /// the sha, and is never concluded while the pull request names another
+    /// head.
     /// </summary>
     private static bool Concluded(BuildCheckDto check, Target target, string sha)
     {
+        if (!target.Merging) return Concluded(check);
+
         switch (check.Verdict)
         {
             case BuildVerdicts.Passed or BuildVerdicts.Failed:
                 return true;
             case BuildVerdicts.None:
-                if (!target.Merging) return check.CheckedAt - check.ShaSince >= NoneWindow;
                 if (HeadDiffers(target, sha)) return false;
                 var since = target.PullRequestHeadSince is { } head && head > check.ShaSince ? head : check.ShaSince;
                 return check.CheckedAt - since >= NoneWindow;
@@ -820,7 +844,7 @@ public sealed class Poll
     }
 
     /// <summary>A line for the terminal: <c>HA-12 build on 1a2b3c4 failed (api, CI)</c>.</summary>
-    private static string BuildWords(string key, string sha, BuildRead read)
+    internal static string BuildWords(string key, string sha, BuildRead read)
     {
         var at = sha.Length > 7 ? sha[..7] : sha;
 

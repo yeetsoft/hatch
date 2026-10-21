@@ -241,37 +241,134 @@ public sealed class MergeTrainTests
         Assert.Single(rig.H.Forge.PullRequestReads);
     }
 
+    private static string PullUrl(int n) => $"https://github.com/o/r/pull/{n}";
+
+    private static void Listed(Rig rig, params (string Url, PullRequestAnswer Answer)[] open) =>
+        rig.H.Forge.PullRequestList = new(open.ToDictionary(o => o.Url, o => o.Answer), null);
+
+    [Fact]
+    public async Task Twenty_rows_in_review_cost_one_list_and_no_read_of_their_own()
+    {
+        var rows = Enumerable.Range(1, 20).Select(n => Holding($"AER-{n}", PullUrl(n))).ToArray();
+        using var rig = new Rig().Board(rows);
+        Listed(rig, [.. Enumerable.Range(1, 20).Select(n => (PullUrl(n), Forged()))]);
+
+        await rig.RunAsync();
+
+        Assert.Equal([rig.H.Root], rig.H.Forge.PullRequestListReads);
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_row_absent_from_the_list_is_read_on_its_own_and_absence_alone_never_advances_it()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl), Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Forge.PullRequestFor[PrUrl] = Forged(PullRequestStates.Merged);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}", $"{rig.H.Root} {PrUrl2}"], rig.H.Forge.PullRequestReads);
+        Assert.Single(rig.H.Wire.To("POST", Merged("AER-1")));
+        Assert.Empty(rig.H.Wire.To("POST", Merged("AER-2")));
+    }
+
+    [Fact]
+    public async Task A_row_the_list_holds_open_is_never_read_on_its_own_and_an_identical_one_is_not_put()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        Listed(rig, (PrUrl, Forged()));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Theory]
+    [InlineData("head")]
+    [InlineData("merge")]
+    [InlineData("review")]
+    public async Task A_listed_change_in_only_one_of_the_three_is_put_without_a_read_of_its_own(string which)
+    {
+        using var rig = new Rig().Board(Holding(
+            "AER-1", PrUrl,
+            head: which == "head" ? Tip2 : null,
+            merge: which == "merge" ? MergeStates.Behind : MergeStates.Clean,
+            review: which == "review" ? ReviewDecisions.ReviewRequired : ReviewDecisions.Approved));
+        Listed(rig, (PrUrl, Forged()));
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1")));
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
+
+    [Fact]
+    public async Task A_listed_row_whose_merge_state_is_not_yet_computed_is_read_on_its_own()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        Listed(rig, (PrUrl, Forged(merge: MergeStates.Unknown)));
+        rig.H.Forge.PullRequestFor[PrUrl] = Forged();
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}"], rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_list_that_cannot_be_read_complains_once_for_the_checkout_and_reads_no_row()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl), Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Forge.PullRequestList = new(null, "gh is not installed");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(["hatch: could not read pull requests in checkout - gh is not installed"], rig.H.Say.Complained);
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
+
+    [Fact]
+    public async Task Rows_on_two_checkouts_cost_one_list_each()
+    {
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: true, matchedRemote: "https://example.test/two.git");
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", [one], pullRequestUrl: PrUrl), Fixtures.Review("AER-2", [two], pullRequestUrl: PrUrl2));
+
+        var runtime = rig.H.Runtime with
+        {
+            Clock = rig.Clock,
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: true),
+            ],
+        };
+
+        await rig.Train.TickAsync(runtime, default);
+
+        Assert.Equal(["/checkouts/one", "/checkouts/two"], rig.H.Forge.PullRequestListReads.Order());
+    }
+
     // ---- The merge half ----
 
-    private const string MergeCanonical = "example.test/repo";
+    private const string MergeCanonical = Fixtures.MergeCanonical;
 
     private static string Comments(string key) => $"/api/hatch/issues/{key}/comments";
 
-    /// <summary>
-    /// A row in the merges column, judged <paramref name="kind"/>: the project's
-    /// one repository, bound so <c>where.Canonical</c> resolves to
-    /// <see cref="MergeCanonical"/>, and a clean merge check on <paramref name="branch"/>
-    /// whose shas already match origin - so Poll's own merge-check half vouches for
-    /// it and fetches nothing, leaving only this half to ask anything of <c>gh</c>.
-    /// Null <paramref name="kind"/> is an ordinary review row: no <c>MergeWork</c> at all.
-    /// </summary>
     private static ReviewCheckDto MergeRow(
         string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null,
-        bool isHead = true, string? projectKey = null)
-    {
-        var sha = judgedSha ?? Tip;
-        var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
-        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
-        {
-            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = sha,
-        };
-
-        return Fixtures.Review(
-            key, [repo], pullRequestUrl: pullRequestUrl,
-            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes", isHead),
-            projectKey: projectKey,
-            checks: [stored]);
-    }
+        bool isHead = true, string? projectKey = null, IReadOnlyList<BuildCheckDto>? builds = null) =>
+        Fixtures.MergeRow(key, branch, pullRequestUrl, kind, judgedSha ?? Tip, isHead, projectKey, builds);
 
     [Fact]
     public async Task A_merge_row_whose_head_still_matches_the_judged_sha_is_merged_and_announced()
@@ -1146,6 +1243,193 @@ public sealed class MergeTrainTests
         await cancelled.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => rig.Train.TickAsync(rig.Runtime, cancelled.Token));
+    }
+
+    // ---- The head's build ----
+
+    private static string BuildPut(string key) => $"/api/hatch/issues/{key}/build-check";
+
+    private static ForgeAnswer Built(string verdict) => new(new BuildRead(verdict, []), null);
+
+    /// <summary>A board that takes any build verdict for AER-1 and answers with <paramref name="kept"/>.</summary>
+    private static Rig Taking(Rig rig, BuildCheckDto? kept = null, string verdict = BuildVerdicts.Passed)
+    {
+        rig.H.Wire.Json("PUT", BuildPut("AER-1"), kept ?? Fixtures.Build(verdict, MergeCanonical, Tip));
+        rig.H.Forge.Answer = Built(verdict);
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_head_with_no_stored_build_has_its_build_read_and_written_in_one_tick()
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+        var put = Assert.Single(rig.H.Wire.To("PUT", BuildPut("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal(
+            (rig.Runtime.Checkouts.Single().Remote, "aer-1-thing", Tip, BuildVerdicts.Passed, rig.Runtime.RunnerName),
+            (put.Remote, put.Branch, put.Sha, put.Verdict, put.Runner));
+        Assert.Empty(put.Failing!);
+        Assert.Contains($"hatch: AER-1 build on {Tip[..7]} passed", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_failed_build_is_written_with_the_checks_that_failed()
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)), verdict: BuildVerdicts.Failed);
+        rig.H.Forge.Answer = new(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", "https://x.test/api")]), null);
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", BuildPut("AER-1"))).Read<BuildCheckRequest>();
+        var failing = Assert.Single(put.Failing!);
+        Assert.Equal(("api", "https://x.test/api"), (failing.Name, failing.Url));
+    }
+
+    [Theory]
+    [InlineData(BuildVerdicts.Passed)]
+    [InlineData(BuildVerdicts.Failed)]
+    public async Task A_concluded_build_is_read_once_and_not_again_on_an_unchanged_board(string verdict)
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)), verdict: verdict);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+        Assert.Single(rig.H.Wire.To("PUT", BuildPut("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_pending_build_is_asked_again_every_tick()
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)), verdict: BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_none_inside_the_window_is_asked_again_and_one_past_it_is_not()
+    {
+        var since = DateTimeOffset.UnixEpoch;
+        var inside = Fixtures.Build(BuildVerdicts.None, MergeCanonical, Tip, since) with { CheckedAt = since + Poll.NoneWindow - TimeSpan.FromSeconds(1) };
+        using var asking = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold, builds: [inside])), inside, BuildVerdicts.None);
+
+        await asking.RunAsync();
+        await asking.Later().RunAsync();
+
+        Assert.Equal(2, asking.H.Forge.Reads.Count);
+
+        // The board's own answer, past the window, is what ends the asking.
+        var past = inside with { CheckedAt = since + Poll.NoneWindow };
+        using var settled = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)), past, BuildVerdicts.None);
+
+        await settled.RunAsync();
+        await settled.Later().RunAsync();
+
+        Assert.Single(settled.H.Forge.Reads);
+
+        // And a board that already holds the none past the window is not asked at all.
+        using var holding = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold, builds: [past])), past, BuildVerdicts.None);
+
+        await holding.RunAsync();
+
+        Assert.Empty(holding.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_build_the_board_already_holds_concluded_for_the_sha_is_not_read()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Passed, MergeCanonical, Tip);
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold, builds: [stored])));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", BuildPut("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_stored_build_about_another_sha_is_read_again()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Passed, MergeCanonical, Moved);
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold, builds: [stored])));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_row_that_is_not_the_head_is_not_read()
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold, isHead: false)));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_head_of_a_project_this_runner_does_not_drive_is_not_read()
+    {
+        using var rig = Taking(new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold)));
+        rig.H.Runtime.Readout.SetDrives([]);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_head_with_no_clean_merge_check_is_not_read()
+    {
+        var row = MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold);
+        row = row with { MergeChecks = [row.MergeChecks[0] with { Verdict = MergeVerdicts.Conflicted }] };
+        using var rig = Taking(new Rig().Board(row));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_answer_is_one_line_and_one_attempt_and_the_merge_half_still_runs()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl), MergeRow("AER-2", "aer-2-thing", PrUrl2));
+        rig.H.Forge.Answer = new(null, "gh is not installed");
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Moved);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+        rig.H.Wire.Json("POST", Comments("AER-2"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+        Assert.Equal(["hatch: could not read builds in checkout - gh is not installed"], rig.H.Say.Complained);
+        Assert.NotEmpty(rig.H.Forge.PullRequestReads);
+        Assert.NotEmpty(rig.H.Wire.To("POST", Comments("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_board_that_refuses_the_build_is_one_complaint_and_is_asked_again()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, WorkKinds.Hold));
+        rig.H.Forge.Answer = Built(BuildVerdicts.Passed);
+        rig.H.Wire.Reply("PUT", BuildPut("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+        var line = Assert.Single(rig.H.Say.Complained);
+        Assert.StartsWith("hatch: AER-1 - the board would not take the build on its branch - ", line);
     }
 
     // ---- The clock: Start and DisposeAsync ----
