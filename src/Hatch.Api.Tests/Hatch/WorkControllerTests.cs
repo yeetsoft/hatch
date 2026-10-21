@@ -1385,6 +1385,104 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
+    // ---- WorkDto.NextBriefLimit ----
+    //
+    // The matched row's BriefLimit out of (destination column -> the column
+    // after it), for the issue's type, carried so the client knows at least
+    // what the *next* session will be spawned under - not this one's, and
+    // never the queue's - see HA-1204.
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsTheRowCoveringTheColumnAfterTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Equal(8000, Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task NextWork_NextBriefLimit_IsTheRowCoveringTheColumnAfterTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Equal(8000, Value(await h.Work.GetNextWork(0, null, null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWithNoPlaybookOutOfTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenTheRowBeyondDoesNotCoverTheType()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenTheRowBeyondHasNoLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullForAnIssueWithChildren()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "already broken down", h.Todo);
+        await h.FileAsync("task", "a task under it", h.Todo, parentId: issue.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenNothingBeyondTheDestinationHasAPlaybook()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "already in progress", h.InProgress);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullOnAHoppedDispatch()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "carried across anyway", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
     // ---- Brief limit, the send-back hop ----
     //
     // The same fold, carried one step further: a childless issue over its

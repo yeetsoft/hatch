@@ -1801,6 +1801,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// or a parentless epic's closeout. False for a child, whose release note is
 /// its story's or epic's to write, and false for any other dispatch.
 /// </param>
+/// <param name="NextBriefLimit">
+/// Characters the *next* row's session is spawned on at most - the board
+/// sends a longer brief back (<see cref="SentBackDto"/>). Null where that
+/// row has none, where the dispatch is not a plain advance, or where the
+/// issue has children (their briefs are the children's).
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1828,7 +1834,8 @@ public record WorkDto(
     string? LastCheckFindings = null,
     string? FailStatusName = null,
     PlaybookFileReferenceDto? PlaybookFile = null,
-    bool AsksReleaseNote = false);
+    bool AsksReleaseNote = false,
+    int? NextBriefLimit = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
