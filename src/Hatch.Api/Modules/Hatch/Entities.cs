@@ -786,6 +786,14 @@ public class EfHatchIssue
     public string? PullRequestHeadSha { get; set; }
 
     /// <summary>
+    /// When the head of the pull request last became the sha held in
+    /// <see cref="PullRequestHeadSha"/>, or null until a runner has read an open
+    /// pull request. Moves only with the sha, never with a repeat read, and is
+    /// cleared with the url.
+    /// </summary>
+    public DateTimeOffset? PullRequestHeadSince { get; set; }
+
+    /// <summary>
     /// When the pull request recorded on this issue was last read, or null until
     /// a runner has read an open pull request. Refreshed on a repeat, so a
     /// reader can tell a state that is current from one nobody has looked at

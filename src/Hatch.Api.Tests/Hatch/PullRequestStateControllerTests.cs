@@ -34,6 +34,7 @@ public class PullRequestStateControllerTests
         Assert.Equal(ReviewDecisions.Approved, row.PullRequestReviewDecision);
         Assert.Equal(Sha, row.PullRequestHeadSha);
         Assert.Equal(Now, row.PullRequestReadAt);
+        Assert.Equal(Now, row.PullRequestHeadSince);
 
         var e = Assert.Single(await h.EventsAsync(issue.Key));
         Assert.Equal("Nathan", e.Actor);
@@ -62,6 +63,38 @@ public class PullRequestStateControllerTests
         Assert.Single(await h.EventsAsync(issue.Key));
         Assert.Equal(updated, row.UpdatedAt);
         Assert.Equal(Now.AddMinutes(5), row.PullRequestReadAt);
+    }
+
+    // ---- When the head arrived ----
+
+    [Fact]
+    public async Task AChangedMergeState_LeavesTheHeadTimeAlone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.PutAsync(issue, Request() with { MergeState = MergeStates.Behind });
+
+        var row = h.Db.Issues.Single();
+        Assert.Equal(Now, row.PullRequestHeadSince);
+        Assert.Equal(Now.AddMinutes(5), row.PullRequestReadAt);
+    }
+
+    [Fact]
+    public async Task AChangedHeadSha_MovesTheHeadTimeToThatRead()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.PutAsync(issue, Request() with { HeadSha = OtherSha });
+
+        var row = h.Db.Issues.Single();
+        Assert.Equal(OtherSha, row.PullRequestHeadSha);
+        Assert.Equal(Now.AddMinutes(5), row.PullRequestHeadSince);
     }
 
     // ---- Each of the three, alone ----
@@ -318,7 +351,7 @@ public class PullRequestStateControllerTests
 
     private sealed record Snapshot(
         string? MergeState, string? ReviewDecision, string? HeadSha,
-        DateTimeOffset? ReadAt, DateTimeOffset UpdatedAt, int Events);
+        DateTimeOffset? HeadSince, DateTimeOffset? ReadAt, DateTimeOffset UpdatedAt, int Events);
 
     private sealed class Harness
     {
@@ -359,7 +392,7 @@ public class PullRequestStateControllerTests
             var events = await EventsAsync(key);
             return new Snapshot(
                 row.PullRequestMergeState, row.PullRequestReviewDecision, row.PullRequestHeadSha,
-                row.PullRequestReadAt, row.UpdatedAt, events.Count);
+                row.PullRequestHeadSince, row.PullRequestReadAt, row.UpdatedAt, events.Count);
         }
 
         /// <summary>Puts a request that must be refused, and proves the refusal left the row and its events as they were.</summary>
