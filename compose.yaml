@@ -148,6 +148,9 @@ services:
       # against a Hatch with its wall off.
       HATCH_KEY: "${HATCH_KEY:-}"
       HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
+      # The tags this container advertises, comma-separated (gpu,linux). Empty
+      # advertises none.
+      HATCH_TAGS: "${HATCH_TAGS:-}"
       # Which agent this container's loop spawns: claude, codex or grok. Its
       # credential is read from the Settings page, not set here.
       HATCH_AGENT: "${HATCH_AGENT:-claude}"
