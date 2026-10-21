@@ -398,6 +398,34 @@ public class DispatchTests
             "bound to https://example.com/o/r, and this runner has no checkout of it", RowFor(scan, issue).Blocked);
     }
 
+    [Fact]
+    public async Task ScanAsync_ATagFoldedRow_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Unjudged);
+        var judged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Of([]));
+
+        foreach (var scan in new[] { unjudged, judged })
+            foreach (var issue in new[] { p, c, x })
+                Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(judged, p).Blocked);
+        Assert.Contains("is implemented only by a runner advertising", RowFor(judged, p).Blocked);
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
@@ -509,7 +537,7 @@ public class DispatchTests
         private int next = 1;
         private int nextRepoOrder;
 
-        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null)
+        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null, long? parentId = null)
         {
             var issue = new EfHatchIssue
             {
@@ -520,6 +548,7 @@ public class DispatchTests
                 Description = "",
                 StatusId = statusId,
                 Rank = rank,
+                ParentId = parentId,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
@@ -528,6 +557,20 @@ public class DispatchTests
             Db.Issues.Add(issue);
             await Db.SaveChangesAsync();
             return issue;
+        }
+
+        /// <summary>One issue made to wait on another, written straight to the table.</summary>
+        public async Task DependsAsync(EfHatchIssue issue, EfHatchIssue blocker)
+        {
+            Db.Dependencies.Add(new EfHatchIssueDependency
+            {
+                IssueId = issue.Id,
+                DependsOnId = blocker.Id,
+                CreatedBy = "hatch-agent",
+                CreatedAt = Now,
+            });
+
+            await Db.SaveChangesAsync();
         }
 
         public async Task<int> AddProjectAsync(string key)
