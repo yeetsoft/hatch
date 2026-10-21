@@ -177,6 +177,136 @@ jobs:
         working-directory: src/Hatch.Web
         run: npm run build -w apps/${{ matrix.app }}
 
+  # The board, rendered in a real headless Chromium, on every PR.
+  #
+  # HA-1043's smoke (src/Hatch.Api.Tests/E2e) already runs inside the api job,
+  # where it skips - no browser, no bundle - and a skipped case is a green job.
+  # So here it is a job of its own, with the browser installed and the hatch
+  # bundle built, and a step after the test that fails the job unless every case
+  # that matched actually passed. Its own job, rather than two more steps in
+  # api, so the red check names a rendering rather than a unit test and the api
+  # job's time stays what it is.
+  #
+  # No cache for Playwright's download: `--with-deps` installs apt packages
+  # outside any directory worth caching, so the step runs on a hit as well and
+  # the saving would be the download alone - against a key derived from the
+  # package version and one more thing to go stale. Revisit if the download
+  # turns out to dominate the job.
+  e2e:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      # The same variable, and the same stock image, as the api job. The harness
+      # makes its own scratch databases with CREATE DATABASE (MinimalDatabases),
+      # which the image's POSTGRES_USER, a superuser, is allowed to; the image
+      # needs nothing from containers/hatch-db.
+      HATCH_TEST_DATABASE_URL: postgresql://hatch:hatch@localhost:5432/hatch_test
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: hatch
+          POSTGRES_PASSWORD: hatch
+          POSTGRES_DB: hatch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: src/Hatch.Web/.nvmrc
+          cache: npm
+          cache-dependency-path: src/Hatch.Web/package-lock.json
+
+      # Before the dotnet build, for two reasons. The hatch bundle lands in
+      # src/Hatch.Api/wwwroot/apps/hatch, which is gitignored and which no
+      # MSBuild target produces (Hatch.Api.csproj builds design and auth, and
+      # deliberately not hatch). And that csproj's NpmInstall target only runs
+      # when Hatch.Web/node_modules is missing, so installing first keeps the
+      # build from shelling out to an `npm install` on whatever Node the runner
+      # image carries.
+      - name: Install dependencies
+        working-directory: src/Hatch.Web
+        run: npm ci
+
+      - name: Build the hatch bundle
+        working-directory: src/Hatch.Web
+        run: npm run build -w apps/hatch
+
+      - name: Restore
+        run: dotnet restore src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
+
+      # The test project, which pulls Hatch.Api in with it; the Cli suite is the
+      # api job's business. The design and auth targets run before every build
+      # and would build two SPAs this job never serves.
+      - name: Build
+        run: |
+          dotnet build src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
+            --no-restore --configuration Release \
+            -p:SkipDesignBuild=true -p:SkipAuthBuild=true
+
+      # After the build, because the installer is copied beside the test binary
+      # by the Playwright package itself. Chromium and WebKit, as `make
+      # browsers` installs them; --with-deps for the shared libraries a bare
+      # runner lacks. The browser is the one Playwright puts there, not one the
+      # runner image happens to carry.
+      - name: Install browsers
+        run: pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps
+
+      # Same hang clamp as the api job. The trx is what the next step reads.
+      - name: Test
+        run: |
+          dotnet test src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
+            --no-build --configuration Release \
+            --filter "FullyQualifiedName~E2e" \
+            --blame-hang-timeout 2m \
+            --blame-hang-dump-type mini \
+            --logger "trx;LogFileName=e2e.trx" \
+            --results-directory "${{ runner.temp }}/test-results"
+
+      # `dotnet test` exits 0 for a filtered run whose only case skipped - no
+      # browser, no database - and the trx counts that as neither executed nor
+      # passed. So read the counters: at least one case passed, and every case
+      # the filter matched is one of them. A red Test step has already failed
+      # the job, so this one only runs after a clean exit.
+      - name: Check that the cases ran, and passed
+        run: |
+          set -euo pipefail
+          counters=$(grep -m1 -o '<Counters [^>]*>' "${{ runner.temp }}/test-results/e2e.trx")
+          echo "$counters"
+          total=$(grep -o ' total="[0-9]*"' <<<"$counters" | grep -o '[0-9]*')
+          passed=$(grep -o ' passed="[0-9]*"' <<<"$counters" | grep -o '[0-9]*')
+          if [ "$passed" -lt 1 ] || [ "$passed" -ne "$total" ]; then
+            echo "Only $passed of $total e2e cases passed: a skip is not a pass here."
+            exit 1
+          fi
+
+      # The harness leaves its screenshot and trace under the repository, not
+      # under --results-directory, so both places are named. Only on failure: a
+      # green run leaves nothing worth keeping.
+      - name: Upload evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-evidence
+          path: |
+            src/Hatch.Api.Tests/TestResults/e2e/
+            ${{ runner.temp }}/test-results
+          if-no-files-found: ignore
+
   # Proves the image `publish.yml` builds after every merge to main actually
   # builds, and that gh - the thing src/Hatch.Cli/Forge.cs shells out to
   # inside it - is really on PATH and runs, on a PR rather than only after one
@@ -199,7 +329,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [api, hatch-cli, web, hatch-runner-image]
+    needs: [api, hatch-cli, web, e2e, hatch-runner-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check that every job succeeded
