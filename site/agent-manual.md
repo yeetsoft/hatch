@@ -55,9 +55,9 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `work` | **yes** | yes |
 | `go-to-work` | **yes** | yes |
 | `do-my-work` | **yes** | yes |
-| `runner-claude-token` | no | no |
+| `runner-credential` | no | no |
 
-The count is `Program.Commands` less its `Internal` entries. `runner-claude-token`
+The count is `Program.Commands` less its `Internal` entries. `runner-credential`
 is the one row outside it, listed because the container's entrypoint calls it.
 
 ### Start-up, in order
@@ -83,7 +83,7 @@ is the one row outside it, listed because the container's entrypoint calls it.
 |---|---|
 | `0` | It worked, or usage was asked for. For `work`, an increment ran, whatever the session exited with. |
 | `1` | A refusal: bad arguments, unknown command, not configured, not a repository, an HTTP fault, an unreadable board. |
-| `2` | Nothing to do, as an answer rather than a fault: `next` with nothing workable; `pr` read with no URL set; `work` when the board is idle, the ticket is blocked, or another runner has it; `runner-claude-token` when no token is saved. |
+| `2` | Nothing to do, as an answer rather than a fault: `next` with nothing workable; `pr` read with no URL set; `work` when the board is idle, the ticket is blocked, or another runner has it; `runner-credential` when no credential is saved. |
 | `75` | `go-to-work` (or `do-my-work`) asking its supervisor to rebuild and run it again. |
 | `130` | Interrupted. |
 | the session's | `work -i` returns the exit code of the attached `claude` process. |
@@ -423,16 +423,20 @@ body and exits 0; anything else prints the refusal to stderr and exits 1,
 because here a non-2xx is the answer. The shapes for filing and reshaping
 work are in `docs/hatch-planning.md` in the repository.
 
-### `hatch runner-claude-token`
+### `hatch runner-credential <agent>`
 
-For the container runner's entrypoint, not for interactive use. `GET
-/api/hatch/settings/claude-token`; prints the decoded token on stdout. Exits
-0 having printed one, 2 when the Hatch holds none yet, 1 when the call failed
-or the value could not be decoded (`hatch: <origin> answered with a token
-this build cannot read - is it newer than this runner?`). A Hatch with its
-wall up refuses the route to every caller. The stored value is obfuscated,
-not encrypted, and the CLI carries the fifteen-line decoder deliberately so
-the container needs no `jq`, `python` or `openssl`.
+For the container runner's entrypoint, not for interactive use. One
+argument, the agent: `claude`, `codex` or `grok`; anything else is a usage
+refusal, exit 1, naming the three known agents. `GET
+/api/hatch/settings/credentials/{agent}` (404 for an agent the API does not
+know); prints the decoded credential on stdout as `NAME=value` - the
+variable that agent's CLI reads for headless use. Exits 0 having printed
+one, 2 when the Hatch holds none yet for that agent, 1 when the call failed
+or the value could not be decoded (`hatch: <origin> answered with a
+credential this build cannot read - is it newer than this runner?`). A Hatch
+with its wall up refuses the route to every caller. The stored value is
+obfuscated, not encrypted, and the CLI carries the fifteen-line decoder
+deliberately so the container needs no `jq`, `python` or `openssl`.
 
 ## `hatch work`
 
@@ -997,7 +1001,7 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 | DELETE | `/api/hatch/issues/{key}/claim?token=…[&outcome=dropped\|worked]` | releasing it |
 | POST | `/api/hatch/issues/{key}/work-log` | the work-log row |
 | POST | `/api/hatch/runners/{name}` | the runner heartbeat |
-| GET | `/api/hatch/settings/claude-token` | `runner-claude-token` |
+| GET | `/api/hatch/settings/credentials/{agent}` | `runner-credential` |
 
 `offsetMinutes` is the machine's UTC offset, so ready dates fold against the
 caller's calendar day. Serialization is source-generated because the
