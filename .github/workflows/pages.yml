@@ -1,9 +1,9 @@
 name: Publish the site
 
-# The GitHub Pages site under site/, rebuilt on every push to the default
-# branch. Deployed through Actions rather than "from a branch" so that the
-# source can live in site/ rather than in docs/, which is the repository's
-# own documentation and not a website.
+# The GitHub Pages site, built from the apps/site workspace app and rebuilt
+# on every push to the default branch. Deployed through Actions rather than
+# "from a branch" because Vite builds the site and Pages cannot build it
+# for us.
 #
 # One-time setup on the repository: Settings → Pages → Source: GitHub Actions.
 
@@ -11,7 +11,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "site/**"
+      - "src/Hatch.Web/apps/site/**"
+      - "src/Hatch.Web/apps/hatch/docs/**"
+      - "src/Hatch.Web/apps/hatch/src/lib/**"
+      - "src/Hatch.Web/packages/ui/**"
+      - "src/Hatch.Web/package-lock.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,21 +36,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: src/Hatch.Web/.nvmrc
+          cache: npm
+          cache-dependency-path: src/Hatch.Web/package-lock.json
+
+      # Hatch.Web is one npm workspace: apps/site depends on @hatch/ui and
+      # loads apps/hatch/src/lib/docs.ts and docsIndex.ts through
+      # runnerImport, and docsDiagrams.ts imports
+      # apps/hatch/src/lib/mermaidDraw.ts. A per-app install would not do.
+      - name: Install dependencies
+        working-directory: src/Hatch.Web
+        run: npm ci
+
       - name: Set up Pages
+        id: pages
         uses: actions/configure-pages@v6
 
-      # The same builder GitHub Pages uses for a "from a branch" site, so the
-      # plugin set (jekyll-github-metadata, jekyll-seo-tag, jekyll-relative-
-      # links) and the baseurl for a project site come from the environment
-      # and nothing in site/_config.yml has to name this repository.
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./site
-          destination: ./_site
+      - name: Build
+        working-directory: src/Hatch.Web
+        run: npm run build -w apps/site
+        env:
+          base_url: ${{ steps.pages.outputs.base_url }}
+          base_path: ${{ steps.pages.outputs.base_path }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
+        with:
+          path: src/Hatch.Web/apps/site/dist
 
   deploy:
     needs: build
