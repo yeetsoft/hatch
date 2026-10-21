@@ -420,6 +420,26 @@ where it is empty, *"Runners tagged macos and xcode."* where it is not - and
 otherwise shows an owner a *Runner tags* textarea, one tag per line
 (`ProjectEditDialog.tsx`).
 
+`ReflectionCadenceDays` (`int?`, null off - whole days) and
+`ReflectionLastPeriodStart` (`DateTimeOffset?`, null meaning never reflected)
+are a sixth and seventh field, written through their own route, `PUT
+/projects/{id}/reflection` (`ProjectsController.PutReflection`), guarded
+exactly the way `PutPlaybooksSource` is - `[RequireRole(User)]`, `NotAPerson`
+checked again in the action, then an owner check answering `403` naming the
+project's key (*"only an owner of `<KEY>` may change how it reflects"*) to
+anyone else. A cadence of zero or fewer is refused (*"a cadence is a positive
+number of days"*); null turns reflection off and is never refused. Turning on
+a non-null cadence is refused where no playbook row would run the reflection
+it files - `Dispatch.MatchReflection` ranked the same way `Dispatch.Match` is,
+with no from/to to pin since filing is not a transition - naming the Playbooks
+page (*"`<KEY>` has no reflection playbook row - add one on the Playbooks page
+first"*). This route writes only `ReflectionCadenceDays`; `ReflectionLastPeriodStart`
+is written only by the reflection job, never here. `ReflectionNextDueAt` - the
+start of the last period it reflected on plus the cadence, or now where it
+never has - is computed on every read, never stored. `ProjectPatchRequest`
+carries no field for any of the three, so this route is the only way to change
+the cadence.
+
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
 container**: the board shows every project at once.

@@ -1552,6 +1552,23 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             .ThenBy(p => p.Id)
             .FirstOrDefault();
 
+    /// <summary>
+    /// The playbook that would run a reflection for this project, out of rows
+    /// with no from/to to pin since filing is not a transition. Shape
+    /// (<see cref="EfHatchPlaybook.Covers"/>'s <c>isParent</c> half) is not
+    /// checked - the same guard <c>SeedReflectionPlaybook</c>'s migration
+    /// takes, since a reflection may be filed as a leaf or a parent. Null when
+    /// nothing covers it.
+    /// </summary>
+    public static EfHatchPlaybook? MatchReflection(List<EfHatchPlaybook> playbooks, int projectId) =>
+        playbooks
+            .Where(p => (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
     // ---- Dates ----
 
     /// <summary>

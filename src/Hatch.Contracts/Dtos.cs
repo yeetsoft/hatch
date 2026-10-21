@@ -26,6 +26,9 @@ namespace Hatch.Contracts;
 /// <param name="RepoSourcedBy">Who last set <paramref name="RepoSourced"/>, or null until the first write - see <see cref="EfHatchProject.RepoSourcedBy"/>.</param>
 /// <param name="RepoSourcedAt">When <paramref name="RepoSourced"/> was last set, or null until the first write - see <see cref="EfHatchProject.RepoSourcedAt"/>.</param>
 /// <param name="RunnerTags">Which runners may implement this project's work, normalised - see <see cref="EfHatchProject.RunnerTags"/>.</param>
+/// <param name="ReflectionCadenceDays">How often this project reflects, in whole days, or null if it never does - see <see cref="EfHatchProject.ReflectionCadenceDays"/>.</param>
+/// <param name="ReflectionLastPeriodStart">The start of the last period this project reflected on, or null if it never has - see <see cref="EfHatchProject.ReflectionLastPeriodStart"/>.</param>
+/// <param name="ReflectionNextDueAt">When this project's next reflection falls due - see <see cref="ReflectionCadence.NextDue"/>. Null where <paramref name="ReflectionCadenceDays"/> is null.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -34,7 +37,8 @@ public record ProjectDto(
     string AutoHealBugPriority = PriorityLevels.EmergencyName, string AutoHealBugPreApproval = PreApprovalLevels.ExpressName,
     bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null,
     bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null,
-    IReadOnlyList<string> RunnerTags = null!)
+    IReadOnlyList<string> RunnerTags = null!,
+    int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -97,6 +101,10 @@ public record ProjectLandingWriteRequest(
     string? Landing, bool? ChecksRequired, bool? OnePullRequest = null,
     bool? AutoHealBugEnabled = null, string? AutoHealBugPriority = null,
     string? AutoHealBugPreApproval = null, string? AutoHealBugStatusId = null);
+
+/// <summary>A write to a project's reflection cadence - see <see cref="EfHatchProject.ReflectionCadenceDays"/>.</summary>
+/// <param name="CadenceDays">A positive number of days, or null to turn reflection off.</param>
+public record ProjectReflectionWriteRequest(int? CadenceDays);
 
 /// <summary>A write to a project's playbook source - see <see cref="EfHatchProject.RepoSourced"/>.</summary>
 public record ProjectRepoSourcedWriteRequest(bool RepoSourced);

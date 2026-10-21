@@ -803,6 +803,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<int?>("ReflectionCadenceDays")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ReflectionLastPeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("RepoSourced")
                         .HasColumnType("boolean");
 

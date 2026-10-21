@@ -548,6 +548,7 @@ public class AdminSurfaceTests
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
         "ProjectsController.PutPlaybooksSource",
+        "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
 
         // The whole controller, reads included. See
@@ -690,6 +691,7 @@ public class AdminSurfaceTests
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
         "ProjectsController.PutPlaybooksSource",
+        "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
