@@ -369,7 +369,8 @@ public sealed class ClaimTests
     [Fact]
     public async Task A_heartbeat_that_succeeds_resets_the_give_up_clock()
     {
-        using var h = new Harness();
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
 
@@ -385,18 +386,19 @@ public sealed class ClaimTests
 
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
 
-        // stallLapse is generous relative to Harness.Beat - a two-failure gap
-        // is ~2 beats, nominally, but a loaded CI box can stretch a real
-        // Task.Delay well past its nominal length, and a stallLapse only a
-        // few beats wide turned this flaky there: an unlucky scheduling delay
-        // tripped the give-up before the third beat's success ever landed,
-        // which stops the heartbeat for good and hangs the Eventually below.
         var (claim, _) = await Claim.TakeAsync(
             h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromSeconds(2));
 
-        await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 24,
-            "several cycles of failures and successes");
+        // Advances the fake clock in a bounded loop rather than waiting on
+        // real time, so the 24 heartbeats this proves never race a real
+        // Task.Delay against a real timeout - no CI scheduling jitter to
+        // trip on.
+        for (var i = 0; i < 200 && h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") < 24; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(Harness.Beat);
+        }
+        Assert.True(h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 24);
 
         Assert.Null(claim!.Lost);
 
