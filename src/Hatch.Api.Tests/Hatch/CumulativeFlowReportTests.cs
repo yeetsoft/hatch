@@ -94,13 +94,77 @@ public class CumulativeFlowReportTests
     }
 
     [Fact]
-    public void ATerminalColumn_CountsToo()
+    public void ATerminalColumn_SinceBeforeFrom_CountsZero()
     {
         var row = Issue(1, "epic", 5, Day(-10));
 
         var result = Fold([row], from: Day(-5), to: Day(0), now: Day(0));
 
-        Assert.All(result.Points, p => Assert.Equal(1, p.Counts[4]));
+        Assert.All(result.Points, p => Assert.Equal(0, p.Counts[4]));
+    }
+
+    [Fact]
+    public void ATerminalColumn_ClosedInsideTheWindow_CountsFromClose()
+    {
+        var row = Issue(1, "epic", 3, Day(-10));
+        var changes = new[] { Move(1, 1, Day(-2), 3, 5) };
+
+        var result = Fold([row], changes, from: Day(-5), to: Day(0), now: Day(0));
+
+        Assert.Equal(0, result.Points.Single(p => p.At == Day(-5)).Counts[4]);
+        Assert.Equal(1, result.Points.Single(p => p.At == Day(-2)).Counts[4]);
+        Assert.Equal(1, result.Points.Single(p => p.At == Day(0)).Counts[4]);
+    }
+
+    [Fact]
+    public void ATerminalColumn_OpeningExactlyAtFrom_Counts()
+    {
+        var row = Issue(1, "epic", 3, Day(-10));
+        var changes = new[] { Move(1, 1, Day(-5), 3, 5) };
+
+        var result = Fold([row], changes, from: Day(-5), to: Day(0), now: Day(0));
+
+        Assert.Equal(1, result.Points.Single(p => p.At == Day(-5)).Counts[4]);
+    }
+
+    [Fact]
+    public void ClosedBeforeFrom_ReopenedThenClosedAgainInsideTheWindow()
+    {
+        var row = Issue(1, "epic", 3, Day(-10));
+        var changes = new[]
+        {
+            Move(1, 1, Day(-8), 3, 5),
+            Move(1, 2, Day(-3), 5, 3),
+            Move(1, 3, Day(-1), 3, 5),
+        };
+
+        var result = Fold([row], changes, from: Day(-5), to: Day(0), now: Day(0));
+
+        Assert.Equal(0, result.Points.Single(p => p.At == Day(-5)).Counts[4]);
+        Assert.Equal(1, result.Points.Single(p => p.At == Day(-3)).Counts[2]);
+        Assert.Equal(0, result.Points.Single(p => p.At == Day(-3)).Counts[4]);
+        Assert.Equal(1, result.Points.Single(p => p.At == Day(-1)).Counts[4]);
+    }
+
+    [Fact]
+    public void TwoTerminalColumns_AreBothBaselined()
+    {
+        var board = new List<EfHatchStatus>
+        {
+            new() { Id = 1, Name = "backlog", SortOrder = 10 },
+            new() { Id = 2, Name = "doing", SortOrder = 20 },
+            new() { Id = 5, Name = "done", SortOrder = 50, IsTerminal = true },
+            new() { Id = 7, Name = "wontfix", SortOrder = 60, IsTerminal = true },
+        };
+        var rows = new[] { Issue(1, "epic", 5, Day(-10)), Issue(2, "epic", 7, Day(-10)) };
+
+        var result = Fold(rows, from: Day(-5), to: Day(0), now: Day(0), board: board);
+
+        Assert.All(result.Points, p =>
+        {
+            Assert.Equal(0, p.Counts[2]);
+            Assert.Equal(0, p.Counts[3]);
+        });
     }
 
     [Fact]

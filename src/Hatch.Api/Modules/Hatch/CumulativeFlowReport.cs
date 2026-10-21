@@ -79,6 +79,8 @@ public static class CumulativeFlowReport
                 if (!s.Resolved || s.StatusId is not { } id || !slot.TryGetValue(id, out var at)) continue;
 
                 var opens = s.From > row.CreatedAt ? s.From : row.CreatedAt;
+                if (board.Terminal.Contains(id) && opens < from) continue;
+
                 deltas.Add((opens, at, +1));
                 if (s.To is { } closes) deltas.Add((closes, at, -1));
             }

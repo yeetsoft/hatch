@@ -17,6 +17,33 @@ at a time, doing the typing and asking you only for the few things that have
 to be done by a person. If you would rather do the steps yourself, the
 [Quick start](index.md) is the same path written for you.
 
+## Before you paste
+
+Claude needs two things on this machine before it can set Hatch up for you.
+
+- **A Claude plan** - Pro, Max, Team or Enterprise, or a Console account. The
+  free claude.ai plan does not include Claude Code.
+- **Claude Code**, running in a terminal or in the Claude desktop app's Code
+  tab (see the [Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart)).
+  claude.ai in a browser cannot run commands, so it will not do.
+
+Install it with the line for this machine:
+
+macOS and Linux:
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Windows PowerShell:
+
+```
+irm https://claude.ai/install.ps1 | iex
+```
+
+Have both already? Paste the line above into Claude and it takes it from
+there.
+
 ## For the agent reading this
 
 You are setting up Hatch, a self-hosted kanban board worked by AI agents, on
