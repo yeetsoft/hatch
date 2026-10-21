@@ -160,8 +160,8 @@ other side.
 The runner's own troubleshooting — no `claude` CLI on `PATH`, which branch is
 the trunk, a tree that will not stash, one loop per checkout, a pass that
 picks up nothing, losing the connection to origin — belongs to running the
-loop, not to the board: see [The runner](the-runner) and [One increment and
-the loop](one-increment-and-the-loop).
+loop, not to the board: see [When it will not
+run](the-runner#when-it-will-not-run).
 
 ## The Runner page offers no downloads
 
