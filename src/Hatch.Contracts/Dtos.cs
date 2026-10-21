@@ -2889,6 +2889,15 @@ public record PullRequestClosedRequest(string Url, string Runner);
 public record PullRequestStateRequest(string Url, string HeadSha, string MergeState, string ReviewDecision, string Runner);
 
 /// <summary>
+/// A runner reporting that the merge train has just brought the issue's branch
+/// current from the trunk, so the board keeps the train's head on that row.
+/// </summary>
+/// <param name="Trunk">The trunk the branch was brought current from.</param>
+/// <param name="TrunkSha">The sha the trunk stood at. Must be the one the issue's own clean merge check reads for the mark to count.</param>
+/// <param name="Runner">The checkout that did it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Recorded on the event only.</param>
+public record BroughtCurrentRequest(string Trunk, string TrunkSha, string Runner);
+
+/// <summary>
 /// A runner reporting that the merge column has judged the issue's branch a
 /// pushback - a conflict or a failed build the review column must fix.
 /// </summary>

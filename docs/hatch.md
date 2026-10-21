@@ -4973,6 +4973,19 @@ that calls the pull request clean on the judged sha with no checks having run
 which `MergeTrain` already carried, and `MergeTrain` itself did not change for
 it.
 
+**A row the train brought current keeps the head.** The head is re-picked on
+every read, so a row that became eligible again ahead of one the train had
+just updated would take the head back and throw the build away. When the
+train brings a branch current it says so with `PUT
+/issues/{key}/brought-current`, which stores `BroughtCurrentAt` and
+`BroughtCurrentTrunkSha` on the issue and writes a `brought_current` event. A
+row so marked keeps the head over an otherwise-earlier row for as long as the
+mark names the trunk sha its own clean merge check still reads, it is neither
+a hold nor a pushback, and it has not changed column since the mark; of
+several marked rows the latest mark wins. A mark outside those terms simply
+stops counting, and the head is the first eligible row in order as before. The
+route gives a `409` to a row outside the merges column.
+
 #### Landing on the trunk
 
 A project whose `Landing` is `trunk` (see [Project](#project)) has no pull

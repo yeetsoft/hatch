@@ -166,7 +166,7 @@ refusal beyond the standard ones.
 | DELETE | `/issues/{key}` | Deletes it; children are outdented, not deleted |
 | POST | `/issues/{key}/move` | The drag: a column and the neighbours it landed between |
 
-All seven are a key's. `GET /issues` takes `projectId`, `type`, `statusId`,
+All eight are a key's. `GET /issues` takes `projectId`, `type`, `statusId`,
 `parentKey` (`""` means "no parent at all" - the one filter with no other way
 to write it), `ancestorKey` (anything below at any depth, not the issue
 itself) and `text` (a substring of the title, plus an exact key match), all
@@ -481,6 +481,7 @@ not narrow the route, the action body does.
 | PUT | `/issues/{key}/merge-check` | Replaces the stored verdict for the issue's branch against one repository's trunk |
 | PUT | `/issues/{key}/build-check` | Replaces the stored verdict for the build on the tip of the issue's branch in one repository |
 | PUT | `/issues/{key}/pull-request-state` | Replaces the stored mergeability, review decision and head sha for the issue's recorded pull request |
+| PUT | `/issues/{key}/brought-current` | Marks the issue as the one the train last brought current, and at which trunk sha |
 | GET | `/trunk-builds` | Every repository trunk's stored build verdict |
 | PUT | `/trunk-builds` | Replaces the verdict for one repository's trunk |
 | POST | `/trunk-builds/{id}/bug` | Files the bug the attention panel's *File a bug* button asks for, from a failing trunk |
@@ -492,12 +493,13 @@ second route to keep in step. `verdicts` is the one route here that is a
 session's and not a poll's: it names no remote, is matched to the issue's
 live claim token, and only takes effect once `/work/{key}/verdict` is called
 with that same token - a check session records what it found, and the loop
-decides what to do about it. The other five are what a runner's poll writes
+decides what to do about it. The other six are what a runner's poll writes
 with no session at all, the same background process
 [letting the loop merge for you](letting-the-loop-merge-for-you) describes
 driving the merge train from: a merge check and a build check are facts
 about two refs on origin any runner computes the same way, a pull-request
-state is what the forge itself already says, and a trunk build is nobody's
+state is what the forge itself already says, a brought-current mark is the
+train saying which row it just updated, and a trunk build is nobody's
 issue, so its one route answers to no claim and no column at all.
 `/trunk-builds/{id}/bug` is the one write in this group a person can also
 take, from the attention panel's own button; a key filing one gets none of
@@ -511,7 +513,8 @@ a project has turned auto-filing on.
 unparseable remote, verdict, merge state or review decision, and (for a
 `failed` or `pending` build or trunk verdict) a missing list of failing
 checks. `pull-request-state` 409s when no pull request is recorded on the
-issue, or when the given url is not the one recorded. A verdict, build or
+issue, or when the given url is not the one recorded. `brought-current` 409s
+where the issue's column does not merge pull requests. A verdict, build or
 merge check that repeats what is already stored refreshes the shas, the
 runner and the time, and writes no event - a poll that looks every interval
 leaves one entry, not a hundred.
