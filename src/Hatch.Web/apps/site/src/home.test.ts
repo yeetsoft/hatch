@@ -81,14 +81,23 @@ describe('the home page', () => {
     const captions = figures.map((figure) => figure.match(/<figcaption>([\s\S]*?)<\/figcaption>/)?.[1]?.trim())
     expect(captions).toEqual(['The moving parts', 'The life of a ticket'])
 
-    for (const figure of figures) {
-      const body = figure
+    const bodyOf = (figure: string) =>
+      figure
         .replace(/^<figure\b[^>]*>/, '')
         .replace(/<figcaption>[\s\S]*?<\/figcaption>/, '')
         .replace(/<\/figure>$/, '')
         .trim()
-      expect(body, figure).toBe('')
-    }
+    const figureNamed = (name: string) => figures.find((figure) => attr(figure, 'data-diagram') === name) ?? ''
+
+    const movingParts = figureNamed('moving-parts')
+    expect(movingParts.match(/<svg\b/g) ?? []).toHaveLength(2)
+    expect(bodyOf(movingParts).replace(/<svg\b[\s\S]*?<\/svg>/g, '').trim()).toBe('')
+    expect(movingParts.lastIndexOf('<figcaption>')).toBeGreaterThan(movingParts.lastIndexOf('</svg>'))
+
+    const lifeOfATicket = figureNamed('life-of-a-ticket')
+    expect(lifeOfATicket.match(/<svg\b/g) ?? []).toHaveLength(2)
+    expect(bodyOf(lifeOfATicket).replace(/<svg\b[\s\S]*?<\/svg>/g, '').trim()).toBe('')
+    expect(lifeOfATicket.lastIndexOf('<figcaption>')).toBeGreaterThan(lifeOfATicket.lastIndexOf('</svg>'))
   })
 
   it('lists the five Docs cards in order, each linking into the docs', () => {

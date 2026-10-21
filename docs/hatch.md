@@ -286,6 +286,15 @@ instead). Re-sending the list the project already holds, the same tags in the
 same order, writes nothing, and an empty list clears it.
 `ProjectPatchRequest` carries no field for it, so this route is the only way in
 or out.
+The dispatcher reads the list on every move a session is spawned for out of the
+implementation column, and on the review self-move while it is conflict or build
+work, folding a caller whose runner does not advertise every tag it holds - see
+[the dispatcher's ninth refusal](#the-dispatcher).
+The project dialog carries it the same way: where `canAdminister` is false it
+reads the list out as a sentence after the landing one - *"Any runner."*
+where it is empty, *"Runners tagged macos and xcode."* where it is not - and
+otherwise shows an owner a *Runner tags* textarea, one tag per line
+(`ProjectEditDialog.tsx`).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -2317,7 +2326,8 @@ names the comment and the runner), `asked`, `answered` (payload `{ questionId,
 lapsed }` - `lapsed: true` only on a row written before the stall mark
 replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
-stopped at, same as `letGo` above), `imported`.
+stopped at, same as `letGo` above, and counted apart from a person's answers
+by the flow report), `imported`.
 
 Only two kinds are read back. `status_changed` is read by the
 [Timeline](#the-timeline) and by both flow reports ([the cumulative
@@ -2787,10 +2797,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=` and `?tag=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. Nor does it read `?tag=`: a hop is never gated by [runner tags](#project). `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -3714,10 +3724,16 @@ included — as:
   a merge, a push back, a landing, a check's verdict — is not a hop;
 - `sendBacks` — any move to a column **left** of the one it came from, in board
   order, so the `sendback` hop is counted here as well as in `hops`;
-- `questionsAsked` and `questionsAnswered` — questions whose own time falls in
-  the window, and `medianAnswerWaitSeconds` and `longestAnswerWaitSeconds`, the
-  wait from the ask to its earliest answer (never below `0`), both `null` when
-  nothing was answered in the window;
+- `questionsAsked`, `questionsAnswered` and `questionsLapsed` — questions whose
+  own time falls in the window, and `medianAnswerWaitSeconds` and
+  `longestAnswerWaitSeconds`, the wait from the ask to its earliest answer
+  (never below `0`), both `null` when nothing was answered in the window.
+  `questionsAnswered` and both waits are over a **person's** answers only: an
+  answer the board wrote itself by lapsing the question (the `answered` event
+  with `lapsed: true`) is counted in `questionsLapsed` and nowhere else, so a
+  lapse minutes after the ask cannot pull the wait down. A lapsed question is
+  in `questionsAsked` and `questionsLapsed` only, unless a person answered it
+  afterwards, when it counts as answered and the wait is to that answer;
 - `sessions` and `sessionErrors` — work-log sessions that **ended** in the
   window, and how many of them ended in error.
 
@@ -3884,7 +3900,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Twelve refusals**, and two of them are rules of the whole loop rather than
+**Thirteen refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -3924,29 +3940,39 @@ missing configuration:
    worked from the caller's standing checkout exactly as before; one bound to
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
-9. Something it [depends on](#dependency) is unfinished, and the move is into
-   the column where the code gets written, or a parent pull (hop kind 4) out of
-   a `ParentPulls` column. Only those moves: a pull request that already exists
-   is not held back by what its ticket once waited on.
+9. The project requires [runner tags](#project) the caller's runner does not
+   fully advertise — on every move a session is spawned for out of the
+   implementation column (the leaf implementation and the parent verification
+   alike), and on the review self-move while it is conflict or build work.
+   Never a hop, never the move into the implementation column, and never a
+   review row the verdict below already folds. A caller that sends no `?tag=`
+   has advertised none; a superset of what the project requires qualifies.
+   *"AER-12 is implemented only by a runner advertising macos and xcode - this
+   runner advertises linux"* (*"... advertises none"* when the caller sent no
+   tags), kind `other`. Waits on nobody.
+10. Something it [depends on](#dependency) is unfinished, and the move is into
+    the column where the code gets written, or a parent pull (hop kind 4) out of
+    a `ParentPulls` column. Only those moves: a pull request that already exists
+    is not held back by what its ticket once waited on.
 
-   Also folded on that same move, just after the dependency: the issue is a
-   task that shares its story's branch and a sibling is in flight on it — at or
-   past the implementation column, not terminal, not waiting on the story's
-   pull request. *"AER-12, sharing this story's branch, is already in flight -
-   one sibling at a time"*, kind `family`. See
-   [one sibling at a time](#one-pull-request).
-10. The move is into the [WIP section](#wip), and the section has no room for
+    Also folded on that same move, just after the dependency: the issue is a
+    task that shares its story's branch and a sibling is in flight on it — at or
+    past the implementation column, not terminal, not waiting on the story's
+    pull request. *"AER-12, sharing this story's branch, is already in flight -
+    one sibling at a time"*, kind `family`. See
+    [one sibling at a time](#one-pull-request).
+11. The move is into the [WIP section](#wip), and the section has no room for
     it: the load — not counting this issue — is already at or over the limit.
     Said after the dependency, which needs other work to land, and before the
     verdict below, which needs nothing at all once a branch is clean — a full
     section needs other work to leave. The load is always the board's own,
     whatever `ancestorKey` narrows the candidates to.
-11. The move is into the WIP section, the issue's parent is an epic, and that
+12. The move is into the WIP section, the issue's parent is an epic, and that
     epic is at its own [limit](#an-epics-own-limit) — the load under it, not
     counting this issue, is already at or over its `WipLimit`. Said right
     after the section-wide check above, for the same reason: it too needs
     other work to leave before anything more of this epic is pulled in.
-12. It is in review and there is nothing for an agent to do on its branch: it
+13. It is in review and there is nothing for an agent to do on its branch: it
     neither conflicts with the trunk nor has a build that failed on its current
     tip — because it merges cleanly and its build passes, is still running, was
     not read on that tip or has no checks, because it has no branch on origin
@@ -4072,7 +4098,7 @@ order:
    qualifying for one of the first four changes meaning (HA-394). Where the
    issue already stands in that column, or left of it, this is not a hop:
    going further would cross the Backlog threshold and re-require
-   prioritisation, and the twentieth condition below folds the move instead.
+   prioritisation, and the twenty-first condition below folds the move instead.
 6. **approve** — a [pre-approved](#pre-approval) issue standing in the
    review column with a pull request recorded, whose branch
    `MergeWork.Judge` says would merge cleanly or merely needs bringing
@@ -4214,6 +4240,12 @@ The rest of that section is unchanged. The attach is best-effort: when it
 fails, the runner complains and keeps the claim, which then names no playbook,
 so the move is not refused and `hatch verdict` answers `400`.
 
+Outside a check, the *Reaching Hatch* block prints `hatch start` only on the
+increment bound for the implementation column - the one whose destination is
+the column named by `FailStatusName`. Every other increment is told the claim
+is the marker and that the ticket moves once, at the end, to the column named
+under *Where this increment ends*.
+
 **The verdict is a record, not a move.** `POST /issues/{key}/verdicts`, open to
 a key and to a person, takes `pass` or `fail` and optional findings, and writes
 a [verdict](#verdict) row and a `verdict_recorded` event. It is a `400` unless
@@ -4293,6 +4325,18 @@ and over 40 KiB leaves the findings out whole rather than cutting them.
 `WorkDto.FailStatusName` is the implementation column's name, set on every
 dispatch; for a check, `hatch work --dry-run` prints `# check: pass -> X, fail
 -> Y`, with `?` for a missing name.
+
+**The next row's limit rides along too.** `WorkDto.NextBriefLimit` is the
+`BriefLimit` of the playbook row that covers this issue's type out of the
+column *after* the one this dispatch moves it to — the limit the session
+after this one will be spawned under. Null wherever that row has none, the
+dispatch is not a plain advance (a hop, a send-back, or anything other than
+`Kind: advance`), or the issue has children, whose briefs are the children's
+own. `QueueEntryDto`, `hatch queue` and the queue page carry none of this — a
+queued row still answers only for the move it is itself waiting on. A
+send-back for an over-long brief is unchanged by any of it: this is the
+*next* row's limit, read in advance, not a change to how this one is judged.
+The prompt is where it is spent — printed for the session that follows.
 
 **Tick the build column.** `Columns.Implementation` is the ticked column, or
 else the column whose next move is into review. On a board with check columns
@@ -5046,7 +5090,8 @@ an epic at its own limit; `dependency` an unmet edge, its own or an ancestor's;
 the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
-work into; and `other` every fold none of the six name.
+work into; and `other` every fold none of the six name — a repository this runner lacks, or a
+runner tag it does not advertise, among them: no new kind.
 
 **The rows arrive in the board's own order.** Rightmost column first, and
 within a column the `(rank, id)` that `GET /api/hatch/board` serves that column
@@ -5063,8 +5108,8 @@ the order of the board is precisely the bug this endpoint exists to expose.
 Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
-assignee, an unanswered question, a repository this runner lacks, an unmet
-dependency, an open child, a
+assignee, an unanswered question, a repository this runner lacks, a runner tag the
+project asks for and this runner lacks, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -5607,9 +5652,9 @@ moot while no session sets `CODEX_HOME`.
 
 ### What makes an issue actionable
 
-Twenty conditions, the eighteenth a way out of the seventeenth rather than one
-more gate, the nineteenth a fact about the issue rather than another way out,
-and the twentieth a fact about the walk rather than either. An issue is the
+Twenty-one conditions, the nineteenth a way out of the eighteenth rather than
+one more gate, the twentieth a fact about the issue rather than another way
+out, and the twenty-first a fact about the walk rather than either. An issue is the
 loop's to pick up when it meets every one before it, and the sentence saying
 which one it failed is what `work/queue` reports:
 
@@ -5625,7 +5670,7 @@ which one it failed is what `work/queue` reports:
    that decision, made in advance (`Dispatch.cs:800`, `:803`) — see [the
    four paths past the terminal guard](#the-four-paths-past-the-terminal-guard).
    The review column is dispatched to itself instead of either (see the
-   twelfth condition), and never into the column after it.
+   seventeenth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -5665,7 +5710,7 @@ which one it failed is what `work/queue` reports:
    not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the eighteenth condition.
+   this at all, and neither is a hop — see the nineteenth condition.
 8. **It is not [low](#expedite) level on an account whose session window is
    behind pace**, asked only of an unattended pass, reading the same account
    the seventh condition reads. The account's session window alone is projected
@@ -5674,7 +5719,7 @@ which one it failed is what `work/queue` reports:
    does not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the eighteenth condition.
+   this at all, and neither is a hop — see the nineteenth condition.
 9. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
    to an API key, or to nobody, is picked up exactly as it always was. A
@@ -5690,11 +5735,20 @@ which one it failed is what `work/queue` reports:
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-12. **Nothing it depends on is unfinished** — and only when the move is into the
+12. **The project requires no runner tag the caller's runner lacks.** A caller
+    that sends no `?tag=` has advertised none, so it fails a project that
+    requires any; a runner advertising a superset of what the project requires
+    qualifies. Checked on every move a session is spawned for out of the
+    implementation column (the leaf implementation and the parent verification
+    alike), and on the review self-move while it is conflict or build work —
+    never a hop, never the move into the implementation column, and never a
+    review row the verdict below already folds. Kind `other`, and it waits on
+    nobody. See [the dispatcher](#the-dispatcher) for the exact sentence.
+13. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See
    [Dependency](#dependency).
-13. **None of its children are still open**, when the move is out of the column
+14. **None of its children are still open**, when the move is out of the column
     where the code gets written. An issue standing there with at least one
     child not in a terminal column is not itself the work — its children are —
     so it is folded rather than carried into review. A deferred child counts as
@@ -5706,7 +5760,7 @@ which one it failed is what `work/queue` reports:
     [Running an epic](#running-an-epic) for why. The sentence names how many of
     its counted children are still open, that its only child is not done, or
     that nothing is filed under it at all.
-14. **The [WIP section](#wip) has room for it**, when the move is into it: the
+15. **The [WIP section](#wip) has room for it**, when the move is into it: the
     load, not counting this issue, is below the limit, nor counting any
     ancestor of this issue already standing in it — a family crosses together,
     at the cost of the one slot its nearest counted member already spent. Said
@@ -5718,7 +5772,7 @@ which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy: `work/{key}` is refused by
     it too, and overriding it
     is done on the board, by moving the card in.
-15. **An epic above it has room too**, when the move is into the WIP section
+16. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
     counting this issue, is below its own `WipLimit` (an epic with no `WipLimit` has no limit, and this holds trivially) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
@@ -5727,7 +5781,7 @@ which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-16. **In review, its branch conflicts with the trunk or its build failed —
+17. **In review, its branch conflicts with the trunk or its build failed —
     or it is [pre-approved](#pre-approval) and `MergeWork.Judge` would merge
     it or bring it current.** An issue in the review column is the loop's
     when a [merge check](#merge-check) says `conflicted`, or — on a branch
@@ -5743,23 +5797,24 @@ which one it failed is what `work/queue` reports:
     alone — but no longer universally: once the issue is pre-approved,
     falling behind alone is enough for the approve hop to bring it current,
     with no session either. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-17. **A playbook covers that transition for that type — or it does not need
+18. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-18. **Unless it does not need a session at all.** An issue that is
+19. **Unless it does not need a session at all.** An issue that is
     [express](#pre-approval) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the seventeenth condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the eighteenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, only from needing a
     playbook, from [economy's or low's own gate](#expedite) — the seventh and
-    eighth conditions — or from the park below — the twentieth. A clear hop
+    eighth conditions — from a required runner tag — the twelfth, which a hop
+    never meets — or from the park below — the twenty-first. A clear hop
     is still carried across either way, parked or not; being carried across is
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
@@ -5770,7 +5825,7 @@ which one it failed is what `work/queue` reports:
     epic at or past the implementation column; a top-level epic is carried
     only by the move that lands it there (HA-1069). Where nothing is filed,
     the refinement is its own fold rather than a
-    fall-through to the seventeenth condition: "nothing is filed under it — an
+    fall-through to the eighteenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic at or past the
     implementation column, is a third kind: the epic's own pull reaching the
@@ -5795,7 +5850,7 @@ which one it failed is what `work/queue` reports:
     implementation column, not terminal and not waiting on the story's pull
     request. Where the column is so marked but such a sibling is already in
     flight, the refinement is its own fold rather than a fall-through to the
-    seventeenth condition's "no playbook covers this": "{sibling}, sharing this
+    eighteenth condition's "no playbook covers this": "{sibling}, sharing this
     story's branch, is already in flight - one sibling at a time", kind
     `family` — the only one of `FamilyGate.Pulls`'s two conditions this fold can
     still be naming, since the hold above has already spoken for a parent
@@ -5816,7 +5871,7 @@ which one it failed is what `work/queue` reports:
     into the column ticked `MergesPullRequest` with nobody reading the diff
     first, since a pre-approval already is that reading. Where the branch
     instead conflicts or its build has failed, this is not that hop; the
-    sixteenth condition's own fold governs it exactly as it would an issue
+    seventeenth condition's own fold governs it exactly as it would an issue
     with no pre-approval at all.
 
     A pre-approved parent standing in the review column with no pull request
@@ -5827,7 +5882,7 @@ which one it failed is what `work/queue` reports:
     terminal column strictly right of review. A childless pre-approved issue
     is never carried this way: nothing is filed under it for every child to be
     done of, so it is not this kind of hop at all.
-19. **A childless issue's brief is no longer than its matched playbook's own
+20. **A childless issue's brief is no longer than its matched playbook's own
     `BriefLimit`, where one is set.** Not asked at all where the matched
     playbook leaves `BriefLimit` null, or where the issue already has a
     child — a brief big enough to want breaking down is exactly what children
@@ -5842,7 +5897,7 @@ which one it failed is what `work/queue` reports:
     its brief is 18,044 characters, and this move is spawned on at most
     8,000 - cut it into tasks first
     ```
-20. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+21. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
     six levels are walked top down, once each, across every row the walk
     reaches; the first *clear* row the walk sees is remembered, and every row
     in a tier strictly below that one that would otherwise be clear is folded
@@ -5866,12 +5921,12 @@ which one it failed is what `work/queue` reports:
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
 
-Fourteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17 and 19 — are
-facts about the issue, and `work/{key}` asks them too. The eighteenth is as
+Fifteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18 and 20 —
+are facts about the issue, and `work/{key}` asks them too. The nineteenth is as
 well, and `work/{key}` answers it the same way `work/queue` does:
 `WorkDto.Hop`. The other four — 6, 7, 8 and 9 — are the loop's policy and are
 asked only when the pass is asking;
-see [one more, on `next` alone](#one-more-on-next-alone). The twentieth is
+see [one more, on `next` alone](#one-more-on-next-alone). The twenty-first is
 neither: not a fact about one issue, since it depends on every other row the
 same walk reaches, and not the loop's policy, since it folds `work/queue`
 exactly as it folds `work/next`. It is a fact about the walk itself, asked only

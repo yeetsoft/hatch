@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { attentionLabel, attentionTone, closesOnPress } from '../lib/attention';
+import { attentionLabel, attentionTone, closesOnPress, pillCount } from '../lib/attention';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useAttentionNow } from '../lib/useAttentionNow';
 import { AttentionPanel } from './AttentionPanel';
@@ -10,9 +10,12 @@ import { Robot } from './Robot';
  *
  * Quiet while it is not: muted ink, no fill, no border, a glyph and one word.
  * Loud the moment it is: the glyph lights, and one count pill per non-empty
- * section appears. It measures the same in both states, because a widget that
- * grew when something arrived would shove the battery leftwards and move the
- * bar out from under the cursor.
+ * section appears. On the desk it measures the same in both states, because a
+ * widget that grew when something arrived would shove the battery leftwards
+ * and move the bar out from under the cursor. A phone has the width for
+ * neither: four pills with two-digit counts are wider than the row can hold
+ * beside the battery and the overnight control, so there (App.css) they fold
+ * into the one total drawn after them, which the desk hides.
  *
  * Never returns null. Unlike the battery - which draws nothing on an install
  * with no Claude token, because there is no such thing as its answer there -
@@ -35,6 +38,7 @@ export function NavAttention() {
   const exhausted = attention?.exhaustedRunners?.length ?? 0;
   const trunkBuilds = attention?.trunkBuilds?.length ?? 0;
   const deadlocked = attention?.deadlocked?.length ?? 0;
+  const pills = pillCount(attention);
 
   /* A pointer outside it closes it. Clicking a non-focusable area of the page
      fires no blur at all, which is why this exists as well as the focusout
@@ -109,6 +113,9 @@ export function NavAttention() {
             {reviews > 0 && <span className="hatch-attention-pill hatch-attention-pill-review">{reviews}</span>}
             {questions > 0 && <span className="hatch-attention-pill hatch-attention-pill-question">{questions}</span>}
           </span>
+        )}
+        {tone === 'asking' && pills > 0 && (
+          <span className="hatch-attention-pill hatch-attention-pill-total">{pills}</span>
         )}
       </button>
 

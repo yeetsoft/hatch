@@ -23,14 +23,12 @@
    ticket cares about. What this ticket cares about is narrower and asserted
    directly below: the mermaid chunk must never import the entry chunk.
 
-   Nothing calls `import('../lib/mermaid')` yet - that is the next task's job
-   ("Not in this task" in HA-1057's brief) - so there is no real callsite for
-   this build to discover on its own; an unreached module is simply absent
-   from Rolldown's output. `probePlugin` below stands in for that future
-   callsite with a virtual module built as a second input alongside the real
-   index.html, reached only by its own dynamic `import()` of mermaid.ts, so
-   the chunk graph this test inspects is shaped exactly as it will be once
-   that callsite is real.
+   The real callsite is `lib/mermaidDraw.ts`, reached from the docs page.
+   `probePlugin` below stands in for it anyway, with a virtual module built as
+   a second input alongside the real index.html, reached only by its own
+   dynamic `import()` of mermaid.ts, so the chunk graph this test inspects
+   does not depend on who calls mermaid, or on whether the page that does is
+   in the build's graph.
 
    `write: false` and `emptyOutDir: false` matter: the config's `outDir` is
    Hatch.Api's own wwwroot, and a test must never write to it, let alone

@@ -207,6 +207,20 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_ticket_folded_for_its_tag_prints_the_servers_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        h.Wire.Json("GET", "/api/hatch/work/AER-7", Fixtures.Work("AER-7", blocked: sentence));
+
+        Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync(["AER-7"], default));
+
+        Assert.Contains(h.Say.Complained, l => l == $"hatch: AER-7 - {sentence}");
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task The_race_between_the_read_and_the_take_is_reported_and_nothing_is_spawned()
     {
         using var h = new Harness();
