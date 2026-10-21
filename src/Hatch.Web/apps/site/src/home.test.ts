@@ -94,7 +94,10 @@ describe('the home page', () => {
     expect(bodyOf(movingParts).replace(/<svg\b[\s\S]*?<\/svg>/g, '').trim()).toBe('')
     expect(movingParts.lastIndexOf('<figcaption>')).toBeGreaterThan(movingParts.lastIndexOf('</svg>'))
 
-    expect(bodyOf(figureNamed('life-of-a-ticket'))).toBe('')
+    const lifeOfATicket = figureNamed('life-of-a-ticket')
+    expect(lifeOfATicket.match(/<svg\b/g) ?? []).toHaveLength(2)
+    expect(bodyOf(lifeOfATicket).replace(/<svg\b[\s\S]*?<\/svg>/g, '').trim()).toBe('')
+    expect(lifeOfATicket.lastIndexOf('<figcaption>')).toBeGreaterThan(lifeOfATicket.lastIndexOf('</svg>'))
   })
 
   it('lists the five Docs cards in order, each linking into the docs', () => {

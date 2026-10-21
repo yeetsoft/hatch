@@ -42,7 +42,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// and start their sentence <c>deadlocked - </c>. Judged over the whole
     /// board, whatever <paramref name="ancestorKey"/>, <paramref name="mine"/>
     /// or <paramref name="repos"/> narrow this scan to, so a narrowed scan
-    /// pays for a second, unnarrowed one. Only the queue asks.
+    /// pays for a second, unnarrowed one. So does a judged scan when some
+    /// project requires tags: the tag fold precedes the dependency and family
+    /// folds, so a tag-folded row loses its <c>WaitsOn</c> and would hide a
+    /// ring; the second scan is unjudged. Only the queue asks.
     /// </param>
     /// <param name="tags">
     /// What the caller's runner advertises, see <see cref="TagDeclaration"/>.
@@ -352,6 +355,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // ring. A live claim is movable whoever holds it, so the token
             // still passes through.
             var whole = scope is not null || mine || repos.IsDeclared
+                || (tags.Judged && candidates.Any(i => EfHatchProject.ReadRunnerTags(i.Project!.RunnerTags).Count > 0))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);

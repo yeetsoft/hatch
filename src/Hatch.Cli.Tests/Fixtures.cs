@@ -289,6 +289,15 @@ public static class Fixtures
             message = new { content = new[] { new { type = "tool_use", name, input = new { command } } } },
         });
 
+    /// <summary>One assistant message of a single text block; a sub-agent's carries its parent's tool use id.</summary>
+    public static string AssistantText(string text, string? parentToolUseId = null) =>
+        JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["type"] = "assistant",
+            ["parent_tool_use_id"] = parentToolUseId,
+            ["message"] = new { content = new[] { new { type = "text", text } } },
+        });
+
     /// <summary>
     /// One assistant message carrying a usage block, the way the stream repeats
     /// it on every content block of the same message - one call here is one

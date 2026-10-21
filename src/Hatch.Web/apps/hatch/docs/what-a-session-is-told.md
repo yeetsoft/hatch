@@ -148,6 +148,10 @@ current, so there is no `show`. Two things change it:
 - On a check's column, `hatch verdict` stands where `start` and `move` would,
   because a check ends with a verdict, not a move.
 - With several repositories in play, it names which checkout is the root.
+- `start` is printed only on the increment bound for the implementation
+  column. On any other, the section says the claim is the marker and the ticket
+  moves once, at the end, to the column named under *Where this increment
+  ends*.
 
 ### Landing on the trunk
 
@@ -339,6 +343,5 @@ the spawn - so it is neither lost nor delivered twice.
 
 Pages this one names that are not written yet:
 
-- `playbooks`
 - `questions-and-decisions`
 - `review-pull-requests-and-the-merge-train`

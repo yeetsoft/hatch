@@ -7,11 +7,7 @@ import { DOC_PAGES, docPage, renderDocs } from './docs';
 const SPLIT_PAGES: [slug: string, section: string][] = [
   ['hatch-on-your-phone', 'Start here'],
   ['letting-the-loop-merge-for-you', 'Running agents'],
-  ['putting-a-front-door-on-it', 'Deploying and operating'],
   ['upgrading', 'Deploying and operating'],
-  ['where-the-data-is-and-how-to-back-it-up', 'Deploying and operating'],
-  ['how-to-stop', 'Deploying and operating'],
-  ['if-something-is-wrong', 'Deploying and operating'],
   ['the-claudemd-block', 'Reference'],
 ];
 

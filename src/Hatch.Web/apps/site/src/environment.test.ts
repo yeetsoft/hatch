@@ -11,8 +11,9 @@ import { buildSite } from './testing/buildSite'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
 
-/* Every root-relative src=/href= under the given base, except the Docs card's
-   links - those resolve once HA-724 lands and are not this test's to check. */
+/* Every root-relative src=/href= under the given base, except the links
+   into docs/ - a /docs/#x ref names a page and a fragment, not a file, and
+   links.test.ts checks those. */
 const assetsOf = (html: string, base: string): string[] =>
   [...html.matchAll(/(?:src|href)="(\/[^"]*)"/g)]
     .map(([, path]) => path)

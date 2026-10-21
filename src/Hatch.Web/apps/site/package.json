@@ -14,7 +14,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hatch/ui": "*"
+    "@hatch/ui": "*",
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.7",
+    "mermaid": "^12.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",

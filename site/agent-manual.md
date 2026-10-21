@@ -691,8 +691,9 @@ Joined with newlines, in this order:
    them, and do not ask again.* Then each as `**Asked (<author>):**` and
    `**Answered (<author>):**`. Unanswered questions are absent, because a
    ticket with one is never dispatched.
-7. A fixed tail: `## Reaching Hatch` (the `hatch show`, `start`, `move`,
-   `comment`, `ask` and `api` calls, noting the key is already in the
+7. A fixed tail: `## Reaching Hatch` (the `hatch comments`, `move`,
+   `comment`, `ask` and `api` calls, plus `start` only on the increment bound
+   for the implementation column, noting the key is already in the
    environment); `## When you cannot decide` (the `ask --recommend --option`
    shape, and *then stop*); `## Where this increment ends` (`<KEY> should be
    in "<To>" when you stop, and no further`, only the operator moves work
