@@ -11,7 +11,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
     `import.meta.glob`. */
 interface DocsModule {
   DOC_PAGES: { slug: string; title: string; summary: string; body: string }[]
-  renderDocs(source: string): { html: string }
+  renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string }
+}
+
+/** The five pages HA-663 has yet to write. A link to one of these still becomes
+    a site address and does not fail the build - everything else does. */
+export const PENDING_PAGES = new Set([
+  'the-lifecycle-of-a-ticket',
+  'playbooks',
+  'questions-and-decisions',
+  'review-pull-requests-and-the-merge-train',
+  'flow-wip-and-the-battery',
+])
+
+/** Where a docs link to `slug` (with `fragment`, `#`-included or empty) goes on
+    the site, under `base` (`config.base`: always `/` or `/<path>/`). */
+export function docHref(base: string, slug: string, fragment: string): string {
+  return `${base}docs/${slug}/${fragment}`
+}
+
+export interface BrokenDocsLink {
+  page: string
+  slug: string
+}
+
+/** Throws once, naming every link whose slug is neither a real page nor on
+    `PENDING_PAGES` - not just the first. */
+export function checkDocsLinks(links: readonly BrokenDocsLink[]): void {
+  const broken = links.filter((l) => !PENDING_PAGES.has(l.slug))
+  if (broken.length === 0) return
+  throw new Error(broken.map((l) => `${l.page}.md links to "${l.slug}", which has no docs page`).join('\n'))
 }
 
 function renderPage(page: DocsModule['DOC_PAGES'][number], body: string): string {
@@ -65,9 +94,14 @@ ${body}
  * duplicated here. Each id sits two directories deeper than `404.html`
  * (`docs/<slug>/index.html` vs `404.html`), which is why the frame's icon and
  * mark need two extra `../` to still reach `packages/ui/src/assets/`.
+ *
+ * The virtual inputs are registered in `config`, the hook that can still edit
+ * `config.build` - but each page's HTML, which needs `base` to build its
+ * hrefs, is only rendered in `configResolved`, once `base` is final.
  */
 export function docsHtml(): Plugin {
   const pages = new Map<string, string>()
+  let docsModule: DocsModule | undefined
 
   return {
     name: 'docs-html',
@@ -77,6 +111,7 @@ export function docsHtml(): Plugin {
         root: __dirname,
         logLevel: 'silent',
       })
+      docsModule = module
 
       config.build ??= {}
       config.build.rolldownOptions ??= {}
@@ -84,10 +119,24 @@ export function docsHtml(): Plugin {
       const input = config.build.rolldownOptions.input as Record<string, string>
 
       for (const page of module.DOC_PAGES) {
-        const id = resolve(__dirname, `docs/${page.slug}/index.html`)
-        pages.set(id, renderPage(page, module.renderDocs(page.body).html))
-        input[`docs/${page.slug}`] = id
+        input[`docs/${page.slug}`] = resolve(__dirname, `docs/${page.slug}/index.html`)
       }
+    },
+    configResolved(resolvedConfig) {
+      const module = docsModule!
+      const knownSlugs = new Set(module.DOC_PAGES.map((p) => p.slug))
+      const broken: BrokenDocsLink[] = []
+
+      for (const page of module.DOC_PAGES) {
+        const resolveHref = (slug: string, fragment: string): string => {
+          if (!knownSlugs.has(slug)) broken.push({ page: page.slug, slug })
+          return docHref(resolvedConfig.base, slug, fragment)
+        }
+        const id = resolve(__dirname, `docs/${page.slug}/index.html`)
+        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref).html))
+      }
+
+      checkDocsLinks(broken)
     },
     resolveId(id) {
       if (pages.has(id)) return id
