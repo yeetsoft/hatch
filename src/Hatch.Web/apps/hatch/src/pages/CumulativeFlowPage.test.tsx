@@ -8,6 +8,7 @@ import type { CumulativeFlow, Status } from '../types';
 const NOW = new Date('2026-10-06T00:00:00Z');
 const EMPTY = 'Nothing was on the board in this range.';
 const FOOTNOTE = 'hatch-timeline-footnote';
+const UNPINNED = 'Click the chart to pin a moment.';
 
 const statuses = [{ id: 1, name: 'To Do', color: '#3366cc' }] as Status[];
 
@@ -31,6 +32,7 @@ describe('CumulativeFlowBody', () => {
     const html = render(answer());
 
     expect(html).toContain('class="hatch-cumulative-flow"');
+    expect(html).toContain(UNPINNED);
     expect(html).not.toContain(EMPTY);
     expect(html).not.toContain(FOOTNOTE);
   });
