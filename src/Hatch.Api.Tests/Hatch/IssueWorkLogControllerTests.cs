@@ -371,6 +371,80 @@ public class IssueWorkLogControllerTests
         Assert.True(entry.Described);
     }
 
+    // ---- Reads ----
+
+    [Fact]
+    public async Task Reads_AreStoredHeaviestFirstAndComeBackOnTheGet()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var posted = await h.PostAsync(issue.Key, Reported() with
+        {
+            Reads =
+            [
+                new WorkLogReadDto("src/b.cs", 2),
+                new WorkLogReadDto("src/z.cs", 9),
+                new WorkLogReadDto("src/a.cs", 2),
+            ],
+        });
+
+        // Count descending, then path ascending, so a tie is not left to the
+        // order the caller happened to send.
+        var expected = new[] { ("src/z.cs", 9), ("src/a.cs", 2), ("src/b.cs", 2) };
+        Assert.Equal(expected, posted.Reads.Select(r => (r.Path, r.Count)));
+
+        var read = Assert.Single((await h.ReadAsync(issue.Key)).Entries);
+        Assert.Equal(expected, read.Reads.Select(r => (r.Path, r.Count)));
+    }
+
+    [Fact]
+    public async Task MoreReadsThanTheCap_KeepsOnlyTheHeaviest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var reads = Enumerable.Range(1, 60).Select(i => new WorkLogReadDto($"src/file{i:D2}.cs", i)).ToList();
+        var posted = await h.PostAsync(issue.Key, Reported() with { Reads = reads });
+
+        Assert.Equal(EfHatchWorkLogEntry.MaxReads, posted.Reads.Count);
+        Assert.Equal(60, posted.Reads[0].Count);
+        Assert.Equal(11, posted.Reads[^1].Count);
+        Assert.Equal(EfHatchWorkLogEntry.MaxReads, (await h.ReadAsync(issue.Key)).Entries[0].Reads.Count);
+    }
+
+    [Fact]
+    public async Task AnOverLongReadPath_IsClippedRatherThanRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var posted = await h.PostAsync(issue.Key, Reported() with
+        {
+            Reads = [new WorkLogReadDto(new string('p', 400), 3)],
+        });
+
+        var read = Assert.Single(posted.Reads);
+        Assert.Equal(EfHatchWorkLogEntry.MaxReadPathLength, read.Path.Length);
+        Assert.Equal(3, read.Count);
+    }
+
+    [Fact]
+    public async Task NoReads_AnswersAnEmptyListNotNull()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        // An older CLI sends no reads at all, and so does one that had none.
+        var posted = await h.PostAsync(issue.Key, Reported() with { Reads = null });
+        var empty = await h.PostAsync(issue.Key, Reported("other") with { Reads = [] });
+
+        Assert.Empty(posted.Reads);
+        Assert.Empty(empty.Reads);
+        Assert.All(await h.RowsAsync(issue.Key), r => Assert.Null(r.Reads));
+        Assert.All((await h.ReadAsync(issue.Key)).Entries, e => Assert.Empty(e.Reads));
+    }
+
     // ---- Reporting twice ----
 
     [Fact]

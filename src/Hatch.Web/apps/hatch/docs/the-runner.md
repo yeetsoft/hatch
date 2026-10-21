@@ -237,7 +237,7 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 becomes something the operator presses, and `--recommend` is the one you would
 take. One question a call, so each can be answered on its own, and then stop:
 an open question blocks the ticket from being dispatched at all (see
-`questions-and-decisions`).
+[questions and decisions](questions-and-decisions)).
 
 `hatch verdict` records a check session's own verdict, and a person rarely
 types it. Anything but `pass` or `fail` is refused before a request is made.
@@ -257,9 +257,3 @@ get answered in aggregate, which is how a wrong assumption gets in.
 
 Every command takes `-h` for what it accepts, and [CLI
 reference](cli-reference) has each one in full.
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `questions-and-decisions`
