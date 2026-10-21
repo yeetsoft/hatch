@@ -2306,9 +2306,10 @@ public record FlowHopDto(string Kind, int Count);
 /// <param name="Hops">Every hop kind with its count, in the fold's fixed order.</param>
 /// <param name="SendBacks">How many moves went to an earlier column.</param>
 /// <param name="QuestionsAsked">How many questions were asked in the window.</param>
-/// <param name="QuestionsAnswered">How many questions were answered in the window.</param>
-/// <param name="MedianAnswerWaitSeconds">The median wait for an answer; null when none was answered.</param>
-/// <param name="LongestAnswerWaitSeconds">The longest wait for an answer; null when none was answered.</param>
+/// <param name="QuestionsAnswered">How many questions a person answered in the window; a question the board answered by lapsing it is not counted here.</param>
+/// <param name="QuestionsLapsed">How many questions were answered in the window by the board lapsing them, not by a person.</param>
+/// <param name="MedianAnswerWaitSeconds">The median wait for a person's answer; null when no person answered.</param>
+/// <param name="LongestAnswerWaitSeconds">The longest wait for a person's answer; null when no person answered.</param>
 /// <param name="Sessions">How many work-log sessions ended in the window.</param>
 /// <param name="SessionErrors">How many of those ended in error.</param>
 public record FlowWindowDto(
@@ -2317,6 +2318,7 @@ public record FlowWindowDto(
     int SendBacks,
     int QuestionsAsked,
     int QuestionsAnswered,
+    int QuestionsLapsed,
     long? MedianAnswerWaitSeconds,
     long? LongestAnswerWaitSeconds,
     int Sessions,

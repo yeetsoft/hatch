@@ -216,6 +216,75 @@ public class ReportsControllerFlowTests
         Assert.NotEmpty(flow.Window.Hops);
     }
 
+    private static async Task<EfHatchComment> AskAsync(Harness h, long issueId, DateTimeOffset at)
+    {
+        var asked = new EfHatchComment
+        {
+            IssueId = issueId, Author = "ann", Body = "which way?", Kind = EfHatchComment.Question, CreatedAt = at,
+        };
+        h.Db.Comments.Add(asked);
+        await h.Db.SaveChangesAsync();
+        return asked;
+    }
+
+    private static async Task AnswerAsync(Harness h, EfHatchComment asked, string author, DateTimeOffset at, bool lapsed = false)
+    {
+        h.Db.Comments.Add(new EfHatchComment
+        {
+            IssueId = asked.IssueId, Author = author, Body = "that way", Kind = EfHatchComment.Answer,
+            AnswersId = asked.Id, CreatedAt = at,
+        });
+
+        if (lapsed)
+            h.Db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = asked.IssueId, Actor = author, Kind = EfHatchIssueEvent.Answered, At = at,
+                Payload = $"{{\"questionId\":{asked.Id},\"lapsed\":true}}",
+            });
+
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ALapsedQuestion_IsCountedApartFromAPersonsAnswer()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h, h.Status["doing"], Now.AddDays(-5));
+        var at = Now.AddDays(-3);
+
+        var lapsed = await AskAsync(h, issue.Id, at);
+        await AnswerAsync(h, lapsed, "Hatch", at.AddSeconds(300), lapsed: true);
+        var answered = await AskAsync(h, issue.Id, at);
+        await AnswerAsync(h, answered, "bo", at.AddSeconds(3600));
+
+        var flow = Value(await h.Reports.GetFlow(null, null, null, null, default));
+
+        Assert.Equal(2, flow.Window.QuestionsAsked);
+        Assert.Equal(1, flow.Window.QuestionsAnswered);
+        Assert.Equal(1, flow.Window.QuestionsLapsed);
+        Assert.Equal(3600, flow.Window.MedianAnswerWaitSeconds);
+        Assert.Equal(3600, flow.Window.LongestAnswerWaitSeconds);
+    }
+
+    [Fact]
+    public async Task APersonsAnswerAfterALapse_CountsAsAnswered_AndWaitsToThePerson()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h, h.Status["doing"], Now.AddDays(-5));
+        var at = Now.AddDays(-3);
+
+        var asked = await AskAsync(h, issue.Id, at);
+        await AnswerAsync(h, asked, "Hatch", at.AddSeconds(300), lapsed: true);
+        await AnswerAsync(h, asked, "bo", at.AddSeconds(7200));
+
+        var flow = Value(await h.Reports.GetFlow(null, null, null, null, default));
+
+        Assert.Equal(1, flow.Window.QuestionsAsked);
+        Assert.Equal(1, flow.Window.QuestionsAnswered);
+        Assert.Equal(0, flow.Window.QuestionsLapsed);
+        Assert.Equal(7200, flow.Window.MedianAnswerWaitSeconds);
+    }
+
     [Fact]
     public async Task ATypeFilter_DropsTheIssuesOfOtherTypes()
     {
@@ -251,7 +320,7 @@ public class ReportsControllerFlowTests
     })]
     [InlineData(typeof(FlowWindowDto), new[]
     {
-        "Dropped", "Hops", "SendBacks", "QuestionsAsked", "QuestionsAnswered",
+        "Dropped", "Hops", "SendBacks", "QuestionsAsked", "QuestionsAnswered", "QuestionsLapsed",
         "MedianAnswerWaitSeconds", "LongestAnswerWaitSeconds", "Sessions", "SessionErrors",
     })]
     public void TheDtos_CarryCountsAndDurations_AndNoIssue(Type dto, string[] expected)
