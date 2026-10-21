@@ -147,14 +147,15 @@ lines under the runner's `volumes:`:
 ```
 
 On Windows `${HOME}` is `${USERPROFILE}`. This shape carries only what a
-*file* holds. A helper that keeps the credential somewhere else, such as a
-system keychain or Windows' Credential Manager, has nothing in
-`.git-credentials` to mount, and there a token in the environment is the
-answer.
+*file* holds. A helper that keeps the credential somewhere else, such as
+`osxkeychain` on macOS (`credential.helper = osxkeychain`) or `manager` on
+Windows, has nothing in `.git-credentials` to mount, and there a token in the
+environment is the answer.
 
 **SSH.** If your remote is `git@…` rather than `https://…`, the container
-needs a key. With an `ssh-agent` running that Docker can mount the socket of,
-the key never leaves the host: uncomment this line under `volumes:`, and add
+needs a key. On Linux, with an `ssh-agent` running that Docker can mount the
+socket of, the key never leaves the host: uncomment this line under
+`volumes:`, and add
 the matching one under `environment:` (both are needed):
 
 ```
@@ -165,8 +166,29 @@ the matching one under `environment:` (both are needed):
       SSH_AUTH_SOCK: /ssh-agent
 ```
 
-Without an agent, mount the key itself read-only with a `volumes:` line of
-your own, and point `GIT_SSH_COMMAND` at it in `environment:`. With no
+On macOS, Docker Desktop bridges your own `ssh-agent` at a fixed path, so use
+this line under `volumes:` instead (the `SSH_AUTH_SOCK: /ssh-agent` line under
+`environment:` stays the same):
+
+```
+      - "/run/host-services/ssh-auth.sock:/ssh-agent"
+```
+
+On Windows, where no agent is bridged into a Linux container, and for any key
+no agent holds, mount the key itself read-only under `volumes:` (`${HOME}` in
+place of `${USERPROFILE}` on macOS and Linux):
+
+```
+      - "${USERPROFILE}/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro"
+```
+
+and point `GIT_SSH_COMMAND` at it under `environment:`:
+
+```
+      GIT_SSH_COMMAND: "ssh -i /root/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+```
+
+With no
 `known_hosts` and no `GIT_SSH_COMMAND` of your own, the entrypoint sets
 `GIT_SSH_COMMAND` to `ssh -o StrictHostKeyChecking=accept-new`, because
 nobody is there to answer "are you sure you want to continue connecting?".

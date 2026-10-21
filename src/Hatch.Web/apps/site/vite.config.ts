@@ -5,6 +5,7 @@ import { siteEnv } from './src/siteEnv'
 import { siteHtml } from './vite-plugin-site'
 import { docsHtml } from './vite-plugin-docs'
 import { contentHtml } from './vite-plugin-content'
+import { redirects } from './vite-plugin-redirects'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -12,7 +13,7 @@ const env = siteEnv(process.env)
 
 export default defineConfig({
   base: env.base,
-  plugins: [siteHtml(env), docsHtml(env.canonical), contentHtml(env.cloneUrl)],
+  plugins: [siteHtml(env), docsHtml(env.canonical), contentHtml(env.cloneUrl), redirects(env.canonical)],
   appType: 'mpa',
   build: {
     outDir: resolve(__dirname, 'dist'),

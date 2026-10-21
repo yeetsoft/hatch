@@ -30,6 +30,10 @@ or `codex` or `grok` when `HATCH_AGENT` or `--agent` says so. In a checkout of
 Hatch itself, `scripts/hatch.sh` (`scripts\hatch.ps1` in PowerShell) finds or
 builds the binary and hands over, so nothing needs installing first.
 
+That page carries a command reference beneath the download, so a person who
+has just downloaded `hatch` has it in front of them. The whole reference is
+the [CLI reference](cli-reference).
+
 ## Pointing it at a board
 
 Bare `hatch config` asks, in order, for the origin, the key (read without

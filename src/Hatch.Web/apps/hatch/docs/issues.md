@@ -54,6 +54,9 @@ top or bottom, or between two cards with no room left between their ranks,
 is handled the same way — the server either reaches past the end or
 renumbers the column first, without the client ever seeing a rank.
 
+Within a column, the dispatcher reads cards in rank order, so dragging a card
+up in its column is what gets it worked sooner.
+
 ## Ready and due dates
 
 A pair with different jobs. `ready` is a gate: an issue whose ready date has

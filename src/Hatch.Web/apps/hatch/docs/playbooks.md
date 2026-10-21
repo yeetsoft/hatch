@@ -103,6 +103,12 @@ nothing but the prompt keeps a session to that. Two things go further:
   applies it afterwards. A pass sends the ticket forward. A fail sends it back to
   the column where code is written, with the findings as a comment, and a second
   fail in a row moves nothing and asks a person. No seeded row is a check.
+  Only a person marks a playbook as a check, on the Playbooks page; a check left
+  with no denied tools carries a badge reading "a check with no denied tools can
+  edit" - a warning, and the save is not refused. When a verdict is applied, pass
+  or fail, its findings are written on the ticket as a comment (`(no findings)`
+  if the session wrote none), and the build session that follows a fail is handed
+  the last check's findings.
 
 Who moves work on each edge is set out in [the board and its
 columns](the-board-and-its-columns#who-moves-work).
