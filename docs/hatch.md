@@ -753,7 +753,8 @@ through the gate that was supposed to stop it.
 `EfHatchIssue` — `ProjectId`, `Number`, `Type`, `Title`, `Description`,
 `StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
-`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestReadAt`,
+`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestHeadSince`,
+`PullRequestReadAt`,
 `ClosedAt`, `ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
 `CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
@@ -812,12 +813,16 @@ board's own identity for it (see [checking the branches in
 review](#checking-the-branches-in-review)), so a pull request nobody recorded
 still has its build read.
 
-**The four fields after it are what the forge last said of that pull request.**
+**The five fields after it are what the forge last said of that pull request.**
 `PullRequestMergeState` is `clean`, `blocked`, `behind`, `dirty`, `unstable`,
 `draft` or `unknown`; `PullRequestReviewDecision` is `none`, `approved`,
 `changes-requested` or `review-required`; `PullRequestHeadSha` is the commit
-that was read, and `PullRequestReadAt` is when. All four are nullable, and null
-means *not read* — which is not `unknown` or `none`, both of which are things
+that was read, and `PullRequestReadAt` is when. `PullRequestHeadSince` is when
+the head sha last changed as the board read it: it is set on the first read and
+whenever the sha differs from the one held, and a repeat read, a new merge state
+or a new review decision on the same head leaves it. It rides on the review read
+(`ReviewCheckDto.PullRequestHeadSince`), and nothing reads it yet. All five are
+nullable, and null means *not read* — which is not `unknown` or `none`, both of which are things
 the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
 them, and when the url changes they are cleared together with
 `PullRequestClosedAt`, since a state read of one pull request says nothing of
