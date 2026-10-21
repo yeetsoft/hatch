@@ -187,3 +187,29 @@ describe('site.css', () => {
     expect(body).toMatch(/\.site-figure \.site-diagram-wide\s*\{[^}]*display:\s*block[^}]*\}/)
   })
 })
+
+describe('the moving parts', () => {
+  const figure = figuresOf(page).find((f) => attr(f, 'data-diagram') === 'moving-parts')
+  const svgs = svgsOf(figure ?? '')
+
+  it('has a figure with exactly two svgs', () => {
+    expect(svgs).toHaveLength(2)
+  })
+
+  const NODES = ['you', 'the board', 'the runner', 'a Claude Code session', 'your repository on the forge']
+  const EDGES = ['ticket', 'dispatch', 'increment', 'pull request', 'review', 'merge']
+
+  it.each(svgs.map((svg) => [attr(openingTagOf(svg), 'class') ?? '', svg] as const))(
+    '%s holds the moving-parts content',
+    (_class, svg) => {
+      const texts = textsOf(svg)
+      const joined = texts.map((t, i) => (texts[i + 1] ? `${t} ${texts[i + 1]}` : t))
+
+      for (const node of NODES) expect(texts.includes(node) || joined.includes(node)).toBe(true)
+
+      expect(texts.filter((t) => EDGES.includes(t))).toEqual(EDGES)
+
+      expect(svg.match(/<desc\b[^>]*>([\s\S]*?)<\/desc>/)?.[1]).toContain('merge train')
+    },
+  )
+})
