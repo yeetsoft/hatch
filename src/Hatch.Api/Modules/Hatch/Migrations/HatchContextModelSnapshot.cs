@@ -803,6 +803,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<string>("RunnerTags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AutoHealBugStatusId");

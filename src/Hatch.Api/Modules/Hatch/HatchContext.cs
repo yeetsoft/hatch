@@ -212,12 +212,15 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as
         // IsCheck above: EnsureCreated must leave the same column default a
-        // sequential migration run would.
+        // sequential migration run would. RunnerTags' default is mirrored for
+        // the same reason: an empty array, not null, is what a fresh
+        // EnsureCreated row and a migrated one must agree on.
         modelBuilder.Entity<EfHatchProject>(e =>
         {
             e.Property(p => p.Landing).HasDefaultValue(global::Hatch.Contracts.Landings.PullRequest);
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
             e.Property(p => p.OnePullRequest).HasDefaultValue(false);
+            e.Property(p => p.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
 
             e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);
             e.Property(p => p.AutoHealBugPriority).HasDefaultValue(global::Hatch.Contracts.PriorityLevels.Emergency);
