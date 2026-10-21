@@ -1121,6 +1121,7 @@ HATCH_RUNNER       what the board calls this runner (default: a character from
 HATCH_ROOT         the checkout to work in (default: upwards from here)
 HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on
                    the platform's path separator (: on Unix, ; on Windows)
+HATCH_TAGS         the tags this runner advertises, comma-separated
 HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every
                    repository the board binds that it has no checkout of
 HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on
@@ -1131,7 +1132,9 @@ HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on 
 `--repo` on `go-to-work` or `work` (repeatable) beats `HATCH_REPOS` outright for
 that run rather than adding to it, the same way any other flag beats a setting.
 `hatch config --repo /path/to/a/checkout` (repeatable) writes `HATCH_REPOS` to
-the per-user file; `--repo` alone clears it. `--workspace <dir>` works the same
+the per-user file; `--repo` alone clears it. `hatch config --tag gpu --tag
+linux` (repeatable) writes `HATCH_TAGS` the same way, and `--tag` alone clears
+it. `--workspace <dir>` works the same
 way for `HATCH_WORKSPACE` — beats it for that run — and `hatch config
 --workspace <dir>` writes it to the per-user file. A workspace refuses to sit
 inside a named checkout, or a named checkout inside it, in either direction: a

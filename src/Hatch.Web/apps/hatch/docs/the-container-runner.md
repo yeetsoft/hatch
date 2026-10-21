@@ -194,6 +194,7 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_GH_TOKEN` | The token `gh` reads, as `GH_TOKEN`, to check builds and merge | Empty |
 | `HATCH_RUNNER_NAME` | What **Agents → Runners** calls it | `hatch-runner` |
 | `HATCH_AGENT` | `claude`, `codex` or `grok` | `claude` |
+| `HATCH_TAGS` | The tags it advertises, comma-separated | Empty |
 | `HATCH_KEY` | An API key, for a Hatch with its wall on | Empty. Not required, and not useful here: against a wall the container cannot fetch its credential |
 
 Five more are set for the container, and are not for changing: `HATCH_BASE`

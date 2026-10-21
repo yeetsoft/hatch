@@ -83,6 +83,7 @@ not sourced: `KEY=value` lines, and only these names:
 | `HATCH_BASE_BRANCH` | The trunk `go-to-work` resets to, if `origin/HEAD` does not say |
 | `HATCH_RUNNER` | What the board calls this runner. Default: a character from the cast list, chosen once per checkout - see `hatch config` |
 | `HATCH_REPOS` | Checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows) |
+| `HATCH_TAGS` | The tags this runner advertises, comma-separated. `hatch config --tag` writes them |
 | `HATCH_WORKSPACE` | A directory this runner owns entirely, where it clones every repository the board binds that it has no checkout of |
 | `HATCH_HEARTBEAT` | Seconds of silence before the renderer says what it is still waiting on. `0` turns it off |
 | `HATCH_RETRY_SECONDS` | Seconds a call keeps retrying while Hatch does not answer, backing off between tries. `90` by default, `0` for exactly one attempt |

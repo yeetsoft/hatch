@@ -56,7 +56,7 @@ ticket's history says who did what without anybody being asked to record it.
 
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
-              | --repo <path>... | --workspace <dir>]
+              | --repo <path>... | --tag <tag>... | --workspace <dir>]
 ```
 
 Asks for the origin and the key, and writes them to a per-user file where they
@@ -78,6 +78,10 @@ header instead. Never put it in a repository, either way.
 - `--repo <path>` also serves that checkout, for a loop with no checkout of its
   own. It is repeatable, each path must exist and carry a `.git`, and bare
   `--repo` clears them.
+- `--tag <tag>` sets the tags this runner advertises
+  ([the runner](the-runner#what-a-runner-advertises)). It is repeatable, bare
+  `--tag` clears them, a tag that breaks the rule is refused with the rule's
+  sentence and nothing is written, and it needs no checkout.
 - `--workspace <dir>` names the directory where the runner clones what the
   board binds and it has no checkout of. `--workspace off` never clones.
 
@@ -465,7 +469,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | Code | Meaning |
 |---|---|
 | `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, it was interrupted, or the `--mine` key belongs to nobody. |
-| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
+| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
 | `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |
