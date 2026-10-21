@@ -14,6 +14,7 @@ import {
   ownPhrase,
   playbookFileShowCommand,
   playbookSourcePhrase,
+  readsLabel,
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
@@ -67,6 +68,7 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   issueType: null,
   playbookModel: null,
   playbookEffort: null,
+  reads: [],
   ...over,
 });
 
@@ -270,6 +272,18 @@ describe('modelEffortPhrase', () => {
 
   it('says nothing for a row with neither - an older runner', () => {
     expect(modelEffortPhrase(entry({ playbookModel: null, playbookEffort: null }))).toBeNull();
+  });
+});
+
+describe('readsLabel', () => {
+  const reads = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `src/file${i}.ts`, count: n - i }));
+
+  it('is singular for one path', () => {
+    expect(readsLabel(reads(1))).toBe('Read 1 path');
+  });
+
+  it('is plural for several', () => {
+    expect(readsLabel(reads(12))).toBe('Read 12 paths');
   });
 });
 

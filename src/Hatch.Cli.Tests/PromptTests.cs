@@ -321,6 +321,64 @@ public sealed class PromptTests
         Assert.Contains("file the excess as new sibling tasks under the same parent", prompt, StringComparison.Ordinal);
     }
 
+    // ---- HA-1205: the next row's brief limit, alongside this one's length ----
+
+    [Fact]
+    public void A_next_brief_limit_prints_the_exact_sentence()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", description: new string('x', 6214)),
+            nextBriefLimit: 8000);
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains(
+            "The next increment reads a brief of at most 8,000 characters; this one is 6,214.",
+            prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_null_next_brief_limit_gets_no_such_section()
+    {
+        Assert.DoesNotContain("## How long the brief may be",
+            Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_brief_limit_section_comes_after_the_description_and_before_repositories()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", description: "The brief."),
+            nextBriefLimit: 8000);
+        var repositories = new[]
+        {
+            new Checkouts.RepositoryLine("/Users/x/code/hatch", "https://example.test/hatch.git", true, null),
+        };
+
+        var prompt = Prompt.Compose(work, repositories);
+
+        var descriptionIndex = prompt.IndexOf("The brief.", StringComparison.Ordinal);
+        var sectionIndex = prompt.IndexOf("## How long the brief may be", StringComparison.Ordinal);
+        var repositoriesIndex = prompt.IndexOf("## Repositories", StringComparison.Ordinal);
+
+        Assert.True(descriptionIndex < sectionIndex, "section should come after the description");
+        Assert.True(sectionIndex < repositoriesIndex, "section should come before ## Repositories");
+    }
+
+    [Fact]
+    public void A_ticket_both_sent_back_and_limited_prints_both_sections()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "story"),
+            sentBack: new SentBackDto(Length: 5000, Limit: 4000, CanTakeChildren: true),
+            nextBriefLimit: 8000);
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket was sent back", prompt, StringComparison.Ordinal);
+        Assert.Contains("## How long the brief may be", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_ticket_says_when_it_chose_the_model_rather_than_the_playbook()
     {
