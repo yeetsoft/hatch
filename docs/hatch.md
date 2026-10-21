@@ -2789,9 +2789,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
-| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
+| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
+| `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
@@ -3318,7 +3319,12 @@ also carries which of the three layers its playbook came from, and, for the
 file, the trunk, the sha and the hash it was confirmed against at spawn -
 null on a table-sourced row and on a row an older runner wrote. It also
 carries which agent ran it, an id like `claude` - null on a row a CLI built
-before this shipped wrote, and never guessed by the server. **No Claude
+before this shipped wrote, and never guessed by the server. Six more say what
+the session ran under: the playbook's key, the two columns of the transition it
+was spawned for, the issue's type, and the model and effort the playbook asked
+for - null on the same two kinds of row, a table-sourced one and an older
+runner's, and likewise never guessed by the server.
+[`by-playbook`](#what-each-playbook-costs) folds on them. **No Claude
 credential is anywhere in this path.**
 A leaderboard on an installation with no subscription token is the whole
 leaderboard rather than a reduced one.
@@ -3351,7 +3357,11 @@ unpriced count beside its total.
 ```
 GET /api/hatch/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=
 GET /api/hatch/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=
+GET /api/hatch/work-log/by-playbook?from=&to=&projectId=
 ```
+
+The first two are what the page draws; the third is [what each playbook
+costs](#what-each-playbook-costs), and takes no `ancestorKey`.
 
 They take the same range and the same `ancestorKey`, and **`ancestorKey` means
 the same thing on both**: the issue itself *and* everything beneath it at any
@@ -3415,6 +3425,40 @@ convention: there is no control that could, and the browser API client has no
 function that could. A work log row is written by the dispatcher with an API
 key, and `POST /api/hatch/issues/{key}/work-log` refuses a person outright — see
 `IssueWorkLogController.NotAKey`.
+
+### What each playbook costs
+
+`by-playbook` folds the same rows a third way: not along the hierarchy or a time
+axis, but by what the session ran under. A row is one combination of the six
+fields above - `PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`,
+`IssueType`, `Model`, `Effort` - with its sessions, errors, turns, the four token
+counts and `TotalTokens`.
+
+- **Every older-runner session is one row.** A session written before the six
+  fields existed has all six null, and null is a value to group on like any
+  other: those sessions fold together as a single "unknown" row, with no branch
+  in the fold that treats them specially.
+- **The same window and the same `projectId` as the other reads.** The range is
+  the half-open `EndedAt` rule `sessions` and `history` use, and `projectId`
+  reads as it does on `GET /api/hatch/issues` - an id that matches no project
+  answers no rows, not a refusal.
+- **Status names are today's names.** `FromStatusName` and `ToStatusName` are the
+  board's *current* names for the stored ids, resolved fresh on every read, and
+  null where the id is null or no longer names a column. Neither is a re-read of
+  the playbook's own live prompt or row: `PlaybookKey` is what was stored when
+  the session ran, and the read does not look it up again.
+- **`CostUsd` is a floor.** It sums the priced sessions in the group only, and
+  `UnpricedSessions` counts the rest, the same convention `Fold` uses for the
+  other two reads.
+- **The context and prompt figures are over what was reported.**
+  `MedianPeakContextTokens`, `MaxPeakContextTokens` and `MedianPromptChars` take
+  each group's non-null values only, and are null when none in the group
+  reported one. A median of two values averages them; of three, it takes the
+  middle.
+- **Every group comes back, heaviest first.** There is no sort parameter and no
+  limit. Rows are ordered by `TotalTokens` descending, ties broken on the six
+  grouping fields in the order above, so two reads of one window agree on their
+  order.
 
 ## Reports
 
