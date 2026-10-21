@@ -45,6 +45,23 @@ interface DocsModule {
   ): { html: string; outline: OutlineEntry[]; mermaidCount: number }
 }
 
+/** One entry of the search index, as `apps/hatch/src/lib/docsIndex.ts` exports it. */
+interface DocEntry {
+  slug: string
+  title: string
+  summary: string
+  heading: string | null
+  anchor: string | null
+  text: string
+}
+
+/** The shape `apps/hatch/src/lib/docsIndex.ts` exports, read through `runnerImport`
+    for the same reason `docs.ts` is: it imports `DOC_PAGES` from `docs.ts`, which
+    uses `import.meta.glob`. */
+interface DocsIndexModule {
+  docIndex(pages: DocsPage[]): DocEntry[]
+}
+
 /** The two pages HA-663 has yet to write. A link to one of these still becomes
     a site address and does not fail the build - everything else does. */
 export const PENDING_PAGES = new Set([
@@ -230,6 +247,7 @@ ${blocks.join('\n')}
 export function docsHtml(canonical: string | undefined): Plugin {
   const pages = new Map<string, string>()
   let docsModule: DocsModule | undefined
+  let docsIndexModule: DocsIndexModule | undefined
 
   return {
     name: 'docs-html',
@@ -240,6 +258,13 @@ export function docsHtml(canonical: string | undefined): Plugin {
         logLevel: 'silent',
       })
       docsModule = module
+
+      const { module: indexModule } = await runnerImport<DocsIndexModule>(resolve(__dirname, '../hatch/src/lib/docsIndex.ts'), {
+        configFile: false,
+        root: __dirname,
+        logLevel: 'silent',
+      })
+      docsIndexModule = indexModule
 
       config.build ??= {}
       config.build.rolldownOptions ??= {}
@@ -282,8 +307,15 @@ export function docsHtml(canonical: string | undefined): Plugin {
       // project site it is served under /<repo>/ and does nothing until the
       // custom domain (HA-728) puts the site at a root. Written anyway.
       this.emitFile({ type: 'asset', fileName: 'robots.txt', source: renderRobots(canonical) })
-      if (canonical === undefined) return
+
       const module = docsModule!
+      this.emitFile({
+        type: 'asset',
+        fileName: 'docs/search-index.json',
+        source: JSON.stringify(docsIndexModule!.docIndex(module.DOC_PAGES)),
+      })
+
+      if (canonical === undefined) return
       this.emitFile({
         type: 'asset',
         fileName: 'sitemap.xml',
