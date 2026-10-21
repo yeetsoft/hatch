@@ -507,6 +507,12 @@ public sealed class FakeForge
     /// <summary>What a read of one pull request's url answers.</summary>
     public Dictionary<string, PullRequestAnswer> PullRequestFor { get; } = [];
 
+    /// <summary>Every list of open pull requests asked for, as the path, in order.</summary>
+    public List<string> PullRequestListReads { get; } = [];
+
+    /// <summary>What every list of open pull requests answers. By default it accounts for no row, so each falls back to its own read.</summary>
+    public PullRequestListAnswer PullRequestList { get; set; } = new(new Dictionary<string, PullRequestAnswer>(), null);
+
     /// <summary>Every merge asked for, with the sha it carried, in order.</summary>
     public List<(string Path, string Url, string Sha)> MergeCalls { get; } = [];
 
@@ -568,6 +574,12 @@ public sealed class FakeForge
         {
             owner.PullRequestReads.Add($"{path} {url}");
             return Task.FromResult(owner.PullRequestFor.GetValueOrDefault(url, owner.PullRequestAnswer));
+        }
+
+        public Task<PullRequestListAnswer> ReadOpenPullRequestsAsync(CancellationToken ct)
+        {
+            owner.PullRequestListReads.Add(path);
+            return Task.FromResult(owner.PullRequestList);
         }
 
         public Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)
