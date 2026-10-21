@@ -192,6 +192,14 @@ export function renderSitemap(canonical: string, slugs: readonly string[]): stri
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="${SITEMAP_NAMESPACE}">${urls}</urlset>\n`
 }
 
+/** `robots.txt`'s body: every page allowed, naming `sitemap.xml` only when
+    `canonical` is set. Pure, so a test can call it with no build involved. */
+export function renderRobots(canonical: string | undefined): string {
+  const lines = ['User-agent: *', 'Allow: /']
+  if (canonical !== undefined) lines.push('', `Sitemap: ${canonical}sitemap.xml`)
+  return `${lines.join('\n')}\n`
+}
+
 function renderPage(
   page: DocsPage,
   rendered: { html: string; outline: readonly OutlineEntry[]; mermaidCount: number },
@@ -274,7 +282,9 @@ ${blocks.join('\n')}
  *
  * `canonical` (`siteEnv`'s own, `undefined` with no `base_url`) gates a
  * `sitemap.xml` written in `generateBundle`, once the build has a real
- * address to make every page's address absolute under.
+ * address to make every page's address absolute under; `robots.txt` is
+ * written there on every build regardless, naming that sitemap only when
+ * `canonical` is set.
  */
 export function docsHtml(canonical: string | undefined): Plugin {
   const pages = new Map<string, string>()
@@ -327,6 +337,10 @@ export function docsHtml(canonical: string | undefined): Plugin {
       return pages.get(id)
     },
     generateBundle() {
+      // A crawler reads robots.txt only at the root of a host. On a Pages
+      // project site it is served under /<repo>/ and does nothing until the
+      // custom domain (HA-728) puts the site at a root. Written anyway.
+      this.emitFile({ type: 'asset', fileName: 'robots.txt', source: renderRobots(canonical) })
       if (canonical === undefined) return
       const module = docsModule!
       this.emitFile({
