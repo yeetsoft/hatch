@@ -686,7 +686,8 @@ public class ProjectsController(
             members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest,
             PriorityLevels.Name(project.AutoHealBugPriority), PreApprovalLevels.Name(project.AutoHealBugPreApproval),
             project.AutoHealBugEnabled, project.AutoHealBugStatusId,
-            project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt);
+            project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt,
+            EfHatchProject.ReadRunnerTags(project.RunnerTags));
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
