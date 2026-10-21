@@ -54,6 +54,37 @@ public sealed class PickerTests
         await picked.Claim!.ReleaseAsync();
     }
 
+    [Theory]
+    [InlineData("qwen3-coder:30b", "claude", "pinned to qwen3-coder:30b, an ollama model - this runner's agent is claude")]
+    [InlineData("gpt-6-luna", "claude", "pinned to gpt-6-luna, a codex model - this runner's agent is claude")]
+    [InlineData("claude-opus-5", "codex", "pinned to claude-opus-5, a claude model - this runner's agent is codex")]
+    [InlineData("qwen3-coder:30b", "ollama", null)]
+    [InlineData("opus", "claude", null)]
+    [InlineData(null, "claude", null)]
+    public void WrongAgent_takes_the_article_from_the_owners_first_letter(string? model, string agent, string? expected)
+    {
+        var why = Picker.WrongAgent(model, agent, ModelFamilies.Default);
+
+        Assert.Equal(expected, why);
+    }
+
+    [Fact]
+    public async Task A_row_pinned_to_an_ollama_model_waits_for_an_ollama_runner()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "qwen3-coder:30b") });
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Skipped, picked.Outcome);
+        Assert.Equal(
+            ["  AER-1  pinned to qwen3-coder:30b, an ollama model - this runner's agent is claude"],
+            picked.Skipped);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_board_whose_only_clear_row_is_pinned_to_another_agent_is_skipped_and_nothing_is_claimed()
     {
