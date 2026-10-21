@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DOC_PAGES, renderDocs } from '../../hatch/src/lib/docs'
-import { checkDocsLinks, docHref, PENDING_PAGES, type BrokenDocsLink } from '../vite-plugin-docs'
+import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, type BrokenDocsLink } from '../vite-plugin-docs'
 
 describe('docHref', () => {
   it('builds the four base/slug/fragment combinations', () => {
@@ -50,5 +50,25 @@ describe('PENDING_PAGES', () => {
       }
     }
     expect([...found].sort()).toEqual([...PENDING_PAGES].sort())
+  })
+})
+
+describe('renderLanding', () => {
+  const sections = [
+    { section: 'A & "B" <c>', pages: [{ slug: 'x', title: 'T <i> & "q"', summary: 'S <b> & "q"' }] },
+  ]
+  const html = renderLanding('/p/', sections, () => 'the-id')
+
+  it('escapes the section, title and summary', () => {
+    expect(html).toContain('A &amp; &quot;B&quot; &lt;c&gt;')
+    expect(html).toContain('T &lt;i&gt; &amp; &quot;q&quot;')
+    expect(html).toContain('S &lt;b&gt; &amp; &quot;q&quot;')
+    expect(html).not.toContain('<i>')
+    expect(html).not.toContain('<b>')
+  })
+
+  it("takes the section's id from the slugger and the link from the base", () => {
+    expect(html).toContain('<h2 id="the-id">')
+    expect(html).toContain('href="/p/docs/x/"')
   })
 })
