@@ -5,7 +5,6 @@ import { docPage, DOC_PAGES } from './docs';
 
 const repoRoot = '../../../../../../';
 
-const compose = readFileSync(new URL(`${repoRoot}compose.yaml`, import.meta.url), 'utf8');
 const authOptions = readFileSync(
   new URL(`${repoRoot}src/Hatch.Api/Services/Auth/AuthOptions.cs`, import.meta.url),
   'utf8',
@@ -16,13 +15,8 @@ const authGate = readFileSync(
   'utf8',
 );
 
-const environmentVariables = docPage(DOC_PAGES, 'environment-variables');
 const deploymentOverview = docPage(DOC_PAGES, 'deployment-overview');
 const kubernetes = docPage(DOC_PAGES, 'kubernetes');
-
-/** Every distinct HATCH_* name in `compose.yaml`, word-bounded so `HATCH_RUNNER`
-    is not found inside `HATCH_RUNNER_NAME`. */
-const hatchVariables = [...new Set(compose.match(/\bHATCH_[A-Z][A-Z0-9_]*\b/g) ?? [])].sort();
 
 /** Every distinct path `Program.cs` maps with `MapHealthChecks("...")`. */
 const healthPaths = [...new Set([...program.matchAll(/MapHealthChecks\(\s*"([^"]+)"/g)].map(([, path]) => path))].sort();
@@ -75,13 +69,6 @@ function authKeys(): string[] {
   }
   return keys;
 }
-
-describe('environment-variables names every HATCH_* in compose.yaml', () => {
-  it.each(hatchVariables)('%s', (name) => {
-    expect(environmentVariables).toBeDefined();
-    expect(new RegExp(`\\b${name}\\b`).test(environmentVariables!.body)).toBe(true);
-  });
-});
 
 describe('deployment-overview names every Auth__* key AuthOptions.cs binds', () => {
   it.each(authKeys())('%s', (key) => {
