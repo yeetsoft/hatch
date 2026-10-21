@@ -513,7 +513,7 @@ public sealed class Increment(
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and
             // a meter reading is not a claim to have done the work.
-            await PostWorkLogAsync(report, facts, started, work, ct);
+            await PostWorkLogAsync(report, facts, started, work, model, effort, ct);
 
             // A run that ended in error, or one that ended before it could report
             // at all, may have ended because the account it ran under ran out of
@@ -1178,6 +1178,18 @@ public sealed class Increment(
     // ---- The meter ----
 
     /// <summary>
+    /// Which playbook a row bills: a board or project row's id as text, or
+    /// <c>{types}:{shape}</c> for a file row, <c>*</c> when it names no types.
+    /// <see cref="PlaybookDto.Types"/> arrives in the file's canonical order, so
+    /// joining it as given is the key the file's own duplicate check builds.
+    /// </summary>
+    private static string? PlaybookKeyOf(PlaybookDto? playbook) =>
+        playbook is null ? null
+        : playbook.Source == "file"
+            ? $"{(playbook.Types.Count == 0 ? "*" : string.Join(",", playbook.Types))}:{playbook.Shape}"
+            : playbook.Id.ToString();
+
+    /// <summary>
     /// What the increment just spent, on the ticket it spent it: one row per
     /// agent session, which is the only record anywhere that knows <em>which</em>
     /// ticket the money went on.
@@ -1186,7 +1198,7 @@ public sealed class Increment(
     /// Nothing here may fail the increment. The work happened either way, and a
     /// loop must not stop because a meter did not.
     /// </remarks>
-    private async Task PostWorkLogAsync(IncrementReport report, RunFacts facts, DateTimeOffset started, WorkDto work, CancellationToken ct)
+    private async Task PostWorkLogAsync(IncrementReport report, RunFacts facts, DateTimeOffset started, WorkDto work, string model, string effort, CancellationToken ct)
     {
         var key = report.Key;
 
@@ -1214,6 +1226,14 @@ public sealed class Increment(
             PlaybookFileSha = source == "file" ? work.PlaybookFile?.Sha : null,
             PlaybookFileHash = source == "file" ? work.PlaybookFile?.Hash : null,
             Agent = adapter.Id,
+            PlaybookKey = PlaybookKeyOf(work.Playbook),
+            PlaybookFromStatusId = work.Playbook?.FromStatusId,
+            PlaybookToStatusId = work.Playbook?.ToStatusId,
+            IssueType = work.Issue.Type,
+            // What the session was spawned with, not the playbook's own: the two
+            // differ exactly when `--model`/`--effort` overrode it.
+            PlaybookModel = model.Length > 0 ? model : null,
+            PlaybookEffort = effort.Length > 0 ? effort : null,
         };
 
         try
