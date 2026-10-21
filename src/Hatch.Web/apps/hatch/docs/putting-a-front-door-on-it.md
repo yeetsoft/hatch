@@ -1,7 +1,7 @@
 ---
 title: Putting a front door on it
 section: Deploying and operating
-order: 10
+order: 70
 summary: Turning on sign-in with Google, step by step.
 ---
 

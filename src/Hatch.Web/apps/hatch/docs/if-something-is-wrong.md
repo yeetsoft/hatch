@@ -1,7 +1,7 @@
 ---
 title: If something is wrong
 section: Deploying and operating
-order: 50
+order: 90
 summary: What a Docker-not-running error looks like, and where to check when a container won't start.
 ---
 
