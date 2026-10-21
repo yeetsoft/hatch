@@ -189,7 +189,8 @@ public static class IssueProjection
                     mergeChecksByIssue.TryGetValue(issue.Id, out var mv) ? mv : [],
                     buildChecksByIssue.TryGetValue(issue.Id, out var bv) ? bv : [],
                     issue.PullRequestClosedAt, issue.Project?.ChecksRequired ?? projects[issue.ProjectId].ChecksRequired,
-                    issue.PullRequestMergeState, issue.PullRequestHeadSha, now, reviewName);
+                    issue.PullRequestMergeState, issue.PullRequestHeadSha, now, reviewName,
+                    pullRequestHeadSince: issue.PullRequestHeadSince);
                 mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
             }
 
