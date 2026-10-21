@@ -44,10 +44,18 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// or <paramref name="repos"/> narrow this scan to, so a narrowed scan
     /// pays for a second, unnarrowed one. Only the queue asks.
     /// </param>
+    /// <param name="tags">
+    /// What the caller's runner advertises, see <see cref="TagDeclaration"/>.
+    /// Null is <see cref="TagDeclaration.Unjudged"/>: a scan answering for the
+    /// board and not for a runner folds nothing on tags.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
-        CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false)
+        CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
+        TagDeclaration? tags = null)
     {
+        tags ??= TagDeclaration.Unjudged;
+
         var statuses = await OrderedStatusesAsync(ct);
 
         // The scope, resolved once before the columns are walked. Null is the
@@ -284,7 +292,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing, projectRepoSourced);
+                        landing, projectRepoSourced, tags: tags);
 
                     var blocked = blocking.Sentence;
                     var sentence = blocked;
@@ -357,7 +365,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags);
     }
 
     /// <summary>
@@ -528,12 +536,43 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (bound.Skip(1).Any(r => repos.Match(r.Canonical) is not null))
             return $"its primary repository is {bound[0].Remote}, and this runner has no checkout of it";
 
-        var remotes = bound.Select(r => r.Remote).ToList();
-        var list = remotes.Count == 1
-            ? remotes[0]
-            : $"{string.Join(", ", remotes.Take(remotes.Count - 1))} and {remotes[^1]}";
+        return $"bound to {Listed(bound.Select(r => r.Remote).ToList())}, and this runner has no checkout of it";
+    }
 
-        return $"bound to {list}, and this runner has no checkout of it";
+    /// <summary><c>a</c>, <c>a and b</c>, <c>a, b and c</c>.</summary>
+    private static string Listed(IReadOnlyList<string> items) =>
+        items.Count == 1
+            ? items[0]
+            : $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}";
+
+    /// <summary>
+    /// Whether a session spawned for this move writes code, and so needs a
+    /// runner advertising what the project requires: every session spawned out
+    /// of the implementation column, and the review self-move only while it is
+    /// conflict or build work. Not the move into implementation, a hop, or a
+    /// review row <see cref="ReviewWork"/> folds - nothing is spawned for them.
+    /// </summary>
+    private static bool TagGated(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        !hop && (from.Id == implementation?.Id
+                 || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
+
+    /// <summary>
+    /// Why this caller's runner is not the one for the issue's project: the
+    /// project requires tags the caller did not declare. Null when the scan is
+    /// <see cref="TagDeclaration.Unjudged"/>, when the project requires
+    /// nothing, or when every required tag is declared.
+    /// </summary>
+    private static string? TagFold(EfHatchIssue issue, TagDeclaration tags)
+    {
+        if (!tags.Judged) return null;
+
+        var required = EfHatchProject.ReadRunnerTags(issue.Project!.RunnerTags);
+        if (required.Count == 0 || required.All(tags.Has.Contains)) return null;
+
+        return $"{IssueKey.Format(issue.Project.Key, issue.Number)} is implemented only by a runner advertising {Listed(required)}" +
+               $" - this runner advertises {(tags.Has.Count == 0 ? "none" : Listed(tags.Has))}";
     }
 
     /// <summary>
@@ -690,12 +729,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// first: a terminal column, no column after this one, a column that
     /// merges a pull request, a terminal next column, a live claim, a ready
     /// date, an assignee, an unanswered question,
-    /// a repository the caller has no checkout of, an unmet dependency, an open
-    /// child, a full WIP section or an epic at its own limit, the verdict on an
+    /// a repository the caller has no checkout of, tags the caller's runner
+    /// lacks, an unmet dependency, an open child, a full WIP section or an epic at its own limit, the verdict on an
     /// issue's branch, and last a missing playbook. A column with nowhere an
     /// agent may go is a fact about the board and no argument alters it; a
     /// ready date needs time; a question needs a person; a repository needs a
-    /// clone; a dependency needs other work to land; an open child needs its
+    /// clone; a runner that cannot do the work is a fact before what the work
+    /// waits on, and needs a different runner; a dependency needs other work to land; an open child needs its
     /// own session or its own close; a full section or a full epic each need
     /// other work to leave; a clean branch with a build that passes, is
     /// running or has not been read needs nothing at all; a column that
@@ -889,11 +929,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
         MergeWork.Judgement? landing = null,
-        RepoSourcedPlaybooks? repoSourced = null) =>
+        RepoSourcedPlaybooks? repoSourced = null,
+        TagDeclaration? tags = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
-            repoSourced).Sentence;
+            repoSourced, tags).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -926,7 +967,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
         MergeWork.Judgement? landing = null,
-        RepoSourcedPlaybooks? repoSourced = null)
+        RepoSourcedPlaybooks? repoSourced = null,
+        TagDeclaration? tags = null)
     {
         var hop = hopKind is not null;
 
@@ -1074,6 +1116,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         {
             if (RepositoryFold(issue, repos) is { } repoBlock) return new Blocking(repoBlock, BlockedKinds.Other);
         }
+
+        if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
+            && TagFold(issue, tags ?? TagDeclaration.Unjudged) is { } tagBlock)
+            return new Blocking(tagBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
             || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
@@ -1556,7 +1602,8 @@ public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long
 public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
-    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null)
+    IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null,
+    TagDeclaration? Tags = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -1660,6 +1707,33 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
     /// <summary>The declared remote, spelled as the caller sent it, that canonicalises to this - or null.</summary>
     public string? Match(string canonical) =>
         ByCanonical is not null && ByCanonical.TryGetValue(canonical, out var raw) ? raw : null;
+}
+
+/// <summary>
+/// The tags a caller's runner advertises, or that the scan answers for no
+/// runner at all. A caller that sends nothing has declared none, so
+/// <see cref="Of"/> with an empty list is a real declaration; only
+/// <see cref="Unjudged"/> - the board's own scans, which no runner asked
+/// for - folds nothing on tags.
+/// </summary>
+public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged)
+{
+    public static readonly TagDeclaration Unjudged = new([], false);
+
+    /// <summary>A caller's declaration, already normalised.</summary>
+    public static TagDeclaration Of(IReadOnlyList<string> tags) => new(tags, true);
+
+    /// <summary>
+    /// <paramref name="raw"/> run through <see cref="RunnerTags.Normalise"/>:
+    /// null is a caller that sent nothing, which is <c>Of([])</c>. Returns the
+    /// refusal sentence, or null; on a refusal the declaration is <c>Of([])</c>.
+    /// </summary>
+    public static string? From(IReadOnlyList<string>? raw, out TagDeclaration declaration)
+    {
+        var refusal = RunnerTags.Normalise(raw, out var normalised);
+        declaration = Of(refusal is null ? normalised : []);
+        return refusal;
+    }
 }
 
 // ---- Priority ----
