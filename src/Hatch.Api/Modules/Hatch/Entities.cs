@@ -174,6 +174,29 @@ public class EfHatchProject
     /// Written only by <see cref="ProjectsController.PutPlaybooksSource"/>.
     /// </summary>
     public DateTimeOffset? RepoSourcedAt { get; set; }
+
+    /// <summary>
+    /// Which runners may implement this project's work, as a jsonb array in the
+    /// order they were written - normalised, case folded and deduplicated by
+    /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
+    /// column. Empty, not null, so a project nobody has tagged reads back "[]"
+    /// the same way <c>EnsureCreated</c> and every migrated row do - unlike
+    /// <see cref="EfHatchPlaybook.DeniedTools"/>, which leaves "nothing" as null;
+    /// RunnerTags needs a real default because <see cref="HatchContext"/> must
+    /// mirror it (see the comment above the project's other `HasDefaultValue`
+    /// calls). Written only by <see cref="ProjectsController.PutRunnerTags"/>.
+    /// </summary>
+    public string RunnerTags { get; set; } = "[]";
+
+    /// <summary>What a reader gets back - never null, possibly empty.</summary>
+    public static IReadOnlyList<string> ReadRunnerTags(string stored) =>
+        JsonSerializer.Deserialize<List<string>>(stored, Json) ?? [];
+
+    /// <summary>What goes in the column. Always a real array, even when empty - see <see cref="RunnerTags"/>.</summary>
+    public static string WriteRunnerTags(IReadOnlyList<string> tags) =>
+        JsonSerializer.Serialize(tags, Json);
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
 /// <summary>
