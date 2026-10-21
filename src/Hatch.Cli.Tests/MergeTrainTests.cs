@@ -67,6 +67,7 @@ public sealed class MergeTrainTests
     private static string Merged(string key) => $"/api/hatch/work/{key}/merged";
     private static string Closed(string key) => $"/api/hatch/work/{key}/closed";
     private static string StatePath(string key) => $"/api/hatch/issues/{key}/pull-request-state";
+    private static string BroughtCurrentPath(string key) => $"/api/hatch/issues/{key}/brought-current";
 
     private static PullRequestAnswer Forged(
         string state = PullRequestStates.Open, string? head = null, string? merge = MergeStates.Clean,
@@ -692,6 +693,7 @@ public sealed class MergeTrainTests
         rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip, Number: 7);
         rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
         rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+        rig.H.Wire.Reply("PUT", BroughtCurrentPath("AER-1"), HttpStatusCode.NoContent);
 
         await rig.RunAsync();
 
@@ -699,6 +701,28 @@ public sealed class MergeTrainTests
         var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
         Assert.Equal("Brought its branch current with main, as test:/checkout.", comment);
         Assert.Contains("hatch: AER-1 branch brought current with main", rig.H.Say.Said);
+        var mark = Assert.Single(rig.H.Wire.To("PUT", BroughtCurrentPath("AER-1"))).Read<BroughtCurrentRequest>();
+        Assert.Equal(new BroughtCurrentRequest("main", Trunk, "test:/checkout"), mark);
+    }
+
+    [Fact]
+    public async Task A_404_from_the_brought_current_route_complains_once_and_does_not_stop_the_rest_of_the_update()
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip, Number: 7);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(
+            ["hatch: AER-1 - the board does not know it was brought current yet - it will be asked again next tick"],
+            rig.H.Say.Complained);
+        Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Contains("hatch: AER-1 branch brought current with main", rig.H.Say.Said);
+        Assert.Single(rig.H.Wire.To("PUT", BroughtCurrentPath("AER-1")));
     }
 
     [Fact]
@@ -733,6 +757,7 @@ public sealed class MergeTrainTests
         Assert.Equal("Its branch does not merge cleanly with main - nothing was pushed.", comment);
         Assert.Empty(rig.H.Say.Said.Where(l => l.StartsWith("hatch: AER-1", StringComparison.Ordinal)));
         Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", BroughtCurrentPath("AER-1")));
     }
 
     [Fact]
