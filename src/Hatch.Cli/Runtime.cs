@@ -131,7 +131,7 @@ public sealed record Runtime(
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain)),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags),
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

@@ -209,6 +209,36 @@ public sealed class GoToWorkTests
         Assert.True(beat.Standing);
     }
 
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_heartbeat_and_the_queue_read_carry_the_tags(bool tagged)
+    {
+        string[] tags = tagged ? ["gpu", "linux"] : [];
+        using var h = new Harness(tags: tags);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.NotNull(beat.Tags);
+        Assert.Equal(tags, beat.Tags);
+
+        var call = h.Wire.To("GET", Queue)[0];
+        Assert.Contains("remote=", call.Query);
+        if (tagged)
+        {
+            Assert.Contains("tag=gpu", call.Query);
+            Assert.Contains("tag=linux", call.Query);
+        }
+        else
+        {
+            Assert.DoesNotContain("tag=", call.Query);
+        }
+    }
     [Fact]
     public async Task The_heartbeat_carries_standing_false_when_no_checkout_is_standing()
     {

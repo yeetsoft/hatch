@@ -127,7 +127,7 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
-var board = new Board(client);
+var board = new Board(client, settings.Tags);
 
 // Every way out through one door. A signal that is not handled kills the
 // process outright, and the increment that ends in an interrupt is exactly the
