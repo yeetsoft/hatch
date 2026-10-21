@@ -143,8 +143,7 @@ browsers:
 test-e2e: db
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
 	set -e; \
-	if [ "$$(type -t nvm)" = function ]; then nvm use; fi; \
-	(cd ./src/Hatch.Web && npm ci && npm run build -w apps/hatch); \
+	(cd ./src/Hatch.Web && if [ "$$(type -t nvm)" = function ]; then nvm use; fi && npm ci && npm run build -w apps/hatch); \
 	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
 		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP) --filter "FullyQualifiedName~E2e"'
 
