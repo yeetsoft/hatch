@@ -168,6 +168,8 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
@@ -211,6 +213,13 @@ public sealed record ConfigCommand(
                 In.Prompt($"codex CLI path, for `work` [{(codexBin.Length > 0 ? codexBin : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedCodexBin) codexBin = typedCodexBin;
                 break;
+            case "ollama":
+                In.Prompt($"codex CLI path, for `work` [{(codexBin.Length > 0 ? codexBin : "on PATH")}]: ");
+                if (In.Line() is { Length: > 0 } typedOllamaCodexBin) codexBin = typedOllamaCodexBin;
+
+                In.Prompt($"Ollama host [{(ollamaHost.Length > 0 ? ollamaHost : OllamaHost.Default.Url)}]: ");
+                if (In.Line() is { Length: > 0 } typedOllamaHost) ollamaHost = typedOllamaHost;
+                break;
             case "grok":
                 In.Prompt($"grok CLI path, for `work` [{(grokBin.Length > 0 ? grokBin : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedGrokBin) grokBin = typedGrokBin;
@@ -250,7 +259,7 @@ public sealed record ConfigCommand(
             }
         }
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
@@ -261,6 +270,8 @@ public sealed record ConfigCommand(
         if (claudeBin.Length > 0) Environment["HATCH_CLAUDE_BIN"] = claudeBin;
         if (codexBin.Length > 0) Environment["HATCH_CODEX_BIN"] = codexBin;
         if (grokBin.Length > 0) Environment["HATCH_GROK_BIN"] = grokBin;
+        if (ollamaHost.Length > 0) Environment["HATCH_OLLAMA_HOST"] = ollamaHost;
+        if (ollamaTiers.Length > 0) Environment["HATCH_OLLAMA_TIERS"] = ollamaTiers;
         if (agent.Length > 0) Environment["HATCH_AGENT"] = agent;
 
         Say.Line("");
@@ -305,12 +316,14 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
         var tags = fold("HATCH_TAGS").Value ?? "";
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         Environment["HATCH_BASE"] = origin;
 
@@ -350,6 +363,8 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
@@ -364,7 +379,7 @@ public sealed record ConfigCommand(
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         Environment["HATCH_KEY"] = key;
 
@@ -504,6 +519,8 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
         var tags = fold("HATCH_TAGS").Value ?? "";
@@ -518,7 +535,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags);
+        Write(origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
 
@@ -549,6 +566,8 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var reposRaw = fold("HATCH_REPOS").Value ?? "";
         var tags = fold("HATCH_TAGS").Value ?? "";
@@ -559,7 +578,7 @@ public sealed record ConfigCommand(
         if (Settings.IsWorkspaceOff(dir))
         {
             // A word and not a directory: nothing to overlap and nothing to make.
-            Write(origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags);
+            Write(origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {ConfigPath}");
             return 0;
@@ -578,7 +597,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags);
+        Write(origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         Environment["HATCH_WORKSPACE"] = dir;
 
@@ -631,11 +650,13 @@ public sealed record ConfigCommand(
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
         var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var reposRaw = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
-        Write(origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags));
+        Write(origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags), ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
 
         Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
 
@@ -763,7 +784,9 @@ public sealed record ConfigCommand(
                         ? "off - this runner never clones"
                         : value;
 
-            Say.Line($"{(name + ":").PadRight(19)}{shown}{where}");
+            // A name as wide as the column would print its value glued to the colon.
+            var label = name.Length + 1 < 19 ? (name + ":").PadRight(19) : name + ":  ";
+            Say.Line($"{label}{shown}{where}");
         }
 
         return 0;
@@ -790,7 +813,7 @@ public sealed record ConfigCommand(
     /// </remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
-        string agent = "", string grokBin = "", string tags = "")
+        string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "")
     {
         var directory = Path.GetDirectoryName(ConfigPath);
         if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
@@ -816,6 +839,8 @@ public sealed record ConfigCommand(
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
         if (codexBin.Length > 0) lines.Add($"HATCH_CODEX_BIN={codexBin}");
         if (grokBin.Length > 0) lines.Add($"HATCH_GROK_BIN={grokBin}");
+        if (ollamaHost.Length > 0) lines.Add($"HATCH_OLLAMA_HOST={ollamaHost}");
+        if (ollamaTiers.Length > 0) lines.Add($"HATCH_OLLAMA_TIERS={ollamaTiers}");
         if (agent.Length > 0) lines.Add($"HATCH_AGENT={agent}");
         if (repos.Length > 0) lines.Add($"HATCH_REPOS={repos}");
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");

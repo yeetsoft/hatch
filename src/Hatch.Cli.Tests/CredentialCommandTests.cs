@@ -144,13 +144,25 @@ public sealed class CredentialCommandTests
     }
 
     [Fact]
+    public async Task Ollama_needs_no_credential_and_prints_nothing_on_stdout()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(0, await new CredentialCommand(h.Cli).RunAsync(["ollama"], default));
+        Assert.Empty(h.Say.Said);
+        Assert.Contains("ollama", h.Complained);
+        Assert.Contains("needs no credential", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
     public async Task An_agent_nobody_has_heard_of_is_refused_before_any_call()
     {
         using var h = new CliHarness();
 
         Assert.Equal(1, await new CredentialCommand(h.Cli).RunAsync(["gemini"], default));
         Assert.Contains("gemini", h.Complained);
-        Assert.Contains("claude, codex, grok", h.Complained);
+        Assert.Contains("claude, codex, grok, ollama", h.Complained);
         Assert.Empty(h.Say.Said);
         Assert.Empty(h.Wire.Calls);
     }
@@ -168,10 +180,9 @@ public sealed class CredentialCommandTests
     /// <summary>
     /// A fourth agent added to <see cref="Settings.KnownAgentIds"/> without a
     /// variable here would be one whose container never got a credential, and
-    /// said so only as a usage error at runtime - except <c>ollama</c>, whose
-    /// server is local rather than token-authenticated, and whose
-    /// <c>runner-credential</c> support (if any) is HA-1254's own task to
-    /// decide, not this one's.
+    /// said so only as a usage error at runtime - except <c>ollama</c>, the one
+    /// known agent with nothing to store: its server is local rather than
+    /// token-authenticated.
     /// </summary>
     [Fact]
     public void Every_known_agent_has_a_variable()
