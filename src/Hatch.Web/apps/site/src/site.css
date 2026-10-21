@@ -493,3 +493,93 @@ summary.site-action::-webkit-details-marker {
   margin: var(--sp-1) 0 0;
   color: var(--muted);
 }
+
+/* The docs frame: a sidebar beside the text, a closed disclosure above it on a
+   phone. Mirrors the .hatch-docs-sidebar* rules in apps/hatch/src/App.css on the
+   site's own names. The list is rendered twice - a desk column and a phone
+   <details> - and one of them is display: none at any width. */
+.site-docs {
+  margin-top: var(--sp-6);
+}
+
+.site-docs-sidebar {
+  display: none;
+}
+
+.site-docs-sidebar-phone {
+  display: block;
+  margin-bottom: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-label);
+}
+
+.site-docs-sidebar-phone summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.site-docs-sidebar ul,
+.site-docs-sidebar-phone ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-docs-sidebar-heading {
+  font-weight: 600;
+  margin: 0;
+}
+
+.site-docs-sidebar-heading + ul {
+  margin: 0 0 var(--sp-3);
+}
+
+.site-docs-sidebar a,
+.site-docs-sidebar-phone a {
+  display: block;
+  padding: var(--sp-1) 0;
+  color: var(--muted);
+}
+
+.site-docs-sidebar a:hover,
+.site-docs-sidebar-phone a:hover {
+  color: var(--ink);
+}
+
+.site-docs-sidebar a[aria-current='page'],
+.site-docs-sidebar-phone a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (min-width: 40rem) {
+  .site-docs {
+    display: grid;
+    grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+    gap: var(--sp-8);
+    align-items: start;
+  }
+
+  .site-docs-sidebar {
+    display: block;
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    position: sticky;
+    top: var(--sp-4);
+    max-height: calc(100dvh - var(--sp-8));
+    overflow-y: auto;
+    font-size: var(--t-label);
+  }
+
+  .site-docs-sidebar-phone {
+    display: none;
+  }
+
+  .site-docs .hatch-docs-body,
+  .site-docs .hatch-docs-landing {
+    grid-column: 2;
+    max-width: 68ch;
+  }
+}
