@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -27,8 +29,15 @@ public sealed class OllamaAdapter : CodexAdapter
         ["fable"] = null,
     };
 
+    /// <summary>How long <see cref="CanSpawn"/> waits on <c>/api/tags</c> before giving up on it.</summary>
+    private static readonly TimeSpan ReachTimeout = TimeSpan.FromSeconds(3);
+
     private readonly OllamaHost _host;
     private readonly IReadOnlyDictionary<string, string?> _tiers;
+    private readonly HttpClient _http;
+
+    /// <summary>The model names <see cref="CanSpawn"/> pulled, and null until a run has asked successfully.</summary>
+    private HashSet<string>? _models;
 
     /// <param name="host">Where the server is; <see cref="OllamaHost.Default"/> when none.</param>
     /// <param name="tiers">
@@ -41,7 +50,8 @@ public sealed class OllamaAdapter : CodexAdapter
         IReadOnlyDictionary<string, string?>? tiers = null,
         Action<string>? warn = null,
         string? configured = null,
-        string? path = null)
+        string? path = null,
+        HttpMessageHandler? handler = null)
         : base(configured, path)
     {
         _host = host ?? OllamaHost.Default;
@@ -55,6 +65,8 @@ public sealed class OllamaAdapter : CodexAdapter
         var unmapped = Aliases.Where(alias => merged[alias] is null).ToArray();
         if (unmapped.Length > 0)
             warn?.Invoke($"hatch: ollama - {Join(unmapped)} run on the CLI's default model");
+
+        _http = new HttpClient(handler ?? new HttpClientHandler()) { Timeout = ReachTimeout };
     }
 
     public override string Id => "ollama";
@@ -85,6 +97,78 @@ public sealed class OllamaAdapter : CodexAdapter
     protected override void ConfigureEnvironment(IDictionary<string, string?> environment)
     {
         if (_host.Explicit) environment["CODEX_OSS_BASE_URL"] = _host.Url + "/v1";
+    }
+
+    /// <summary>
+    /// <see cref="CodexAdapter"/>'s own binary lookup, plus a second question
+    /// once the binary is found: whether the resolved host is actually
+    /// answering. Asked once per process - a success is cached in
+    /// <see cref="_models"/> for good, never re-asked.
+    /// </summary>
+    /// <remarks>
+    /// 2026-10-21: <c>GET /api/tags</c> is Ollama's own list-local-models
+    /// route; a 2xx answer's body is <c>{"models":[{"name":"...",...},...]}</c>,
+    /// and <see cref="ParseModels"/> reads only the <c>name</c> of each entry.
+    /// A malformed body on an otherwise-2xx answer is not one of the three
+    /// failure modes the route can name on its own (refused, timed out,
+    /// non-2xx) - but crashing the loop on an unparseable reply would be worse
+    /// than one more refusal reading the same sentence, so it refuses the same
+    /// way instead of throwing.
+    /// </remarks>
+    public override bool CanSpawn(out string refusal)
+    {
+        if (_models is not null)
+        {
+            refusal = "";
+            return true;
+        }
+
+        if (!base.CanSpawn(out refusal)) return false;
+
+        try
+        {
+            var response = _http.GetAsync($"{_host.Url}/api/tags").GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+            {
+                refusal = NotAnswering();
+                return false;
+            }
+
+            var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            _models = ParseModels(body);
+            refusal = "";
+            return true;
+        }
+        catch (HttpRequestException)
+        {
+            refusal = NotAnswering();
+            return false;
+        }
+        catch (TaskCanceledException)
+        {
+            refusal = NotAnswering();
+            return false;
+        }
+        catch (JsonException)
+        {
+            refusal = NotAnswering();
+            return false;
+        }
+    }
+
+    private string NotAnswering() =>
+        $"hatch: ollama is not answering at {_host.Url} - start it, or point HATCH_OLLAMA_HOST at one that is";
+
+    private static HashSet<string> ParseModels(string json)
+    {
+        var models = new HashSet<string>(StringComparer.Ordinal);
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("models", out var list) && list.ValueKind == JsonValueKind.Array)
+            foreach (var entry in list.EnumerateArray())
+                if (entry.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
+                    && name.GetString() is { Length: > 0 } s)
+                    models.Add(s);
+        return models;
     }
 
     /// <summary>
