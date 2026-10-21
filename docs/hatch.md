@@ -16,6 +16,44 @@ the next heading of the same level and stop.
   backend, the frontend and the wire contract?
 - [Domain model](#domain-model) - Which entities exist, and what are the
   rules on each?
+  - [Migration order](#migration-order) - Which migration history does
+    `HatchContext` own, and when is it applied?
+  - [Project](#project) - What does a project row carry, and how does it
+    land its work?
+  - [Project Member](#project-member) - Who owns or approves a project, and
+    why is the person a bare Guid?
+  - [Logo](#logo) - How is a project's logo stored and its type decided?
+  - [Repository](#repository) - How does a project bind its git remotes?
+  - [Status](#status) - What is a board column, and which flags make it
+    behave?
+  - [Issue](#issue) - What does an issue row hold, and how is its key made?
+  - [Dependency](#dependency) - What serialises work, and how is an edge
+    stored?
+  - [One pull request](#one-pull-request) - Do a story's tasks share one
+    branch and pull request?
+  - [WIP](#wip) - How full is the WIP section right now?
+  - [Claim](#claim) - What is a lease on an issue, and which columns hold
+    it?
+  - [Merge check](#merge-check) - What did merging an issue's branch against
+    the trunk find?
+  - [Landing](#landing) - Which sha has a repository recorded for an
+    issue's branch, and is it on the trunk?
+  - [Build check](#build-check) - What did the build on an issue's branch tip
+    come to?
+  - [Trunk build](#trunk-build) - What did the build on a repository's trunk
+    tip come to?
+  - [Playbook file](#playbook-file) - What does a repository's trunk hold at
+    `.hatch/playbooks.yaml`?
+  - [Comment, question and answer](#comment-question-and-answer) - Which
+    comments are more than notes, and how are they bound?
+  - [Search](#search) - How are issues, comments and work logs searched?
+  - [Issue event](#issue-event) - What has happened to an issue, and what
+    kinds of event record it?
+  - [Playbook](#playbook) - What is an agent told when an issue moves from
+    one column to the next?
+  - [Verdict](#verdict) - What did a check session conclude about an issue?
+  - [Overnight seen](#overnight-seen) - When did a reader last read the
+    overnight page?
 - [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
   may reach Hatch, and how does an API key differ from a person?
 - [API surface](#api-surface) - Which routes exist under `/api/hatch`, and
@@ -31,8 +69,52 @@ the next heading of the same level and stop.
 - [The overnight](#the-overnight) - What did the loop actually land while
   nobody was watching?
 - [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
+  - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
+    own?
+  - [The hop](#the-hop) - When does the board move an issue with no session?
+  - [Check](#check) - How does a playbook judge instead of edit?
+  - [Running an epic](#running-an-epic) - How does a person start a
+    top-level epic and walk away?
+  - [A night-mode board](#a-night-mode-board) - How is a board laid out so a
+    pre-approved epic runs Draft to Done unattended?
+  - [Preemption](#preemption) - Who is told by a heartbeat that they have
+    been preempted?
+  - [Review dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review) -
+    Why does a review dispatch end in the column it started in?
+  - [The approval column](#the-approval-column) - Which column merges a
+    pull request with no session, and how is it found?
+  - [The four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) -
+    Which routes cross the terminal and protected guards?
+  - [One more, on `next` alone](#one-more-on-next-alone) - Which rules are
+    the loop's policy rather than facts about an issue?
+  - [What a pass skipped](#what-a-pass-skipped) - What did `work/queue` fold
+    past, and why?
+  - [Playbooks](#playbooks) - How does a `(from, to, types, shape)` row
+    become a prompt, model and effort?
 - [The unattended loop](#the-unattended-loop) - How does `go-to-work` run
   increments back to back, and what does it do when nothing is left?
+  - [Agents](#agents) - How does the loop reach `claude`, `codex` and
+    `grok` through one adapter?
+  - [What makes an issue actionable](#what-makes-an-issue-actionable) - Which
+    conditions must an issue meet before the loop picks it up?
+  - [One loop at a time](#one-loop-at-a-time) - How many loops may serve a
+    checkout, and which checkouts?
+  - [What a runner does, in order](#what-a-runner-does-in-order) - What does
+    a runner do in a pass, step by step?
+  - [The workspace, between increments](#the-workspace-between-increments) -
+    What state is the tree reset to before each increment?
+  - [When an increment does nothing](#when-an-increment-does-nothing) - What
+    happens when a session ends with the ticket where it found it?
+  - [Where the loop's rules live](#where-the-loops-rules-live) - Which side
+    decides what is actionable, the server or the runner?
+  - [Where the loop lives](#where-the-loop-lives) - Which program is the
+    loop, and which commands does it have?
+  - [What it stops for](#what-it-stops-for) - What ends a run, and which
+    stops are asked for?
+  - [Runners on the board](#runners-on-the-board) - How does a runner
+    announce itself and get paused or ended from a browser?
+  - [The console](#the-console) - What do the banners and pinned readout
+    show during an increment?
 - [The level above the board](#the-level-above-the-board) - Which running
   project is nearest the line?
 - [The importer](#the-importer) - How does a markdown plan become an epic
