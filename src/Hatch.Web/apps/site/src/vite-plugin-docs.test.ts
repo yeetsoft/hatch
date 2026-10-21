@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DOC_PAGES, renderDocs } from '../../hatch/src/lib/docs'
-import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderOutline, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
+import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderOutline, renderPager, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
 
 describe('docHref', () => {
   it('builds the four base/slug/fragment combinations', () => {
@@ -139,5 +139,49 @@ describe('renderOutline', () => {
     ])
     expect([...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1])).toEqual(['#one', '#two', '#one', '#two'])
     expect(html.match(/aria-label="On this page"/g)).toHaveLength(2)
+  })
+})
+
+describe('renderPager', () => {
+  const page = (slug: string, title: string) => ({ slug, title, summary: '', section: 'S', body: '' })
+  const a = page('a', 'Page A')
+  const b = page('b', 'Page B')
+
+  it('is empty when both sides are null', () => {
+    expect(renderPager('/', null, null)).toBe('')
+  })
+
+  it('links only the previous page when there is no next', () => {
+    const html = renderPager('/', a, null)
+    expect(html).toContain('<nav class="site-docs-pager" aria-label="Previous and next">')
+    expect(html).toContain('rel="prev" href="/docs/a/"')
+    expect(html).not.toContain('rel="next"')
+    expect(html).not.toContain('>Next<')
+  })
+
+  it('links only the next page when there is no previous', () => {
+    const html = renderPager('/', null, b)
+    expect(html).toContain('rel="next" href="/docs/b/"')
+    expect(html).not.toContain('rel="prev"')
+    expect(html).not.toContain('>Previous<')
+  })
+
+  it('labels each link and puts the title beneath it', () => {
+    const html = renderPager('/', a, b)
+    expect(html).toContain('<span class="site-docs-pager-label">Previous</span><span class="site-docs-pager-title">Page A</span>')
+    expect(html).toContain('<span class="site-docs-pager-label">Next</span><span class="site-docs-pager-title">Page B</span>')
+    expect(html.indexOf('Page A')).toBeLessThan(html.indexOf('Page B'))
+  })
+
+  it('escapes the title', () => {
+    const html = renderPager('/', page('x', 'A < B & "q"'), null)
+    expect(html).toContain('A &lt; B &amp; &quot;q&quot;')
+    expect(html).not.toContain('A < B')
+  })
+
+  it('builds its hrefs from the base', () => {
+    const html = renderPager('/p/', a, b)
+    expect(html).toContain('href="/p/docs/a/"')
+    expect(html).toContain('href="/p/docs/b/"')
   })
 })
