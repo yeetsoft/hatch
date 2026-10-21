@@ -238,6 +238,14 @@ describe('DocsPage', () => {
     expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(2);
   });
 
+  it('draws Deterministic work and agent work with a mermaid placeholder for each of its two diagrams', () => {
+    const page = docPage(DOC_PAGES, 'deterministic-work-and-agent-work');
+    expect(page).toBeDefined();
+    const html = renderAt('/docs/deterministic-work-and-agent-work');
+
+    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(2);
+  });
+
   describe('anything else', () => {
     for (const path of ['/docs/no-such-page', '/docs/a/b']) {
       it(`shows a not-found state inside the docs frame for ${path}`, () => {
