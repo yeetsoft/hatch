@@ -173,6 +173,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
     private IEnumerable<string> ToolCall(JsonElement e)
     {
+        _facts.Scan(_buffer);
         _buffer = "";
         foreach (var said in FlushText()) yield return said;
         yield return $"  ⏺ {Text(e, "toolName")}  {ToolField(e)}";
@@ -201,6 +202,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
     private IEnumerable<string> ToolCallUpdate(JsonElement e)
     {
+        _facts.Scan(_buffer);
         _buffer = "";
         foreach (var said in FlushText()) yield return said;
 
@@ -342,7 +344,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
         var cost = Cost(e);
         if (cost is { } spent) _facts.CostUsd = spent;
 
-        var (title, summary) = StreamRender.WorkLog(resultText);
+        var (title, summary) = _facts.WorkLogFrom(resultText);
         _facts.ReleaseNote = StreamRender.ReleaseNote(resultText);
 
         _facts.Result = new WorkLogEntryRequest(
