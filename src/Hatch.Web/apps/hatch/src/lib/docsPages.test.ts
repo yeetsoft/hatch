@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import source from '../../public/hatch-at-home.md?raw';
-import block from '../../docs/the-claudemd-block.md?raw';
 import { DOC_PAGES, docPage, renderDocs } from './docs';
 
 /** The pages split out of hatch-at-home.md: slug and section, in reading order. */
@@ -56,28 +55,29 @@ describe('the links retargeted when the document was split', () => {
   });
 });
 
-const START = '<!-- claude-contract:start -->';
-const END = '<!-- claude-contract:end -->';
+describe('hatch-at-home.md, the pointer', () => {
+  it('carries no CLAUDE.md block', () => {
+    expect(source).not.toContain('claude-contract');
+  });
 
-/** The text between the contract marks, LF-only, or null if either mark is missing. */
-function contract(text: string): string | null {
-  const lf = text.replace(/\r\n/g, '\n');
-  const start = lf.indexOf(START);
-  if (start === -1) return null;
-  const end = lf.indexOf(END, start + START.length);
-  if (end === -1) return null;
-  return lf.slice(start + START.length, end);
-}
+  it('points at the docs and at the CLAUDE.md block page', () => {
+    expect(source).toContain('/apps/hatch/docs/');
+    expect(source).toContain('the-claudemd-block');
+  });
 
-describe('the CLAUDE.md block', () => {
-  const whole = contract(source);
-  const page = contract(block);
+  it('keeps the two sentences to send a friend', () => {
+    expect(source).toContain('docker compose up -d');
+    expect(source).toContain('http://localhost:8080/apps/hatch/');
+  });
 
-  // HA-668 may cut the block out of hatch-at-home.md; until then there are two copies.
-  it.runIf(whole !== null && page !== null)('is the same block on its page as in hatch-at-home.md', () => {
+  it('is short - the walkthrough itself lives on the docs pages now', () => {
     expect(
-      page,
-      'hatch-at-home.md has drifted from docs/the-claudemd-block.md, which DocsContractTests holds to the CLI: copy the block from the page into public/hatch-at-home.md',
-    ).toBe(whole);
+      source.split(/\r?\n/).length,
+      'hatch-at-home.md should stay a pointer; the walkthrough lives on the docs pages now',
+    ).toBeLessThanOrEqual(40);
+  });
+
+  it('has no ## heading of its own', () => {
+    expect(source.split(/\r?\n/).some((l) => l.startsWith('## '))).toBe(false);
   });
 });
