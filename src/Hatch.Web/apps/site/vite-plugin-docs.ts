@@ -23,6 +23,13 @@ export interface LandingSection {
   pages: { slug: string; title: string; summary: string }[]
 }
 
+/** One heading in a page's outline, as `renderDocs` returns it. */
+interface OutlineEntry {
+  depth: 2 | 3
+  text: string
+  id: string
+}
+
 /** The shape `apps/hatch/src/lib/docs.ts` exports, read through `runnerImport` -
     not a static import, so the config bundle never sees that module's
     `import.meta.glob`. */
@@ -30,7 +37,7 @@ interface DocsModule {
   DOC_PAGES: DocsPage[]
   docSections(pages: DocsPage[]): LandingSection[]
   createSlugger(): (text: string) => string
-  renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string }
+  renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string; outline: OutlineEntry[] }
 }
 
 /** The five pages HA-663 has yet to write. A link to one of these still becomes
@@ -139,16 +146,41 @@ export function renderSidebar(base: string, sections: readonly LandingSection[],
       <details class="site-docs-sidebar-phone"><summary>Pages</summary><nav aria-label="Docs">${groups}</nav></details>`
 }
 
-function renderPage(page: DocsPage, body: string, base: string, sections: readonly LandingSection[]): string {
+/** The on-this-page outline: each `h2` and its `h3`s as links to the ids the app
+    gives them, twice from one list - a phone `<details>` above the text and a
+    desk `<nav>` beside it - for the reason the sidebar is. `''` when the page has
+    no `h2` or `h3`, so it carries no empty outline. */
+export function renderOutline(outline: readonly OutlineEntry[]): string {
+  if (outline.length === 0) return ''
+  const items = outline
+    .map(
+      (entry) =>
+        `<li class="site-docs-outline-item site-docs-outline-item--d${entry.depth}"><a href="#${escapeHtml(entry.id)}">${escapeHtml(entry.text)}</a></li>`,
+    )
+    .join('')
+  const list = `<ol class="site-docs-outline-list">${items}</ol>`
+  return `      <details class="site-docs-outline-phone"><summary>On this page</summary><nav aria-label="On this page">${list}</nav></details>
+      <nav class="site-docs-outline" aria-label="On this page"><p class="site-docs-outline-title">On this page</p>${list}</nav>`
+}
+
+function renderPage(
+  page: DocsPage,
+  rendered: { html: string; outline: readonly OutlineEntry[] },
+  base: string,
+  sections: readonly LandingSection[],
+): string {
+  const outline = renderOutline(rendered.outline)
+  const outlined = outline === '' ? '' : ' site-docs--outlined'
   return renderFrame({
     title: `Hatch: ${page.title}`,
     description: page.summary,
     up: '../../../../',
     main: `      <h1>${escapeHtml(page.title)}</h1>
-      <div class="site-docs">
-${renderSidebar(base, sections, page.slug)}
+      <div class="site-docs${outlined}">
+${renderSidebar(base, sections, page.slug)}${outline === '' ? '' : `
+${outline}`}
       <article class="hatch-docs-body">
-${body}
+${rendered.html}
       </article>
       </div>`,
   })
@@ -243,7 +275,7 @@ export function docsHtml(): Plugin {
           return docHref(resolvedConfig.base, slug, fragment)
         }
         const id = resolve(__dirname, `docs/${page.slug}/index.html`)
-        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref).html, resolvedConfig.base, sections))
+        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref), resolvedConfig.base, sections))
       }
 
       pages.set(LANDING_ID, renderLanding(resolvedConfig.base, sections, module.createSlugger()))
