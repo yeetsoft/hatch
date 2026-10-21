@@ -122,7 +122,7 @@ Hatch need not know it is replicated. To point it at either, set
 `ConnectionStrings__Hatch` and `ConnectionStrings__Quartz` on **both** `migrate`
 and `api` — in a `compose.override.yaml` `environment:` block, or from a cluster
 Secret ([what the API reads](deployment-overview#what-the-api-reads) has the
-variables, and `kubernetes`, below, the cluster side):
+variables, and [Kubernetes](kubernetes), the cluster side):
 
 ```
 services:
@@ -174,9 +174,3 @@ The table is quoted because the schema and the table are both case-sensitive
 names: `"hatch"."Issues"`. The two counts should match, give or take whatever was
 written since the dump. Run the drill once the nightly line is set up, and
 again after any change to the stack.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `kubernetes`

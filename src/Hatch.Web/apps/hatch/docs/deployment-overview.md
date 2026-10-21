@@ -8,7 +8,7 @@ summary: What a running Hatch is made of - the five Compose services and which o
 Hatch is a Postgres and one API image, and that image also serves every app.
 `compose.yaml` at the repository root runs both on one computer, and it is the
 default: everything on this page is about that file. A cluster is the other
-way to run it (`kubernetes`, below), and no manifests ship with Hatch.
+way to run it ([Kubernetes](kubernetes)), and no manifests ship with Hatch.
 
 ## What runs
 
@@ -136,7 +136,7 @@ nothing to set for that one.
   `vm_log_shipper_token` (`Controllers/VmConsoleLogsController.cs:29`). A board
   needs none of them.
 - **Never the repository**, a commit, an issue or a plan (`docs/ethos.md`).
-- **In a cluster, a Secret:** `kubernetes`, below.
+- **In a cluster, a Secret:** see [Kubernetes](kubernetes).
 
 ## What the API reads
 
@@ -214,9 +214,3 @@ docker compose down -v
 **`down -v` throws your data away.** The `-v` removes the volume, and there is
 no undo. Use it when you want to start over from an empty board, and not
 otherwise.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `kubernetes`
