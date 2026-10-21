@@ -71,6 +71,7 @@
      own existing sizes, given names. Phase 6 owns the values.
 
      Register   Size  Where
+     hero       44    The public site's headline
      display    32    The app title, the invite code
      title      28    h1
      heading    22    h2
@@ -84,6 +85,7 @@
 
      A size outside this table is a bug. The one licensed exception is a glyph
      scaled to fit a fixed box, which is an ornament rather than text. */
+  --t-hero: 44px;
   --t-display: 32px;
   --t-title: 28px;
   --t-heading: 22px;
@@ -124,6 +126,9 @@
 
   /* The reading measure. Every page's content column is capped here. */
   --measure: 1200px;
+  /* The line length of running text on a page: the home page's lede and the
+     install block take it, so a sentence never stretches across the column. */
+  --measure-prose: 640px;
 
   /* -------------------------------------------------------------------------
      5. Color — light.

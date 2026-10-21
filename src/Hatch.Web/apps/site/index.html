@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hatch</title>
-    <meta name="description" content="The house project tracker." />
-    <meta property="og:title" content="Hatch" />
-    <meta property="og:description" content="The house project tracker." />
+    <title>Hatch manages your AI coding team for you</title>
+    <meta name="description" content="Hatch manages your AI coding team for you. A kanban board worked by agents as much as by people." />
+    <meta property="og:title" content="Hatch manages your AI coding team for you" />
+    <meta property="og:description" content="Hatch manages your AI coding team for you. A kanban board worked by agents as much as by people." />
     <meta property="og:type" content="website" />
     <!--site:canonical-->
     <link rel="icon" type="image/png" href="../../packages/ui/src/assets/hatch-logo.png" />
@@ -25,8 +25,65 @@
       </nav>
     </header>
     <main id="main" class="site-column">
-      <h1>Hatch</h1>
-      <p>The house project tracker.</p>
+      <section class="site-hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">Hatch manages your AI coding team for you</h1>
+        <p class="site-lede">
+          A kanban board worked by agents as much as by people. You write the tickets, answer the questions and merge
+          the pull requests; an agent takes the rest, one ticket at a time, all night if you let it.
+        </p>
+        <div class="site-actions">
+          <a class="site-action site-action--secondary" href="%BASE_URL%docs/">Read the docs</a>
+          <details class="site-run">
+            <summary class="site-action site-action--primary">Run it</summary>
+            <pre><code>git clone <!--site:clone-url--> hatch
+cd hatch
+docker compose up -d</code></pre>
+          </details>
+        </div>
+        <p class="site-tagline">Hatch ships.</p>
+      </section>
+      <section class="site-section" aria-labelledby="why-title">
+        <h2 id="why-title">Why Hatch</h2>
+        <ul class="site-points">
+          <li>
+            <strong>You write the ticket. Hatch runs the team.</strong>
+            Say what you want and what done looks like; the board breaks it down, works it, and brings back a pull
+            request.
+          </li>
+          <li>
+            <strong>A board, not a chat.</strong>
+            Work is cards with keys, columns, comments and an audit trail, so what an agent did is exactly where a
+            person would look for it in six months.
+          </li>
+          <li>
+            <strong>Deterministic where it can be, agentic where it must be.</strong>
+            Hatch itself decides what is next, who holds what, whether a branch is current and a build is green — in
+            code, the same way every time. A session is spent only on the part that needs judgement: one ticket, one
+            increment, then hand it back.
+          </li>
+          <li>
+            <strong>People keep the gates.</strong>
+            You decide what is specified, what ships and what is parked. Agents work the columns in between, and ask
+            rather than guess when a decision is not theirs.
+          </li>
+          <li>
+            <strong>Decades of software management, written down.</strong>
+            Small increments, WIP limits, dependencies that say what lands in order, questions with pressable answers,
+            and a work log beside what each session cost.
+          </li>
+          <li>
+            <strong>Yours to run.</strong>
+            One line brings the board up on your own machine, under your own domain, with your own data. Nothing in
+            Hatch is true of one installation.
+          </li>
+        </ul>
+      </section>
+      <section class="site-section" aria-labelledby="how-title">
+        <h2 id="how-title">How it works</h2>
+      </section>
+      <section class="site-section" aria-labelledby="docs-title">
+        <h2 id="docs-title">Docs</h2>
+      </section>
     </main>
     <footer class="site-footer site-column">
       <!--site:repository-->
