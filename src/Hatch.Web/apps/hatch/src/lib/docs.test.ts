@@ -484,6 +484,7 @@ describe('pageForAnchor', () => {
     ['the-one-line', '/docs/getting-started#the-one-line'],
     ['how-to-stop', '/docs/deployment-overview#how-to-stop'],
     ['where-the-data-is-and-how-to-back-it-up', '/docs/backup-restore-and-replication#where-the-data-is-and-how-to-back-it-up'],
+    ['putting-a-front-door-on-it', '/docs/the-wall-off-on-and-required#putting-a-front-door-on-it'],
   ])('resolves %s to %s against the real pages', (id, to) => {
     expect(pageForAnchor(DOC_PAGES, id)).toBe(to);
   });

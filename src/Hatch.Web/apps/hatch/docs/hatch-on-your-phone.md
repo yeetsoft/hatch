@@ -6,7 +6,7 @@ summary: Installing Hatch as an app on a phone, and what it can and cannot do th
 ---
 
 **Android, Chrome.** Open `<your-hatch-origin>/apps/hatch/`, sign in if the
-wall is up ([putting a front door on it](putting-a-front-door-on-it)), then
+wall is up ([the wall, off, on and required](the-wall-off-on-and-required)), then
 menu (⋮) → **Install app**. An icon named Hatch lands on the home screen;
 opening it shows a splash screen, then the board, full-screen, with no
 address bar.
@@ -42,7 +42,7 @@ per phone:
 Both are a deploy-time setting: `HATCH_ANDROID_PACKAGE` and
 `HATCH_ANDROID_CERT_FINGERPRINT`, in the same `.env` file beside
 `compose.yaml` as
-[putting a front door on it](putting-a-front-door-on-it). Give the two
+[putting a front door on it](the-wall-off-on-and-required#putting-a-front-door-on-it). Give the two
 values to whoever runs this Hatch.
 
 Once they're set and the stack restarted, reinstalling the app makes Android
