@@ -7231,6 +7231,14 @@ already does — so a `hatch work` run, or an older CLI build, leaves whatever a
 loop already reported in place rather than blanking it. `go-to-work --once`
 shares the loop's own heartbeat and reports the same way, once.
 
+**It also says what it is tagged.** Every heartbeat that names any tags
+overwrites the row's tags whole, the same tri-state `Remotes` already
+uses — absent leaves the row exactly as it was, an empty list clears it. The
+Runners page draws them beside the repositories line, drawing nothing for a
+runner that has named none. `hatch work`'s own one-off heartbeat carries none
+of this, and an older CLI never sends it at all, so either leaves a
+previously-reported row's tags in place rather than blanking them.
+
 **What it is working is not stored.** A row's ticket and the line beside it are
 read off whichever issue carries that runner's live claim at the moment of the
 request, the way an open question is computed rather than kept. A second copy

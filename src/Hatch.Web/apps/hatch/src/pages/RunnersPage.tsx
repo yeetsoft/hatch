@@ -17,6 +17,7 @@ import {
   mineLabel,
   repositoriesLabel,
   runnerActivity,
+  tagsLabel,
   type RunnerBounds,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
@@ -173,6 +174,7 @@ function BoundsSummary({ runner }: { runner: Runner }) {
     mineLabel(runner),
     runner.under && `under ${runner.under}`,
     repositoriesLabel(runner),
+    tagsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,

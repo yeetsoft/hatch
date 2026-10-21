@@ -12,6 +12,7 @@ import {
   repositoriesLabel,
   runnerActivity,
   runnerStrip,
+  tagsLabel,
 } from './runners';
 import type { Runner } from '../types';
 
@@ -32,6 +33,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   state: 'running',
   under: null,
   repositories: [],
+  tags: [],
   drives: [],
   clones: null,
   mine: null,
@@ -200,6 +202,17 @@ describe('repositoriesLabel', () => {
     expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: null }))).toBe(
       'example.com/owner/repo',
     );
+  });
+});
+
+describe('tagsLabel', () => {
+  it('is null for a runner that has named none', () => {
+    expect(tagsLabel(runner())).toBeNull();
+  });
+
+  it('joins one or more tags', () => {
+    expect(tagsLabel(runner({ tags: ['gpu'] }))).toBe('gpu');
+    expect(tagsLabel(runner({ tags: ['gpu', 'macos'] }))).toBe('gpu, macos');
   });
 });
 
