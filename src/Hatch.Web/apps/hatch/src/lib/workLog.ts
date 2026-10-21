@@ -101,6 +101,7 @@ const RESUME_COMMANDS: Record<string, (sessionId: string) => string> = {
   claude: (id) => `claude --resume ${id}`,
   codex: (id) => `codex exec resume ${id}`,
   grok: (id) => `grok -r ${id}`,
+  ollama: (id) => `codex exec resume --oss --local-provider ollama ${id}`,
 };
 
 export function resumeCommand(agent: string | null, sessionId: string): string | null {
