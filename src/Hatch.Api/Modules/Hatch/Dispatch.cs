@@ -548,7 +548,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </summary>
     /// <param name="epics">
     /// Every epic a candidate in this pass or this named dispatch might stand
-    /// under, with its own limit - see <see cref="Wip.EpicsAsync"/>. The
+    /// under, with its own limit - see <see cref="Wip.EpicsAsync"/>; an epic with no
+    /// limit is absent, and folds nothing. The
     /// section's sentence wins where both limits are over, the more general
     /// fact, said first.
     /// </param>

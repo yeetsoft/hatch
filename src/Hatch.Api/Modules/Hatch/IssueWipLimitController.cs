@@ -34,8 +34,8 @@ public class IssueWipLimitController(
 {
     /// <summary>
     /// Set, change or clear the limit. Null leaves it alone and <c>""</c> - or
-    /// whitespace, which trims to it - clears it back to
-    /// <see cref="IssueWipLimitRequest.DefaultLimit"/>.
+    /// whitespace, which trims to it - clears it to no
+    /// limit.
     /// </summary>
     [HttpPatch("{key}/wip")]
     [RequireRole(PersonRole.User)]

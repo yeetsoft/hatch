@@ -557,9 +557,10 @@ A migration flags `In Progress` and `In Review` on a board that still has
 columns of exactly those names, and writes no limit row — the WIP section is
 marked, and from then on `board.wip` reports a real load for both slices, but
 the section-wide limit draws, refuses or folds nothing until the operator
-types a number on the Statuses page. An epic's own limit is different: it
-holds from the day this landed, at one, with no number typed anywhere — see
-["An epic's own limit"](#an-epics-own-limit). A renamed board seeds neither.
+types a number on the Statuses page. An epic's own limit is the same: a blank
+*Stories at once* is no limit, and holds only where a number is typed on the
+epic's page — see ["An epic's own limit"](#an-epics-own-limit). A renamed board
+seeds neither.
 
 **Which column belongs to whom is not a field.** It is derived: a column an
 agent may leave is a column some [playbook](#playbooks) names as its `from`, for
@@ -929,10 +930,9 @@ for it, is [its own walkthrough](#a-night-mode-board).
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
 is a nullable int on the issue, meaning something on an epic and nothing on
-any other type; null reads as **one** — `EfHatchIssue.DefaultEpicWipLimit`,
-the one constant that says so, aliasing `IssueWipLimitRequest.DefaultLimit` in
-`Hatch.Contracts` so the CLI can read the same number without seeing this
-entity. Holding stories to it — folding a story past the first N in
+any other type; null is **no limit** — as many of its stories at once as the
+board's other rules allow (dependencies, the section-wide slice, claims).
+Holding stories to it — folding a story past the first N in
 progress — is a separate mechanism, [an epic's own
 limit](#an-epics-own-limit); this field is only the setting.
 
@@ -948,7 +948,7 @@ two limits can both apply to the same move without either counting the
 other's load twice.
 
 Written only through `PATCH /api/hatch/issues/{key}/wip` with `{ limit }` as a
-string — `""` clears it back to the default, a whole number of one or more
+string — `""` clears it to no limit, a whole number of one or more
 sets it, anything else is refused with a sentence, and anything but an epic
 or a reflection is refused with a sentence saying only an epic or a
 reflection takes a limit on its children at once — by a person and
@@ -961,7 +961,7 @@ competing against, and it rides `IssueDto` like `ModelOverride` does.
 
 It follows that there is no `hatch` verb that sets it, as none sets expedite,
 express or a playbook — the CLI authenticates with a key, so `hatch show`
-prints it on an epic (`stories at once: 3`, or `stories at once: 1 (default)`
+prints it on an epic (`stories at once: 3`, or `stories at once: no limit`
 where none is set) and sets it nowhere.
 
 #### Issue numbering
@@ -1543,8 +1543,8 @@ with `wipOverride: true` - the event that follows names who pressed it.
 **Held beside the section-wide slice above, not instead of it.** After the
 section-wide check has had its say, a story or a bug moving from outside the
 section to inside it, whose parent is an epic, is further held to that epic's
-own [`WipLimit`](#stories-at-once) - null reading as **one**, the same
-default *Stories at once* reads. A task, an epic moving itself, a move within
+own [`WipLimit`](#stories-at-once) - null reading as **no limit**, in
+which case it holds nothing. A task, an epic moving itself, a move within
 the section or out of it, and an issue the section already counts are never
 held by this either, for the same reasons the section-wide slice never holds
 them.
@@ -1557,10 +1557,10 @@ not the epic's, exactly as [a line of the tree costs the section one
 slot](#wip) above. Where the epic itself stands does not matter - an epic in
 *Backlog*, inside the section, or in *Done* holds its direct stories and bugs
 to its limit just the same; pulling the epic itself into the section is a
-separate question. **On by default**: the section exists wherever a column is
-flagged, so an epic with no `WipLimit` set holds its stories to one from the
-moment the section does, whether or not the section-wide slice has a limit
-row of its own.
+separate question. **Off by default**: an epic with no `WipLimit` set
+holds none of its stories back, and runs as many at once as dependencies, the
+section-wide slice and claims allow. An epic with a number set is held to it
+whether or not the section-wide slice has a limit row of its own.
 
 **The section's sentence wins where both are full.** It is the more general
 fact, and both the `409` and the fold say it first - a caller holding neither
@@ -2745,7 +2745,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
-| `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it back to the default; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
+| `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it to no limit; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
@@ -4298,7 +4298,7 @@ reads that way.
 **WIP room.** Give the [WIP section](#wip) a limit that admits at least one
 epic and at least one story at once - the epic slice and the `story,bug`
 slice both need room for this path to move at all. An epic's own
-[`WipLimit`](#stories-at-once) reads as **one** when left unset, never zero
+[`WipLimit`](#stories-at-once) reads as **no limit** when left unset, never zero
 by default; a zero limit on either slice is only ever an operator's own
 deliberate choice - made on the Statuses page for the section, or on the
 epic's own page for its slice - not a default to warn against as an
@@ -5608,7 +5608,7 @@ which one it failed is what `work/queue` reports:
     is done on the board, by moving the card in.
 15. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
-    counting this issue, is below its own `WipLimit` (null reading as one) —
+    counting this issue, is below its own `WipLimit` (an epic with no `WipLimit` has no limit, and this holds trivially) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
     section-wide check above, for the same reason — it too needs other work
     to leave before anything more of this epic is pulled in, and it is a fact
