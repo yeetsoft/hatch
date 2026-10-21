@@ -62,8 +62,16 @@ FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 # git only *recommends* it, so without this line a `git@...` remote fails with
 # "ssh: not found" - and an SSH key or a forwarded agent is one of the three
 # push credentials this container is documented to take.
+#
+# bubblewrap is codex's own sandbox helper. Without it, `codex exec
+# --approve-for-me` (workspace-write) still starts as root here - confirmed on
+# HA-1053, a real increment under an API key - by falling back to the copy it
+# bundles, with one warning line and no error. Installed anyway so that
+# fallback, which the vendor does not document as permanent, is never the only
+# copy this image has.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+      bubblewrap \
       ca-certificates \
       curl \
       git \
@@ -154,12 +162,14 @@ ENV PATH="/root/.local/bin:/root/.grok/bin:${PATH}"
 # files cannot write to the branch it is supposed to push.
 #
 # That flag is Claude's. grok's grant is --always-approve --trust, which has no
-# OS sandbox to satisfy. codex's is --approve-for-me (workspace-write), whose
-# Linux sandbox wants user namespaces or landlock that an unprivileged
-# container may not have: NOT YET PROVEN either way, and no workaround is
-# shipped for it. The first real codex increment settles it, and this comment
-# with it. The adapter never passes codex's bypass-the-sandbox flag to make it
-# go.
+# OS sandbox to satisfy, and ran as root here with no privilege error - the one
+# real increment attempted (HA-1053) never got past its own "Not signed in"
+# refusal to say more than that. codex's is --approve-for-me (workspace-write):
+# PROVEN on HA-1053 - its Linux sandbox starts as root in this unprivileged
+# container, via bubblewrap (now installed above; it fell back to its own
+# bundled copy first, with a warning, before that). No user namespace or
+# landlock error, no security_opt or cap_add needed. The adapter never passes
+# codex's bypass-the-sandbox flag to make it go, and that stays true.
 ENV IS_SANDBOX=1
 
 COPY --from=build /out/hatch /usr/local/bin/hatch
