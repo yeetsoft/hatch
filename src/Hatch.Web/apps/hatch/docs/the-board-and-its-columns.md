@@ -53,10 +53,16 @@ The hops the board makes are:
 
 - **Express skips** — an express issue is carried past a column ticked
   **Express skips**.
-- **Parent pulls** — a child is carried on, out of a column ticked **Parent
-  pulls**, while its parent stands in the column where code gets written.
 - **Epics** — an epic is carried toward the column where code gets written
   once it has children.
+- **Under** — a story or bug in a column ticked **Express skips** is carried
+  on, with no session, while its parent epic stands in the column where code
+  gets written.
+- **Parent pulls** — a child is carried on, out of a column ticked **Parent
+  pulls**, while its parent stands in the column where code gets written.
+- **Sendback** — a childless issue whose brief is too long for its playbook is
+  carried back to the column that feeds the column where code gets written. It
+  is the one hop that moves a ticket left.
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
 - **Close** — a pre-approved parent in review with every child done goes into

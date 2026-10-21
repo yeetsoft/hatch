@@ -45,7 +45,7 @@ what has to be true before it merges with nobody watching.
 
 Solid edges below are the seven stock columns and dashed edges the optional
 eighth. The board may carry a ticket where the figure shows a person or a
-session; those moves are the hops, and they are covered on their own page.
+session; those moves are [the hops](#the-hops-the-board-makes), covered below.
 
 ```mermaid
 flowchart TD
@@ -79,3 +79,60 @@ playbook for and it is a person's.
 [Who moves work](the-board-and-its-columns#who-moves-work) says the same from
 the board's side, and [Issues](issues) is what travels with the ticket as it
 crosses.
+
+## The hops the board makes
+
+A hop is the board carrying a ticket with no session, on its own say-so. There
+are seven kinds, and each is a condition and a landing column:
+
+- **express** — an express issue, standing in
+  a column ticked **Express skips** with no question unanswered. It is carried
+  to the column a session there would have been sent to.
+- **epic** — an epic short of the column where code gets written, with
+  something filed under it. A sub-epic follows its parent epic once the parent
+  has reached that column; a top-level epic is carried only by the move that
+  lands it there, so the move off the backlog stays a person's. It lands one
+  column on, as a session would have sent it.
+- **under** — a story or bug standing in a column ticked **Express skips**
+  whose parent epic has reached the column where code gets written. It is
+  carried to the column a session there would have been sent to.
+- **parent** — a child standing in a column ticked **Parent pulls**, whose
+  parent has reached the column where code gets written, with no sibling
+  already holding the pull and none of its own dependencies unmet. It is
+  carried to the column a session there would have been sent to.
+- **sendback** — a childless issue standing right of the column that feeds the
+  column where code gets written, whose brief is longer than its playbook
+  allows. It is carried back to that feeding column.
+- **approve** — a pre-approved issue in review with a pull request recorded
+  that would merge cleanly or only needs bringing current. It is carried into
+  the column ticked **Merges PR**.
+- **close** — a pre-approved parent in review with no pull request recorded and
+  every child done. It is carried into the first terminal column to review's
+  right.
+
+They are asked in that order, and the order matters: nothing that already
+qualifies for an earlier kind changes meaning by qualifying for a later one.
+Six of the seven carry a ticket on; **sendback** is the one kind that moves a
+ticket **left**. [The board and its
+columns](the-board-and-its-columns#who-moves-work) names the flags the
+conditions read, and [letting the loop merge for
+you](letting-the-loop-merge-for-you) covers pre-approval.
+
+The approve and close hops are the board's own version of the two moves a
+person makes by hand off review, dashed the same as the optional column above:
+
+```mermaid
+flowchart TD
+  InReview["In Review"] -.->|board, approve hop| Approved["Approved (optional)"]
+  InReview -.->|board, close hop| Done
+```
+
+## What each move costs
+
+The three movers are not priced alike, and the difference is the reason hops
+exist:
+
+- **A session** is a model, one increment, a budget and a work-log row.
+- **A hop** is a write on the board's own say-so. No model runs, nothing is
+  spent, and no work-log row is written, because a hop is not an increment.
+- **A person's move** costs nothing, and waits for a person.

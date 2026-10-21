@@ -235,7 +235,7 @@ describe('DocsPage', () => {
     expect(page).toBeDefined();
     const html = renderAt('/docs/the-lifecycle-of-a-ticket');
 
-    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(1);
+    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(2);
   });
 
   describe('anything else', () => {
