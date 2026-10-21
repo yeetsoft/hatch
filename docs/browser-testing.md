@@ -35,8 +35,9 @@ the current client sets `PushAPIEnabled` on every new page, which that build
 rejects as an unknown setting; the close that follows (`Playwright.closePage`)
 is missing from it too, so the page never opens and the call never returns. The
 Chromium smoke passes there; the two `iPhone 14 Pro` cases time out inside
-`opening the page`, leaving a `trace.zip` with no `page.png`. macOS 15 and later
-take a current WebKit build.
+`opening the page`, leaving a `trace.zip` with no `page.png`. Playwright's
+warning says to update the OS; the builds for newer macOS releases are the ones
+it still updates.
 
 ## Where a case lives
 
