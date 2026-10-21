@@ -38,6 +38,11 @@ while it is the full board; it brings back the usual side-by-side columns. The
 choice is remembered per browser (in `localStorage`, under `hatch.board.view`),
 and stacked is the default. Off the phone the board is always the full one.
 
+On a phone the board opens on what is waiting on you and a **New issue**
+button, with the columns stacked one under another instead of side by side. A
+**Full board** toggle, remembered per browser, brings the columns back side by
+side.
+
 ## Letting it own links on Android
 
 Until Android is told which installed app may answer for this origin, a
