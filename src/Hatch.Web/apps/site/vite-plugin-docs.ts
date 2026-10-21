@@ -173,6 +173,7 @@ function renderPage(
     description: page.summary,
     up: '../../../../',
     mermaid: rendered.mermaidCount > 0,
+    search: true,
     main: `      <h1>${escapeHtml(page.title)}</h1>
       <div class="site-docs${outlined}">
 ${renderSidebar(base, sections, page.slug)}${outline === '' ? '' : `
@@ -216,6 +217,7 @@ ${items}
     title: 'Hatch: Docs',
     description: LANDING_DESCRIPTION,
     up: '../../../',
+    search: true,
     main: `      <h1>Docs</h1>
       <div class="site-docs">
 ${renderSidebar(base, sections)}

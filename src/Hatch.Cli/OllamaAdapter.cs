@@ -104,6 +104,60 @@ public sealed class OllamaAdapter : CodexAdapter
     /// <summary>A local server has no usage window to hit.</summary>
     public override UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
 
+    /// <summary>
+    /// <c>haiku=&lt;id&gt;,sonnet=&lt;id&gt;,...</c>, in any order and any subset,
+    /// as a dictionary keyed by lower-case alias - null or blank answers an
+    /// empty <paramref name="tiers"/> with no refusal. Answers the first
+    /// refusal in entry order as one sentence naming the entry as typed, with
+    /// <paramref name="tiers"/> left empty, or null once every entry is
+    /// accepted. The sentence does not name the variable: the caller does, as
+    /// it does for <see cref="Settings.ParseTags"/>.
+    /// </summary>
+    /// <remarks>
+    /// Each entry splits on its first <c>=</c> only, so a colon in an id is
+    /// never a separator. Within one entry the checks run in order: shape,
+    /// alias, repeat, then the id against the <c>ollama</c> model family.
+    /// </remarks>
+    public static string? ParseTiers(string? raw, out IReadOnlyDictionary<string, string?> tiers)
+    {
+        var parsed = new Dictionary<string, string?>();
+        tiers = parsed;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        foreach (var entry in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var refusal = Accept(entry, parsed);
+            if (refusal is null) continue;
+
+            tiers = new Dictionary<string, string?>();
+            return refusal;
+        }
+
+        return null;
+    }
+
+    private static string? Accept(string entry, Dictionary<string, string?> parsed)
+    {
+        var at = entry.IndexOf('=');
+        var alias = at < 0 ? "" : entry[..at].Trim();
+        var id = at < 0 ? "" : entry[(at + 1)..].Trim();
+        if (alias.Length == 0 || id.Length == 0)
+            return $"entry \"{entry}\" is not alias=id";
+
+        var known = Aliases.FirstOrDefault(a => a.Equals(alias, StringComparison.OrdinalIgnoreCase));
+        if (known is null)
+            return $"\"{alias}\" is not an alias ({string.Join(", ", Aliases)})";
+
+        if (parsed.ContainsKey(known))
+            return $"\"{alias}\" is given twice";
+
+        if (ModelFamilies.Default.AgentOf(id) != "ollama")
+            return $"\"{id}\" is not an Ollama model id (name:tag, e.g. qwen3-coder:30b)";
+
+        parsed[known] = id;
+        return null;
+    }
+
     /// <summary>"a", "a and b", "a, b and c".</summary>
     private static string Join(string[] names) =>
         names.Length == 1 ? names[0] : string.Join(", ", names[..^1]) + " and " + names[^1];

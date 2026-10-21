@@ -138,9 +138,14 @@ describe.each(DOC_PAGES.map((p) => [p.slug, p] as const))('docs page %s', (slug,
     })
   })
 
-  it('adds no script of its own', () => {
+  it('adds its search script (HA-1280), and no other, on an unfenced page', () => {
+    // A fenced page's own script count is docsDiagrams.test.ts's domain - its
+    // head also lists vite.config.ts's dompurify/vite-preload chunk groups,
+    // which this test never asserted a count against even before HA-1280.
     if (html().includes('hatch-docs-mermaid')) return
-    expect(tagsOf(html(), 'script')).toHaveLength(1)
+    const scripts = tagsOf(html(), 'script')
+    expect(scripts).toHaveLength(2)
+    expect(attr(scripts[1], 'src')).toMatch(/docsSearchField/)
   })
 })
 
