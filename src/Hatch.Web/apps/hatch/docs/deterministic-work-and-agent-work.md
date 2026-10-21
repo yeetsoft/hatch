@@ -26,6 +26,45 @@ Where none of that clears a ticket, the board spawns one increment: one ticket, 
 
 A session is judged by what it leaves behind, never by what it said about itself: the ticket moved to a new column, a comment landed on it, a branch was pushed, a pull request was opened, a work-log row was written down. [The work-log block](what-a-session-is-told#the-work-log-block) is read for its own title and its own summary, but reading well is not the test — a session that wrote a convincing one and left the ticket exactly where it found it is a [stall](one-increment-and-the-loop#stalls), the same as a session that wrote nothing at all.
 
+## One increment
+
+```mermaid
+sequenceDiagram
+  participant R as Loop
+  participant Board
+  participant Session
+  R->>Board: what is next?
+  Board-->>R: a ticket nothing folds
+  R->>Board: claim it
+  Board-->>R: a lease
+  R->>Board: read its dispatch
+  Board-->>R: the playbook and a prompt
+  Note over R: reset the tree, read the playbook file if there is one
+  R->>Session: spawn, under the playbook
+  Session->>Board: comment, push, move the ticket
+  Session-->>R: the work-log block
+  R->>Board: write the work log and its cost
+  R->>Board: release the claim
+```
+
+One increment claims a ticket the board cleared, runs a session under the playbook matched to that move, and writes down what it cost before letting the ticket go. [One increment and the loop](one-increment-and-the-loop#one-pass-in-order) has the order step by step, and [what a session is told](what-a-session-is-told) has the prompt it is spawned with.
+
+## A night
+
+```mermaid
+flowchart TD
+  Stop{"Stop?"} -->|yes| End["Print the night"]
+  Stop -->|no| Ask["Ask the board"]
+  Ask -->|a hop| Hop["Carry it across, nothing spent"]
+  Ask -->|a ticket| Inc["One increment, billed"]
+  Ask -->|nothing| Wait["Wait the interval"]
+  Hop --> Stop
+  Inc --> Stop
+  Wait --> Stop
+```
+
+A night is increments back to back, with hops between them costing nothing, waiting when the board has nothing for a session, until a bound, a stop or three failures in a row ends it. [Bounds, timeouts and stopping](one-increment-and-the-loop#bounds-timeouts-and-stopping) has what each bound is.
+
 ## Every mechanism, and what it costs
 
 | Mechanism | Who | When | Costs |
