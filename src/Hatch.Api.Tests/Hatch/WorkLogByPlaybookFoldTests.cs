@@ -24,9 +24,10 @@ public class WorkLogByPlaybookFoldTests
         long cacheRead = 0,
         decimal? usd = 0m,
         long? peak = null,
-        int? promptChars = null) => new(
+        int? promptChars = null,
+        string? reads = null) => new(
             key, from, to, type, model, effort, isError, described, turns,
-            input, output, cacheCreation, cacheRead, usd, peak, promptChars);
+            input, output, cacheCreation, cacheRead, usd, peak, promptChars, reads);
 
     private static WorkLogRollup.ByPlaybookRow Unknown(long input = 0, decimal? usd = 0m) =>
         Row(key: null, from: null, to: null, type: null, model: null, effort: null, input: input, usd: usd);

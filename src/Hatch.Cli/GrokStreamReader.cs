@@ -78,6 +78,14 @@ namespace Hatch.Cli;
 /// <para>This vocabulary has no rate-limit event, so <see cref="Usage"/> is
 /// always empty and <see cref="UsageReadAt"/> always null - an absent battery
 /// is already a supported state.</para>
+///
+/// <para><b>Reads.</b> <c>read_file</c>'s own <c>target_file</c> is the only
+/// Grok tool name confirmed anywhere in the repo - pinned by the real 1.0.62
+/// call in <c>Fixtures.GrokToolCall</c>. No other tool name (a grep, a glob,
+/// a fetch) has been confirmed against a real run, so nothing else is
+/// recognised by name; a tool call is still tallied by field when its
+/// <c>rawInput</c> carries a <c>command</c>, through <see
+/// cref="ReadsLedger.FromCommand"/>, regardless of <c>toolName</c>.</para>
 /// </remarks>
 internal sealed class GrokStreamReader : IAgentStreamReader
 {
@@ -88,6 +96,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
     private readonly Func<string, string> _resumeCommand;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private readonly HashSet<string> _counted = [];
+    private readonly ReadsLedger _reads = new();
 
     private string _buffer = "";
     private string _textBuffer = "";
@@ -111,8 +120,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
     public long PeakContextTokens => _peakContext;
 
-    // A stub for the interface; the Grok reads task (HA-1267) replaces it.
-    public IReadOnlyList<WorkLogReadDto> Reads => [];
+    public IReadOnlyList<WorkLogReadDto> Reads => _reads.Ranked();
 
     /// <summary>
     /// Always empty - this vocabulary carries no rate-limit event. See the
@@ -178,8 +186,26 @@ internal sealed class GrokStreamReader : IAgentStreamReader
     {
         _facts.Scan(_buffer);
         _buffer = "";
+        Tally(e);
         foreach (var said in FlushText()) yield return said;
         yield return $"  ⏺ {Text(e, "toolName")}  {ToolField(e)}";
+    }
+
+    /// <summary>
+    /// What one tool call read, into the ledger - called from <see
+    /// cref="ToolCall"/> alone, never <see cref="ToolCallUpdate"/>, so a call
+    /// and its update count once. Exactly two things, per the class remarks:
+    /// <c>read_file</c>'s own <c>target_file</c>, and any tool's
+    /// <c>rawInput.command</c> run through <see cref="ReadsLedger.FromCommand"/>.
+    /// </summary>
+    private void Tally(JsonElement e)
+    {
+        if (!e.TryGetProperty("rawInput", out var rawInput) || rawInput.ValueKind != JsonValueKind.Object) return;
+
+        if (Text(e, "toolName") == "read_file" && Text(rawInput, "target_file") is { Length: > 0 } file)
+            _reads.Add(StreamRender.Here(_root, file));
+
+        _reads.Add(ReadsLedger.FromCommand(Text(rawInput, "command")));
     }
 
     /// <summary>

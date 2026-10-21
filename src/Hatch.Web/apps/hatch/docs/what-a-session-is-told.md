@@ -338,9 +338,3 @@ Anything said while no session was running waits instead for the next
 dispatch, where it is carried under [*Said to you since the last
 session*](#said-to-you-since-the-last-session) and marked read just before
 the spawn - so it is neither lost nor delivered twice.
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `review-pull-requests-and-the-merge-train`
