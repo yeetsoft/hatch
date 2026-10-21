@@ -38,7 +38,10 @@ hatch work --workspace /clones           clone what the board binds, into /clone
 
 - `--dry-run` claims nothing, spawns nothing and clones nothing, even where a
   workspace is set, and prints the prompt a session would be handed ([what a
-  session is told](what-a-session-is-told)). It beats `-i`.
+  session is told](what-a-session-is-told)). It beats `-i`. Ahead of the
+  prompt it prints the header a claimed run would have acted on: `# <KEY>
+  <From> -> <To>`, `# model <model>, effort <effort>`, the playbook line, and
+  `# tools: <denied, or "all">`.
 - `-i` runs the session in your terminal instead of headless. There is no
   readout then, since the terminal is the session's.
 - `--quiet` prints nothing until the increment is finished.
@@ -59,6 +62,23 @@ there and the changes are theirs.
 It beats once against **Agents → Runners**, so an increment run by hand shows
 beside the loops rather than being a session nobody can see.
 
+### The claim
+
+A claim is a five-minute lease on the ticket, taken before the session spawns
+and refreshed by a heartbeat every `max(5s, ttl/5)` — four heartbeats inside
+one lease, so one missed beat is never the difference between holding it and
+losing it. A `409` on a heartbeat means the lease is already gone — preempted,
+or taken by somebody else's claim — and the runner kills the session and its
+whole process tree at once, writing nothing further for it. Any other
+heartbeat failure is weather and is retried, but one that keeps failing past
+the ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops
+the session itself rather than let it keep working a ticket the board may
+already have handed to somebody else.
+
+There is no wall-clock cap on an increment beyond that: a session runs as
+long as it has a lease to renew. Ctrl-C waits up to ten seconds for the
+session's own output to drain before it lets go.
+
 ### What it prints
 
 The opening banner, `🥚🥚🥚🥚🥚 STARTING WORK ON <KEY>`, names the ticket, what
@@ -67,7 +87,15 @@ effort, and the runner's name with which increment of the night this is. The
 session's tool calls stream under it, with a thinking-token pulse and a
 heartbeat naming what it is still waiting on: the agent CLI's own default
 output prints nothing until the run ends, and four minutes of blank terminal is
-indistinguishable from a hang. A glyph row closes it:
+indistinguishable from a hang.
+
+The session opens and closes with its own id, `hatch: session <id>` followed
+by `hatch:   join it with  claude --resume <id>`, so either end of a run
+carries the command to reattach to it. It closes with one more line, `hatch:
+done` or `hatch: ended with an error`, the minutes, the turns and the cost:
+`hatch: done in 4m12s, 9 turns, $0.86`. `--quiet` holds every line back until
+the increment finishes, then prints that closing prose whole, exactly as an
+attended run would have seen it as it happened. A glyph row closes it:
 
 ```
 🐣   the ticket moved, a conflict was resolved, or a fix was pushed
@@ -114,6 +142,41 @@ a line to the log.
 ```
 
 With `-i`, the exit code is the session's own.
+
+### A check increment
+
+An issue whose column has a check playbook ([Rows that edit, and rows that
+judge](playbooks#rows-that-edit-and-rows-that-judge)) runs the same increment
+with one difference throughout: it ends in a verdict, not a move.
+
+The tree is read before anything is applied, in every checkout the increment
+entered: `git status --porcelain` must be empty, and `HEAD` must be exactly
+where the runner left it. Only then does the runner ask the board to apply
+the session's verdict.
+
+- **A fail is an ordinary move.** The first one sends the ticket back to the
+  build column with the findings as a comment, and counts as progress, not a
+  stall.
+- **A second consecutive fail is held.** The board moves nothing and asks a
+  person instead; the runner writes no comment of its own.
+- **A dirty tree, a moved `HEAD`, or a session that ended with no verdict at
+  all counts as a stall** ([Stalls](#stalls)) — nothing is applied, and
+  issues filed during the session count for nothing: a check that filed
+  children and recorded no verdict is still a failed increment.
+- **A tree check or an apply call that itself fails counts no stall.** The
+  runner prints the error and says it does not know whether the tree was
+  clean, or whether the verdict was applied.
+- **A lost lease, a usage limit, a preemption or a hard limit skips the tree
+  check and the apply call altogether** — none of them is this ticket's
+  verdict to apply.
+
+`hatch work --dry-run` prints the two destinations under the `# tools:` line:
+`# check: pass -> <column>, fail -> <column>`. No other playbook prints that
+line. `hatch work -i` runs the same tree check and the same apply, but
+attended, so nothing is let go or counted as a stall: it comments that the
+verdict was not applied on a changed tree, that the session ended without one
+on no verdict, and says so on the terminal with no comment at all if the
+apply call itself fails.
 
 ## The loop: `hatch go-to-work`
 
@@ -230,6 +293,15 @@ skip with `k`: none counts toward a stall or toward the three failed increments
 below, and a session stopped by a hard limit published what it left.
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
 
+Running out of usage commits and pushes whatever the session left onto the
+issue's own branch, and the runner writes one comment: that it ran out, when
+it expects to resume, and the `claude --resume` command for that session. No
+question is asked, and nothing blocks the next dispatch — the loop itself
+stops taking tickets until the account resets, obeying every bound
+meanwhile, and waiting out a limit still fetches its own checkout's trunk
+every ten minutes, restarting as a newer build the same way a claimed pass
+would if its own source changed there in the meantime.
+
 ### Bounds, timeouts and stopping
 
 None is set by default. An unattended run that stopped for a reason nobody
@@ -282,7 +354,10 @@ stopped, how many increments and what they cost, what moved, and what stalled.
 ### Restarts
 
 A loop whose own source changed on the trunk asks to come back as the new
-build — exit 75, because a process cannot rebuild itself.
+build — exit 75, because a process cannot rebuild itself. Its own source is
+`scripts/hatch.sh`, `scripts/hatch.ps1`, `src/Hatch.Cli` and
+`src/Hatch.Contracts` — the loop itself, the contract it is built against,
+and the two wrappers that run it.
 
 ```
 hatch go-to-work --restart-after 60   come back as a newer build at least that often (default 30)
@@ -302,7 +377,12 @@ started as, and all three flags do nothing there.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it catches the 75, rebuilds and runs the loop again, carrying the
-night's totals forward, so a restart cannot outspend `--max-spend`.
+night's totals forward, so a restart cannot outspend `--max-spend`. A failed
+rebuild is never fatal: the supervisor says so and carries on with the binary
+already there rather than ending the night over it. On Windows, the
+PowerShell supervisor runs the loop from a copy of the build made under
+`%TEMP%`, since Windows will not let a rebuild overwrite a binary a running
+process is still holding open.
 
 Windows client editions refuse scripts by default (execution policy
 `Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
@@ -340,6 +420,13 @@ longer collide over the board — the claim divides it — but they would still
 collide over a tree they share, one increment's reset landing in the middle
 of another's branch. Two checkouts, two loops, and both are welcome, whether
 each loop found its checkout by standing in it or by naming it.
+
+The lock itself lives outside the checkout, under the system's temporary
+directory, named for the checkout's canonical path rather than the path as
+typed — so two spellings of the same checkout (a symlink, a different drive
+letter case) still take the same lock. A lock left by a process that is no
+longer running is cleared automatically, with one line on the terminal saying
+so, rather than refusing a loop nothing is actually holding the checkout for.
 
 A loop with none of its own checkouts of what a board binds can still serve
 it. **Cloning is on by default**: an unset `HATCH_WORKSPACE` is a per-user
