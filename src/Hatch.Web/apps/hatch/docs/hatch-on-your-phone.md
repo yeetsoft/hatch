@@ -12,9 +12,9 @@ opening it shows a splash screen, then the board, full-screen, with no
 address bar.
 
 **iPhone, Safari.** Open the same address, then Share → **Add to Home
-Screen**. On iOS 26 and later that's already a standalone app. On an earlier
-iOS the icon still appears, but opens inside Safari with the usual browser
-bar.
+Screen**. From iOS 26 every home-screen site opens as a standalone app, with
+nothing further to turn on. On an earlier iOS the icon still appears, but
+opens inside Safari with the usual browser bar.
 
 **Desktop, Chrome or Edge.** The address bar itself offers to install Hatch —
 an icon at its right edge, or the browser's own menu.
@@ -26,7 +26,22 @@ elsewhere — a pull request in the GitHub app, a ticket key in a chat — opens
 in the already-running app, once Android has been told the app may answer
 for it (next); on iOS it cannot be, see *What iOS cannot do* below. A link
 that leaves Hatch still opens outside it, in a tab that closes back to the
-app rather than stacking up behind it.
+app rather than stacking up behind it. Everything Hatch does stays in that one
+window — a card's summary, a move, the key a confirmation shows — and **Back**
+returns to exactly where you were.
+
+At phone width the board draws **stacked**: each column is a collapsible
+section, one under another, with the shipped and shelved columns starting
+collapsed, and a **New** button leads the filter bar. A toggle at the right of
+the bar reads **Full board** while the board is stacked, and **Stacked view**
+while it is the full board; it brings back the usual side-by-side columns. The
+choice is remembered per browser (in `localStorage`, under `hatch.board.view`),
+and stacked is the default. Off the phone the board is always the full one.
+
+On a phone the board opens on what is waiting on you and a **New issue**
+button, with the columns stacked one under another instead of side by side. A
+**Full board** toggle, remembered per browser, brings the columns back side by
+side.
 
 ## Letting it own links on Android
 
@@ -35,9 +50,10 @@ link tapped elsewhere still opens the browser. Two values do that, set once
 per phone:
 
 - **The package name** — `chrome://webapks` in Chrome, off Hatch's entry.
-- **The certificate fingerprint** — off the installed package, with
-  `apksigner verify --print-certs` or any on-device package inspector that
-  shows a signing certificate's SHA-256.
+- **The certificate fingerprint** — off the installed package.
+  `adb shell pm path <package>` finds its APK, then `apksigner verify
+  --print-certs` on that file prints the certificate; any on-device package
+  inspector that shows a signing certificate's SHA-256 does as well.
 
 Both are a deploy-time setting: `HATCH_ANDROID_PACKAGE` and
 `HATCH_ANDROID_CERT_FINGERPRINT`, in the same `.env` file beside
@@ -47,8 +63,10 @@ values to whoever runs this Hatch.
 
 Once they're set and the stack restarted, reinstalling the app makes Android
 re-check, or `adb shell pm verify-app-links --re-verify <package>` from a
-computer with the phone attached. If verification never takes, Settings →
-Apps → Hatch → **Open by default** → **Add links** always works instead.
+computer with the phone attached. Once it worked, Settings → Apps → Hatch →
+**Open by default** shows the origin as *verified*, which is how you know. If
+verification never takes, **Add links** on that same screen always works
+instead.
 
 ## What iOS cannot do
 
