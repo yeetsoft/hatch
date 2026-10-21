@@ -661,4 +661,25 @@ public sealed class PromptTests
         Assert.Contains("_findings left out: this section is at its size cap_", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(big, prompt, StringComparison.Ordinal);
     }
+
+    // ---- HA-1210: a session is pointed at hatch-planning.md, never the whole of hatch.md ----
+
+    [Fact]
+    public void The_prompt_never_points_a_session_at_the_whole_of_hatch_md()
+    {
+        var composed = new[]
+        {
+            Prompt.Compose(Fixtures.Work("AER-12")),
+            Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk)),
+            Prompt.Compose(Fixtures.Work("AER-12", noLink: true)),
+        };
+
+        foreach (var text in composed)
+            Assert.Contains("docs/hatch-planning.md", text, StringComparison.Ordinal);
+
+        // A session's context is smaller than the file, so hatch.md may only be pointed at by anchor, never handed over whole.
+        foreach (var text in composed.Append(Prompt.WrapUp("AER-12")))
+            Assert.False(System.Text.RegularExpressions.Regex.IsMatch(text, @"docs/hatch[.]md(?!#)"),
+                $"a prompt points at the whole of docs/hatch.md:\n{text}");
+    }
 }
