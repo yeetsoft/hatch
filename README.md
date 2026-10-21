@@ -130,11 +130,11 @@ src/
   Hatch.Web/
     apps/hatch       the board's own SPA, served at /apps/hatch/
     apps/design      the design gallery, served at /apps/design/
+    apps/site        the GitHub Pages site, served at the Pages address
     packages/ui      @hatch/ui — the design system
 containers/
   hatch-db           Postgres, with Hatch's own init
   hatch-runner       the CLI, packaged as a container (the `runner` profile)
-site/                the GitHub Pages site: quick start, how to Hatch, the runner manual
 ```
 
 Always `make`, never a bare `dotnet` — the npm step needs the shell profile.

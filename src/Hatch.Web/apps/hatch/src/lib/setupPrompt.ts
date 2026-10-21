@@ -11,7 +11,7 @@
  * every place that offers the line draws nothing rather than a line that sets
  * somebody up from the wrong place.
  *
- * The sentence is the one site/index.md shows on the Quick start; a change to
+ * The sentence is the one apps/site/content/setup.md shows; a change to
  * one is a change to the other.
  */
 export const SETUP_PROMPT_LEAD = 'Set me up with Hatch:';
