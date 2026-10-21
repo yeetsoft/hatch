@@ -213,6 +213,22 @@ summary.site-action::-webkit-details-marker {
   color: var(--ink);
 }
 
+/* A reserved place for HA-723's diagrams: sized before the SVG arrives, so
+   dropping one in moves nothing else on the page. */
+.site-figure {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.site-figure svg {
+  width: 100%;
+  height: auto;
+}
+
 @media (min-width: 40rem) {
   .site-hero h1 {
     font-size: var(--t-hero);

@@ -55,14 +55,6 @@ describe('the home page', () => {
     expect(list.match(/<li\b/g)).toHaveLength(points.length)
   })
 
-  it('leaves How it works and Docs holding nothing but their heading', () => {
-    for (const title of ['How it works', 'Docs']) {
-      const section = sectionsOf(html).find((s) => s.includes(`>${title}<`))
-      expect(section, title).toBeDefined()
-      expect(section?.replace(/<\/?section\b[^>]*>/g, '').replace(/<h2\b[^>]*>[^<]*<\/h2>/, '').trim()).toBe('')
-    }
-  })
-
   it('names the repository nowhere but through the marker, with the three install lines', () => {
     const code = html.match(/<code>([\s\S]*?)<\/code>/)?.[1] ?? ''
     expect(code).toContain("git clone &lt;the repository's clone URL&gt; hatch")

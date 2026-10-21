@@ -80,6 +80,38 @@ docker compose up -d</code></pre>
       </section>
       <section class="site-section" aria-labelledby="how-title">
         <h2 id="how-title">How it works</h2>
+        <p>
+          Hatch is a web app and a Postgres database, brought up with <code>docker compose up -d</code>. The board's
+          own code decides what an agent may pick up next, holds the claim while it works, and runs the merge train
+          that lands approved pull requests once their build is green.
+        </p>
+        <p>
+          <code>hatch go-to-work</code> asks the board for the next increment, prepares a clean checkout, and spends
+          one headless Claude Code session on it — the ticket as the brief, a playbook as the instructions. Hatch
+          watches the session's Claude usage, so a night's work stops before your plan's budget does.
+        </p>
+        <p>
+          The work lands in your repository on your forge — branches, pull requests, build checks and merges —
+          through <code>git</code> and <code>gh</code>; Hatch names no forge and needs no webhook. The board runs
+          anywhere Docker runs, under your own domain, with Google sign-in when you put the wall up; there is no
+          account to make and no service in the middle.
+        </p>
+        <!-- The moving parts: you, the board, the runner, a Claude Code session and
+             your repository on the forge, the loop drawn as
+             ticket -> dispatch -> increment -> pull request -> review -> merge.
+             Inline SVG using the tokens' CSS variables, per the epic (HA-715). -->
+        <figure class="site-figure" data-diagram="moving-parts">
+          <figcaption>The moving parts</figcaption>
+        </figure>
+        <!-- The life of a ticket: the stock columns left to right (Draft, Breakdown,
+             Backlog, To Do, In Progress, In Review, Done - docs/hatch.md, Status),
+             each marked with whose it is - you at Draft, Backlog, In Review and
+             Done; the agent at Breakdown, To Do and In Progress - the merge train
+             crossing the last gate (In Review -> Done) on its own.
+             Inline SVG using the tokens' CSS variables, per the epic (HA-715). -->
+        <figure class="site-figure" data-diagram="life-of-a-ticket">
+          <figcaption>The life of a ticket</figcaption>
+        </figure>
       </section>
       <section class="site-section" aria-labelledby="docs-title">
         <h2 id="docs-title">Docs</h2>
