@@ -292,7 +292,7 @@ public sealed class PickerTests
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
-        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+        var picked = await MakePicker(h, agent: "ollama", adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
@@ -310,7 +310,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "qwen3-coder:30b") });
 
-        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+        var picked = await MakePicker(h, agent: "ollama", adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Skipped, picked.Outcome);
         Assert.Equal([$"  AER-1  {Unpulled}"], picked.Skipped);
@@ -345,13 +345,13 @@ public sealed class PickerTests
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
-        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+        var picked = await MakePicker(h, agent: "ollama").PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Null(picked.Skipped);
         await picked.Claim!.ReleaseAsync();
 
-        var unrefusing = await MakePicker(h, adapter: new FakeAdapter())
+        var unrefusing = await MakePicker(h, agent: "ollama", adapter: new FakeAdapter())
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, unrefusing.Outcome);
