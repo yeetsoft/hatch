@@ -569,6 +569,79 @@ summary.site-action::-webkit-details-marker {
   font-weight: 600;
 }
 
+/* The search field inserted at the top of each sidebar instance
+   (docsSearchField.ts, HA-1280). Mirrors the .hatch-docs-search* rules in
+   apps/hatch/src/App.css:3276-3340 on the site's own names. The list's own
+   selector is scoped under its wrapper, not bare like the app's: the app gives
+   its own sidebar list a class (.hatch-docs-sidebar-list) the generic
+   .site-docs-sidebar ul reset above has no equivalent exclusion for, so a bare
+   .site-docs-search-list here would lose its top margin to that reset. */
+.site-docs-search {
+  margin-bottom: var(--sp-3);
+}
+
+.site-docs-search-input {
+  width: 100%;
+}
+
+.site-docs-search .site-docs-search-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  border: thin solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  /* A relative cap, not a fixed one - the sidebar column this sits in is
+     itself sticky with its own max-height (below), so the list scrolls inside
+     that column rather than floating over the text. */
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+.site-docs-search-row + .site-docs-search-row {
+  border-top: thin solid var(--line);
+}
+
+.site-docs-search-row a {
+  display: block;
+  padding: var(--sp-1-5) var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.site-docs-search-row.is-active a {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.site-docs-search-title {
+  display: block;
+  font-weight: 600;
+}
+
+.site-docs-search-heading {
+  display: block;
+  color: var(--muted);
+}
+
+.site-docs-search-snippet {
+  display: block;
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+.site-docs-search-row mark {
+  background: none;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.site-docs-search-status {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
 @media (min-width: 40rem) {
   .site-docs {
     display: grid;
