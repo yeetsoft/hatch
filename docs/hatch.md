@@ -753,7 +753,8 @@ through the gate that was supposed to stop it.
 `EfHatchIssue` — `ProjectId`, `Number`, `Type`, `Title`, `Description`,
 `StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
-`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestReadAt`,
+`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestHeadSince`,
+`PullRequestReadAt`,
 `ClosedAt`, `ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
 `CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
@@ -812,12 +813,16 @@ board's own identity for it (see [checking the branches in
 review](#checking-the-branches-in-review)), so a pull request nobody recorded
 still has its build read.
 
-**The four fields after it are what the forge last said of that pull request.**
+**The five fields after it are what the forge last said of that pull request.**
 `PullRequestMergeState` is `clean`, `blocked`, `behind`, `dirty`, `unstable`,
 `draft` or `unknown`; `PullRequestReviewDecision` is `none`, `approved`,
 `changes-requested` or `review-required`; `PullRequestHeadSha` is the commit
-that was read, and `PullRequestReadAt` is when. All four are nullable, and null
-means *not read* — which is not `unknown` or `none`, both of which are things
+that was read, and `PullRequestReadAt` is when. `PullRequestHeadSince` is when
+the head sha last changed as the board read it: it is set on the first read and
+whenever the sha differs from the one held, and a repeat read, a new merge state
+or a new review decision on the same head leaves it. It rides on the review read
+(`ReviewCheckDto.PullRequestHeadSince`), and nothing reads it yet. All five are
+nullable, and null means *not read* — which is not `unknown` or `none`, both of which are things
 the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
 them, and when the url changes they are cleared together with
 `PullRequestClosedAt`, since a state read of one pull request says nothing of
@@ -4977,6 +4982,19 @@ that calls the pull request clean on the judged sha with no checks having run
 --merge --admin --match-head-commit`. Both outcomes are `WorkKinds.Merge`,
 which `MergeTrain` already carried, and `MergeTrain` itself did not change for
 it.
+
+**A row the train brought current keeps the head.** The head is re-picked on
+every read, so a row that became eligible again ahead of one the train had
+just updated would take the head back and throw the build away. When the
+train brings a branch current it says so with `PUT
+/issues/{key}/brought-current`, which stores `BroughtCurrentAt` and
+`BroughtCurrentTrunkSha` on the issue and writes a `brought_current` event. A
+row so marked keeps the head over an otherwise-earlier row for as long as the
+mark names the trunk sha its own clean merge check still reads, it is neither
+a hold nor a pushback, and it has not changed column since the mark; of
+several marked rows the latest mark wins. A mark outside those terms simply
+stops counting, and the head is the first eligible row in order as before. The
+route gives a `409` to a row outside the merges column.
 
 #### Landing on the trunk
 

@@ -31,7 +31,11 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// <param name="Number">The pull request's own number. Null where it was not read.</param>
 /// <param name="MergeState">One of <see cref="MergeStates"/>. Null where it was not read - a failed read, a local path, a fake that says nothing - which is not the same as <see cref="MergeStates.Unknown"/>.</param>
 /// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>. Null where it was not read, which is not the same as <see cref="ReviewDecisions.None"/>.</param>
-public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null, string? ReviewDecision = null);
+/// <param name="Base">The branch the pull request merges into, by name. Null where it was not read.</param>
+/// <param name="BaseSha">That branch's tip at the time of this read. Null where it was not read.</param>
+public sealed record PullRequestAnswer(
+    string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null,
+    string? ReviewDecision = null, string? Base = null, string? BaseSha = null);
 
 /// <summary>What a forge answered about a merge attempt: whether it took, or why it did not.</summary>
 /// <param name="Merged">True where the merge went through.</param>
@@ -194,7 +198,7 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try
@@ -206,7 +210,8 @@ public sealed class GhForge(
             return new PullRequestAnswer(
                 ClassifyState(state), null, Text(doc.RootElement, "headRefOid"), number,
                 ClassifyMergeState(Text(doc.RootElement, "mergeStateStatus"), isDraft),
-                ClassifyReviewDecision(Text(doc.RootElement, "reviewDecision")));
+                ClassifyReviewDecision(Text(doc.RootElement, "reviewDecision")),
+                Text(doc.RootElement, "baseRefName"), Text(doc.RootElement, "baseRefOid"));
         }
         catch (JsonException)
         {

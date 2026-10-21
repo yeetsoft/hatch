@@ -406,6 +406,11 @@ public class AdminSurfaceTests
         // PullRequestStateController.
         "PullRequestStateController.PutPullRequestState",
 
+        // The merge train saying it just brought a branch current, cut the same
+        // way: a runner reports an update it performed, and a wrong one only
+        // moves which row the train's head is on. See BroughtCurrentController.
+        "BroughtCurrentController.PutBroughtCurrent",
+
         // What a check session judged about an issue - pass or fail - and
         // Hatch-scoped for the same reason the two verdicts above are: the
         // caller is whatever ran the check, and a verdict only an operator
