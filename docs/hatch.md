@@ -4966,7 +4966,7 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s five halves (`MergeTrain.cs:161, 258,
+which gates every one of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
 370, 470, 520`): a runner acts only on a project it was elected to drive.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
@@ -4977,7 +4977,13 @@ reads build and merge-conflict verdicts. Cross-reference
 [Checking the branches in review](#checking-the-branches-in-review), which
 already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
-this new section is that explanation.
+this new section is that explanation. The head's own build is read on this
+clock too (`ReadHeadBuildsAsync`): the sha and branch come from the head's
+clean merge check, so it needs no git, and a pass is noticed within one
+`--merge-interval` of the forge reporting it rather than whenever a runner next
+finishes an increment. A verdict that concluded is read once per sha; a
+`pending` one, and a `none` inside the poll's ten-minute window, are asked
+again every tick.
 
 **A merge with no checks rides the same train.** A merge judged under the
 last item of the judge's list — a project that requires no checks, or a forge

@@ -8,7 +8,8 @@ namespace Hatch.Cli;
 /// is merged, one judged <see cref="WorkKinds.Update"/> is brought current with
 /// the trunk, and one judged <see cref="WorkKinds.Pushback"/> is carried back to
 /// review, and a trunk-landing row the board judged <see cref="WorkKinds.Land"/>
-/// is landed - all five told to the board.
+/// is landed - all five told to the board - and the build on the head's
+/// branch is read on the same clock.
 /// </summary>
 /// <remarks>
 /// The clock is optional and lives apart from <see cref="TickAsync"/> itself:
@@ -21,6 +22,7 @@ public sealed class MergeTrain : IAsyncDisposable
 {
     private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
     private readonly Dictionary<(string Path, string Key), string> _seenUpdate = [];
+    private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
 
@@ -68,8 +70,8 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the pull request, merge, update, pushback and landing halves in
-    /// that order, against what is in review right now. Nothing it does throws
+    /// Takes the pull request, head build, merge, update, pushback and landing
+    /// halves in that order, against what is in review right now. Nothing it does throws
     /// out: a cause that persists across calls is said once and not every
     /// call.
     /// </summary>
@@ -122,6 +124,12 @@ public sealed class MergeTrain : IAsyncDisposable
         // PullRequestUrl is one field on one issue however many repositories
         // its project binds.
         await ReadPullRequestsAsync(runtime, complain, review, ct);
+
+        // Before the merge half, and on this clock rather than the poll's: the
+        // poll waits on a runner between sessions, and a head whose build
+        // passed a moment ago should not wait for one. It reads the forge and
+        // writes the board and touches no git, so it never overlaps a session.
+        await ReadHeadBuildsAsync(runtime, complain, review, ct);
 
         await MergeApprovedAsync(runtime, complain, review, ct);
 
@@ -311,6 +319,101 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (HatchException e)
         {
             complain($"hatch: {issue.Key} - the board would not take the pull request's state - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The head build half: for the head of the merge train, read the build on
+    /// the tip its clean merge check names and put it on the board, unless
+    /// something already vouches for that sha. Only the head is read - it is the
+    /// one row whose build the train is waiting on - and of any
+    /// <see cref="WorkKinds"/>, since a head judged <see cref="WorkKinds.Hold"/>
+    /// while its build is pending is the whole point.
+    /// </summary>
+    /// <remarks>
+    /// The poll reads the same builds, but only between sessions, and it is the
+    /// half that reads git; this one needs none, since the train already holds
+    /// the branch and sha from the head's own clean merge check. A verdict that
+    /// concluded (see <see cref="Poll.Concluded"/>) is remembered per sha in
+    /// <c>_seenBuild</c> and not asked again; a <c>pending</c> one, a
+    /// <c>none</c> inside <see cref="Poll.NoneWindow"/> and one the board
+    /// refused are asked again every interval. <c>failed</c> is the same
+    /// per-checkout dedupe <see cref="ReadPullRequestsAsync"/> keeps, and the
+    /// outer try/catch keeps anything unanticipated here from propagating into
+    /// <see cref="TickAsync"/> and aborting the halves that run after it.
+    /// </remarks>
+    private async Task ReadHeadBuildsAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        var failed = new HashSet<string>();
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.MergeWork?.IsHead != true || !runtime.Readout.Drives(issue.ProjectKey)) continue;
+                ct.ThrowIfCancellationRequested();
+
+                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
+                    .FirstOrDefault();
+                if (where is null || where.Remote is null || failed.Contains(where.Path)) continue;
+
+                var clean = issue.MergeChecks
+                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean);
+                if (clean is not { Branch: { } branch, BranchSha: { } sha }) continue;
+
+                var key = (where.Path, issue.Key);
+                if (_seenBuild.TryGetValue(key, out var seen) && seen == sha) continue;
+
+                var stored = issue.BuildChecks?.FirstOrDefault(c => c.Canonical == where.Canonical);
+                if (Poll.VouchesBuild(stored, sha))
+                {
+                    _seenBuild[key] = sha;
+                    continue;
+                }
+
+                var answer = await runtime.Forge(where.Path, where.Canonical).ReadAsync(sha, ct);
+                if (answer.Read is not { } read)
+                {
+                    failed.Add(where.Path);
+                    // The same words as the poll's, so a cause both share reads as one line.
+                    var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                    if (answer.Why is { } why) complain($"hatch: could not read builds in {name} - {why}");
+                    continue;
+                }
+
+                BuildCheckDto? kept;
+                try
+                {
+                    kept = await runtime.QuietBoard.BuildCheckAsync(
+                        issue.Key,
+                        new BuildCheckRequest(
+                            where.Remote, branch, sha, read.Verdict,
+                            read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),
+                            runtime.RunnerName),
+                        ct);
+                }
+                catch (HatchException e)
+                {
+                    // Not remembered: a verdict the board refused is asked again.
+                    complain($"hatch: {issue.Key} - the board would not take the build on its branch - {e.Message}");
+                    continue;
+                }
+
+                // What the board says it now holds, which is what says when it
+                // first heard about the sha. A board that answered nothing has
+                // only what was read: a none is asked about again.
+                var concluded = kept is not null
+                    ? Poll.Concluded(kept)
+                    : read.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
+                if (concluded) _seenBuild[key] = sha;
+
+                if (stored is null || stored.Sha != sha || stored.Verdict != read.Verdict)
+                    runtime.Say.Line($"hatch: {Poll.BuildWords(issue.Key, sha, read)}");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not read head builds - {e.Message}");
         }
     }
 
