@@ -16,10 +16,14 @@ a row appears within a minute of it starting and drops off two hours after it
 stops. Each row has:
 
 - **Runner** - its name, whether it is a `loop` or `one increment`, where it
-  runs, the agent it runs, and what it drives.
+  runs, the agent it runs, and what it drives. Where it runs reads
+  `<hostname>:<checkout path>`, with the host's short name and the path as it
+  was typed.
 - **Doing** - `Gone`, `Out of usage until …`, `Paused`, `Stopping`, `Working
   <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
-  answering reads `Gone` whatever it was last asked to do.
+  answering reads `Gone` whatever it was last asked to do. Silence is ninety
+  seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
+  zero or less is not believed, and ninety stands.
 - **Last said** - the last line it reported.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
@@ -34,7 +38,12 @@ on a paused one), **Stop after this one**, and a **Bounds** form - **Under**,
 **Max runs**, **Max spend**, **Until** (an hour, not just a day), with
 **Save bounds** and **Revert**. A press only records what the board wants:
 the runner reads it between increments, at its next heartbeat, never in the
-middle of one. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
+middle of one. Nothing on the server starts or stops a process, which is why
+the same buttons work for a runner in a container or on a laptop behind a
+router: the loop does the reading, and the loop is what exits. Only a person
+can press them. A key may read the runners and heartbeat as one, but never set
+a bound or a control, since an agent that could raise its own **Max spend**
+could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
 
 A runner holding a ticket shows on that ticket too. On the board, its card

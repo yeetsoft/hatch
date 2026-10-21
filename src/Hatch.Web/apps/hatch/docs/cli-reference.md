@@ -7,7 +7,12 @@ summary: Every hatch command, what it takes, what it prints, and what it leaves 
 
 This is the whole surface of one binary, `hatch`, published for macOS, Windows
 and Linux. `hatch --help` lists it, and every command takes `-h` for its own
-usage block. Which origin it talks to, and which key it names itself with, come
+usage block. `-h` and `--help` count only as the first argument: four commands
+take prose, so a comment that reads `--help` is a body, not a request for help.
+A usage mistake is different from a failed call (see [When a call
+fails](#when-a-call-fails)): it prints `hatch: ` and what was wrong, a blank
+line, then that command's usage block, all on standard error, and exits `1`.
+Which origin it talks to, and which key it names itself with, come
 from three layers of settings, highest first: [the runner](the-runner) has how
 to get the binary and what those layers are, and [`environment-variables`](environment-variables) has
 every variable.
@@ -95,6 +100,13 @@ hatch board
 
 Prints the columns and how many cards each holds, then how full each WIP slice
 is, where a limit is set. Takes nothing and writes nothing.
+
+Each column is one line, `<Name>: <count>`, with ` (terminal)` or ` (deferred)`
+after the name on a column that is one. Past the count it marks the cards that
+are not ordinary, and only the marks that have any: `(n emergency)`,
+`(n expedited)`, `(n low)`, `(n economy)` and `(n paused)` for priority, then
+`(n express)` and `(n pre-approved)` for a card that carries its approval in
+advance. A stock board has none of these, so its lines are a name and a number.
 
 ### next
 
@@ -240,8 +252,11 @@ that spawn an agent that reads git, and it needs no checkout to run.
 - `--repo <path>` reads git where the path says instead of in the working
   directory.
 
-A sha that is not on the trunk there is refused before anything is sent. The
-write is an event under the key's name.
+Four things are refused before anything is sent, each as one `hatch: ` line:
+the checkout has no `origin` remote, so a project's binding could never match
+it; no branch can be named as the trunk there, which `HATCH_BASE_BRANCH`
+settles; the sha does not resolve to a commit; or it resolves and is not on the
+trunk, in which case land it first. The write is an event under the key's name.
 
 ### verdict
 
@@ -252,6 +267,13 @@ hatch verdict AER-12 pass|fail ["findings"]
 A check session's own verdict, with its findings as the optional third
 argument. A person rarely types it. Anything but `pass` or `fail` is refused
 before a request is made.
+
+It is recorded against the issue's live claim, one verdict to a claim, so a
+second call replaces the first. Nothing moves when it is recorded: the runner
+applies it after the session ends. Findings over 100,000 characters are
+refused, and so is a verdict on a claim that is not under a check playbook,
+with `a verdict needs a check playbook covering <key> where it stands, and none
+does`. A key may call it, and so may a person.
 
 ### depends
 
@@ -268,8 +290,14 @@ ticket's edges again.
 - `--remove <key>` says it waits on it no longer.
 
 An edge gates one move: the one into the column where the code gets written. It
-clears when the issue it names is merged. Filing stories in order is not the
-same as saying they are ordered; this is how to say it.
+clears when the issue it names reaches a terminal column. Filing stories in
+order is not the same as saying they are ordered; this is how to say it.
+
+Saying an edge that already stands is not an error and writes nothing. Four
+edges are refused, each by name: an issue on itself, on one of its ancestors,
+on one of its descendants (both of those "could never be satisfied", since a
+parent is not done until its work is), and one that would close a cycle, which
+the refusal puts as the other issue "is already waiting on this issue".
 
 ### one-pr
 
@@ -312,6 +340,10 @@ paragraph has to be read twice and replied to. With no options the question is
 open-ended and is answered in prose. [Questions and
 decisions](questions-and-decisions) has what happens to the ticket from there.
 
+It prints `asked question #<n> on <key> as <author>`, then says the ticket will
+not be dispatched again until it is answered, with the `hatch answer` line to
+do it and the ticket's URL.
+
 ### questions
 
 ```
@@ -331,6 +363,10 @@ number takes that option, Enter alone leaves the question open, a trailing `\`
 keeps typing, and `^D` stops. It is one at a time on purpose: six printed at
 once get answered in aggregate, which is how a wrong assumption gets in. Each
 answer is written under the key's name.
+
+It ends with `answered <n> of <total>` and, if any were answered, a `hatch work`
+line for the tickets that are now clear, since answering is only half of it.
+With nothing open it prints `hatch: nothing is waiting on an answer` instead.
 
 ### api
 
@@ -501,6 +537,10 @@ The first has a second shape once a retry happened: `hatch: could not reach
 until `HATCH_RETRY_SECONDS` runs out, ninety by default and `0` for a single
 try, and `for 90s` is the only visible sign that any retrying happened at all.
 Without it, the call was refused on the spot.
+
+Retrying is about a Hatch that cannot be reached; a Hatch that answers too
+slowly is a different case. Every call gives up after two minutes, whatever
+`HATCH_RETRY_SECONDS` says.
 
 The two `401`s tell apart a key that was sent and refused from no key sent at
 all to a Hatch that wants one: the first sends you to check the key, the second

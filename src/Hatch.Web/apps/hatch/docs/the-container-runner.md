@@ -98,12 +98,22 @@ entrypoint exports before it starts the loop. If none is saved, the container
 says so once and waits, asking again every 60 seconds, so the order you do
 these two things in does not matter.
 
+Hatch stores that credential obfuscated, not encrypted, and the route that
+hands it out is refused to every caller when the wall is up, which is why
+`HATCH_KEY` is no help here. `hatch` carries its own decoder for it, and that
+is why the image has no `jq`, `python` or `openssl`.
+
 It reads the credential **once, at start**. Save a new one on the Settings page
 and the container keeps the old one until it is restarted:
 
 ```
 docker compose --profile runner restart runner
 ```
+
+A restart, or a `docker stop`, is safe in the middle of a ticket. The
+entrypoint ends by `exec`ing `hatch go-to-work`, so the loop is the container's
+first process and receives the signal itself; an increment interrupted
+mid-ticket lets go of its claim on the way out.
 
 ## Letting it push
 
@@ -225,6 +235,11 @@ Five more are set for the container, and are not for changing: `HATCH_BASE`
 above, as it arrives inside) and `IS_SANDBOX` (set to `1` by the image, because
 the `claude` CLI refuses to bypass permission prompts as root unless it is told
 it is in a sandbox, and an unattended increment has nobody to answer one).
+`IS_SANDBOX` is `claude`'s alone. `codex` needs nothing like it: its sandbox
+starts as root in the unprivileged container through `bubblewrap`, which the
+image installs, with no `security_opt` or `cap_add`. `grok` needs nothing
+either, since it is started with `--always-approve --trust` and so has no OS
+sandbox to satisfy.
 [Environment variables](environment-variables) has the full table for the whole
 of Hatch.
 
