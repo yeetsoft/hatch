@@ -54,14 +54,14 @@ describe('docs pages', () => {
     expect(html).toContain('id="prerequisites"')
   })
 
-  it('links getting-started to where-the-data-is-and-how-to-back-it-up as the site address', () => {
+  it('links getting-started to backup-restore-and-replication as the site address', () => {
     const html = site.read('docs/getting-started/index.html')
-    expect(html).toContain('href="/docs/where-the-data-is-and-how-to-back-it-up/"')
+    expect(html).toContain('href="/docs/backup-restore-and-replication/#restoring"')
   })
 
-  it('links getting-started to where-the-data-is-and-how-to-back-it-up under a base path', async () => {
+  it('links getting-started to backup-restore-and-replication under a base path', async () => {
     const projectSite = await buildSite({ base_path: 'project' })
     const html = projectSite.read('docs/getting-started/index.html')
-    expect(html).toContain('href="/project/docs/where-the-data-is-and-how-to-back-it-up/"')
+    expect(html).toContain('href="/project/docs/backup-restore-and-replication/#restoring"')
   })
 })

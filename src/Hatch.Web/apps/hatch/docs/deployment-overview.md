@@ -193,8 +193,8 @@ A malformed `Apps__AssetLinks` entry stops the API at start
 degrades quietly.
 
 The migration creates `hatch`'s schema on every start; see
-[where the data is, and how to back it up](where-the-data-is-and-how-to-back-it-up)
-for backup and restore.
+[backup, restore and replication](backup-restore-and-replication)
+for backing it up, restoring it and running it on a replica.
 
 ## How to stop
 
