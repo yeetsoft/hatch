@@ -267,7 +267,7 @@ public static class Fixtures
             Requests: requests, PeakContextTokens: peakContextTokens, PromptChars: null,
             PlaybookSource: null, PlaybookFileTrunk: null, PlaybookFileSha: null, PlaybookFileHash: null,
             Agent: null, PlaybookKey: null, PlaybookFromStatusId: null, PlaybookToStatusId: null,
-            IssueType: null, PlaybookModel: null, PlaybookEffort: null);
+            IssueType: null, PlaybookModel: null, PlaybookEffort: null, Reads: []);
 
     public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
         JsonSerializer.Serialize(
