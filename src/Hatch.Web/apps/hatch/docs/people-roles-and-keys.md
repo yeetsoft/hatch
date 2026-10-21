@@ -178,9 +178,3 @@ to sign-in instead.
 
 [One increment and the loop](one-increment-and-the-loop#sharing-a-board) says
 more about sharing one board between people and keys.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `review-pull-requests-and-the-merge-train`
