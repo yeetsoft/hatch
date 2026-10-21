@@ -172,7 +172,9 @@ The runner is told only when all five of these hold:
 
 1. An emergency ticket is actionable and unclaimed.
 2. The runner's own ticket is below emergency. Emergency work is never
-   preempted.
+   preempted, and that is judged by the ticket's *effective* level: a story or
+   task under an emergency epic is as safe as one marked emergency itself (see
+   [priority](issues#priority), which is inherited).
 3. Its ticket is last in the dispatcher's order among the live claims not yet
    told: economy before low, and low before normal and expedited.
 4. Fewer runners have already been told than there are emergency tickets
