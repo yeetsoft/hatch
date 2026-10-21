@@ -215,6 +215,81 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Standing);
     }
 
+    // ---- Tags ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingTags_StoresThemTrimmedAndLowercased()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: [" Fast ", "GPU"]));
+
+        Assert.Equal(["fast", "gpu"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task ALaterHeartbeat_OverwritesTheTagsAPriorOneReported()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
+        Assert.Equal(["gpu"], (await h.OneAsync()).Tags);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: []));
+        Assert.Empty((await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoTags_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task ATagThatBreaksTheRule_IsRefusedBeforeAnythingOnTheRowChanges()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+        var seenAt = (await h.RowAsync()).LastSeenAt;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+
+        // Not BeatAsync: it throws on anything but a value, and this refusal
+        // is the assertion.
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Tags: ["has space"]), default);
+
+        Assert.Contains("a tag has no space or comma inside", Reason(refusal.Result), StringComparison.Ordinal);
+        var row = await h.RowAsync();
+        Assert.Equal("fast", row.Tags);
+        Assert.Equal(seenAt, row.LastSeenAt);
+    }
+
+    [Fact]
+    public async Task GetRunners_AnswersTagsSortedRegardlessOfTheOrderAHeartbeatNamedThemIn()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu", "fast"]));
+
+        Assert.Equal(["fast", "gpu"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task APatchChangingAnUnrelatedField_LeavesTagsExactlyAsAPriorHeartbeatLeftThem()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
+    }
+
     // ---- Out of Claude usage ----
 
     [Fact]

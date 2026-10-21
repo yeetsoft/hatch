@@ -3,6 +3,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -98,6 +99,7 @@ public class RunnersController(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+        if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
         var kind = request.Kind?.Trim().ToLowerInvariant() switch
         {
@@ -130,7 +132,7 @@ public class RunnersController(
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id));
+            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags)));
 
             try
             {
@@ -150,7 +152,7 @@ public class RunnersController(
             }
         }
 
-        Touch(row, kind, line, now, request, forActor?.Id);
+        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags));
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
@@ -306,7 +308,7 @@ public class RunnersController(
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
         string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        Guid? forPersonId) => new()
+        Guid? forPersonId, string? tags) => new()
     {
         Name = name,
         Kind = kind,
@@ -332,6 +334,7 @@ public class RunnersController(
         Standing = request.Standing,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
         Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
+        Tags = tags,
         ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
         ForPersonId = forPersonId,
         Usage = UsageJson(request),
@@ -346,7 +349,7 @@ public class RunnersController(
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
-        Guid? forPersonId)
+        Guid? forPersonId, string? tags)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -373,6 +376,7 @@ public class RunnersController(
         if (request.Standing is not null) row.Standing = request.Standing;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
         if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
+        if (request.Tags is not null) row.Tags = tags;
 
         // A tri-state of its own: absent leaves the row's own record alone (an
         // older CLI, or hatch work's single beat, neither of which knows
@@ -459,4 +463,7 @@ public class RunnersController(
             .ToList();
         return canonical.Count > 0 ? string.Join('\n', canonical) : null;
     }
+
+    /// <summary>The normalised tags, newline-joined - or null where none survived.</summary>
+    private static string? Joined(IReadOnlyList<string> tags) => tags.Count > 0 ? string.Join('\n', tags) : null;
 }
