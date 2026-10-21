@@ -7,10 +7,13 @@ public sealed class AgentsTests
     [InlineData("claude")]
     [InlineData("codex")]
     [InlineData("grok")]
+    [InlineData("ollama")]
     public void A_known_id_resolves_to_the_adapter_of_that_name(string id)
     {
         Assert.True(Agents.Resolve(
-            id, "/x/claude", "/x/codex", "/x/grok", null, out var runner, out var adapter, out var refusal));
+            id,
+            new Settings { Base = "https://x", Key = "", ClaudeBin = "/x/claude", CodexBin = "/x/codex", GrokBin = "/x/grok" },
+            null, out var runner, out var adapter, out var refusal));
 
         Assert.Equal(id, adapter.Id);
         Assert.NotNull(runner);
@@ -20,7 +23,8 @@ public sealed class AgentsTests
     [Fact]
     public void An_unknown_id_refuses_and_names_every_known_one()
     {
-        Assert.False(Agents.Resolve("nope", null, null, null, null, out _, out _, out var refusal));
+        Assert.False(Agents.Resolve(
+            "nope", new Settings { Base = "https://x", Key = "" }, null, out _, out _, out var refusal));
 
         Assert.Equal("hatch: no such agent \"nope\" - known: claude, codex, grok, ollama", refusal);
     }
