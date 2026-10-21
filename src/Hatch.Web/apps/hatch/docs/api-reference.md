@@ -52,6 +52,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | POST | `/projects/{id}/claim` | **person** | Takes ownership of a project with none |
 | PUT | `/projects/{id}/landing` | **person** | Sets `landing`, `checksRequired`, `onePullRequest` default, and the four `autoHealBug*` fields |
 | PUT | `/projects/{id}/playbooks-source` | **person** | Toggles `repoSourced` |
+| PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -63,7 +64,8 @@ body is `ProjectLandingWriteRequest`: `Landing?`, `ChecksRequired?`,
 `OnePullRequest?`, `AutoHealBugEnabled?`, `AutoHealBugPriority?`,
 `AutoHealBugPreApproval?`, `AutoHealBugStatusId?` - `AutoHealBugStatusId` is
 the one field with a clear sentinel, `""`. The playbooks-source PUT body is
-`ProjectRepoSourcedWriteRequest(RepoSourced)`. Answers are a `ProjectDto`
+`ProjectRepoSourcedWriteRequest(RepoSourced)`. The runner-tags PUT body is
+`ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. Answers are a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -76,7 +78,9 @@ landing PUT 403s if the caller is not an owner; `landing` is `"pull-request"`
 or `"trunk"`, anything else 400s; a story that has already started work keeps
 its own `onePullRequest` fixed rather than inheriting a new default. The
 playbooks-source PUT 403s if the caller is not an owner, and 400s if the
-project binds no repository or any playbook row still names it.
+project binds no repository or any playbook row still names it. The
+runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
+breaks its format rule or a list over the count limit.
 
 ## Columns
 
