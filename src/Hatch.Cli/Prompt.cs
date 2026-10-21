@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace Hatch.Cli;
@@ -53,6 +54,17 @@ public static class Prompt
             ? issue.Description
             : "_No description. That is itself worth noting on the ticket._");
         lines.Add("");
+
+        if (work.NextBriefLimit is { } limit)
+        {
+            lines.Add("## How long the brief may be");
+            lines.Add("");
+            lines.Add($"The next increment reads a brief of at most {limit.ToString("N0", CultureInfo.InvariantCulture)} characters; this one is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)}.");
+            lines.Add("The board sends a longer description back for another analysis session, so write");
+            lines.Add("the brief under that - and where the plan will not fit, cut it into child tasks");
+            lines.Add("that each do.");
+            lines.Add("");
+        }
 
         if (repositories is { Count: > 0 })
         {
