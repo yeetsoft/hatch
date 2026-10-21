@@ -25,6 +25,7 @@ namespace Hatch.Contracts;
 /// <param name="RepoSourced">Whether this project's playbooks are sourced from its repository rather than written on the board - see <see cref="EfHatchProject.RepoSourced"/>. Off by default.</param>
 /// <param name="RepoSourcedBy">Who last set <paramref name="RepoSourced"/>, or null until the first write - see <see cref="EfHatchProject.RepoSourcedBy"/>.</param>
 /// <param name="RepoSourcedAt">When <paramref name="RepoSourced"/> was last set, or null until the first write - see <see cref="EfHatchProject.RepoSourcedAt"/>.</param>
+/// <param name="RunnerTags">Which runners may implement this project's work, normalised - see <see cref="EfHatchProject.RunnerTags"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -32,7 +33,14 @@ public record ProjectDto(
     string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false,
     string AutoHealBugPriority = PriorityLevels.EmergencyName, string AutoHealBugPreApproval = PreApprovalLevels.ExpressName,
     bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null,
-    bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null);
+    bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null,
+    IReadOnlyList<string> RunnerTags = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see RunnerDto.Tags for the same shape.
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+}
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -92,6 +100,9 @@ public record ProjectLandingWriteRequest(
 
 /// <summary>A write to a project's playbook source - see <see cref="EfHatchProject.RepoSourced"/>.</summary>
 public record ProjectRepoSourcedWriteRequest(bool RepoSourced);
+
+/// <summary>A write to which runners may implement a project's work - see <see cref="EfHatchProject.RunnerTags"/>.</summary>
+public record ProjectRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
 
 // ---- Statuses ----
 
