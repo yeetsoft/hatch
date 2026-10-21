@@ -5055,6 +5055,38 @@ button.hatch-option.chosen {
   background: var(--status-color);
 }
 
+/* The chart's own hover card, in place of a native <title>: position: fixed
+   and placed in JavaScript, as .hatch-callout's is, and for the same reason -
+   pointer-events: none keeps it from ever firing its own pointerleave. z-index
+   95 is .hatch-callout's own precedent, not necessarily the value this needs. */
+.hatch-cumulative-flow-card {
+  position: fixed;
+  z-index: 95;
+  width: 220px;
+  pointer-events: none;
+  background: var(--card);
+  border-radius: var(--r-ctl);
+  box-shadow: var(--shadow);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-label);
+}
+
+.hatch-cumulative-flow-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.hatch-cumulative-flow-card-total {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-1);
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
 /* The baseline is on the container rather than in the SVG, as .hatch-spend-plot's is. */
 .hatch-cumulative-flow-plot {
   display: block;
