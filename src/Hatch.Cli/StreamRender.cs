@@ -126,6 +126,7 @@ public sealed partial class StreamRender : IAgentStreamReader
     private long _said;
     private readonly HashSet<string> _counted = [];
     private long _peakContext;
+    private readonly ReadsLedger _reads = new();
 
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
@@ -143,6 +144,9 @@ public sealed partial class StreamRender : IAgentStreamReader
     /// next turn's context the way the other three do.
     /// </summary>
     public long PeakContextTokens => _peakContext;
+
+    /// <summary>What the session read, by path or endpoint, heaviest first - see <see cref="ReadsLedger"/>.</summary>
+    public IReadOnlyList<WorkLogReadDto> Reads => _reads.Ranked();
 
     /// <summary>
     /// The account's usage windows, out of the session's own stream - the
@@ -272,6 +276,7 @@ public sealed partial class StreamRender : IAgentStreamReader
             switch (Text(part, "type"))
             {
                 case "tool_use":
+                    Tally(part);
                     yield return $"  ⏺ {Text(part, "name")}  {Summarise(part)}";
                     break;
 
@@ -514,6 +519,35 @@ public sealed partial class StreamRender : IAgentStreamReader
                 return Clip(Flat(Here(_root, value)));
 
         return Clip(Flat(Here(_root, input.ToString())));
+    }
+
+    /// <summary>
+    /// What one tool call read, into the ledger. Separate from <see cref="Summarise"/>
+    /// because that line may show free text and the ledger may not. A sub-agent's
+    /// calls count too: what it reads costs context all the same.
+    /// </summary>
+    private void Tally(JsonElement call)
+    {
+        if (!call.TryGetProperty("input", out var input) || input.ValueKind != JsonValueKind.Object) return;
+
+        switch (Text(call, "name"))
+        {
+            case "Read":
+                _reads.Add(Text(input, "file_path") is { } file ? Here(_root, file) : null);
+                break;
+
+            case "Grep" or "Glob":
+                _reads.Add(Text(input, "path") is { } path ? Here(_root, path) : ".");
+                break;
+
+            case "WebFetch":
+                _reads.Add(ReadsLedger.FromUrl(Text(input, "url")));
+                break;
+
+            case "Bash":
+                _reads.Add(ReadsLedger.FromCommand(Text(input, "command")));
+                break;
+        }
     }
 
     /// <summary>
