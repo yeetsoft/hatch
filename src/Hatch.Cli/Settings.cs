@@ -27,7 +27,7 @@ public sealed record Settings
     public static readonly string[] FileNames =
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_AGENT",
-        "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS", "HATCH_WORKSPACE",
+        "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS", "HATCH_WORKSPACE", "HATCH_TAGS",
     ];
 
     /// <summary>The agent ids <see cref="Agents"/> knows how to resolve.</summary>
@@ -81,6 +81,13 @@ public sealed record Settings
     /// standing one - empty where nothing is named.
     /// </summary>
     public IReadOnlyList<string> Repos { get; init; } = [];
+
+    /// <summary>
+    /// What this machine can do that a project's runner tags ask for - said
+    /// on every heartbeat and dispatch read, so the board can match work to a
+    /// runner that is actually able to do it.
+    /// </summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
 
     /// <summary>
     /// A directory this runner owns entirely, where it clones every repository
@@ -214,6 +221,7 @@ public sealed record Settings
         var retry = Read("HATCH_RETRY_SECONDS");
         var reposRaw = Read("HATCH_REPOS");
         var workspace = Read("HATCH_WORKSPACE");
+        var tagsRaw = Read("HATCH_TAGS");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -244,6 +252,16 @@ public sealed record Settings
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
 
+        if (ParseTags(tagsRaw, out var tags) is { } sentence)
+        {
+            refusal = $"""
+                hatch: HATCH_TAGS - {sentence}
+
+                  Fix it with `hatch config --tag <tag>` (bare `--tag` clears it), or change the exported variable.
+                """;
+            return false;
+        }
+
         settings = new Settings
         {
             Base = origin.TrimEnd('/'),
@@ -259,9 +277,30 @@ public sealed record Settings
             Repos = repos,
             Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(),
             WorkspaceDefaulted = workspace is null,
+            Tags = tags,
             Sources = sources,
         };
         return true;
+    }
+
+    /// <summary>
+    /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
+    /// then run through <see cref="RunnerTags.Normalise"/> - null or blank
+    /// answers an empty <paramref name="tags"/> with no refusal. Answers the
+    /// refusal sentence, or null once <paramref name="tags"/> is the trimmed,
+    /// lowercased, deduplicated list. Public because <c>ConfigCommand.Show</c>
+    /// reuses it to validate <c>--tag</c> the same way.
+    /// </summary>
+    public static string? ParseTags(string? raw, out IReadOnlyList<string> tags)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            tags = [];
+            return null;
+        }
+
+        var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return RunnerTags.Normalise(list, out tags);
     }
 
     /// <summary>Where a value came from, or <see cref="Layer.Unset"/> if nothing set it.</summary>
