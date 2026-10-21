@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using System.Net;
+using System.Text.Json;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
 namespace Hatch.Api.Tests.E2e;
@@ -32,6 +33,17 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>A column of the board, <c>apps/hatch/src/pages/BoardPage.tsx</c>.</summary>
     public const string Column = ".hatch-column";
 
+    /// <summary>The bar's controls, named by <see cref="BarMeasurement.Controls"/> and in bar order: <c>TopBar.tsx</c>, <c>UtilizationBattery.tsx</c>, <c>NavOvernight.tsx</c>, <c>NavAttention.tsx</c>, and the gear <c>Menu</c> trigger.</summary>
+    public const string BrandSelector = ".hatch-topbar__brand";
+
+    public const string BatterySelector = ".hatch-battery";
+
+    public const string OvernightSelector = ".hatch-overnight-control";
+
+    public const string AttentionSelector = ".hatch-attention-control";
+
+    public const string GearSelector = "header.hatch-topbar button[aria-label=\"Settings and theme\"]";
+
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
     public const string EmptyBoard = "This board has no columns yet.";
 
@@ -39,6 +51,33 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     private const int ViewportWidth = 1280;
 
     private const int ViewportHeight = 800;
+
+    /// <summary>
+    /// Runs in the page and reads it as it stands. A <c>DOMRect</c> does not
+    /// serialise, so each box is copied to a plain object; a selector that finds
+    /// nothing is <c>null</c>. <c>PrimaryNav</c> is left out of the tree on a
+    /// phone, so its presence is a fact worth reading (<c>lib/viewport.ts</c>).
+    /// </summary>
+    private const string MeasureBarScript = """
+        (selectors) => {
+          const box = (selector) => {
+            const element = document.querySelector(selector);
+            if (element === null) return null;
+            const r = element.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+          };
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            phoneQueryMatches: window.matchMedia('(max-width: 40rem)').matches,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            primaryNavDrawn: document.querySelector('.hatch-primary-nav') !== null,
+            controls: selectors.map(([name, selector]) => [name, box(selector)]),
+          };
+        }
+        """;
 
     private static readonly TimeSpan CleanupBudget = TimeSpan.FromSeconds(30);
 
@@ -172,6 +211,43 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         if (await columns.CountAsync() == 0)
             throw new InvalidOperationException($"The board said \"{EmptyBoard}\": the module migrations did not run against the scratch database.");
     }
+
+    /// <summary>
+    /// The top bar's geometry as the page stands: nothing is scrolled or
+    /// resized first, so a case that wants a settled page waits for it before
+    /// calling.
+    /// </summary>
+    public async Task<BarMeasurement> MeasureBarAsync(Deadline deadline)
+    {
+        (string Name, string Selector)[] controls =
+        [
+            ("brand", BrandSelector),
+            ("battery", BatterySelector),
+            ("overnight", OvernightSelector),
+            ("attention", AttentionSelector),
+            ("gear", GearSelector),
+        ];
+
+        var read = await deadline.BoundAsync("measuring the top bar", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureBarScript, controls.Select(c => new[] { c.Name, c.Selector }).ToArray()));
+
+        return new BarMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("phoneQueryMatches").GetBoolean(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            read.GetProperty("primaryNavDrawn").GetBoolean(),
+            read.GetProperty("controls").EnumerateArray().ToDictionary(
+                pair => pair[0].GetString()!,
+                pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));
+    }
+
+    private static Box ReadBox(JsonElement box) => new(
+        box.GetProperty("x").GetDouble(),
+        box.GetProperty("y").GetDouble(),
+        box.GetProperty("width").GetDouble(),
+        box.GetProperty("height").GetDouble());
 
     /// <summary>Uncaught exceptions only: console messages and failed requests are not render failures, and an offline runner would make the latter flaky.</summary>
     public void AssertNoPageErrors()
