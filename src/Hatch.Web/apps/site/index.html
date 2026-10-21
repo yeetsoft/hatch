@@ -8,6 +8,7 @@
     <meta property="og:title" content="Hatch" />
     <meta property="og:description" content="The house project tracker." />
     <meta property="og:type" content="website" />
+    <!--site:canonical-->
     <link rel="icon" type="image/png" href="../../packages/ui/src/assets/hatch-logo.png" />
     <link rel="stylesheet" href="/src/site.css" />
     <script type="module" src="/src/theme.ts"></script>
@@ -28,7 +29,9 @@
       <p>The house project tracker.</p>
     </main>
     <footer class="site-footer site-column">
-      <!-- HA-981 puts the repository block here and HA-1130 the words. -->
+      <!--site:repository-->
+      <a href="{{repository-url}}">Source</a>
+      <!--/site:repository-->
     </footer>
   </body>
 </html>

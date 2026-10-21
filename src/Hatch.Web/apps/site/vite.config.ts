@@ -1,12 +1,16 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { siteEnv } from './src/siteEnv'
+import { siteHtml } from './vite-plugin-site'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+const env = siteEnv(process.env)
+
 export default defineConfig({
-  // A placeholder until the canonical-origin task makes this environment-driven.
-  base: '/',
+  base: env.base,
+  plugins: [siteHtml(env)],
   appType: 'mpa',
   build: {
     outDir: resolve(__dirname, 'dist'),
