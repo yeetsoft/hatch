@@ -364,7 +364,8 @@ public class WorkController(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
                 builds.TryGetValue(i.Id, out var bv) ? bv : [],
-                i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow()));
+                i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(),
+                pullRequestHeadSince: i.PullRequestHeadSince));
             var marked = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
             var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, marked, ct);
             trainSlots = Dispatch.Train(merging, judged, effective, verdicts, statusChanges);
@@ -377,7 +378,8 @@ public class WorkController(
             var mergeWork = merges is not null && i.StatusId == merges.Id
                 ? MergeWork.Judge(
                     i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                    merged, built, i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name)
+                    merged, built, i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name,
+                    pullRequestHeadSince: i.PullRequestHeadSince)
                 : (MergeWork.Judgement?)null;
             var landed = landing.Contains(i) ? landings.GetValueOrDefault(i.Id, []) : null;
             var landingWork = landed is null
@@ -568,7 +570,8 @@ public class WorkController(
         {
             var sentence = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now).Sentence;
+                merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
+                pullRequestHeadSince: issue.PullRequestHeadSince).Sentence;
             db.Comments.Add(new EfHatchComment
             {
                 IssueId = issue.Id,
@@ -893,7 +896,8 @@ public class WorkController(
         var builds = (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []);
         var judgement = MergeWork.Judge(
             issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-            merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now, review.Name);
+            merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now, review.Name,
+            pullRequestHeadSince: issue.PullRequestHeadSince);
 
         if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
 
@@ -1279,7 +1283,7 @@ public class WorkController(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
             statuses.Select(ToStatusDto).ToList(),
             blocked is null && hopKind == HopKinds.Approve
-                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now).Sentence
+                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince).Sentence
                 : null,
             issue.Project!.Landing,
             issue.Project!.ChecksRequired,
