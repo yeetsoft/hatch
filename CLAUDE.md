@@ -193,3 +193,10 @@ so the trail says who did what without anybody being asked to record it.
   and the ticket gets the page, the profile and what was seen. The operator's
   own look is still the last word: never claim a screen works from the build
   alone.
+- The docs are part of done. A change to a primary-nav page, a `hatch` command
+  or flag, a `HATCH_*` variable, a column flag or an `/api/hatch` route updates
+  the docs page naming it (`src/Hatch.Web/apps/hatch/docs/`) in the same pull
+  request. The `docsCoverage.*.test.ts` files beside
+  `src/Hatch.Web/apps/hatch/src/lib/docs.ts`, `CliReferenceDocsTests` and
+  `ApiReferenceDocsTests` refuse the omission, and their failure says which
+  page and which word.
