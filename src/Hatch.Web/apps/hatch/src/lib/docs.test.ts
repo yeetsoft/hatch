@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
-import source from '../../public/hatch-at-home.md?raw';
 import {
   createSlugger,
   docLinkTarget,
@@ -19,11 +18,11 @@ import {
   resolveDocHref,
 } from './docs';
 
-/** The document's lines outside fenced blocks, which is where its headings are. */
-function proseLines(): string[] {
+/** A document's lines outside fenced blocks, which is where its headings are. */
+function proseLines(body: string): string[] {
   const out: string[] = [];
   let fence: string | null = null;
-  for (const line of source.split(/\r?\n/)) {
+  for (const line of body.split(/\r?\n/)) {
     const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
     if (m) {
       if (fence === null) fence = m[1][0];
@@ -37,11 +36,11 @@ function proseLines(): string[] {
 
 const ids = (html: string) => [...html.matchAll(/<h[2-4] id="([^"]*)"/g)].map((m) => m[1]);
 
-describe('renderDocs on the document', () => {
-  const { html, outline } = renderDocs(source);
+describe.each(DOC_PAGES.map((p) => [p.slug, p.body] as const))('renderDocs on the docs page %s', (_, body) => {
+  const { html, outline } = renderDocs(body);
 
   it('lists the depth-2 headings in order, without backticks', () => {
-    const expected = proseLines()
+    const expected = proseLines(body)
       .filter((l) => l.startsWith('## '))
       .map((l) => l.slice(3).replace(/`/g, ''));
     expect(outline.filter((e) => e.depth === 2).map((e) => e.text)).toEqual(expected);
@@ -50,23 +49,23 @@ describe('renderDocs on the document', () => {
   it('gives every ##-#### heading a unique id', () => {
     const found = ids(html);
     expect(new Set(found).size).toBe(found.length);
-    expect(found.length).toBe(proseLines().filter((l) => /^#{2,4} /.test(l)).length);
+    expect(found.length).toBe(proseLines(body).filter((l) => /^#{2,4} /.test(l)).length);
   });
+});
+
+describe('renderDocs on a real page', () => {
+  const body = docPage(DOC_PAGES, 'one-increment-and-the-loop')!.body;
+  const { html, outline } = renderDocs(body);
 
   it('slugs the headings the document links to', () => {
     const outlineIds = outline.map((e) => e.id);
-    for (const id of [
-      'the-hatch-cli-command-by-command',
-      'the-loop-hatch-go-to-work',
-      'one-increment-hatch-work',
-      'letting-the-loop-merge-for-you',
-    ]) {
+    for (const id of ['the-loop-hatch-go-to-work', 'one-increment-hatch-work']) {
       expect(outlineIds).toContain(id);
     }
   });
 
   it('links each heading with a labelled anchor', () => {
-    expect(html).toMatch(/<a class="hatch-docs-anchor" href="#the-hatch-cli-command-by-command" aria-label="[^"]+">#<\/a>/);
+    expect(html).toMatch(/<a class="hatch-docs-anchor" href="#the-loop-hatch-go-to-work" aria-label="[^"]+">#<\/a>/);
   });
 });
 
@@ -193,22 +192,29 @@ describe('docLinkTarget', () => {
     expect(docLinkTarget('')).toEqual({ kind: 'external' });
   });
 
-  it('classifies every link in the real document', () => {
-    const hrefs = [...renderDocs(source).html.matchAll(/<a (?![^>]*hatch-docs-anchor)[^>]*href="([^"]*)"/g)].map(
+  it.each(DOC_PAGES.map((p) => [p.slug, p.body] as const))('classifies every link on the docs page %s', (_, body) => {
+    const hrefs = [...renderDocs(body).html.matchAll(/<a (?![^>]*hatch-docs-anchor)[^>]*href="([^"]*)"/g)].map(
       (m) => m[1],
     );
-    expect(hrefs.length).toBeGreaterThan(0);
     for (const href of hrefs) {
       const kind = docLinkTarget(href).kind;
       expect(['fragment', 'app', 'external']).toContain(kind);
       if (href.startsWith('/apps/hatch/')) expect(kind).toBe('app');
     }
   });
+
+  it('finds at least one link across all docs pages', () => {
+    const total = DOC_PAGES.reduce(
+      (n, p) => n + [...renderDocs(p.body).html.matchAll(/<a (?![^>]*hatch-docs-anchor)[^>]*href="([^"]*)"/g)].length,
+      0,
+    );
+    expect(total).toBeGreaterThan(0);
+  });
 });
 
 describe('resolveDocHref', () => {
   it('resolves the four page-link forms', () => {
-    for (const slug of ['upgrading', 'hatch-at-home']) {
+    for (const slug of ['upgrading', 'getting-started']) {
       for (const form of [slug, `${slug}.md`, `./${slug}`, `./${slug}.md`]) {
         expect(resolveDocHref(form)).toBe(`/apps/hatch/docs/${slug}`);
         expect(resolveDocHref(`${form}#rolling-back`)).toBe(`/apps/hatch/docs/${slug}#rolling-back`);
