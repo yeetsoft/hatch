@@ -110,7 +110,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         runner.Where,
         runner.Agent,
         runner.ExhaustedUntil,
-        drives);
+        drives,
+        runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? []);
 
     /// <summary>
     /// What the loop reads back off its own heartbeat: the row's operator half,
