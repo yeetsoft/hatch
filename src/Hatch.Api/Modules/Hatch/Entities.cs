@@ -786,12 +786,33 @@ public class EfHatchIssue
     public string? PullRequestHeadSha { get; set; }
 
     /// <summary>
+    /// When the head of the pull request last became the sha held in
+    /// <see cref="PullRequestHeadSha"/>, or null until a runner has read an open
+    /// pull request. Moves only with the sha, never with a repeat read, and is
+    /// cleared with the url.
+    /// </summary>
+    public DateTimeOffset? PullRequestHeadSince { get; set; }
+
+    /// <summary>
     /// When the pull request recorded on this issue was last read, or null until
     /// a runner has read an open pull request. Refreshed on a repeat, so a
     /// reader can tell a state that is current from one nobody has looked at
     /// since.
     /// </summary>
     public DateTimeOffset? PullRequestReadAt { get; set; }
+
+    /// <summary>
+    /// When the merge train last brought this issue's branch current, or null
+    /// until it has. The train re-elects its head on every read, so this is how
+    /// the board learns which row a build is running for. A mark only counts
+    /// while <see cref="BroughtCurrentTrunkSha"/> is still the trunk sha the
+    /// issue's own clean merge check reads - see <see cref="Dispatch.Train"/>.
+    /// </summary>
+    public DateTimeOffset? BroughtCurrentAt { get; set; }
+
+    /// <summary>The trunk sha the branch was brought current to.</summary>
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public string? BroughtCurrentTrunkSha { get; set; }
 
     /// <summary>
     /// The model every agent increment dispatched for this issue runs on,
@@ -1716,6 +1737,9 @@ public class EfHatchIssueEvent
     public const string Redescribed = "redescribed";
     public const string Retyped = "retyped";
     public const string StatusChanged = "status_changed";
+
+    /// <summary>The merge train brought the branch current - see <see cref="EfHatchIssue.BroughtCurrentAt"/>. Written on every call: the train only reports a real update.</summary>
+    public const string BroughtCurrent = "brought_current";
 
     /// <summary>A check session recorded a verdict - see <see cref="EfHatchVerdict"/>. Written unconditionally: this is not a poll, so there is no "only when changed" guard.</summary>
     public const string VerdictRecorded = "verdict_recorded";

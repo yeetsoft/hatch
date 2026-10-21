@@ -220,7 +220,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 verdicts.TryGetValue(i.Id, out var v) ? v : [],
                 builds.TryGetValue(i.Id, out var b) ? b : [],
                 i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now));
-            trainSlots = Train(merging, judged, effective);
+            var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
+            var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
+            trainSlots = Train(merging, judged, effective, verdicts, statusChanges);
         }
 
         // Resolved only when some candidate actually reads at economy or low
@@ -446,6 +448,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <c>HeadKey</c> null - the honest answer for a merges column that is
     /// all holds.
     ///
+    /// The exception is a row carrying a <see cref="EfHatchIssue.BroughtCurrentAt"/>
+    /// mark that still counts (see <see cref="HoldsMark"/>): the latest such
+    /// row is the head wherever it sits, so a build the train just started
+    /// is not thrown away when an earlier row becomes eligible again.
+    ///
     /// <paramref name="judged"/> is the same judgement <see cref="Blocked"/>
     /// asks <see cref="MergeWork.Judge"/> for again below, on the same
     /// verdicts and builds - not a second opinion about the order, which is
@@ -457,7 +464,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     public static IReadOnlyDictionary<long, TrainSlot> Train(
         IReadOnlyList<EfHatchIssue> merging,
         IReadOnlyDictionary<long, MergeWork.Judgement> judged,
-        IReadOnlyDictionary<long, (int Level, string? FromKey)> effective)
+        IReadOnlyDictionary<long, (int Level, string? FromKey)> effective,
+        IReadOnlyDictionary<long, IReadOnlyList<EfHatchMergeCheck>> verdicts,
+        IReadOnlyDictionary<long, DateTimeOffset> statusChanges)
     {
         var slots = new Dictionary<long, TrainSlot>();
 
@@ -469,7 +478,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 .ThenBy(i => i.Id)
                 .ToList();
 
-            var head = ordered.FirstOrDefault(i => judged[i.Id].Kind is not (WorkKinds.Hold or WorkKinds.Pushback));
+            // A row the train has brought current keeps the head over an
+            // earlier row, so the build that bringing it started is not thrown
+            // away when that earlier row becomes eligible again.
+            var head = ordered
+                .Where(i => HoldsMark(i, judged[i.Id], verdicts, statusChanges))
+                .OrderByDescending(i => i.BroughtCurrentAt)
+                .FirstOrDefault()
+                ?? ordered.FirstOrDefault(i => judged[i.Id].Kind is not (WorkKinds.Hold or WorkKinds.Pushback));
             var headKey = head is null ? null : IssueKey.Format(head.Project!.Key, head.Number);
 
             for (var position = 0; position < ordered.Count; position++)
@@ -480,6 +496,32 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         }
 
         return slots;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="issue"/> carries a <see cref="EfHatchIssue.BroughtCurrentAt"/>
+    /// mark that still counts: its judgement is neither a hold nor a pushback,
+    /// the mark names the trunk sha the issue's own clean merge check reads
+    /// (the one <see cref="MergeWork.Judge"/> reads), and the mark is later than
+    /// the issue's last change of column - an earlier visit's mark is not this one's.
+    /// </summary>
+    private static bool HoldsMark(
+        EfHatchIssue issue,
+        MergeWork.Judgement judgement,
+        IReadOnlyDictionary<long, IReadOnlyList<EfHatchMergeCheck>> verdicts,
+        IReadOnlyDictionary<long, DateTimeOffset> statusChanges)
+    {
+        if (issue.BroughtCurrentAt is not { } at || issue.BroughtCurrentTrunkSha is not { } markSha) return false;
+        if (judgement.Kind is WorkKinds.Hold or WorkKinds.Pushback) return false;
+        if (statusChanges.TryGetValue(issue.Id, out var entered) && at <= entered) return false;
+
+        var clean = ReviewWork.Counted(
+                issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                verdicts.TryGetValue(issue.Id, out var v) ? v : [])
+            .Where(m => m.Verdict == MergeVerdicts.Clean)
+            .FirstOrDefault();
+
+        return clean is not null && string.Equals(clean.TrunkSha, markSha, StringComparison.Ordinal);
     }
 
     // ---- The loop's own policy ----

@@ -83,6 +83,24 @@ public sealed class MergeTrainTests
         };
 
     [Fact]
+    public async Task The_heads_row_is_read_before_every_other_row_in_review()
+    {
+        const string HeadUrl = "https://github.com/o/r/pull/999";
+        var others = Enumerable.Range(1, 19)
+            .Select(n => Fixtures.Review($"AER-{n}", pullRequestUrl: $"https://github.com/o/r/pull/{n}"))
+            .ToArray();
+        var head = Fixtures.Review(
+            "AER-20", pullRequestUrl: HeadUrl, mergeWork: new MergeWorkDto(WorkKinds.Merge, "merge", IsHead: true));
+
+        using var rig = new Rig().Board([.. others, head]);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null);
+
+        await rig.RunAsync();
+
+        Assert.Equal($"{rig.H.Root} {HeadUrl}", rig.H.Forge.PullRequestReads.First());
+    }
+
+    [Fact]
     public async Task A_merged_pull_request_advances_the_issue_with_the_url_that_was_read_and_is_announced()
     {
         using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));

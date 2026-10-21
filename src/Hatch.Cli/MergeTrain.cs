@@ -112,6 +112,11 @@ public sealed class MergeTrain : IAsyncDisposable
             return;
         }
 
+        // The head's row goes first in every half below: a stable sort, so a
+        // board that returns rows in rank order still reads that way among
+        // the rest.
+        review = [.. review.OrderBy(i => i.MergeWork?.IsHead == true ? 0 : 1)];
+
         // The pull request half, independent of the merge and update halves
         // below it: keyed on the issue rather than the checkout, since
         // PullRequestUrl is one field on one issue however many repositories
