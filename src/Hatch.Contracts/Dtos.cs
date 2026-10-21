@@ -2270,6 +2270,67 @@ public record CumulativeFlowDto(
     IReadOnlyList<CumulativeFlowPointDto> Points,
     int Unresolved);
 
+/// <summary>One board column's counts over a flow report's window.</summary>
+/// <param name="StatusId">The column's id.</param>
+/// <param name="Name">The column's name, as the board spells it.</param>
+/// <param name="Entered">How many times an issue entered the column in the window.</param>
+/// <param name="Left">How many times an issue left the column in the window.</param>
+/// <param name="Dwelled">How many stretches in the column ended in the window and so have a dwell.</param>
+/// <param name="MedianDwellSeconds">The median of those dwells; null when there are none.</param>
+/// <param name="P90DwellSeconds">The ninetieth percentile of those dwells; null when there are none.</param>
+/// <param name="Standing">How many issues stand in the column at the window's end.</param>
+public record FlowColumnDto(
+    int StatusId,
+    string Name,
+    int Entered,
+    int Left,
+    int Dwelled,
+    long? MedianDwellSeconds,
+    long? P90DwellSeconds,
+    int Standing);
+
+/// <summary>How many times one hop kind carried an issue across a flow report's window.</summary>
+/// <param name="Kind">The hop kind, as the board names it.</param>
+/// <param name="Count">How many hops of that kind.</param>
+public record FlowHopDto(string Kind, int Count);
+
+/// <summary>The window-wide half of a flow report.</summary>
+/// <param name="Dropped">How many claims were released as dropped.</param>
+/// <param name="Hops">Every hop kind with its count, in the fold's fixed order.</param>
+/// <param name="SendBacks">How many moves went to an earlier column.</param>
+/// <param name="QuestionsAsked">How many questions were asked in the window.</param>
+/// <param name="QuestionsAnswered">How many questions were answered in the window.</param>
+/// <param name="MedianAnswerWaitSeconds">The median wait for an answer; null when none was answered.</param>
+/// <param name="LongestAnswerWaitSeconds">The longest wait for an answer; null when none was answered.</param>
+/// <param name="Sessions">How many work-log sessions ended in the window.</param>
+/// <param name="SessionErrors">How many of those ended in error.</param>
+public record FlowWindowDto(
+    int Dropped,
+    IReadOnlyList<FlowHopDto> Hops,
+    int SendBacks,
+    int QuestionsAsked,
+    int QuestionsAnswered,
+    long? MedianAnswerWaitSeconds,
+    long? LongestAnswerWaitSeconds,
+    int Sessions,
+    int SessionErrors);
+
+/// <summary>
+/// How work moved through the board over a range: counts and durations per
+/// column, and the window-wide tallies. No member names an issue.
+/// </summary>
+/// <param name="From">The start of the range, clamped forward to the first issue's creation and never past <see cref="To"/>.</param>
+/// <param name="To">The end of the range, as resolved.</param>
+/// <param name="Columns">The board's columns, in board order, deferred columns excluded.</param>
+/// <param name="Window">The tallies that belong to no one column.</param>
+/// <param name="Unresolved">Stretches that named a column no longer on the board and were left out.</param>
+public record FlowDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<FlowColumnDto> Columns,
+    FlowWindowDto Window,
+    int Unresolved);
+
 // ---- The work log ----
 
 /// <summary>

@@ -185,6 +185,118 @@ public class ReportsController(
             result.Unresolved);
     }
 
+    /// <summary>
+    /// How work moved through the board over a range: per column, how many
+    /// issues entered and left it, how long the ones that left stayed, and how
+    /// many stand there at the end - plus the tallies that belong to no one
+    /// column, folded by <see cref="FlowReport.Fold"/>. Counts and durations
+    /// only; nothing in the answer names an issue.
+    /// </summary>
+    /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="projectId">Narrows every count to one project's issues.</param>
+    /// <param name="type">Narrows every count to one issue type.</param>
+    /// <remarks>
+    /// The status history is loaded whole, as the other reports load it - the
+    /// fold needs an issue's moves before the range to know where it stood.
+    /// Releases and sessions are read only inside the range, since all they
+    /// give is a count.
+    /// </remarks>
+    [HttpGet("flow")]
+    public async Task<ActionResult<FlowDto>> GetFlow(
+        [FromQuery] string? from, [FromQuery] string? to,
+        [FromQuery] int? projectId, [FromQuery] string? type, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+
+        if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        if (type is not null && !EfHatchIssue.IsValidType(type))
+            return BadRequest($"an issue is one of {string.Join(", ", EfHatchIssue.Types)} - not \"{type}\"");
+
+        if (projectId is { } wanted && !await db.Projects.AnyAsync(p => p.Id == wanted, ct))
+            return BadRequest($"there is no project {wanted}");
+
+        var (statuses, rows) = await LoadBoardAsync(ct);
+
+        DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
+        start = RangeBounds.ClampStart(start, end, first);
+
+        var moves = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
+            .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
+            .ToListAsync(ct);
+
+        var releases = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased && e.At >= start && e.At < end)
+            .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
+            .ToListAsync(ct);
+
+        var events = moves.Concat(releases)
+            .OrderBy(e => e.IssueId)
+            .ThenBy(e => e.At)
+            .ThenBy(e => e.Id)
+            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+            .ToList();
+
+        // Two plain queries joined here rather than a subquery for the
+        // earliest answer: comments rather than events, since the `asked`
+        // event carries no question id.
+        var asked = await db.Comments.AsNoTracking()
+            .Where(c => c.Kind == EfHatchComment.Question)
+            .Select(c => new { c.Id, c.IssueId, c.CreatedAt })
+            .ToListAsync(ct);
+
+        var answers = await db.Comments.AsNoTracking()
+            .Where(c => c.AnswersId != null)
+            .Select(c => new { AnswersId = c.AnswersId!.Value, c.CreatedAt })
+            .ToListAsync(ct);
+
+        var earliestAnswer = answers
+            .GroupBy(a => a.AnswersId)
+            .ToDictionary(g => g.Key, g => g.Min(a => a.CreatedAt));
+
+        var questions = asked
+            .Select(q => new FlowReport.Question(
+                q.IssueId, q.Id, q.CreatedAt,
+                earliestAnswer.TryGetValue(q.Id, out var answeredAt) ? answeredAt : null))
+            .ToList();
+
+        var sessions = (await db.WorkLog.AsNoTracking()
+                .Where(w => w.EndedAt >= start && w.EndedAt < end)
+                .Select(w => new { w.IssueId, w.EndedAt, w.IsError })
+                .ToListAsync(ct))
+            .Select(w => new FlowReport.Session(w.IssueId, w.EndedAt, w.IsError))
+            .ToList();
+
+        var result = FlowReport.Fold(rows, events, questions, sessions, statuses, start, end, projectId, type);
+
+        // Decoration only: the fold answers non-deferred board columns, every
+        // one of which is in the board just loaded.
+        var names = statuses.ToDictionary(s => s.Id, s => s.Name);
+
+        return new FlowDto(
+            start,
+            end,
+            result.Columns
+                .Select(c => new FlowColumnDto(
+                    c.StatusId, names[c.StatusId], c.Entered, c.Left, c.Dwelled,
+                    c.MedianDwellSeconds, c.P90DwellSeconds, c.Standing))
+                .ToList(),
+            new FlowWindowDto(
+                result.Window.Dropped,
+                result.Window.Hops.Select(h => new FlowHopDto(h.Kind, h.Count)).ToList(),
+                result.Window.SendBacks,
+                result.Window.QuestionsAsked,
+                result.Window.QuestionsAnswered,
+                result.Window.MedianAnswerWaitSeconds,
+                result.Window.LongestAnswerWaitSeconds,
+                result.Window.Sessions,
+                result.Window.SessionErrors),
+            result.Unresolved);
+    }
+
     /// <summary>The card the loose work is drawn under: no issue, so nothing on it is real.</summary>
     private static readonly IssueCardDto OtherCard = new("other", "", "epic", "Other", 0, 0, null, null, null);
 
@@ -201,6 +313,27 @@ public class ReportsController(
     /// </summary>
     private async Task<(List<EfHatchStatus> Statuses, List<TimelineReport.Row> Rows, List<TimelineReport.Change> Changes)>
         LoadHistoryAsync(CancellationToken ct)
+    {
+        var (statuses, rows) = await LoadBoardAsync(ct);
+
+        var events = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
+            .OrderBy(e => e.IssueId)
+            .ThenBy(e => e.At)
+            .ThenBy(e => e.Id)
+            .Select(e => new { e.IssueId, e.Id, e.At, e.Payload })
+            .ToListAsync(ct);
+
+        var changes = events
+            .Select(e => TimelineReport.ParseChange(e.IssueId, e.Id, e.At, e.Payload))
+            .OfType<TimelineReport.Change>()
+            .ToList();
+
+        return (statuses, rows, changes);
+    }
+
+    /// <summary>The board's statuses in board order, and every issue as the folds want it.</summary>
+    private async Task<(List<EfHatchStatus> Statuses, List<TimelineReport.Row> Rows)> LoadBoardAsync(CancellationToken ct)
     {
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
@@ -227,19 +360,6 @@ public class ReportsController(
                 i.StatusId, i.Rank, i.CreatedAt, i.CreatedBy))
             .ToList();
 
-        var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
-            .OrderBy(e => e.IssueId)
-            .ThenBy(e => e.At)
-            .ThenBy(e => e.Id)
-            .Select(e => new { e.IssueId, e.Id, e.At, e.Payload })
-            .ToListAsync(ct);
-
-        var changes = events
-            .Select(e => TimelineReport.ParseChange(e.IssueId, e.Id, e.At, e.Payload))
-            .OfType<TimelineReport.Change>()
-            .ToList();
-
-        return (statuses, rows, changes);
+        return (statuses, rows);
     }
 }
