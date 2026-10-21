@@ -1,6 +1,6 @@
 /* Which docs pages draw their diagrams, and what renderDocs left for them to
-   draw. Disk-only, over `buildSite()` - no chunk graph here, that is
-   HA-1244's own test, extending this file.
+   draw, plus (HA-1244) which pages' scripts actually reach the mermaid chunk
+   in the real build's chunk graph - not merely whether a page is fenced.
 
    A fenced page's own `<script>` src is not literally "docsDiagrams": the
    `dompurify` and `vite-preload` codeSplitting groups vite.config.ts carries
@@ -18,11 +18,14 @@ import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildSite } from './testing/buildSite'
 import { attr, tagsOf, withoutComments } from './testing/html'
+import { reachable } from './lib/mermaidChunkGraph'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
 
-// The one page in the repository's own docs with a mermaid fence today
-// (`apps/hatch/docs/the-lifecycle-of-a-ticket.md`).
+// A page in the repository's own docs with a mermaid fence today
+// (`apps/hatch/docs/the-lifecycle-of-a-ticket.md`) - not the only one,
+// `deterministic-work-and-agent-work.md` carries one too, but the property
+// below is driven by whether a page has a fence at all, not by which page it is.
 const FENCED_SLUG = 'the-lifecycle-of-a-ticket'
 const UNFENCED_SLUGS = ['getting-started']
 
@@ -79,5 +82,26 @@ describe.each(UNFENCED_SLUGS)('a docs page with no fence (%s)', (slug) => {
 describe.each(['docs/index.html', 'index.html', '404.html'])('%s', (file) => {
   it('names no placeholder', () => {
     expect(withoutComments(site.read(file))).not.toContain('hatch-docs-mermaid')
+  })
+})
+
+describe('the mermaid chunk graph', () => {
+  const reachesMermaidChunk = (html: string): boolean => {
+    const chunks = site.output.filter((chunk) => chunk.type === 'chunk')
+    const scripts = tagsOf(html, 'script').map((tag) => attr(tag, 'src')!.replace(/^\//, ''))
+    const found = reachable(chunks, scripts)
+    return chunks.some((chunk) => found.has(chunk.fileName) && chunk.moduleIds.some((id) => id.endsWith('src/lib/mermaid.ts')))
+  }
+
+  it(`a fenced page (docs/${FENCED_SLUG}) reaches a chunk with src/lib/mermaid.ts among its modules`, () => {
+    const html = withoutComments(site.read(`docs/${FENCED_SLUG}/index.html`))
+    expect(reachesMermaidChunk(html)).toBe(true)
+  })
+
+  describe.each([`docs/${UNFENCED_SLUGS[0]}/index.html`, 'docs/index.html', 'index.html', '404.html'])('%s', (file) => {
+    it('reaches no chunk with src/lib/mermaid.ts among its modules', () => {
+      const html = withoutComments(site.read(file))
+      expect(reachesMermaidChunk(html)).toBe(false)
+    })
   })
 })

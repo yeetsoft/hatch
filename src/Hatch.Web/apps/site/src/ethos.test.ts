@@ -2,7 +2,11 @@
    installation (docs/ethos.md): a URL, a dotted-quad IP, an email, or a
    hostname-shaped token. node_modules, dist and *.test.ts are excluded - the
    test files above are where the invented values those tests need live.
-   What this cannot catch is a person's name; that half is review's. */
+   A line carrying the EXEMPT_MARKER comment is exempt too - for a literal
+   that is true of every installation (a pinned dependency's own vendor URL,
+   not this one's), reviewed and left as plain, searchable text rather than
+   split to dodge the scan. What this cannot catch is a person's name; that
+   half is review's. */
 /// <reference types="node" />
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -11,6 +15,10 @@ import { describe, expect, it } from 'vitest'
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
 const EXCLUDED_DIRS = new Set(['node_modules', 'dist'])
+
+// A reviewed, genuinely-structural literal (true of every installation, not
+// this one's) can carry this comment on its own line to opt out of the scan.
+export const EXEMPT_MARKER = 'ethos:allow'
 
 const RULES: { name: string; pattern: RegExp }[] = [
   { name: 'a URL', pattern: /https?:\/\/(?!localhost\b)\S+/ },
@@ -33,6 +41,7 @@ function listFiles(dir: string): string[] {
 }
 
 function lineViolations(line: string): string[] {
+  if (line.includes(EXEMPT_MARKER)) return []
   return RULES.filter(({ pattern }) => pattern.test(line)).map(({ name }) => name)
 }
 
@@ -69,5 +78,9 @@ describe('lineViolations', () => {
 
   it('does not flag plain prose', () => {
     expect(lineViolations('The house project tracker.')).toEqual([])
+  })
+
+  it('does not flag a line carrying the exempt marker', () => {
+    expect(lineViolations(`see https://example.com/path // ${EXEMPT_MARKER}`)).toEqual([])
   })
 })
