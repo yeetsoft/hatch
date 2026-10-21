@@ -14,8 +14,8 @@ public value or a plain setting. The few variables that carry a secret are
 named as such, and the value belongs in your shell or a `.env` beside
 `compose.yaml`, never in a file you commit. The configuration keys these
 variables land on inside the API (`Auth__*`, `Apps__*`, `Hatch__*` and
-`ConnectionStrings__*`) belong to *Deployment overview*, not to this page; it
-is under *Coming* below.
+`ConnectionStrings__*`) belong to [Deployment overview](deployment-overview),
+not to this page.
 
 ## Every variable
 
@@ -116,9 +116,3 @@ The `hatch` binary reads these and does not own them.
 | `TERM` | `dumb` turns the readout off. |
 | `PATH` | Where the agent CLIs and `rtk` are found when their `HATCH_*_BIN` variable is not set. |
 | `CODEX_HOME` | Read to find the operator's Codex home. A `codex` session is spawned with its own overlay of it. |
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `deployment-overview`
