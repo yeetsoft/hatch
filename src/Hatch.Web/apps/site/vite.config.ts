@@ -15,6 +15,7 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
+    modulePreload: { polyfill: false },
     rolldownOptions: {
       input: {
         index: resolve(__dirname, 'index.html'),
