@@ -2077,6 +2077,7 @@ public record QueueEntryDto(
 /// <param name="PullRequestMergeState">What the board holds of the pull request's merge state - one of <see cref="MergeStates"/> - so a runner can tell whether what the forge answered is news. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestReviewDecision">What the board holds of the pull request's review decision - one of <see cref="ReviewDecisions"/> - for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
+/// <param name="PullRequestHeadSince">The moment the board first saw the pull request at that head - when the forge's pull request reached the branch tip, as far as the board can tell. Null where none is held, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -2092,7 +2093,8 @@ public record ReviewCheckDto(
     LandingWorkDto? LandingWork = null,
     string? PullRequestMergeState = null,
     string? PullRequestReviewDecision = null,
-    string? PullRequestHeadSha = null);
+    string? PullRequestHeadSha = null,
+    DateTimeOffset? PullRequestHeadSince = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
@@ -2887,6 +2889,15 @@ public record PullRequestClosedRequest(string Url, string Runner);
 /// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>.</param>
 /// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
 public record PullRequestStateRequest(string Url, string HeadSha, string MergeState, string ReviewDecision, string Runner);
+
+/// <summary>
+/// A runner reporting that the merge train has just brought the issue's branch
+/// current from the trunk, so the board keeps the train's head on that row.
+/// </summary>
+/// <param name="Trunk">The trunk the branch was brought current from.</param>
+/// <param name="TrunkSha">The sha the trunk stood at. Must be the one the issue's own clean merge check reads for the mark to count.</param>
+/// <param name="Runner">The checkout that did it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Recorded on the event only.</param>
+public record BroughtCurrentRequest(string Trunk, string TrunkSha, string Runner);
 
 /// <summary>
 /// A runner reporting that the merge column has judged the issue's branch a

@@ -112,6 +112,11 @@ public sealed class MergeTrain : IAsyncDisposable
             return;
         }
 
+        // The head's row goes first in every half below: a stable sort, so a
+        // board that returns rows in rank order still reads that way among
+        // the rest.
+        review = [.. review.OrderBy(i => i.MergeWork?.IsHead == true ? 0 : 1)];
+
         // The pull request half, independent of the merge and update halves
         // below it: keyed on the issue rather than the checkout, since
         // PullRequestUrl is one field on one issue however many repositories
@@ -454,7 +459,16 @@ public sealed class MergeTrain : IAsyncDisposable
 
                 if (state != PullRequestStates.Open || pr.HeadSha != judgedSha)
                 {
-                    if (alreadySeen) continue;
+                    if (alreadySeen)
+                    {
+                        // Our own update landing, read on a later tick: the
+                        // forge's background merge has now finished, and
+                        // what it produced is a fact we already hold, not a
+                        // question to ask git.
+                        await TryWriteUpdateMergeCheckAsync(runtime, issue, where, judged, dedupeKey, pr, ct);
+                        continue;
+                    }
+
                     _seenUpdate[dedupeKey] = judgedSha;
                     await runtime.QuietBoard.CommentAsync(
                         issue.Key,
@@ -475,6 +489,14 @@ public sealed class MergeTrain : IAsyncDisposable
                         await runtime.QuietBoard.CommentAsync(
                             issue.Key, $"Brought its branch current with {judged.Trunk}, as {runtime.RunnerName}.", ct);
                         runtime.Say.Line($"hatch: {UpdateWords(issue.Key, judged.Trunk)}");
+
+                        // The fast path: read the pull request again, right
+                        // away, in case the forge's merge already finished in
+                        // the moment it took to answer the update itself. The
+                        // slow path above is what catches it otherwise, on a
+                        // later tick.
+                        var fresh = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                        await TryWriteUpdateMergeCheckAsync(runtime, issue, where, judged, dedupeKey, fresh, ct);
                         break;
 
                     case UpdateOutcomes.Conflicted:
@@ -493,6 +515,47 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             complain($"hatch: could not bring approved branches current - {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Writes the merge check an update's own success already answers, from
+    /// <paramref name="pr"/>'s freshest read - the fast path's second read in
+    /// the same tick, or the slow path's top-of-loop one on a later tick. A
+    /// success at the forge <em>is</em> <c>holdsTrunk: true</c> at the new
+    /// sha, because the forge performed that merge itself: this runs no git
+    /// and asks the board once, naming the new sha.
+    /// </summary>
+    /// <remarks>
+    /// Writes nothing, and advances <see cref="_seenUpdate"/> not at all, when
+    /// the read does not yet show a sha other than <paramref name="judged"/>'s
+    /// own - the forge's background merge has not finished, see
+    /// <see cref="GhForge.UpdateAsync"/>'s own remarks for why that can still
+    /// be true on this same read - when the pull request is no longer open,
+    /// or when the read carries no base branch or sha (an older <c>gh</c>, or
+    /// a fake that answers neither); the caller's own dedupe and comment,
+    /// where it has one, is what a true refusal falls back to.
+    /// <paramref name="judged"/>'s own <c>PlaybookFilePath</c> is carried
+    /// forward unchanged onto the new check: an update merges the trunk's
+    /// changes into the branch, never the branch's own changes into the
+    /// trunk, so a branch that already changed the playbook file still
+    /// changes it at the new sha, and one that did not cannot start to -
+    /// carrying the value forward can only keep a row held that was already
+    /// held, never release one that should not be.
+    /// </remarks>
+    private async Task TryWriteUpdateMergeCheckAsync(
+        Runtime runtime, ReviewCheckDto issue, Checkouts.Polled where, MergeCheckDto judged,
+        (string Path, string Key) dedupeKey, PullRequestAnswer pr, CancellationToken ct)
+    {
+        if (pr.State != PullRequestStates.Open || pr.HeadSha is not { } sha || sha == judged.BranchSha
+            || pr.Base is not { } baseRef || pr.BaseSha is not { } baseSha) return;
+
+        _seenUpdate[dedupeKey] = sha;
+        await runtime.QuietBoard.MergeCheckAsync(
+            issue.Key,
+            new MergeCheckRequest(
+                where.Remote!, baseRef, baseSha, MergeVerdicts.Clean, judged.Branch, sha, [], runtime.RunnerName,
+                true, judged.PlaybookFilePath),
+            ct);
     }
 
     /// <summary>
