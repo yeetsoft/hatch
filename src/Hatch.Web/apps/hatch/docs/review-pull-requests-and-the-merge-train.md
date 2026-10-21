@@ -99,3 +99,13 @@ Only the head is touched on a tick. A clean branch whose build passed merges; a 
 None of this spends an increment or a session. The runner acts on its own clock, separate from the clock that reads the build and merge checks above — [`--merge-interval`](cli-reference#go-to-work) against `--interval`. A ticket can therefore be merged under a session that is still working it: if that session's own earlier push already left the branch clean and green, and its turn in the train had come by the time the train ran, the train merges it. That is the design, not a race to fix.
 
 Adding the column, naming an approver and choosing the forge's own shape are covered start to finish elsewhere and not repeated here: [letting the loop merge for you](letting-the-loop-merge-for-you).
+
+## Landing on the trunk
+
+A project's landing setting — an owner's choice, on **Manage → Projects** — can read *on the trunk* instead of *by pull request*. A ticket in such a project never carries a pull request: review is still where its branch stops being a session's own, but there is no column to merge it into and nothing for the train to read. If a pull request is recorded on one anyway, that ticket goes back under the pull-request rules above.
+
+A session in such a project pushes its branch's commit onto the trunk directly, and then records where that landed in place of opening a pull request: `hatch landed <key> [<sha>] [--repo <path>]` writes the sha, the trunk ref and the repository the work reached it in. [`hatch landed`](cli-reference#landed) has the command in full.
+
+The two checks above are about a branch, and a landing has none, so the question changes: it is about the trunk itself. Once a runner has confirmed the commit's sha is on the trunk, what is judged is whether the trunk's own build passes there — read off whatever commit currently holds the trunk's tip, not the sha that first landed. A commit that landed clean and was later followed by a broken one therefore reads as held until the trunk is green again, and nothing says which commit broke it. A trunk build that read no checks at all settles after the same settle window the merge section names: it holds where the project requires checks, and lands where it does not.
+
+There is no pull request to merge, so nothing merges it. The ticket is carried straight into its project's first terminal column the moment the trunk holds the commit and the trunk's build there passes, with nobody pressing anything — the same kind of automatic step a merged pull request takes elsewhere. A comment on the ticket says so, naming the trunk and the sha.
