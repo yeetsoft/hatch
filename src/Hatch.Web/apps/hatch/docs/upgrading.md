@@ -1,7 +1,7 @@
 ---
 title: Upgrading
 section: Deploying and operating
-order: 20
+order: 40
 summary: Pulling and rebuilding a Hatch without losing anything.
 ---
 
