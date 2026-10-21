@@ -9,7 +9,7 @@ This is the whole surface of one binary, `hatch`, published for macOS, Windows
 and Linux. `hatch --help` lists it, and every command takes `-h` for its own
 usage block. Which origin it talks to, and which key it names itself with, come
 from three layers of settings, highest first: [the runner](the-runner) has how
-to get the binary and what those layers are, and `environment-variables` has
+to get the binary and what those layers are, and [`environment-variables`](environment-variables) has
 every variable.
 
 ## Every command
@@ -527,9 +527,3 @@ binary and not hidden verbs, and both are left out of what a session is told on
 purpose: the first prints a credential, for no work a session could do with it,
 and a session that knew of the second could mark its operator's messages read
 without reading them.
-
-## Coming
-
-Pages this one names that are not written yet:
-
-- `environment-variables`
