@@ -66,7 +66,7 @@ public class ProjectsController(
             var canAdminister = me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Owner);
             var canApprove = canAdminister || (me is { Kind: ActorKind.Person } && rows.Any(row => row.PersonId == me.Id && row.Role == ProjectMemberRole.Approver));
 
-            return ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []), logosByProject.GetValueOrDefault(p.Id), members, canApprove, canAdminister);
+            return ToDto(p, counts.GetValueOrDefault(p.Id), reposByProject.GetValueOrDefault(p.Id, []), logosByProject.GetValueOrDefault(p.Id), members, canApprove, canAdminister, time.GetUtcNow());
         }).ToList();
     }
 
@@ -122,7 +122,7 @@ public class ProjectsController(
             : []);
         var isSelfOwner = me is { Kind: ActorKind.Person } && principal is { Kind: ActorKind.Person } && me.Id == principal.Id;
 
-        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null, members, isSelfOwner, isSelfOwner));
+        return CreatedAtAction(nameof(GetProjects), ToDto(project, 0, [], null, members, isSelfOwner, isSelfOwner, time.GetUtcNow()));
     }
 
     /// <summary>
@@ -207,7 +207,7 @@ public class ProjectsController(
         var repositories = await RepositoriesAsync(id, ct);
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
     /// <summary>
@@ -382,7 +382,7 @@ public class ProjectsController(
         await db.SaveChangesAsync(ct);
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, await RepositoriesAsync(id, ct), now, members, canApprove, canAdminister);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), now, members, canApprove, canAdminister, now);
     }
 
     [HttpDelete("{id:int}/logo")]
@@ -401,7 +401,7 @@ public class ProjectsController(
         await db.SaveChangesAsync(ct);
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, await RepositoriesAsync(id, ct), null, members, canApprove, canAdminister);
+        return ToDto(project, count, await RepositoriesAsync(id, ct), null, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
     // ---- Members ----
@@ -572,7 +572,7 @@ public class ProjectsController(
         var repositories = await RepositoriesAsync(id, ct);
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
     /// <summary>
@@ -616,7 +616,53 @@ public class ProjectsController(
         var repositories = await RepositoriesAsync(id, ct);
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>
+    /// How often this project reflects - <see cref="EfHatchProject.ReflectionCadenceDays"/>.
+    /// Only an owner may call this. A non-null cadence is refused unless some
+    /// playbook row would actually run the reflection it files -
+    /// <see cref="Dispatch.MatchReflection"/> is the same ranking
+    /// <see cref="Dispatch.Match"/> uses, with no from/to to pin since filing is
+    /// not a transition. This route never writes
+    /// <see cref="EfHatchProject.ReflectionLastPeriodStart"/> - only the
+    /// reflection job does.
+    /// </summary>
+    [HttpPut("{id:int}/reflection")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutReflection(int id, ProjectReflectionWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change how it reflects") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.CadenceDays is { } days && days <= 0)
+            return BadRequest("a cadence is a positive number of days");
+
+        if (request.CadenceDays != project.ReflectionCadenceDays)
+        {
+            if (request.CadenceDays is not null)
+            {
+                var playbooks = await db.Playbooks.Where(p => p.ProjectId == null || p.ProjectId == id).ToListAsync(ct);
+                if (Dispatch.MatchReflection(playbooks, id) is null)
+                    return BadRequest($"{project.Key} has no reflection playbook row - add one on the Playbooks page first");
+            }
+
+            project.ReflectionCadenceDays = request.CadenceDays;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} reflection cadence set to {ReflectionCadenceDays} by {Actor}", project.Key, project.ReflectionCadenceDays, await caller.ActorNameAsync(ct));
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
     /// <summary>
@@ -652,7 +698,7 @@ public class ProjectsController(
         var repositories = await RepositoriesAsync(id, ct);
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
-        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
@@ -717,13 +763,15 @@ public class ProjectsController(
 
     private static ProjectDto ToDto(
         EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt,
-        IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister) =>
+        IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister, DateTimeOffset now) =>
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
             members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest,
             PriorityLevels.Name(project.AutoHealBugPriority), PreApprovalLevels.Name(project.AutoHealBugPreApproval),
             project.AutoHealBugEnabled, project.AutoHealBugStatusId,
             project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt,
-            EfHatchProject.ReadRunnerTags(project.RunnerTags));
+            EfHatchProject.ReadRunnerTags(project.RunnerTags),
+            project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
+            ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now));
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

@@ -152,6 +152,22 @@ public class EfHatchProject
     public int? AutoHealBugStatusId { get; set; }
 
     /// <summary>
+    /// How often this project reflects, in whole days - null turns reflection
+    /// off, so a project nobody has touched this setting on keeps filing
+    /// exactly as it always has. Written only by
+    /// <see cref="ProjectsController.PutReflection"/>.
+    /// </summary>
+    public int? ReflectionCadenceDays { get; set; }
+
+    /// <summary>
+    /// The start of the last period this project reflected on - null means it
+    /// has never reflected. Read by <see cref="ReflectionCadence.NextDue"/>;
+    /// written only by the reflection job, never by
+    /// <see cref="ProjectsController.PutReflection"/>.
+    /// </summary>
+    public DateTimeOffset? ReflectionLastPeriodStart { get; set; }
+
+    /// <summary>
     /// Whether this project's playbooks are sourced from its repository rather
     /// than written on the board. Off by default, so a project nobody has
     /// touched this setting on keeps filing exactly as it always has. Written

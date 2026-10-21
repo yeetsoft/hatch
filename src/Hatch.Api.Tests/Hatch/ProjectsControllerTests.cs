@@ -971,6 +971,112 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.RepoSourcedAt);
     }
 
+    // ---- Reflection ----
+
+    [Fact]
+    public async Task AnOwnerSettingACadenceWithAReflectionPlaybookRow_Succeeds()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+
+        var written = Value(await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default));
+
+        Assert.Equal(7, written.ReflectionCadenceDays);
+        Assert.Null(written.ReflectionLastPeriodStart);
+        Assert.Equal(Now.AddDays(7), written.ReflectionNextDueAt);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutReflectionNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.Null((await h.Db.Projects.FindAsync(created.Id))!.ReflectionCadenceDays);
+    }
+
+    [Fact]
+    public async Task ACadenceWithNoReflectionPlaybookRow_IsRefusedNamingThePlaybooksPage()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("TST has no reflection playbook row", reason);
+        Assert.Contains("Playbooks page", reason);
+        Assert.Null((await h.Db.Projects.FindAsync(created.Id))!.ReflectionCadenceDays);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task ANonPositiveCadence_IsRefused(int cadenceDays)
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+
+        var result = await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(cadenceDays), default);
+
+        Assert.Contains("a positive number of days", Reason(result.Result));
+        Assert.Null((await h.Db.Projects.FindAsync(created.Id))!.ReflectionCadenceDays);
+    }
+
+    [Fact]
+    public async Task TurningItOff_NeverTouchesLastPeriodStart()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+        var project = (await h.Db.Projects.FindAsync(created.Id))!;
+        project.ReflectionLastPeriodStart = Now;
+        await h.Db.SaveChangesAsync();
+
+        var written = Value(await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(null), default));
+
+        Assert.Null(written.ReflectionCadenceDays);
+        Assert.Equal(Now, (await h.Db.Projects.FindAsync(created.Id))!.ReflectionLastPeriodStart);
+    }
+
+    [Fact]
+    public async Task PatchProject_LeavesReflectionFieldsAlone()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+
+        var patched = Value(await h.Projects.PatchProject(created.Id, new ProjectPatchRequest("Renamed"), default));
+
+        Assert.Equal(7, patched.ReflectionCadenceDays);
+        Assert.Null(patched.ReflectionLastPeriodStart);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsReflectionNextDueAtThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+
+        Assert.Equal(7, read.ReflectionCadenceDays);
+        Assert.Equal(Now.AddDays(7), read.ReflectionNextDueAt);
+    }
+
     // ---- Runner tags ----
 
     [Fact]
