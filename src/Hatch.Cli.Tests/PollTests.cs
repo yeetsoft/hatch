@@ -815,6 +815,100 @@ public sealed class PollTests
         }
     }
 
+    private static readonly DateTimeOffset HeardAt = new(2026, 9, 27, 2, 0, 0, TimeSpan.Zero);
+
+    private static BuildCheckDto NoneAt(int minutes) =>
+        Fixtures.Build(BuildVerdicts.None, "example.test/repo", Tip, shaSince: HeardAt) with
+        {
+            Remote = "https://example.test/repo.git", CheckedAt = HeardAt.AddMinutes(minutes),
+        };
+
+    private static ReviewCheckDto Merging(BuildCheckDto stored, string? headSha, DateTimeOffset? headSince) =>
+        Fixtures.Review("AER-1", [], [], [stored], mergeWork: new MergeWorkDto(WorkKinds.Merge, "merge")) with
+        {
+            PullRequestHeadSha = headSha, PullRequestHeadSince = headSince,
+        };
+
+    /// <summary>A row in the merges column, with a branch on origin and a merge verdict that is already known.</summary>
+    private static Rig Holding(ReviewCheckDto row, BuildCheckDto kept)
+    {
+        var rig = new Rig().Board(row);
+        rig.Keeps("AER-1", kept);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_merging_rows_none_is_never_final_while_the_pull_request_names_another_head()
+    {
+        using var rig = Holding(Merging(NoneAt(12), Tip2, HeardAt), NoneAt(12));
+        rig.H.Forge.Answer = Read(BuildVerdicts.None);
+
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        await rig.Later(60).RunAsync();
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_merging_rows_none_window_counts_from_when_the_pull_request_reached_the_tip_then_one_read_per_interval()
+    {
+        using var rig = Holding(Merging(NoneAt(15), Tip, HeardAt.AddMinutes(11)), NoneAt(22));
+        rig.H.Forge.Answer = Read(BuildVerdicts.None);
+
+        // Four minutes past the head, inside the window: read.
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        // Past the window now, and read again only once per interval.
+        await rig.Later(240).RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        await rig.Later(60).RunAsync();
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_merging_row_past_the_window_reports_a_build_that_starts_late_and_then_stops_asking()
+    {
+        using var rig = Holding(
+            Merging(NoneAt(15), Tip, HeardAt),
+            Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", Tip, shaSince: HeardAt));
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal(BuildVerdicts.Passed, put.Verdict);
+        Assert.Single(rig.H.Forge.Reads);
+
+        await rig.Later(600).RunAsync();
+        await rig.Later(600).RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+        Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_none_concluded_in_review_does_not_hide_the_build_once_the_row_is_merging()
+    {
+        using var rig = Building(NoneAt(5), kept: NoneAt(15));
+        rig.H.Forge.Answer = Read(BuildVerdicts.None);
+
+        await rig.RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        await rig.Later(60).RunAsync();
+        Assert.Single(rig.H.Forge.Reads);
+
+        rig.H.Wire.Replace(
+            "GET", Review, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Merging(NoneAt(15), Tip, HeardAt) }, Fixtures.Json));
+        await rig.Later(300).RunAsync();
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
     [Fact]
     public async Task A_stored_verdict_about_another_sha_does_not_vouch_and_a_moved_tip_is_read_again()
     {

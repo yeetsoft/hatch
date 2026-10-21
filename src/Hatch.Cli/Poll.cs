@@ -34,12 +34,18 @@ namespace Hatch.Cli;
 /// <c>passed</c> or <c>failed</c> verdict is asked about once - and a board that
 /// already holds one for the tip vouches for it, which is what stops a runner
 /// that was restarted asking again. <c>pending</c> is asked again next interval.
-/// <c>none</c> is asked again for <see cref="NoneWindow"/> after the board first
-/// heard about the sha, because a push's checks take a few seconds to appear and
-/// a <c>none</c> straight after one is usually premature; past it a repository
-/// with no CI stops costing two <c>gh</c> calls an interval. A runner that
-/// cannot read builds says so once and reads nothing, and nothing about it fails
-/// the merge half, a pass or a night.</para>
+/// <c>none</c> is asked again every interval for <see cref="NoneWindow"/> after
+/// the board first heard about the sha, because a push's checks take a few
+/// seconds to appear and a <c>none</c> straight after one is usually premature;
+/// past it a review row stops costing two <c>gh</c> calls an interval. A row in
+/// the merges column is held to a stricter rule, because a build can start at any
+/// time and a held row waits on it: it counts that window from when the pull
+/// request reached the sha (the later of that and the board first hearing of it),
+/// is never final while the pull request names a head other than the branch tip,
+/// and past the window is still read once per <see cref="HeldNoneInterval"/>,
+/// remembered in memory per checkout and key. A runner that cannot read builds
+/// says so once and reads nothing, and nothing about it fails the merge half, a
+/// pass or a night.</para>
 ///
 /// <para><b>The landing half</b> has no branch to fingerprint: a landing is
 /// looked at again only when the trunk's sha is not the one the board's stored
@@ -71,6 +77,9 @@ public sealed class Poll
     /// <summary>How long a sha that reads <c>none</c> is asked about again, counted from when the board first heard about it.</summary>
     public static readonly TimeSpan NoneWindow = TimeSpan.FromMinutes(10);
 
+    /// <summary>How often a merging row's <c>none</c> is read again once it is past <see cref="NoneWindow"/>, because a build can start at any time.</summary>
+    public static readonly TimeSpan HeldNoneInterval = TimeSpan.FromMinutes(5);
+
     /// <summary>
     /// The most times one sha's failing checks are re-run before the row is left
     /// failing for a person - enough for a double transient blip (a flaky registry,
@@ -81,6 +90,7 @@ public sealed class Poll
 
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
+    private readonly Dictionary<(string Path, string Key), (string Sha, DateTimeOffset At)> _noneAt = [];
     private readonly Dictionary<(string Path, string Key), string> _seenLanding = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
     private readonly Dictionary<string, string> _seenPlaybookFile = [];
@@ -90,7 +100,8 @@ public sealed class Poll
     /// <summary>One issue in one checkout, and what the board already holds for it.</summary>
     /// <remarks>A target with <paramref name="Landing"/> set is a landing target: one landing of a trunk-landing issue, asked of git and never merge- or build-checked.</remarks>
     private sealed record Target(
-        string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild, LandingDto? Landing = null);
+        string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild, LandingDto? Landing = null,
+        string? PullRequestHeadSha = null, DateTimeOffset? PullRequestHeadSince = null, bool Merging = false);
 
     /// <summary>
     /// Takes the verdicts that are due, if this interval's poll is - once per
@@ -178,7 +189,9 @@ public sealed class Poll
                 var storedBuild = (issue.BuildChecks ?? []).FirstOrDefault(c =>
                     where.Canonical is not null ? c.Canonical == where.Canonical : c.Remote == where.Remote);
 
-                list.Add(new Target(issue.Key, where, stored, storedBuild));
+                list.Add(new Target(
+                    issue.Key, where, stored, storedBuild, null,
+                    issue.PullRequestHeadSha, issue.PullRequestHeadSince, issue.MergeWork is not null));
             }
         }
 
@@ -381,6 +394,8 @@ public sealed class Poll
     {
         try
         {
+            var now = runtime.Clock.GetUtcNow();
+
             foreach (var target in issues)
             {
                 ct.ThrowIfCancellationRequested();
@@ -391,12 +406,33 @@ public sealed class Poll
                 if (heads.Candidates(target.Key) is not [var branch]) continue;
                 var sha = heads.Shas[branch];
 
-                if (_seenBuild.TryGetValue((path, target.Key), out var seen) && seen == sha) continue;
+                var memory = (path, target.Key);
+                if (_seenBuild.TryGetValue(memory, out var seen) && seen == sha) continue;
 
-                if (VouchesBuild(target.StoredBuild, sha))
+                // A none past its window: final for a review row, but a row
+                // that is merging is read again once per interval, and at once
+                // if the pull request names another head.
+                if (_noneAt.TryGetValue(memory, out var none) && none.Sha == sha)
                 {
-                    _seenBuild[(path, target.Key)] = sha;
-                    continue;
+                    if (!target.Merging) continue;
+                    if (now - none.At < HeldNoneInterval && !HeadDiffers(target, sha)) continue;
+                }
+
+                if (target.StoredBuild is { } storedBuild && storedBuild.Sha == sha)
+                {
+                    if (storedBuild.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed)
+                    {
+                        _seenBuild[memory] = sha;
+                        continue;
+                    }
+
+                    // A stored none vouches only for a review row; for a merging
+                    // row it is read once, and then held to the interval.
+                    if (!target.Merging && Concluded(storedBuild, target, sha))
+                    {
+                        _noneAt[memory] = (sha, now);
+                        continue;
+                    }
                 }
 
                 var answer = await runtime.Forge(path, target.Where.Canonical).ReadAsync(sha, ct);
@@ -432,9 +468,15 @@ public sealed class Poll
                 // first heard about the sha. A board that answered nothing has
                 // only what was read: a none is asked about again.
                 var concluded = kept is not null
-                    ? Concluded(kept)
+                    ? Concluded(kept, target, sha)
                     : read.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
-                if (concluded) _seenBuild[(path, target.Key)] = sha;
+                if (!concluded) _noneAt.Remove(memory);
+                else if (kept?.Verdict is BuildVerdicts.None) _noneAt[memory] = (sha, now);
+                else
+                {
+                    _seenBuild[memory] = sha;
+                    _noneAt.Remove(memory);
+                }
 
                 var was = target.StoredBuild;
                 if (was is null || was.Sha != sha || was.Verdict != read.Verdict)
@@ -718,7 +760,7 @@ public sealed class Poll
     /// <summary>The first 7 characters of a sha, for a terminal line - unchanged where it is shorter.</summary>
     private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
 
-    /// <summary>The trunk equivalent of <see cref="VouchesBuild"/>.</summary>
+    /// <summary>The trunk equivalent of the build half's vouching.</summary>
     private static bool VouchesTrunk(TrunkBuildDto? stored, string sha) =>
         stored is not null && stored.Sha == sha && ConcludedTrunk(stored);
 
@@ -745,25 +787,37 @@ public sealed class Poll
     }
 
     /// <summary>
-    /// Whether the board's stored verdict is still the answer for this tip: it is
-    /// about the same sha and is <c>passed</c> or <c>failed</c>, or is <c>none</c>
-    /// and was read ten minutes or more after the board first heard about the
-    /// sha. <c>pending</c> never is.
+    /// Whether a merging row's pull request names a head other than the branch
+    /// tip. An unset head counts as matching, so a board that predates it gets
+    /// the review row's rule.
     /// </summary>
-    private static bool VouchesBuild(BuildCheckDto? stored, string sha) =>
-        stored is not null && stored.Sha == sha && Concluded(stored);
+    private static bool HeadDiffers(Target target, string sha) =>
+        target.PullRequestHeadSha is { } head && !string.Equals(head, sha, StringComparison.Ordinal);
 
     /// <summary>
-    /// Whether a verdict is one that will not change without a re-run.
-    /// <c>CheckedAt</c> and not now: it stops asking only after a read that was
-    /// itself taken past the window.
+    /// Whether a verdict is past asking about, short of a re-run: <c>passed</c>
+    /// and <c>failed</c> always, <c>none</c> once it was read ten minutes or more
+    /// after the window began. <c>CheckedAt</c> and not now: it stops asking only
+    /// after a read that was itself taken past the window. A review row counts
+    /// the window from when the board first heard about the sha; a merging row
+    /// from when the pull request reached it if that is later, and never while
+    /// the pull request names another head.
     /// </summary>
-    private static bool Concluded(BuildCheckDto check) => check.Verdict switch
+    private static bool Concluded(BuildCheckDto check, Target target, string sha)
     {
-        BuildVerdicts.Passed or BuildVerdicts.Failed => true,
-        BuildVerdicts.None => check.CheckedAt - check.ShaSince >= NoneWindow,
-        _ => false,
-    };
+        switch (check.Verdict)
+        {
+            case BuildVerdicts.Passed or BuildVerdicts.Failed:
+                return true;
+            case BuildVerdicts.None:
+                if (!target.Merging) return check.CheckedAt - check.ShaSince >= NoneWindow;
+                if (HeadDiffers(target, sha)) return false;
+                var since = target.PullRequestHeadSince is { } head && head > check.ShaSince ? head : check.ShaSince;
+                return check.CheckedAt - since >= NoneWindow;
+            default:
+                return false;
+        }
+    }
 
     /// <summary>A line for the terminal: <c>HA-12 build on 1a2b3c4 failed (api, CI)</c>.</summary>
     private static string BuildWords(string key, string sha, BuildRead read)
