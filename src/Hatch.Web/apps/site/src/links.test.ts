@@ -1,15 +1,23 @@
-/* The home page and 404 page: every link they make good on. Regex over the
-   built text, the same as pages.test.ts: there is no DOM in this runner. */
+/* The home page, 404 page and a docs page: every link they make good on.
+   Regex over the built text, the same as pages.test.ts: there is no DOM in
+   this runner. */
 /// <reference types="node" />
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { APP_BASENAME } from '../../hatch/src/lib/basename'
+import { PENDING_PAGES } from '../vite-plugin-docs'
 import { buildSite } from './testing/buildSite'
 import { attr, attrValues, hrefs, ids, tagsOf, withoutComments } from './testing/html'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
 
-const NOT_YET_BUILT = ['/docs/'] // HA-724 deletes this once /docs/ is built
+const NOT_YET_BUILT = '/docs/' // HA-724 deletes this once /docs/ is built
+
+// README.md: this app is static output on its own host, not served by Hatch.Api -
+// so a docs link into the hatch app itself (left alone by resolveDocHref) names a
+// file on a different host's build, never this one's.
+const OTHER_APP = `${APP_BASENAME}/`
 
 let site: Site
 
@@ -17,7 +25,7 @@ beforeAll(async () => {
   site = await buildSite()
 })
 
-describe.each(['index.html', '404.html'])('%s', (file: string) => {
+describe.each(['index.html', '404.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
   let html: string
   beforeAll(() => {
     html = withoutComments(site.read(file))
@@ -43,10 +51,16 @@ describe.each(['index.html', '404.html'])('%s', (file: string) => {
   it('every asset or page of this site names a file in the output directory', () => {
     const refs = [...hrefs(html), ...attrValues(html, 'src')]
       .filter((ref) => ref.startsWith('/'))
-      .filter((ref) => !NOT_YET_BUILT.some((prefix) => ref.startsWith(prefix)))
+      .map((ref) => ref.split('#')[0]) // drop a #fragment before checking the file exists
+      .filter((ref) => ref !== NOT_YET_BUILT)
+      .filter((ref) => !ref.startsWith(OTHER_APP))
+      .filter((ref) => {
+        const slug = ref.match(/^\/docs\/([a-z0-9-]+)\/$/)?.[1]
+        return slug === undefined || !PENDING_PAGES.has(slug)
+      })
     expect(refs.length).toBeGreaterThan(0)
     for (const ref of refs) {
-      const path = ref === '/' ? 'index.html' : ref.slice(1)
+      const path = ref.endsWith('/') ? `${ref.slice(1)}index.html` : ref.slice(1)
       expect(existsSync(join(site.dir, path)), ref).toBe(true)
     }
   })

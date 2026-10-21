@@ -1,0 +1,148 @@
+import type { Plugin } from 'vite'
+import { runnerImport } from 'vite'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { escapeHtml } from './vite-plugin-site'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+/** The shape `apps/hatch/src/lib/docs.ts` exports, read through `runnerImport` -
+    not a static import, so the config bundle never sees that module's
+    `import.meta.glob`. */
+interface DocsModule {
+  DOC_PAGES: { slug: string; title: string; summary: string; body: string }[]
+  renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string }
+}
+
+/** The five pages HA-663 has yet to write. A link to one of these still becomes
+    a site address and does not fail the build - everything else does. */
+export const PENDING_PAGES = new Set([
+  'the-lifecycle-of-a-ticket',
+  'playbooks',
+  'questions-and-decisions',
+  'review-pull-requests-and-the-merge-train',
+  'flow-wip-and-the-battery',
+])
+
+/** Where a docs link to `slug` (with `fragment`, `#`-included or empty) goes on
+    the site, under `base` (`config.base`: always `/` or `/<path>/`). */
+export function docHref(base: string, slug: string, fragment: string): string {
+  return `${base}docs/${slug}/${fragment}`
+}
+
+export interface BrokenDocsLink {
+  page: string
+  slug: string
+}
+
+/** Throws once, naming every link whose slug is neither a real page nor on
+    `PENDING_PAGES` - not just the first. */
+export function checkDocsLinks(links: readonly BrokenDocsLink[]): void {
+  const broken = links.filter((l) => !PENDING_PAGES.has(l.slug))
+  if (broken.length === 0) return
+  throw new Error(broken.map((l) => `${l.page}.md links to "${l.slug}", which has no docs page`).join('\n'))
+}
+
+function renderPage(page: DocsModule['DOC_PAGES'][number], body: string): string {
+  const title = escapeHtml(`Hatch: ${page.title}`)
+  const description = escapeHtml(page.summary)
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <meta name="description" content="${description}" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="../../../../packages/ui/src/assets/hatch-logo.png" />
+    <link rel="stylesheet" href="/src/site.css" />
+    <script type="module" src="/src/theme.ts"></script>
+  </head>
+  <body>
+    <a class="site-skip" href="#main">Skip to content</a>
+    <header class="site-header site-column">
+      <a class="site-brand" href="%BASE_URL%">
+        <img class="site-mark" src="../../../../packages/ui/src/assets/hatch-logo.png" alt="" width="40" height="40" />
+        <span>Hatch</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="%BASE_URL%docs/">Docs</a>
+      </nav>
+    </header>
+    <main id="main" class="site-column">
+      <h1>${escapeHtml(page.title)}</h1>
+      <article class="hatch-docs-body">
+${body}
+      </article>
+    </main>
+    <footer class="site-footer site-column">
+      <!--site:repository-->
+      <p>Hatch is open source.</p>
+      <a href="{{repository-url}}">Source</a>
+      <!--/site:repository-->
+    </footer>
+  </body>
+</html>
+`
+}
+
+/**
+ * One virtual HTML input per page in `DOC_PAGES`, read from the app's own docs
+ * module through `runnerImport` so the parser and section order are never
+ * duplicated here. Each id sits two directories deeper than `404.html`
+ * (`docs/<slug>/index.html` vs `404.html`), which is why the frame's icon and
+ * mark need two extra `../` to still reach `packages/ui/src/assets/`.
+ *
+ * The virtual inputs are registered in `config`, the hook that can still edit
+ * `config.build` - but each page's HTML, which needs `base` to build its
+ * hrefs, is only rendered in `configResolved`, once `base` is final.
+ */
+export function docsHtml(): Plugin {
+  const pages = new Map<string, string>()
+  let docsModule: DocsModule | undefined
+
+  return {
+    name: 'docs-html',
+    async config(config) {
+      const { module } = await runnerImport<DocsModule>(resolve(__dirname, '../hatch/src/lib/docs.ts'), {
+        configFile: false,
+        root: __dirname,
+        logLevel: 'silent',
+      })
+      docsModule = module
+
+      config.build ??= {}
+      config.build.rolldownOptions ??= {}
+      config.build.rolldownOptions.input ??= {}
+      const input = config.build.rolldownOptions.input as Record<string, string>
+
+      for (const page of module.DOC_PAGES) {
+        input[`docs/${page.slug}`] = resolve(__dirname, `docs/${page.slug}/index.html`)
+      }
+    },
+    configResolved(resolvedConfig) {
+      const module = docsModule!
+      const knownSlugs = new Set(module.DOC_PAGES.map((p) => p.slug))
+      const broken: BrokenDocsLink[] = []
+
+      for (const page of module.DOC_PAGES) {
+        const resolveHref = (slug: string, fragment: string): string => {
+          if (!knownSlugs.has(slug)) broken.push({ page: page.slug, slug })
+          return docHref(resolvedConfig.base, slug, fragment)
+        }
+        const id = resolve(__dirname, `docs/${page.slug}/index.html`)
+        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref).html))
+      }
+
+      checkDocsLinks(broken)
+    },
+    resolveId(id) {
+      if (pages.has(id)) return id
+    },
+    load(id) {
+      return pages.get(id)
+    },
+  }
+}
