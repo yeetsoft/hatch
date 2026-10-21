@@ -118,6 +118,9 @@ public interface IAgentStreamReader
     /// <summary>The largest context carried by any one message so far.</summary>
     long PeakContextTokens { get; }
 
+    /// <summary>What the session read, by path or endpoint - the heaviest <see cref="ReadsLedger.Max"/>, never free text.</summary>
+    IReadOnlyList<WorkLogReadDto> Reads { get; }
+
     /// <summary>The account's usage windows, out of the stream's own report - empty before the first one arrives.</summary>
     IReadOnlyList<UsageWindow> Usage { get; }
 
