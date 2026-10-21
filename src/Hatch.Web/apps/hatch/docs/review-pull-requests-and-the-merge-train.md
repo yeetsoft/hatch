@@ -87,3 +87,15 @@ Only an owner or an approver of the issue's project may move work into a protect
 Of the board's own hops, only the approve hop crosses a protected column's gate. A pre-approval is that owner's or approver's own permission, already given on the ticket in advance; the hop carries it out the moment the board can see it is true, and decides nothing for itself. Every other hop that would land in a protected column is refused the same way a person without the role is.
 
 Trying the move any other way answers with a 403 — the gate working, not a scope being wrong.
+
+## The merge train
+
+Every ticket standing in a project's merges-PR column takes a place in that project's own train — one queue per project, never a board-wide one, so two projects' pull requests never wait on each other. The order is the same priority tiering the rest of the board uses: [priority](issues#priority) first, then rank. An expedited ticket therefore goes ahead of a normal one even when it sits behind it in rank.
+
+The head of the train is the first ticket in that order that is neither held nor being sent back to review. A ticket is held, and stepped over, when its pull request is closed or still a draft, when its branch is missing or ambiguous, when its pull request changes a playbook file — a person merges that one — or when its tip has had no checks past the settle window, on a project that requires them, and the forge does not call it clean. A ticket is sent back to review, and stepped over, when its branch conflicts with the trunk or its build failed on the sha just judged clean. A build that is still running is neither: that ticket stays the head, and the train waits on it until it settles. Every other ticket in the column shows a sentence naming the head and its own position behind it — `hatch queue` prints it too — and is not acted on until its turn comes, however actionable its own ticket would otherwise read.
+
+Only the head is touched on a tick. A clean branch whose build passed merges; a clean branch that is behind the trunk is brought current with it first, and waits for the next tick. Nothing behind the head moves, whatever its own branch and build would otherwise allow.
+
+None of this spends an increment or a session. The runner acts on its own clock, separate from the clock that reads the build and merge checks above — [`--merge-interval`](cli-reference#go-to-work) against `--interval`. A ticket can therefore be merged under a session that is still working it: if that session's own earlier push already left the branch clean and green, and its turn in the train had come by the time the train ran, the train merges it. That is the design, not a race to fix.
+
+Adding the column, naming an approver and choosing the forge's own shape are covered start to finish elsewhere and not repeated here: [letting the loop merge for you](letting-the-loop-merge-for-you).
