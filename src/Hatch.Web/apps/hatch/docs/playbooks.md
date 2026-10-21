@@ -96,7 +96,9 @@ nothing but the prompt keeps a session to that. Two things go further:
 - **The reflection row** carries a denied-tools list that takes away `Edit`,
   `Write`, `NotebookEdit` and the git writers. It keeps `Read`, a plain `Bash`
   and the `hatch` verbs, so it still reads the repository and moves its own
-  ticket. It is not a check.
+  ticket. It is not a check. A reflection also reads the hypotheses earlier
+  reflections filed, and reports each as confirmed, refuted or unreadable in a
+  `Hypotheses read` section that is always present.
 - **A check playbook** is the only kind of row that cannot move its ticket at
   all. While its claim is held, a key's move of that ticket is refused; the
   session records a verdict, pass or fail with its findings, and the runner
