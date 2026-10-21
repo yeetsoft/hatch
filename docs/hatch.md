@@ -4336,7 +4336,8 @@ own. `QueueEntryDto`, `hatch queue` and the queue page carry none of this — a
 queued row still answers only for the move it is itself waiting on. A
 send-back for an over-long brief is unchanged by any of it: this is the
 *next* row's limit, read in advance, not a change to how this one is judged.
-The prompt is where it is spent — printed for the session that follows.
+The prompt is where it is spent — printed under `## How long the brief may
+be` for the session that follows.
 
 **Tick the build column.** `Columns.Implementation` is the ticked column, or
 else the column whose next move is into review. On a board with check columns
