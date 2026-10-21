@@ -507,6 +507,17 @@ public sealed class FakeForge
     /// <summary>What a read of one pull request's url answers.</summary>
     public Dictionary<string, PullRequestAnswer> PullRequestFor { get; } = [];
 
+    /// <summary>
+    /// What a pull request read answers, given the path, the url and the
+    /// 1-based call number for that url - for a test that has to say
+    /// something different the second time, the way <see cref="Reading"/>
+    /// does for a build. Consulted before <see cref="PullRequestFor"/> and
+    /// <see cref="PullRequestAnswer"/>; a null result falls through to them.
+    /// </summary>
+    public Func<string, string, int, PullRequestAnswer?>? PullRequestReading { get; set; }
+
+    private readonly Dictionary<string, int> _pullRequestCalls = [];
+
     /// <summary>Every merge asked for, with the sha it carried, in order.</summary>
     public List<(string Path, string Url, string Sha)> MergeCalls { get; } = [];
 
@@ -567,7 +578,10 @@ public sealed class FakeForge
         public Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct)
         {
             owner.PullRequestReads.Add($"{path} {url}");
-            return Task.FromResult(owner.PullRequestFor.GetValueOrDefault(url, owner.PullRequestAnswer));
+            var call = owner._pullRequestCalls[url] = owner._pullRequestCalls.GetValueOrDefault(url) + 1;
+            return Task.FromResult(
+                owner.PullRequestReading?.Invoke(path, url, call)
+                ?? owner.PullRequestFor.GetValueOrDefault(url, owner.PullRequestAnswer));
         }
 
         public Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

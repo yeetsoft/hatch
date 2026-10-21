@@ -343,4 +343,82 @@ public sealed class OllamaAdapterTests : IDisposable
 
         Assert.Single(_warnings);
     }
+
+    // ParseTiers
+
+    private static void Tiers(string? raw, params (string Alias, string Id)[] expected)
+    {
+        Assert.Null(OllamaAdapter.ParseTiers(raw, out var tiers));
+        Assert.Equal(expected.Length, tiers.Count);
+        foreach (var (alias, id) in expected) Assert.Equal(id, tiers[alias]);
+    }
+
+    [Fact]
+    public void ParseTiers_reads_all_four_aliases()
+    {
+        Tiers("haiku=a:b,sonnet=c:d,opus=e:f,fable=qwen3-coder:30b",
+            ("haiku", "a:b"), ("sonnet", "c:d"), ("opus", "e:f"), ("fable", Pinned));
+    }
+
+    [Fact]
+    public void ParseTiers_reads_a_subset()
+    {
+        Tiers($"opus={Pinned}", ("opus", Pinned));
+    }
+
+    [Fact]
+    public void ParseTiers_reads_any_order()
+    {
+        Tiers("fable=e:f,opus=c:d,haiku=a:b", ("haiku", "a:b"), ("opus", "c:d"), ("fable", "e:f"));
+    }
+
+    [Fact]
+    public void ParseTiers_trims_spaces_around_entries_commas_and_the_equals_sign()
+    {
+        Tiers($"  haiku = {Pinned} ,  sonnet=a:b  ", ("haiku", Pinned), ("sonnet", "a:b"));
+    }
+
+    [Fact]
+    public void ParseTiers_keeps_a_colon_and_a_slash_in_the_id()
+    {
+        Tiers("sonnet=hf.co/user/repo:Q4_K_M", ("sonnet", "hf.co/user/repo:Q4_K_M"));
+    }
+
+    [Fact]
+    public void ParseTiers_stores_the_alias_lower_case()
+    {
+        Assert.Null(OllamaAdapter.ParseTiers($"HAIKU={Pinned}", out var tiers));
+
+        Assert.Equal(Pinned, tiers["haiku"]);
+        Assert.False(tiers.ContainsKey("HAIKU"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(",,")]
+    [InlineData(" , ,")]
+    public void ParseTiers_answers_empty_tiers_for_nothing(string? raw)
+    {
+        Tiers(raw);
+    }
+
+    [Theory]
+    [InlineData("haiku", "entry \"haiku\" is not alias=id")]
+    [InlineData("haiku=", "entry \"haiku=\" is not alias=id")]
+    [InlineData("=qwen3-coder:30b", "entry \"=qwen3-coder:30b\" is not alias=id")]
+    [InlineData("fast=", "entry \"fast=\" is not alias=id")]
+    [InlineData("fast=qwen3-coder:30b", "\"fast\" is not an alias (haiku, sonnet, opus, fable)")]
+    [InlineData("haiku=a:b,haiku=c:d", "\"haiku\" is given twice")]
+    [InlineData("haiku=a:b,HAIKU=c:d", "\"HAIKU\" is given twice")]
+    [InlineData("haiku=llama3.3", "\"llama3.3\" is not an Ollama model id (name:tag, e.g. qwen3-coder:30b)")]
+    [InlineData("haiku=gpt-6-luna", "\"gpt-6-luna\" is not an Ollama model id (name:tag, e.g. qwen3-coder:30b)")]
+    [InlineData("haiku=a=b", "\"a=b\" is not an Ollama model id (name:tag, e.g. qwen3-coder:30b)")]
+    [InlineData("sonnet=a:b,fast=c:d,opus=llama3.3", "\"fast\" is not an alias (haiku, sonnet, opus, fable)")]
+    public void ParseTiers_refuses_a_malformed_entry_in_a_sentence_and_leaves_tiers_empty(string raw, string sentence)
+    {
+        Assert.Equal(sentence, OllamaAdapter.ParseTiers(raw, out var tiers));
+        Assert.Empty(tiers);
+    }
 }
