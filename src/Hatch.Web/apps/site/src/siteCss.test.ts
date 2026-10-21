@@ -51,6 +51,11 @@ describe('site.css', () => {
     const pre = rulesOf(siteCss).find(({ selectors }) => selectors.endsWith(' pre'))
     expect(pre?.body).toMatch(/overflow-wrap:\s*anywhere/)
   })
+
+  it('lets inline code wrap anywhere, so one long command in a sentence cannot widen the page', () => {
+    const code = rulesOf(siteCss).find(({ selectors }) => selectors === '.hatch-docs-body code')
+    expect(code?.body).toMatch(/overflow-wrap:\s*anywhere/)
+  })
 })
 
 describe('violations', () => {
