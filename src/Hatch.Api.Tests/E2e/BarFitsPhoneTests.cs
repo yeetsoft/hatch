@@ -50,6 +50,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
     public async Task TheWidestBar_FitsThePhoneOnBoardIssueAndPlan()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
 
         var harness = new E2eHarness("BarFitsPhone");
         var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
