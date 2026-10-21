@@ -10,16 +10,22 @@ export interface Frame {
       script that renders them. Omitted by `renderLanding`, which is never
       fenced. */
   mermaid?: boolean
+  /** Whether the page carries a docs sidebar - inserts the script that builds
+      the search field into it (HA-1280). Set by `renderPage` and
+      `renderLanding`, both of which emit a sidebar; left unset by
+      `contentHtml`'s pages, which emit none. */
+  search?: boolean
 }
 
 /** The document every page shares - head, header, skip link, footer - so the
     footer's `<!--site:repository-->` block cannot drift between pages. `title`
     and `description` are escaped here; `main` is trusted markup. */
-export function renderFrame({ title, description, main, up, mermaid }: Frame): string {
+export function renderFrame({ title, description, main, up, mermaid, search }: Frame): string {
   const safeTitle = escapeHtml(title)
   const safeDescription = escapeHtml(description)
   const icon = `${up}packages/ui/src/assets/hatch-logo.png`
   const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
+  const searchScript = search ? '\n    <script type="module" src="/src/docsSearchField.ts"></script>' : ''
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -32,7 +38,7 @@ export function renderFrame({ title, description, main, up, mermaid }: Frame): s
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/png" href="${icon}" />
     <link rel="stylesheet" href="/src/site.css" />
-    <script type="module" src="/src/theme.ts"></script>${diagramsScript}
+    <script type="module" src="/src/theme.ts"></script>${diagramsScript}${searchScript}
   </head>
   <body>
     <a class="site-skip" href="#main">Skip to content</a>

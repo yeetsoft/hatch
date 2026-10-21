@@ -447,7 +447,7 @@ typed into GitHub's own UI.
 
 The section above is the primary path, and this one is the shortcut. Rather
 than putting a binary on your `PATH` and keeping a terminal open, the same
-stack can start a **container** that carries the runner, `git` and the `claude`
+stack can start a **container** that carries the runner, `git` and an agent
 CLI, mounts one of your checkouts, and works tickets under the control of the
 Runners page like any other runner.
 
@@ -455,16 +455,16 @@ It is off unless you ask for it. Nothing about the stack changes if you never
 type the word `runner`.
 
 **What it can and cannot do, first, because it decides whether this section is
-for you.** The container carries `git` and the `claude` CLI and no language
-runtimes at all — no .NET, no Node, no Python, no compilers. So it can plan,
-break work down, analyse a repository and write code in any repository at all,
-and it can commit and push what it wrote. It *cannot build or test* a
-repository whose toolchain it does not have, and no general image has
-everybody's. For a repository where "done" means a green build — which is most
-of them — the base-OS runner above is the one to use, because it works with
-whatever you already have installed. This one is for the planning, breaking
-down and analysing that make up a good part of a board's work, and for
-repositories whose tooling is `git` and a text editor.
+for you.** The container carries `git`, the `claude`, `codex` and `grok`
+CLIs, and no language runtimes at all — no .NET, no Node, no Python, no
+compilers. So it can plan, break work down, analyse a repository and write
+code in any repository at all, and it can commit and push what it wrote. It
+*cannot build or test* a repository whose toolchain it does not have, and no
+general image has everybody's. For a repository where "done" means a green
+build — which is most of them — the base-OS runner above is the one to use,
+because it works with whatever you already have installed. This one is for
+the planning, breaking down and analysing that make up a good part of a
+board's work, and for repositories whose tooling is `git` and a text editor.
 
 ### Starting it
 
@@ -498,11 +498,17 @@ the container too, rather than Docker restarting it behind your back.
 
 `docker compose ... logs -f runner` is what it is saying while it works.
 
-**Its Claude credential comes from the Settings page**, and from nowhere else.
-Paste a token from `claude setup-token` into **Settings → Claude subscription
-token** and the container picks it up on its next look. If none is saved when
-it starts, it says so once and then waits, looking again every minute — so the
-order you do these two things in does not matter.
+**`HATCH_AGENT` picks which agent it runs** — `claude` (the default), `codex`
+or `grok`; anything else is a refusal, naming the three. **Its credential
+comes from the Settings page**, and from nowhere else: a Claude subscription
+token (from `claude setup-token`), a Codex API key (from the OpenAI platform
+dashboard — a ChatGPT login does not travel), or a Grok Build API key
+(`grok login` does not travel either), for whichever agent `HATCH_AGENT`
+names. If none is saved when it starts, it says so once and then waits,
+asking again every minute — so the order you do these two things in does not
+matter. It reads the credential once, at start; save a new one and the
+container keeps the old one until `docker compose --profile runner restart
+runner`.
 
 **One container works one workspace.** A workspace clones what the board
 binds, so one container can serve a whole board rather than one repository:

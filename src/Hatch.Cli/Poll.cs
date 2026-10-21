@@ -750,7 +750,7 @@ public sealed class Poll
     /// and was read ten minutes or more after the board first heard about the
     /// sha. <c>pending</c> never is.
     /// </summary>
-    private static bool VouchesBuild(BuildCheckDto? stored, string sha) =>
+    internal static bool VouchesBuild(BuildCheckDto? stored, string sha) =>
         stored is not null && stored.Sha == sha && Concluded(stored);
 
     /// <summary>
@@ -758,7 +758,7 @@ public sealed class Poll
     /// <c>CheckedAt</c> and not now: it stops asking only after a read that was
     /// itself taken past the window.
     /// </summary>
-    private static bool Concluded(BuildCheckDto check) => check.Verdict switch
+    internal static bool Concluded(BuildCheckDto check) => check.Verdict switch
     {
         BuildVerdicts.Passed or BuildVerdicts.Failed => true,
         BuildVerdicts.None => check.CheckedAt - check.ShaSince >= NoneWindow,
@@ -766,7 +766,7 @@ public sealed class Poll
     };
 
     /// <summary>A line for the terminal: <c>HA-12 build on 1a2b3c4 failed (api, CI)</c>.</summary>
-    private static string BuildWords(string key, string sha, BuildRead read)
+    internal static string BuildWords(string key, string sha, BuildRead read)
     {
         var at = sha.Length > 7 ? sha[..7] : sha;
 
