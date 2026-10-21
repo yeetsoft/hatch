@@ -1,5 +1,47 @@
 # Hatch
 
+## Section index
+
+This file is larger than a context window (about 500 KB, 18 top-level
+sections), so do not read it whole. Find the section below, or list the
+headings with `grep -n '^## ' docs/hatch.md`, then read from that heading to
+the next heading of the same level and stop.
+
+- [Summary](#summary) - What is Hatch, and which four properties carry the
+  design?
+- [Goals](#goals) - What is Hatch for, in four things it must do?
+- [Non-goals](#non-goals) - What is absent on purpose, and what does each
+  absence cost to add later?
+- [Where it lives](#where-it-lives) - Which module, app and project hold the
+  backend, the frontend and the wire contract?
+- [Domain model](#domain-model) - Which entities exist, and what are the
+  rules on each?
+- [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
+  may reach Hatch, and how does an API key differ from a person?
+- [API surface](#api-surface) - Which routes exist under `/api/hatch`, and
+  who may call each?
+- [The battery](#the-battery) - How much Claude is left, and when does it
+  come back?
+- [What is waiting on you](#what-is-waiting-on-you) - Has the loop stopped on
+  a person, and which links unblock it?
+- [The leaderboard](#the-leaderboard) - What did the nights cost, and on
+  which epics?
+- [Reports](#reports) - When did things happen on the board, which the board
+  as it stands cannot say?
+- [The overnight](#the-overnight) - What did the loop actually land while
+  nobody was watching?
+- [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
+- [The unattended loop](#the-unattended-loop) - How does `go-to-work` run
+  increments back to back, and what does it do when nothing is left?
+- [The level above the board](#the-level-above-the-board) - Which running
+  project is nearest the line?
+- [The importer](#the-importer) - How does a markdown plan become an epic
+  with stories and tasks?
+- [The operator and Claude contract](#the-operator-and-claude-contract) -
+  What may an agent do to a ticket, and what only a person?
+- [Deferred on purpose](#deferred-on-purpose) - What is deliberately not
+  built yet?
+
 ## Summary
 
 The house project tracker: a kanban board at `hatch.${DOMAIN}`, issues with
