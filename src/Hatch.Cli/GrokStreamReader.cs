@@ -111,6 +111,9 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
     public long PeakContextTokens => _peakContext;
 
+    // A stub for the interface; the Grok reads task (HA-1267) replaces it.
+    public IReadOnlyList<WorkLogReadDto> Reads => [];
+
     /// <summary>
     /// Always empty - this vocabulary carries no rate-limit event. See the
     /// class remarks.

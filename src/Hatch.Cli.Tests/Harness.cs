@@ -207,6 +207,8 @@ internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resu
 
     public long PeakContextTokens => 0;
 
+    public IReadOnlyList<WorkLogReadDto> Reads => [];
+
     public IReadOnlyList<UsageWindow> Usage => [];
 
     public DateTimeOffset? UsageReadAt => null;
