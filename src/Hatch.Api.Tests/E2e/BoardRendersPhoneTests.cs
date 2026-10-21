@@ -23,6 +23,7 @@ public class BoardRendersPhoneTests(ITestOutputHelper output)
     public async Task TheBoard_RendersAtThePhoneProfile()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
 
         var harness = new E2eHarness("BoardRendersPhone");
         var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
