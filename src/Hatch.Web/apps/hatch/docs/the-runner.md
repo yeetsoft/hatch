@@ -16,7 +16,8 @@ terminal. The same runner as a container is *The container runner*.
 **Agents → Get the runner** ([`/apps/hatch/runner`](/apps/hatch/runner)) offers
 this platform's download first, with the others underneath for the machine you
 are not sitting at, and prints the revision it was built from. That is the same
-build as the page serving it, so the two are never a version apart.
+build as the page serving it, so the two are never a version apart. Four
+platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 
 Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On macOS and
 Linux it needs marking executable first:
@@ -25,10 +26,15 @@ Linux it needs marking executable first:
 chmod +x hatch
 ```
 
-It needs `git`, and the agent CLI it spawns, logged in: `claude` by default,
-or `codex` or `grok` when `HATCH_AGENT` or `--agent` says so. In a checkout of
-Hatch itself, `scripts/hatch.sh` (`scripts\hatch.ps1` in PowerShell) finds or
-builds the binary and hands over, so nothing needs installing first.
+The binary is self-contained: nothing else needs installing to run it, not
+.NET, not Node, not `jq`. It needs `git`, and the agent CLI it spawns, logged
+in: `claude` by default, or `codex` or `grok` when `HATCH_AGENT` or `--agent`
+says so. In a checkout of Hatch itself, `scripts/hatch.sh` (`scripts\hatch.ps1`
+in PowerShell) finds or builds the binary and hands over, so nothing needs
+installing first — the wrapper itself needs the .NET SDK, and bash 3.2+ or
+PowerShell 5.1+. `make build-hatch` builds the binary once so every command
+after is fast, and `make publish-hatch` produces the four platform binaries
+the Runner page serves.
 
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
@@ -40,7 +46,14 @@ Bare `hatch config` asks, in order, for the origin, the key (read without
 echo), the agent, the path of that agent's CLI, and, inside a checkout, the
 name the board should call this runner. Enter keeps what is shown in brackets.
 It writes the answers to a per-user file, so it follows you between checkouts
-and you do it once.
+and you do it once. The asking needs a terminal: redirected or scripted, bare
+`hatch config` refuses and exits 1 rather than hang on a prompt nobody can
+answer.
+
+An empty origin is refused, and so is one without `http(s)://` in front of it.
+Leaving the key blank prints a warning, and so does a key that does not start
+`hatch_ak_` — both are carried on anyway, since the call that follows is the
+one that actually knows whether the board accepts it.
 
 Each flag writes one thing and asks nothing:
 
@@ -63,7 +76,9 @@ Each flag writes one thing and asks nothing:
 An origin or key write is then tried against the board. If that call does not
 go through, the file is still written, so there is something to fix, and the
 command exits 1. With the wall off, the key may be blank; with the wall up,
-the runner needs one (*People, roles and keys*).
+the runner needs one (*People, roles and keys*). A call that goes through
+prints `reached <origin> - columns: …`, naming the board's own columns, so the
+address and the key are both known good before anything is claimed.
 
 ## Three layers
 
@@ -78,6 +93,11 @@ It is mode 600 wherever the platform has modes; on Windows it inherits the
 directory's ACL. A blank value is the same as unset. A flag beats every layer
 for its run: `--repo` on `work` or `go-to-work` replaces `HATCH_REPOS` rather
 than adding to it.
+
+Both files are parsed, not sourced: a `KEY=value` line, blanks and `#`
+comments skipped, one layer of matching quotes stripped off the value. An
+empty value never wins over a layer beneath it that is set, and a name not on
+the allowed list is ignored with a line saying so, rather than silently.
 
 Five settings are read from the environment only: `HATCH_HEARTBEAT`,
 `HATCH_RETRY_SECONDS`, `HATCH_ROOT`, `HATCH_NIGHT_STATE` and `HATCH_RTK`. A
@@ -152,13 +172,20 @@ hatch config --tag gpu --tag linux
 empty `HATCH_TAGS` reads as unset, so a runner that sets nothing advertises
 nothing.
 
+A runner that falls short of what a project requires is not refused outright:
+`hatch queue` folds the row and says what is missing, by name — *"AER-12 is
+implemented only by a runner advertising macos and xcode - this runner
+advertises linux"* (*"... advertises none"* for a runner with no tags at all).
+
 ## The runner's name
 
 The board shows each runner by name, under **Agents → Runners** (*Watching the
 loop*). The name is `HATCH_RUNNER` if that is set; otherwise the name recorded
 for this checkout; otherwise a cast-list character, picked once from the host
 and the path, skipping names already recorded here or live elsewhere, and
-kept from then on.
+kept from then on. An explicit `HATCH_RUNNER` over 240 characters is clipped
+from the front, since the server refuses one any longer and the end of a name
+is the part that still identifies the checkout.
 
 `hatch config --runner <name>` refuses a name that is empty, too long, not
 plain ASCII, or already a live runner's elsewhere, and writes nothing. It also
@@ -261,3 +288,24 @@ get answered in aggregate, which is how a wrong assumption gets in.
 
 Every command takes `-h` for what it accepts, and [CLI
 reference](cli-reference) has each one in full.
+
+## When it will not run
+
+- **`hatch: no claude CLI on PATH.`** The runner looks on `PATH` only — never
+  an editor extension's bundled copy, which moves with that extension's own
+  updates and would break on somebody else's release schedule. Install the
+  CLI, or name it in `HATCH_CLAUDE_BIN`, which must point at a file that
+  exists.
+- **`hatch: cannot tell which branch is the trunk here`.** `origin/HEAD` is
+  not set in this clone. `git remote set-head origin -a` fixes it, or name
+  the branch in `HATCH_BASE_BRANCH`.
+- **`hatch: the tree has changes in it that would not stash`.** A merge in
+  progress, or a conflicted file. Clear it by hand; the loop will not guess.
+- **`hatch: a go-to-work is already running in <path>, pid <n>`.** One loop
+  per checkout. Join that one, stop it, or use another checkout.
+- **It picked up nothing.** `hatch queue` says why, per card: no playbook
+  leads out of that column for that type, an open question, a person's name
+  on it, a ready date not yet arrived, another runner's claim, or a project
+  bound to repositories this runner has no checkout of.
+- **`hatch: could not reach <origin> for 90s - ...`** See [when a call
+  fails](cli-reference#when-a-call-fails).
