@@ -48,7 +48,6 @@ interface DocsModule {
 /** The two pages HA-663 has yet to write. A link to one of these still becomes
     a site address and does not fail the build - everything else does. */
 export const PENDING_PAGES = new Set([
-  'review-pull-requests-and-the-merge-train',
   'flow-wip-and-the-battery',
 ])
 
