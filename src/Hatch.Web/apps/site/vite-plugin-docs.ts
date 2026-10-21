@@ -36,6 +36,7 @@ interface OutlineEntry {
 interface DocsModule {
   DOC_PAGES: DocsPage[]
   docSections(pages: DocsPage[]): LandingSection[]
+  docNeighbours(pages: DocsPage[], slug: string): { previous: DocsPage | null; next: DocsPage | null }
   createSlugger(): (text: string) => string
   renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string; outline: OutlineEntry[] }
 }
@@ -162,14 +163,27 @@ export function renderOutline(outline: readonly OutlineEntry[]): string {
       <nav class="site-docs-outline" aria-label="On this page"><p class="site-docs-outline-title">On this page</p>${list}</nav>`
 }
 
+/** The previous and next links at the foot of a docs page, each labelled with the
+    page's title. `''` when both are null, so a one-page docs set carries no empty
+    pager. A side that is null renders no link. */
+export function renderPager(base: string, previous: DocsPage | null, next: DocsPage | null): string {
+  if (previous === null && next === null) return ''
+  const link = (page: DocsPage, direction: 'previous' | 'next'): string =>
+    `<a class="site-docs-pager-link site-docs-pager-${direction}" rel="${direction === 'previous' ? 'prev' : 'next'}" href="${escapeHtml(docHref(base, page.slug, ''))}"><span class="site-docs-pager-label">${direction === 'previous' ? 'Previous' : 'Next'}</span><span class="site-docs-pager-title">${escapeHtml(page.title)}</span></a>`
+  const links = [previous && link(previous, 'previous'), next && link(next, 'next')].filter(Boolean).join('')
+  return `      <nav class="site-docs-pager" aria-label="Previous and next">${links}</nav>`
+}
+
 function renderPage(
   page: DocsPage,
   rendered: { html: string; outline: readonly OutlineEntry[] },
   base: string,
   sections: readonly LandingSection[],
+  neighbours: { previous: DocsPage | null; next: DocsPage | null },
 ): string {
   const outline = renderOutline(rendered.outline)
   const outlined = outline === '' ? '' : ' site-docs--outlined'
+  const pager = renderPager(base, neighbours.previous, neighbours.next)
   return renderFrame({
     title: `Hatch: ${page.title}`,
     description: page.summary,
@@ -180,7 +194,8 @@ ${renderSidebar(base, sections, page.slug)}${outline === '' ? '' : `
 ${outline}`}
       <article class="hatch-docs-body">
 ${rendered.html}
-      </article>
+      </article>${pager === '' ? '' : `
+${pager}`}
       </div>`,
   })
 }
@@ -274,7 +289,8 @@ export function docsHtml(): Plugin {
           return docHref(resolvedConfig.base, slug, fragment)
         }
         const id = resolve(__dirname, `docs/${page.slug}/index.html`)
-        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref), resolvedConfig.base, sections))
+        const neighbours = module.docNeighbours(module.DOC_PAGES, page.slug)
+        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref), resolvedConfig.base, sections, neighbours))
       }
 
       pages.set(LANDING_ID, renderLanding(resolvedConfig.base, sections, module.createSlugger()))
