@@ -13,6 +13,14 @@ namespace Hatch.Cli;
 /// Claude's <c>modelUsage</c> dict - so <paramref name="model"/> below is
 /// explicit, the same way <see cref="ClaudeAdapter"/> already threads its own
 /// <c>ResumeCommand</c> through rather than this reader guessing one.
+/// <para>
+/// Codex has no read tool: every file access is a <c>command_execution</c>,
+/// deliberately not parsed except for the hatch-CLI shape, which <see
+/// cref="ReadsLedger.FromCommand"/> recognizes and returns null for
+/// everything else. <c>file_change</c>, <c>mcp_tool_call</c>,
+/// <c>collab_tool_call</c> and <c>web_search</c> contribute nothing to <see
+/// cref="Reads"/>.
+/// </para>
 /// </remarks>
 internal sealed class CodexStreamReader(string root, RunFacts facts, string model, Func<string, string>? resumeCommand = null)
     : IAgentStreamReader
@@ -31,8 +39,9 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
     public long PeakContextTokens => _peakContext;
 
-    // A stub for the interface; the Codex reads task (HA-1266) replaces it.
-    public IReadOnlyList<WorkLogReadDto> Reads => [];
+    private readonly ReadsLedger _reads = new();
+
+    public IReadOnlyList<WorkLogReadDto> Reads => _reads.Ranked();
 
     /// <summary>
     /// Always empty - Codex's <c>ThreadEvent</c> has no <c>rate_limit_event</c>
@@ -91,6 +100,9 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
         var type = Text(item, "type");
         if (type is null) yield break;
+
+        // Counted here and not on item.completed, so one item counts once.
+        if (type == "command_execution") _reads.Add(ReadsLedger.FromCommand(Text(item, "command")));
 
         var field = type switch
         {
