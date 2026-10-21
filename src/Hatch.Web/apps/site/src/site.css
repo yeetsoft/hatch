@@ -468,3 +468,28 @@ summary.site-action::-webkit-details-marker {
     opacity: 1;
   }
 }
+
+/* The docs landing: every section's pages with their summaries. Mirrors the
+   .hatch-docs-landing rules in apps/hatch/src/App.css. */
+.hatch-docs-landing h2 {
+  scroll-margin-top: var(--sp-6);
+}
+
+.hatch-docs-landing > section + section {
+  margin-top: var(--sp-8);
+}
+
+.hatch-docs-landing-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.hatch-docs-landing-list li + li {
+  margin-top: var(--sp-3);
+}
+
+.hatch-docs-landing-summary {
+  margin: var(--sp-1) 0 0;
+  color: var(--muted);
+}
