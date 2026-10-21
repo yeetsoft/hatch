@@ -1,14 +1,17 @@
 # Hatch, from source, on one computer. This is the standard way to run this
 # install locally: `docker compose up -d`, then open
-# http://localhost:8080/apps/hatch/. See src/Hatch.Web/apps/hatch/public/hatch-at-home.md
-# for the full walkthrough (also served in the app itself, under Docs in the nav).
+# http://localhost:8080/apps/hatch/. See the board's own Docs, in the nav, at
+# /apps/hatch/docs/ (source in src/Hatch.Web/apps/hatch/docs/) for the full
+# walkthrough.
 #
 # Every ${HATCH_*} below is read from the shell, or from a `.env` beside this
 # file (which .gitignore keeps out of the repository). Turning the wall on is
-# the walkthrough's "Putting a front door on it".
+# the Docs page "The wall: off, on and required"'s "Putting a front door on
+# it" (its #putting-a-front-door-on-it heading).
 #
 # Named explicitly so the stack is the same stack however this file is reached,
-# and so it matches the volume names docs/hatch.md and hatch-at-home.md quote.
+# and so it matches the volume names docs/hatch.md and the Docs page "Backup,
+# restore and replication" quote.
 name: hatch-local
 
 services:
@@ -121,8 +124,8 @@ services:
   #
   # Every variable below defaults to empty on purpose. What this container
   # actually needs is checked by its own entrypoint, at the moment it starts,
-  # where the refusal can say what to fix. See
-  # src/Hatch.Web/apps/hatch/public/hatch-at-home.md.
+  # where the refusal can say what to fix. See the Docs page "The container
+  # runner" (src/Hatch.Web/apps/hatch/docs/the-container-runner.md#the-variables).
   runner:
     build:
       context: .
@@ -173,8 +176,9 @@ services:
       # a named volume, so what it clones survives the container being
       # recreated rather than being cloned fresh on every start.
       - workspace:/workspace
-      # Uncomment whichever push credential you use; see
-      # src/Hatch.Web/apps/hatch/public/hatch-at-home.md for what goes in each.
+      # Uncomment whichever push credential you use; see the Docs page "The
+      # container runner" (src/Hatch.Web/apps/hatch/docs/the-container-runner.md#letting-it-push)
+      # for what goes in each.
       #
       # A credential helper, as git already has it configured on the host:
       # - "${HOME}/.gitconfig:/root/.gitconfig:ro"

@@ -6,7 +6,8 @@
 # break down, analyse and implement in any repository; it cannot build or test
 # one whose toolchain this image does not happen to carry, and no generic image
 # carries everybody's. The base-OS runner the Runner page hands out is the
-# primary path for anything else - see src/Hatch.Web/apps/hatch/public/hatch-at-home.md.
+# primary path for anything else - see the Docs page "The container runner"
+# (src/Hatch.Web/apps/hatch/docs/the-container-runner.md#whether-it-is-for-you).
 #
 # Build context is the repository root, like src/Hatch.Api/Dockerfile.api and
 # unlike the three containers/ images beside this one: this needs
