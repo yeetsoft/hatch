@@ -583,3 +583,85 @@ summary.site-action::-webkit-details-marker {
     max-width: 68ch;
   }
 }
+
+/* The on-this-page outline: beside the text on the desk, a closed disclosure
+   above it on a phone. Mirrors the .hatch-docs-outline* rules in
+   apps/hatch/src/App.css on the site's own names. Rendered twice, like the
+   sidebar, and one copy is display: none at any width. Only a page with an
+   outline carries .site-docs--outlined, so one without sits beside no gutter. */
+.site-docs-outline {
+  display: none;
+}
+
+.site-docs-outline-phone {
+  display: block;
+  margin-bottom: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--t-label);
+}
+
+.site-docs-outline-phone summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.site-docs-outline-title {
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 var(--sp-2);
+}
+
+.site-docs-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-docs-outline-item a {
+  display: block;
+  padding: var(--sp-1) 0;
+  color: var(--muted);
+}
+
+.site-docs-outline-item a:hover {
+  color: var(--ink);
+}
+
+.site-docs-outline-item--d3 {
+  padding-left: var(--sp-4);
+}
+
+@media (min-width: 40rem) {
+  .site-docs-outline-phone {
+    grid-column: 2;
+  }
+}
+
+@media (min-width: 64rem) {
+  .site-docs--outlined {
+    grid-template-columns: minmax(0, 14rem) minmax(0, 68ch) minmax(0, 16rem);
+    justify-content: center;
+  }
+
+  .site-docs-outline-phone {
+    display: none;
+  }
+
+  .site-docs-outline {
+    display: block;
+    grid-column: 3;
+    grid-row: 1;
+    position: sticky;
+    top: var(--sp-4);
+    max-height: calc(100dvh - var(--sp-8));
+    overflow-y: auto;
+    font-size: var(--t-label);
+  }
+
+  .site-docs--outlined .hatch-docs-body {
+    grid-row: 1;
+  }
+}

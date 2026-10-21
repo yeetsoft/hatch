@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DOC_PAGES, renderDocs } from '../../hatch/src/lib/docs'
-import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
+import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderOutline, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
 
 describe('docHref', () => {
   it('builds the four base/slug/fragment combinations', () => {
@@ -108,5 +108,36 @@ describe('renderSidebar', () => {
 
   it('builds its links from the base', () => {
     expect(renderSidebar('/p/', sections)).toContain('href="/p/docs/x/"')
+  })
+})
+
+describe('renderOutline', () => {
+  it('is empty for no headings', () => {
+    expect(renderOutline([])).toBe('')
+  })
+
+  it('escapes the text and the id', () => {
+    const html = renderOutline([{ depth: 2, text: 'A < B & C', id: 'a"b' }])
+    expect(html).toContain('A &lt; B &amp; C')
+    expect(html).not.toContain('A < B')
+    expect(html).toContain('href="#a&quot;b"')
+  })
+
+  it('marks each item by its depth', () => {
+    const html = renderOutline([
+      { depth: 2, text: 'One', id: 'one' },
+      { depth: 3, text: 'Two', id: 'two' },
+    ])
+    expect(html).toContain('site-docs-outline-item--d2"><a href="#one">One')
+    expect(html).toContain('site-docs-outline-item--d3"><a href="#two">Two')
+  })
+
+  it('links each heading to its id, in both copies', () => {
+    const html = renderOutline([
+      { depth: 2, text: 'One', id: 'one' },
+      { depth: 3, text: 'Two', id: 'two' },
+    ])
+    expect([...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1])).toEqual(['#one', '#two', '#one', '#two'])
+    expect(html.match(/aria-label="On this page"/g)).toHaveLength(2)
   })
 })
