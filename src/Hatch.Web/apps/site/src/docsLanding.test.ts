@@ -21,10 +21,13 @@ const linksIn = (html: string): string[] =>
   textsOf(html, 'li').map((li) => attr(li.match(/<a\b[^>]*>/)![0], 'href')!)
 
 let html: string
+/** The landing's own block: the sidebar beside it holds the same pages as <li>s. */
+let content: string
 
 beforeAll(async () => {
   const site: Site = await buildSite()
   html = withoutComments(site.read('docs/index.html'))
+  content = html.slice(html.indexOf('<div class="hatch-docs-landing">'))
 })
 
 describe('docs landing', () => {
@@ -41,8 +44,8 @@ describe('docs landing', () => {
   })
 
   it('lists every page once, in DOC_PAGES order, each with its summary', () => {
-    expect(linksIn(html)).toEqual(sections.flatMap((s) => s.pages).map((p) => `/docs/${p.slug}/`))
-    const items = textsOf(html, 'li')
+    expect(linksIn(content)).toEqual(sections.flatMap((s) => s.pages).map((p) => `/docs/${p.slug}/`))
+    const items = textsOf(content, 'li')
     expect(items).toHaveLength(DOC_PAGES.length)
     sections
       .flatMap((s) => s.pages)
@@ -53,7 +56,7 @@ describe('docs landing', () => {
   })
 
   it("puts each page's link under its own section's <h2>", () => {
-    const blocks = textsOf(html, 'section')
+    const blocks = textsOf(content, 'section')
     expect(blocks).toHaveLength(sections.length)
     sections.forEach(({ pages }, i) => {
       expect(linksIn(blocks[i])).toEqual(pages.map((p) => `/docs/${p.slug}/`))
@@ -68,6 +71,7 @@ describe('docs landing', () => {
   it('links the pages under a base path', async () => {
     const projectSite = await buildSite({ base_path: 'project' })
     const projectHtml = withoutComments(projectSite.read('docs/index.html'))
-    expect(linksIn(projectHtml)).toEqual(sections.flatMap((s) => s.pages).map((p) => `/project/docs/${p.slug}/`))
+    const projectContent = projectHtml.slice(projectHtml.indexOf('<div class="hatch-docs-landing">'))
+    expect(linksIn(projectContent)).toEqual(sections.flatMap((s) => s.pages).map((p) => `/project/docs/${p.slug}/`))
   })
 })

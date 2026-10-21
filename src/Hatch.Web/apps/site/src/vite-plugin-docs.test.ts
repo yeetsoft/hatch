@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DOC_PAGES, renderDocs } from '../../hatch/src/lib/docs'
-import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, type BrokenDocsLink } from '../vite-plugin-docs'
+import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
 
 describe('docHref', () => {
   it('builds the four base/slug/fragment combinations', () => {
@@ -70,5 +70,43 @@ describe('renderLanding', () => {
   it("takes the section's id from the slugger and the link from the base", () => {
     expect(html).toContain('<h2 id="the-id">')
     expect(html).toContain('href="/p/docs/x/"')
+  })
+})
+
+describe('renderSidebar', () => {
+  const sections = [
+    { section: 'A & "B" <c>', pages: [{ slug: 'x', title: 'T <i> & "q"', summary: '' }] },
+    { section: 'Second', pages: [{ slug: 'y', title: 'Why', summary: '' }] },
+  ]
+
+  it('escapes the section and the title', () => {
+    const html = renderSidebar('/', sections)
+    expect(html).toContain('A &amp; &quot;B&quot; &lt;c&gt;')
+    expect(html).toContain('T &lt;i&gt; &amp; &quot;q&quot;')
+    expect(html).not.toContain('<i>')
+    expect(html).not.toContain('<c>')
+  })
+
+  it('marks only the current page, once in each of the two copies', () => {
+    const html = renderSidebar('/', sections, 'y')
+    expect(html.match(/aria-current="page"/g)).toHaveLength(2)
+    expect(html.match(/<a href="\/docs\/y\/" aria-current="page">Why<\/a>/g)).toHaveLength(2)
+  })
+
+  it('marks nothing without a current page, or for an unknown one', () => {
+    expect(renderSidebar('/', sections)).not.toContain('aria-current')
+    expect(renderSidebar('/', sections, 'nope')).not.toContain('aria-current')
+  })
+
+  it('has a desk nav and a closed phone disclosure, and no Changelog', () => {
+    const html = renderSidebar('/', sections)
+    expect(html).toContain('<nav class="site-docs-sidebar" aria-label="Docs">')
+    expect(html).toContain('<details class="site-docs-sidebar-phone"><summary>Pages</summary>')
+    expect(html).not.toMatch(/<details[^>]*\sopen\b/)
+    expect(html).not.toContain('Changelog')
+  })
+
+  it('builds its links from the base', () => {
+    expect(renderSidebar('/p/', sections)).toContain('href="/p/docs/x/"')
   })
 })
