@@ -2829,6 +2829,35 @@ input.hatch-inline-title-input {
   align-items: baseline;
 }
 
+/* The files a session read, folded until asked for. Paths are long, so they
+   wrap rather than push the row past a narrow screen. */
+.hatch-worklog-reads {
+  margin-top: var(--sp-2);
+  font-size: var(--t-label);
+}
+
+.hatch-worklog-reads summary {
+  cursor: pointer;
+}
+
+.hatch-worklog-reads ul {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+}
+
+.hatch-worklog-reads li {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.hatch-worklog-reads__path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+}
+
 /* A left edge rather than a fill: an errored session is still a row of numbers
    to be read, and a tinted block would make the figures harder to read to say
    something the badge beside them already says. */

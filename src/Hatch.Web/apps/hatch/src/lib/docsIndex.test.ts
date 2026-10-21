@@ -1,0 +1,120 @@
+import { describe, expect, it } from 'vitest';
+import { DOC_PAGES, renderDocs, type DocPage } from './docs';
+import { docIndex } from './docsIndex';
+
+function page(body: string, overrides: Partial<DocPage> = {}): DocPage {
+  return { slug: 'x', title: 'X', section: 'Reference', order: 1, summary: 'A page.', ...overrides, body };
+}
+
+describe('docIndex: splitting a page into entries', () => {
+  it('gives a page with no heading exactly one entry, carrying its prose', () => {
+    const entries = docIndex([page('Just a paragraph of prose.\n')]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ heading: null, anchor: null, text: 'Just a paragraph of prose.' });
+  });
+
+  it('gives a page with two headings three entries, the first with no heading or anchor', () => {
+    const entries = docIndex([page('Opening run.\n\n## First\n\nFirst body.\n\n## Second\n\nSecond body.\n')]);
+    expect(entries).toHaveLength(3);
+    expect(entries[0]).toMatchObject({ heading: null, anchor: null, text: 'Opening run.' });
+    expect(entries[1]).toMatchObject({ heading: 'First', anchor: 'first', text: 'First First body.' });
+    expect(entries[2]).toMatchObject({ heading: 'Second', anchor: 'second', text: 'Second Second body.' });
+  });
+
+  it('copies title and summary onto every entry', () => {
+    const entries = docIndex([page('Opening.\n\n## A\n\nBody.\n', { title: 'Title here', summary: 'Summary here.' })]);
+    for (const e of entries) expect(e).toMatchObject({ title: 'Title here', summary: 'Summary here.' });
+  });
+
+  it('starts no entry at a "##" line inside a fenced block', () => {
+    const body = 'Prose.\n\n````markdown\n## Not a heading\n````\n';
+    const entries = docIndex([page(body)]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].heading).toBeNull();
+  });
+
+  it('leaves a mermaid fence out of the index but keeps a bash fence in', () => {
+    const body = '```mermaid\ngraph TD; A-->B;\n```\n\n```bash\necho hello\n```\n';
+    const entries = docIndex([page(body)]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].text).not.toContain('graph TD');
+    expect(entries[0].text).toContain('echo hello');
+  });
+
+  it('strips markup: code spans, link targets and emphasis', () => {
+    const body = 'See `code` and [a link](https://example.invalid/path) and *em* and **strong**.\n';
+    const entries = docIndex([page(body)]);
+    expect(entries[0].text).toBe('See code and a link and em and strong.');
+    expect(entries[0].text).not.toContain('https://example.invalid');
+    expect(entries[0].text).not.toContain('`');
+    expect(entries[0].text).not.toContain('*');
+  });
+
+  it("includes a top-level bulleted list's text, including a nested sub-list's", () => {
+    const body = '- one\n- two\n  - two deep\n    - two deeper\n- three\n';
+    const entries = docIndex([page(body)]);
+    expect(entries).toHaveLength(1);
+    for (const word of ['one', 'two', 'two deep', 'two deeper', 'three']) {
+      expect(entries[0].text).toContain(word);
+    }
+  });
+
+  it("includes a table's header and cell text", () => {
+    const body = '| Col A | Col B |\n| --- | --- |\n| cell one | cell two |\n';
+    const entries = docIndex([page(body)]);
+    expect(entries[0].text).toContain('Col A');
+    expect(entries[0].text).toContain('cell one');
+    expect(entries[0].text).toContain('cell two');
+  });
+
+  it('collapses whitespace so blocks join with a single space and no raw newline', () => {
+    const entries = docIndex([page('Line one\nstill one block.\n\nSecond block.\n')]);
+    expect(entries[0].text).toBe('Line one still one block. Second block.');
+  });
+});
+
+describe('docIndex: anchors', () => {
+  it("match renderDocs's ids, suffixes included, for a page with a repeated heading", () => {
+    const body = '## Repeat\n\nOne.\n\n### Repeat\n\nTwo.\n\n## Repeat\n\nThree.\n';
+    const doc = page(body);
+    const entries = docIndex([doc]);
+    const { ids } = renderDocs(doc.body);
+    expect(entries.map((e) => e.anchor)).toEqual([null, ...ids]);
+  });
+
+  it('gives a depth-1, 5 or 6 heading no anchor and folds its text into the entry it sits in', () => {
+    const body = '# Title\n\n## Real\n\nBody.\n\n###### Tiny\n\nMore.\n';
+    const entries = docIndex([page(body)]);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].text).toContain('Title');
+    expect(entries[1]).toMatchObject({ heading: 'Real', anchor: 'real' });
+    expect(entries[1].text).toContain('Tiny');
+  });
+});
+
+describe('docIndex over DOC_PAGES', () => {
+  const entries = docIndex();
+
+  it('gives every page at least one entry', () => {
+    const slugs = new Set(entries.map((e) => e.slug));
+    for (const p of DOC_PAGES) expect(slugs.has(p.slug)).toBe(true);
+  });
+
+  it("gives every non-null anchor as one of that page's renderDocs ids", () => {
+    const idsBySlug = new Map(DOC_PAGES.map((p) => [p.slug, renderDocs(p.body).ids]));
+    for (const e of entries) {
+      if (e.anchor === null) continue;
+      expect(idsBySlug.get(e.slug)).toContain(e.anchor);
+    }
+  });
+
+  it('is built once and memoised: a second call returns the same array', () => {
+    expect(docIndex()).toBe(entries);
+  });
+
+  it("keeps the nested list in letting-the-loop-merge-for-you.md's one entry", () => {
+    const own = entries.filter((e) => e.slug === 'letting-the-loop-merge-for-you');
+    expect(own).toHaveLength(1);
+    expect(own[0].text).toContain('bypass list');
+  });
+});

@@ -7,7 +7,8 @@ import type { Confirmation } from '../lib/confirmations';
 
 /* No DOM here, so this checks structure and not layout: that every kind of
    chicklet comes out of the one frame. What the width then does is lib/
-   confirmationsCss.test.ts's, and the rest is the operator's browser. */
+   confirmationsCss.test.ts's, and the rest is docs/browser-testing.md's, not
+   the operator's alone. */
 const noop = () => undefined;
 
 // The key link is built against the address the document was served at, and

@@ -133,6 +133,53 @@ public sealed class StreamRenderTests
         Assert.Equal("What I actually did", title);
     }
 
+    private const string MiddleFence = "```work-log\nMiddle title\n\nMiddle body.\n```";
+
+    [Fact]
+    public void A_fence_in_a_middle_message_describes_the_row_when_the_final_message_has_none()
+    {
+        var (facts, _) = Play(
+            Fixtures.Init(),
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.ToolUse("Bash", "hatch pr HA-1 https://example.test/pull/1"),
+            Fixtures.AssistantText("Done."),
+            Fixtures.Result(said: "Done."));
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+        Assert.Equal("Middle body.", facts.Result.Summary);
+    }
+
+    [Fact]
+    public void A_fence_in_the_result_text_beats_one_in_a_middle_message()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.ToolUse("Bash", "make test-api"),
+            Fixtures.Result(said: "```work-log\nFinal title\n```"));
+
+        Assert.Equal("Final title", facts.Result!.Title);
+    }
+
+    [Fact]
+    public void An_empty_final_fence_does_not_erase_a_middle_one()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.Result(said: "```work-log\n\n```"));
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+    }
+
+    [Fact]
+    public void A_fence_only_a_sub_agent_wrote_is_not_the_sessions()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence, parentToolUseId: "toolu_1"),
+            Fixtures.Result(said: "Done."));
+
+        Assert.Null(facts.Result!.Title);
+    }
+
     [Fact]
     public void A_session_that_writes_a_title_label_does_not_keep_it()
     {
@@ -277,6 +324,90 @@ public sealed class StreamRenderTests
         render.Read(Fixtures.AssistantUsage("msg-3", input: 1, output: 0, cacheCreate: 1, cacheRead: 1)).ToList();
 
         Assert.Equal(200, render.PeakContextTokens);
+    }
+
+    // ---- What the session read ----
+
+    private static List<(string Path, int Count)> ReadsOf(params string[] events)
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+        events.SelectMany(render.Read).ToList();
+        return render.Reads.Select(r => (r.Path, r.Count)).ToList();
+    }
+
+    [Fact]
+    public void Reads_CountsAReadFileAsItsRepoRelativePath()
+    {
+        var reads = ReadsOf(Fixtures.ToolUse("Read", new { file_path = "/tmp/checkout/src/Hatch.Cli/Claim.cs" }));
+
+        Assert.Equal([("src/Hatch.Cli/Claim.cs", 1)], reads);
+    }
+
+    [Fact]
+    public void Reads_CountsTheSameFileReadTwiceAsTwo()
+    {
+        var read = Fixtures.ToolUse("Read", new { file_path = "/tmp/checkout/a.cs" });
+
+        Assert.Equal([("a.cs", 2)], ReadsOf(read, read));
+    }
+
+    [Fact]
+    public void Reads_CountsAGrepOrGlobByItsPath_AndTheWholeTreeWhenItNamesNone()
+    {
+        var reads = ReadsOf(
+            Fixtures.ToolUse("Grep", new { pattern = "TODO", path = "/tmp/checkout/src" }),
+            Fixtures.ToolUse("Grep", new { pattern = "TODO" }),
+            Fixtures.ToolUse("Glob", new { pattern = "**/*.cs" }));
+
+        Assert.Equal([(".", 2), ("src", 1)], reads);
+    }
+
+    [Fact]
+    public void Reads_CountsAFetchedUrlWithoutItsQueryOrFragment()
+    {
+        var reads = ReadsOf(Fixtures.ToolUse("WebFetch", new { url = "https://example.test/docs/page?token=x#frag", prompt = "summarise" }));
+
+        Assert.Equal([("https://example.test/docs/page", 1)], reads);
+        Assert.DoesNotContain(reads, r => r.Path.Contains("token", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Reads_CountsAHatchApiCallByItsEndpointAlone()
+    {
+        var reads = ReadsOf(Fixtures.ToolUse("Bash", "hatch api GET /api/hatch/issues/HA-1186/events?a=b"));
+
+        Assert.Equal([("/api/hatch/issues/HA-1186/events", 1)], reads);
+    }
+
+    [Fact]
+    public void Reads_FoldsEveryTicketKeyOfAVerbIntoOneBucket()
+    {
+        var reads = ReadsOf(
+            Fixtures.ToolUse("Bash", "./scripts/hatch.sh show HA-1186"),
+            Fixtures.ToolUse("Bash", "hatch show HA-9"));
+
+        Assert.Equal([("hatch show", 2)], reads);
+    }
+
+    [Fact]
+    public void Reads_LeavesAGenericShellReadAndEveryOtherToolUncounted()
+    {
+        var reads = ReadsOf(
+            Fixtures.ToolUse("Bash", "cat secrets.txt"),
+            Fixtures.ToolUse("Edit", new { file_path = "/tmp/checkout/a.cs", old_string = "x", new_string = "y" }),
+            Fixtures.ToolUse("Write", new { file_path = "/tmp/checkout/b.cs", content = "x" }),
+            Fixtures.ToolUse("WebSearch", new { query = "a secret thing" }),
+            Fixtures.ToolUse("Agent", new { description = "look around", prompt = "read everything" }));
+
+        Assert.Empty(reads);
+    }
+
+    [Fact]
+    public void Reads_CountsASubAgentsReadsToo()
+    {
+        var reads = ReadsOf(Fixtures.ToolUse("Read", new { file_path = "/tmp/checkout/a.cs" }, parentToolUseId: "toolu_1"));
+
+        Assert.Equal([("a.cs", 1)], reads);
     }
 
     // ---- The account's usage windows, for the readout and the closing banner ----

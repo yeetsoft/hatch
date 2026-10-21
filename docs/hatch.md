@@ -1,5 +1,129 @@
 # Hatch
 
+## Section index
+
+This file is larger than a context window (about 500 KB, 18 top-level
+sections), so do not read it whole. Find the section below, or list the
+headings with `grep -n '^## ' docs/hatch.md`, then read from that heading to
+the next heading of the same level and stop.
+
+- [Summary](#summary) - What is Hatch, and which four properties carry the
+  design?
+- [Goals](#goals) - What is Hatch for, in four things it must do?
+- [Non-goals](#non-goals) - What is absent on purpose, and what does each
+  absence cost to add later?
+- [Where it lives](#where-it-lives) - Which module, app and project hold the
+  backend, the frontend and the wire contract?
+- [Domain model](#domain-model) - Which entities exist, and what are the
+  rules on each?
+  - [Migration order](#migration-order) - Which migration history does
+    `HatchContext` own, and when is it applied?
+  - [Project](#project) - What does a project row carry, and how does it
+    land its work?
+  - [Project Member](#project-member) - Who owns or approves a project, and
+    why is the person a bare Guid?
+  - [Logo](#logo) - How is a project's logo stored and its type decided?
+  - [Repository](#repository) - How does a project bind its git remotes?
+  - [Status](#status) - What is a board column, and which flags make it
+    behave?
+  - [Issue](#issue) - What does an issue row hold, and how is its key made?
+  - [Dependency](#dependency) - What serialises work, and how is an edge
+    stored?
+  - [One pull request](#one-pull-request) - Do a story's tasks share one
+    branch and pull request?
+  - [WIP](#wip) - How full is the WIP section right now?
+  - [Claim](#claim) - What is a lease on an issue, and which columns hold
+    it?
+  - [Merge check](#merge-check) - What did merging an issue's branch against
+    the trunk find?
+  - [Landing](#landing) - Which sha has a repository recorded for an
+    issue's branch, and is it on the trunk?
+  - [Build check](#build-check) - What did the build on an issue's branch tip
+    come to?
+  - [Trunk build](#trunk-build) - What did the build on a repository's trunk
+    tip come to?
+  - [Playbook file](#playbook-file) - What does a repository's trunk hold at
+    `.hatch/playbooks.yaml`?
+  - [Comment, question and answer](#comment-question-and-answer) - Which
+    comments are more than notes, and how are they bound?
+  - [Search](#search) - How are issues, comments and work logs searched?
+  - [Issue event](#issue-event) - What has happened to an issue, and what
+    kinds of event record it?
+  - [Playbook](#playbook) - What is an agent told when an issue moves from
+    one column to the next?
+  - [Verdict](#verdict) - What did a check session conclude about an issue?
+  - [Overnight seen](#overnight-seen) - When did a reader last read the
+    overnight page?
+- [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
+  may reach Hatch, and how does an API key differ from a person?
+- [API surface](#api-surface) - Which routes exist under `/api/hatch`, and
+  who may call each?
+- [The battery](#the-battery) - How much Claude is left, and when does it
+  come back?
+- [What is waiting on you](#what-is-waiting-on-you) - Has the loop stopped on
+  a person, and which links unblock it?
+- [The leaderboard](#the-leaderboard) - What did the nights cost, and on
+  which epics?
+- [Reports](#reports) - When did things happen on the board, which the board
+  as it stands cannot say?
+- [The overnight](#the-overnight) - What did the loop actually land while
+  nobody was watching?
+- [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
+  - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
+    own?
+  - [The hop](#the-hop) - When does the board move an issue with no session?
+  - [Check](#check) - How does a playbook judge instead of edit?
+  - [Running an epic](#running-an-epic) - How does a person start a
+    top-level epic and walk away?
+  - [A night-mode board](#a-night-mode-board) - How is a board laid out so a
+    pre-approved epic runs Draft to Done unattended?
+  - [Preemption](#preemption) - Who is told by a heartbeat that they have
+    been preempted?
+  - [Review dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review) -
+    Why does a review dispatch end in the column it started in?
+  - [The approval column](#the-approval-column) - Which column merges a
+    pull request with no session, and how is it found?
+  - [The four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) -
+    Which routes cross the terminal and protected guards?
+  - [One more, on `next` alone](#one-more-on-next-alone) - Which rules are
+    the loop's policy rather than facts about an issue?
+  - [What a pass skipped](#what-a-pass-skipped) - What did `work/queue` fold
+    past, and why?
+  - [Playbooks](#playbooks) - How does a `(from, to, types, shape)` row
+    become a prompt, model and effort?
+- [The unattended loop](#the-unattended-loop) - How does `go-to-work` run
+  increments back to back, and what does it do when nothing is left?
+  - [Agents](#agents) - How does the loop reach `claude`, `codex` and
+    `grok` through one adapter?
+  - [What makes an issue actionable](#what-makes-an-issue-actionable) - Which
+    conditions must an issue meet before the loop picks it up?
+  - [One loop at a time](#one-loop-at-a-time) - How many loops may serve a
+    checkout, and which checkouts?
+  - [What a runner does, in order](#what-a-runner-does-in-order) - What does
+    a runner do in a pass, step by step?
+  - [The workspace, between increments](#the-workspace-between-increments) -
+    What state is the tree reset to before each increment?
+  - [When an increment does nothing](#when-an-increment-does-nothing) - What
+    happens when a session ends with the ticket where it found it?
+  - [Where the loop's rules live](#where-the-loops-rules-live) - Which side
+    decides what is actionable, the server or the runner?
+  - [Where the loop lives](#where-the-loop-lives) - Which program is the
+    loop, and which commands does it have?
+  - [What it stops for](#what-it-stops-for) - What ends a run, and which
+    stops are asked for?
+  - [Runners on the board](#runners-on-the-board) - How does a runner
+    announce itself and get paused or ended from a browser?
+  - [The console](#the-console) - What do the banners and pinned readout
+    show during an increment?
+- [The level above the board](#the-level-above-the-board) - Which running
+  project is nearest the line?
+- [The importer](#the-importer) - How does a markdown plan become an epic
+  with stories and tasks?
+- [The operator and Claude contract](#the-operator-and-claude-contract) -
+  What may an agent do to a ticket, and what only a person?
+- [Deferred on purpose](#deferred-on-purpose) - What is deliberately not
+  built yet?
+
 ## Summary
 
 The house project tracker: a kanban board at `hatch.${DOMAIN}`, issues with
@@ -2825,7 +2949,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -3666,6 +3790,11 @@ back before anything existed does not draw an empty stretch. `unresolved`
 counts stretches the same way the timeline's does: a stretch naming a column
 no longer on the board, because it was renamed since and the event predates
 the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
+A terminal column — the board's flag, never a name — counts only what closed
+inside the window: a stretch there that was already open before `from`
+contributes nothing, so the done band starts at zero at the chart's left edge
+and grows only as issues close inside it, rather than opening already full of
+work finished long before the range being asked about.
 
 The page is at `/reports/cumulative-flow`: one band per column, stacked
 bottom-up with the board's last column at the baseline, each in its column's
@@ -4240,6 +4369,12 @@ The rest of that section is unchanged. The attach is best-effort: when it
 fails, the runner complains and keeps the claim, which then names no playbook,
 so the move is not refused and `hatch verdict` answers `400`.
 
+Outside a check, the *Reaching Hatch* block prints `hatch start` only on the
+increment bound for the implementation column - the one whose destination is
+the column named by `FailStatusName`. Every other increment is told the claim
+is the marker and that the ticket moves once, at the end, to the column named
+under *Where this increment ends*.
+
 **The verdict is a record, not a move.** `POST /issues/{key}/verdicts`, open to
 a key and to a person, takes `pass` or `fail` and optional findings, and writes
 a [verdict](#verdict) row and a `verdict_recorded` event. It is a `400` unless
@@ -4330,7 +4465,8 @@ own. `QueueEntryDto`, `hatch queue` and the queue page carry none of this — a
 queued row still answers only for the move it is itself waiting on. A
 send-back for an over-long brief is unchanged by any of it: this is the
 *next* row's limit, read in advance, not a change to how this one is judged.
-The prompt is where it is spent — printed for the session that follows.
+The prompt is where it is spent — printed under `## How long the brief may
+be` for the session that follows.
 
 **Tick the build column.** `Columns.Implementation` is the ticked column, or
 else the column whose next move is into review. On a board with check columns
@@ -5237,16 +5373,20 @@ families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
 validates against (the board's playbook, a repository's playbook file and an
 issue's override all refuse in one sentence naming the aliases and the
 families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
-supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.7 for grok) - not "nonsense-1"`) and the CLI
+supported agent (claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not "nonsense-1"`) and the CLI
 reads. **Pinning an id is choosing an agent.** A runner whose agent
 (`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
 it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
 refuses with the same sentence, `--dry-run` prints it, and the ticket waits for
 a runner of that agent (a board with none leaves it sitting). The sentence is
-`pinned to {model}, a {agent} model - this runner's agent is {agent}`. An alias,
-or no model, is never skipped, and `--model <alias>` on `work` beats the
-playbook and proceeds. (`claude-…` is the Claude family's shape, not the shape
-of a pinned id in general; `gpt-…` is the Codex family's shape.)
+`pinned to {model}, a {agent} model - this runner's agent is {agent}` (`an
+ollama model` before a vowel). An alias, or no model, is never skipped, and
+`--model <alias>` on `work` beats the playbook and proceeds. (`claude-…` is
+the Claude family's shape, not the shape of a pinned id in general; `gpt-…`
+is the Codex family's shape; `name:tag` - for example `qwen3-coder:30b` - is
+Ollama's, with the tag required, no `ollama/` prefix (the id is what `ollama
+list` prints), and the whole id at most 60 characters: a bare `llama3.3` is
+not a pinned id.)
 `Effort` is exactly what the CLI's `--effort` accepts, because a value it does
 not recognise is one it refuses at spawn time, long after the operator has
 stopped looking at the page they typed it on.
@@ -5401,7 +5541,12 @@ and records or opens its pull request, rather than implementing it again.
 current text byte for byte — the same guard every reword before it used — and
 left an edited row exactly as it was. From the prescribed-text split on, a stock
 reword is a change to `DefaultPrompt` and needs no such guard (see *A row says
-when its prompt is the operator's own*, above).
+when its prompt is the operator's own*, above). `RewordImplementationPlaybook`
+is the first to take that shape: it tells the implementation row's
+green-before-pushed bullet to render a changed screen in the headless driver
+(`docs/browser-testing.md`) rather than leaving all browser verification to
+the operator, guarded and written on `DefaultPrompt` alone — no row's own
+`Prompt` is read or touched, and `UpdatedAt` does not move.
 
 **A board that wants a code review adds a check column; it does not widen the
 review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,

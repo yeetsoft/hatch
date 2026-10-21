@@ -59,6 +59,30 @@ public sealed class RunFacts
     /// reset instant over the sentence's.
     /// </summary>
     public IReadOnlyList<UsageWindow>? Usage { get; set; }
+
+    private (string? Title, string? Summary) _workLog;
+
+    /// <summary>
+    /// Looks for a <c>work-log</c> fence in one assistant message as it arrives, and
+    /// keeps the latest one that names a title. A session that writes its fence and
+    /// then makes one more call (a comment, a push) ends on whatever it says after,
+    /// so the fence is read from every message and not only the last.
+    /// </summary>
+    internal void Scan(string said)
+    {
+        if (StreamRender.WorkLog(said) is { Title: not null } found) _workLog = found;
+    }
+
+    /// <summary>
+    /// The work-log fence the session ended on: the final message's own when it
+    /// has one, else the latest <see cref="Scan"/> found. The last fence wins, and
+    /// a final message with none never erases an earlier one.
+    /// </summary>
+    internal (string? Title, string? Summary) WorkLogFrom(string finalText)
+    {
+        var last = StreamRender.WorkLog(finalText);
+        return last.Title is null ? _workLog : last;
+    }
 }
 
 /// <summary>
@@ -102,6 +126,7 @@ public sealed partial class StreamRender : IAgentStreamReader
     private long _said;
     private readonly HashSet<string> _counted = [];
     private long _peakContext;
+    private readonly ReadsLedger _reads = new();
 
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
@@ -119,6 +144,9 @@ public sealed partial class StreamRender : IAgentStreamReader
     /// next turn's context the way the other three do.
     /// </summary>
     public long PeakContextTokens => _peakContext;
+
+    /// <summary>What the session read, by path or endpoint, heaviest first - see <see cref="ReadsLedger"/>.</summary>
+    public IReadOnlyList<WorkLogReadDto> Reads => _reads.Ranked();
 
     /// <summary>
     /// The account's usage windows, out of the session's own stream - the
@@ -240,16 +268,21 @@ public sealed partial class StreamRender : IAgentStreamReader
     {
         Count(e);
 
+        // A sub-agent's message carries its parent's tool use id; its fence is not the session's.
+        var own = Text(e, "parent_tool_use_id") is null;
+
         foreach (var part in Content(e))
         {
             switch (Text(part, "type"))
             {
                 case "tool_use":
+                    Tally(part);
                     yield return $"  ⏺ {Text(part, "name")}  {Summarise(part)}";
                     break;
 
                 case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 } text:
                     _facts.LastAssistantText = text;
+                    if (own) _facts.Scan(Text(part, "text") ?? "");
                     yield return "";
                     foreach (var said in (Text(part, "text") ?? "").ReplaceLineEndings("\n").Split('\n'))
                         yield return said;
@@ -318,7 +351,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         if (cost is { } spent) _facts.CostUsd = spent;
 
         var resultText = Text(e, "result") ?? "";
-        var (title, summary) = WorkLog(resultText);
+        var (title, summary) = _facts.WorkLogFrom(resultText);
         _facts.ReleaseNote = ReleaseNote(resultText);
 
         _facts.ResultText = resultText;
@@ -486,6 +519,35 @@ public sealed partial class StreamRender : IAgentStreamReader
                 return Clip(Flat(Here(_root, value)));
 
         return Clip(Flat(Here(_root, input.ToString())));
+    }
+
+    /// <summary>
+    /// What one tool call read, into the ledger. Separate from <see cref="Summarise"/>
+    /// because that line may show free text and the ledger may not. A sub-agent's
+    /// calls count too: what it reads costs context all the same.
+    /// </summary>
+    private void Tally(JsonElement call)
+    {
+        if (!call.TryGetProperty("input", out var input) || input.ValueKind != JsonValueKind.Object) return;
+
+        switch (Text(call, "name"))
+        {
+            case "Read":
+                _reads.Add(Text(input, "file_path") is { } file ? Here(_root, file) : null);
+                break;
+
+            case "Grep" or "Glob":
+                _reads.Add(Text(input, "path") is { } path ? Here(_root, path) : ".");
+                break;
+
+            case "WebFetch":
+                _reads.Add(ReadsLedger.FromUrl(Text(input, "url")));
+                break;
+
+            case "Bash":
+                _reads.Add(ReadsLedger.FromCommand(Text(input, "command")));
+                break;
+        }
     }
 
     /// <summary>

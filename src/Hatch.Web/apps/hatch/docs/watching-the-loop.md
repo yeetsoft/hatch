@@ -117,4 +117,3 @@ covers what a stall is and when the board resumes one on its own.
 Pages this one links to that are not written yet:
 
 - `flow-wip-and-the-battery`
-- `questions-and-decisions`

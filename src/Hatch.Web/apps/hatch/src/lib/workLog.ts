@@ -101,6 +101,7 @@ const RESUME_COMMANDS: Record<string, (sessionId: string) => string> = {
   claude: (id) => `claude --resume ${id}`,
   codex: (id) => `codex exec resume ${id}`,
   grok: (id) => `grok -r ${id}`,
+  ollama: (id) => `codex exec resume --oss --local-provider ollama ${id}`,
 };
 
 export function resumeCommand(agent: string | null, sessionId: string): string | null {
@@ -222,6 +223,12 @@ export function modelEffortPhrase(entry: Pick<WorkLogEntry, 'playbookModel' | 'p
   if (entry.playbookModel === null && entry.playbookEffort === null) return null;
   return `${entry.playbookModel}/${entry.playbookEffort}`;
 }
+
+/** The `<summary>` of a row's reads disclosure, e.g. `"Read 12 paths"`. Only
+    called for a non-empty list - an entry that read nothing draws no
+    disclosure at all. */
+export const readsLabel = (reads: WorkLogEntry['reads']): string =>
+  `Read ${reads.length} ${reads.length === 1 ? 'path' : 'paths'}`;
 
 /** The command that shows the exact bytes a file-sourced row's playbook was
     read from - the full sha, not the short one, since this is what actually

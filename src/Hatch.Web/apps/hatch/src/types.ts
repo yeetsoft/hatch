@@ -1684,6 +1684,9 @@ export interface WorkLogEntry {
   playbookModel: string | null;
   /** The effort the session ran at. */
   playbookEffort: string | null;
+  /** The files the session read and how often, heaviest first. Empty - never
+      null - on a row posted without any. Mirrors WorkLogReadDto. */
+  reads: { path: string; count: number }[];
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */

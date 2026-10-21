@@ -146,3 +146,34 @@ api` for the board, `docker compose logs db` for the database.
 - **Any refusal:** `docker compose logs api` shows a Warning `Auth refused
   {Reason} for {Host}{Path} from {ClientIp}` (`AuthGate.cs:304`). The reasons are
   `no_credential`, `unknown_grant` and `unknown_key` (`AuthGate.cs:28-32`).
+
+## A 401 or a 403
+
+- **A `401`.** The wall is on and no key was sent, or a key was sent and
+  refused. Run `hatch config`.
+- **A `403`.** The key is good, and a route or a rule behind it refuses — a
+  key is never an administrator. `hatch api` shows the real answer.
+
+[401 and 403](people-roles-and-keys#401-and-403) has the full list, from the
+other side.
+
+The runner's own troubleshooting — no `claude` CLI on `PATH`, which branch is
+the trunk, a tree that will not stash, one loop per checkout, a pass that
+picks up nothing, losing the connection to origin — belongs to running the
+loop, not to the board: see [The runner](the-runner) and [One increment and
+the loop](one-increment-and-the-loop).
+
+## The Runner page offers no downloads
+
+- **This build published no runner binaries.** An image built before the
+  publish step, or `dotnet run` from a checkout, has none. Build them
+  yourself with `make publish-hatch` from the repository root, or rebuild the
+  image.
+
+## A psql shell
+
+For looking at the database by hand:
+
+```
+docker compose exec db psql -U user -d hatch
+```

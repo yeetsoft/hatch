@@ -27,7 +27,7 @@ vi.mock('@hatch/ui', async (importOriginal) => {
 });
 
 /* No DOM here, so this checks the two branches useStandalone() drives and not
-   layout: that's the operator's browser. */
+   layout: that's docs/browser-testing.md's, not the operator's alone. */
 const noop = () => undefined;
 
 afterEach(() => vi.unstubAllGlobals());

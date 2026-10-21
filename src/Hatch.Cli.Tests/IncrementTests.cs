@@ -435,6 +435,7 @@ public sealed class IncrementTests
         {
             onLine?.Invoke(Fixtures.AssistantUsage("msg-1", input: 10, output: 20, cacheCreate: 5, cacheRead: 5));
             onLine?.Invoke(Fixtures.AssistantUsage("msg-2", input: 100, output: 1, cacheCreate: 50, cacheRead: 50));
+            onLine?.Invoke(Fixtures.ToolUse("Read", new { file_path = "src/a.cs" }));
             onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -450,6 +451,7 @@ public sealed class IncrementTests
         Assert.Equal(2, billed.Requests);
         Assert.Equal(200, billed.PeakContextTokens);
         Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
+        Assert.Equal([("src/a.cs", 1)], billed.Reads!.Select(r => (r.Path, r.Count)));
 
         await claim.ReleaseAsync();
     }

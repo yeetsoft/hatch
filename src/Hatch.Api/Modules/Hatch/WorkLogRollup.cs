@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -27,6 +28,57 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public static class WorkLogRollup
 {
+    /// <summary>camelCase, matching the wire - the same options the model breakdown column is written with.</summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// What goes in <see cref="EfHatchWorkLogEntry.Reads"/>, or null when nothing
+    /// was posted.
+    /// </summary>
+    /// <remarks>
+    /// Both caps are enforced here, clipped rather than refused, the way a long
+    /// summary is: heaviest first (count descending, then path ascending so two
+    /// writes of the same reads store the same bytes), at most
+    /// <see cref="EfHatchWorkLogEntry.MaxReads"/> of them, each path cut to
+    /// <see cref="EfHatchWorkLogEntry.MaxReadPathLength"/>. Here rather than on
+    /// the controller because the leaderboard folds read the same column and must
+    /// agree with the write path about what it means.
+    /// </remarks>
+    internal static string? WriteReads(IReadOnlyList<WorkLogReadDto> reads)
+    {
+        var kept = reads
+            .Where(r => !string.IsNullOrEmpty(r.Path))
+            .OrderByDescending(r => r.Count)
+            .ThenBy(r => r.Path, StringComparer.Ordinal)
+            .Take(EfHatchWorkLogEntry.MaxReads)
+            .Select(r => new WorkLogReadDto(
+                r.Path.Length > EfHatchWorkLogEntry.MaxReadPathLength
+                    ? r.Path[..EfHatchWorkLogEntry.MaxReadPathLength]
+                    : r.Path,
+                r.Count))
+            .ToList();
+
+        return kept.Count > 0 ? JsonSerializer.Serialize(kept, Json) : null;
+    }
+
+    /// <summary>
+    /// The stored reads, or nothing at all. A column that will not parse reads as
+    /// empty rather than throwing the whole log away, as the model breakdown does.
+    /// </summary>
+    internal static IReadOnlyList<WorkLogReadDto> ReadReads(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<WorkLogReadDto>>(stored, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>
     /// One issue's totals, with or without everything beneath it.
     /// </summary>
@@ -166,7 +218,8 @@ public static class WorkLogRollup
                 w.Requests,
                 w.PeakContextTokens,
                 w.PromptChars,
-                w.Agent))
+                w.Agent,
+                w.Reads))
             .ToListAsync(ct);
 
         var ranked = sort switch
@@ -194,7 +247,8 @@ public static class WorkLogRollup
             Fold(rows.ConvertAll(Meter)),
             await FirstEndedAsync(db, scope, ascending: true, ct),
             await FirstEndedAsync(db, scope, ascending: false, ct),
-            ordered);
+            ordered,
+            FoldReads(rows.Select(r => r.Reads)));
     }
 
     /// <summary>
@@ -235,7 +289,8 @@ public static class WorkLogRollup
                 w.CacheReadTokens,
                 w.CostUsd,
                 w.PeakContextTokens,
-                w.PromptChars))
+                w.PromptChars,
+                w.Reads))
             .ToListAsync(ct);
 
         var names = (await db.Statuses.AsNoTracking().ToListAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
@@ -249,7 +304,8 @@ public static class WorkLogRollup
                     FromStatusName = r.FromStatusId is { } f ? names.GetValueOrDefault(f) : null,
                     ToStatusName = r.ToStatusId is { } t ? names.GetValueOrDefault(t) : null,
                 })
-                .ToList());
+                .ToList(),
+            FoldReads(rows.Select(r => r.Reads)));
     }
 
     /// <summary>
@@ -365,7 +421,8 @@ public static class WorkLogRollup
         int? Requests,
         long? PeakContextTokens,
         int? PromptChars,
-        string? Agent);
+        string? Agent,
+        string? Reads);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
     private static long Tokens(SessionRow r) =>
@@ -469,7 +526,8 @@ public static class WorkLogRollup
         long CacheReadTokens,
         decimal? CostUsd,
         long? PeakContextTokens,
-        int? PromptChars);
+        int? PromptChars,
+        string? Reads);
 
     /// <summary>
     /// Folds sessions into one row per distinct playbook, transition, issue
@@ -531,6 +589,41 @@ public static class WorkLogRollup
             .ThenBy(r => r.Model, StringComparer.Ordinal)
             .ThenBy(r => r.Effort, StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>
+    /// A ranked read endpoint answers at most this many paths - a different cap
+    /// than <see cref="EfHatchWorkLogEntry.MaxReads"/>, which bounds what one
+    /// entry stores rather than what an endpoint's answer ranks.
+    /// </summary>
+    public const int MaxTopReads = 50;
+
+    /// <summary>
+    /// Every path read across a population of sessions, summed and ranked.
+    /// Pure: no database, so it is tested directly.
+    /// </summary>
+    /// <remarks>
+    /// Each row's stored reads column is read with <see cref="ReadReads"/>,
+    /// which already answers an empty list for a row that carries none - so a
+    /// population with no reads at all folds to an empty list rather than a
+    /// special case here. Ranked heaviest-count-first, then path ascending so
+    /// two folds of the same population agree on their order, and capped at
+    /// <see cref="MaxTopReads"/>.
+    /// </remarks>
+    internal static IReadOnlyList<WorkLogReadDto> FoldReads(IEnumerable<string?> stored)
+    {
+        var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        foreach (var row in stored)
+        foreach (var read in ReadReads(row))
+            counts[read.Path] = counts.GetValueOrDefault(read.Path) + read.Count;
+
+        return counts
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(MaxTopReads)
+            .Select(kv => new WorkLogReadDto(kv.Key, (int)kv.Value))
+            .ToList();
+    }
 
     /// <summary>The middle value, or the mean of the two middle ones; null for no values.</summary>
     private static double? Median(List<double> values)

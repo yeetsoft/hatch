@@ -57,7 +57,7 @@ public sealed class GrokStreamReaderTests
     }
 
     [Fact]
-    public void TheFinalMessage_IsReadFromTextAfterTheLastToolCall_NotAnEarlierQuotedFence()
+    public void ALaterFence_BeatsAnEarlierQuotedOne()
     {
         var (facts, reader) = New();
 
@@ -69,6 +69,22 @@ public sealed class GrokStreamReaderTests
 
         Assert.Equal("The real title", facts.Result!.Title);
         Assert.Equal("The real summary.", facts.Result.Summary);
+    }
+
+    [Fact]
+    public void AFence_InAnEarlierMessage_DescribesTheRowWhenTheFinalMessageHasNone()
+    {
+        var (facts, reader) = New();
+
+        reader.Read(Fixtures.GrokText("```work-log\nMiddle title\n\n"));
+        reader.Read(Fixtures.GrokText("Middle body.\n```"));
+        reader.Read(Fixtures.GrokToolCall());
+        reader.Read(Fixtures.GrokToolUpdate());
+        reader.Read(Fixtures.GrokText("Done."));
+        reader.Read(Fixtures.GrokEnd());
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+        Assert.Equal("Middle body.", facts.Result.Summary);
     }
 
     [Fact]
@@ -278,5 +294,77 @@ public sealed class GrokStreamReaderTests
 
         var at3000 = reader.Read(Fixtures.GrokThought("x")).ToList();
         Assert.Equal(["  ✻ thinking…"], at3000);
+    }
+
+    // ---- What the session read ----
+
+    [Fact]
+    public void ReadFile_CountsItsTargetFile_RepoRelative()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokToolCall("read_file", new { target_file = "/tmp/checkout/src/foo.rs" })).ToList();
+
+        Assert.Equal([("src/foo.rs", 1)], reader.Reads.Select(r => (r.Path, r.Count)));
+    }
+
+    [Fact]
+    public void AToolCall_AndItsUpdate_CountOnce()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokToolCall("read_file", new { target_file = "a.rs" })).ToList();
+        reader.Read(Fixtures.GrokToolUpdate()).ToList();
+
+        Assert.Equal([("a.rs", 1)], reader.Reads.Select(r => (r.Path, r.Count)));
+    }
+
+    [Fact]
+    public void AnyTool_WithAHatchCommand_CountsByVerbOrEndpoint()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokToolCall("shell", new { command = "hatch show HA-1" })).ToList();
+        reader.Read(Fixtures.GrokToolCall("shell", new { command = "hatch api GET /x?y=1" }, toolCallId: "call_2")).ToList();
+
+        Assert.Equal(
+            [("/x", 1), ("hatch show", 1)],
+            reader.Reads.Select(r => (r.Path, r.Count)).OrderBy(r => r.Path, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void AnUnrecognisedToolName_WithAUrlOrPathField_IsNotCounted()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokToolCall("grep", new { url = "https://example.test/x", path = "src" })).ToList();
+
+        Assert.Empty(reader.Reads);
+    }
+
+    [Fact]
+    public void AnUnrecognisedCommand_IsNotCounted()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokToolCall("shell", new { command = "cat foo.txt" })).ToList();
+
+        Assert.Empty(reader.Reads);
+    }
+
+    [Fact]
+    public void FiftyOneDistinctPaths_KeepTheHeaviestFifty()
+    {
+        var (_, reader) = New();
+
+        for (var i = 0; i < 51; i++)
+            for (var n = 0; n <= i; n++)
+                reader.Read(Fixtures.GrokToolCall("read_file", new { target_file = $"src/file{i:D2}.rs" }, toolCallId: $"call_{i}_{n}")).ToList();
+
+        var reads = reader.Reads;
+
+        Assert.Equal(ReadsLedger.Max, reads.Count);
+        Assert.Equal(51, reads[0].Count);
+        Assert.DoesNotContain(reads, r => r.Path == "src/file00.rs");
     }
 }

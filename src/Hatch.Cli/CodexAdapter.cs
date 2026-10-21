@@ -4,14 +4,14 @@ using System.Text.Json;
 namespace Hatch.Cli;
 
 /// <summary>The codex CLI, behind <see cref="IAgentAdapter"/>.</summary>
-public sealed class CodexAdapter(string? configured = null, string? path = null) : IAgentAdapter
+public class CodexAdapter(string? configured = null, string? path = null) : IAgentAdapter
 {
     /// <summary>The binary <see cref="CanSpawn"/> found, and null until it has.</summary>
     private string? _bin;
 
-    public string Id => "codex";
+    public virtual string Id => "codex";
 
-    public string DisplayName => "Codex";
+    public virtual string DisplayName => "Codex";
 
     public IUsageProbe? Probe => null;
 
@@ -91,7 +91,7 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
     }
 
     public IAgentStreamReader CreateReader(string root, RunFacts facts, string model) =>
-        new CodexStreamReader(root, facts, MapModel(model), ResumeCommand);
+        new CodexStreamReader(root, facts, ModelFlag(model) ?? model, ResumeCommand);
 
     /// <summary>
     /// The last thing a run said, out of the NDJSON a quiet run wrote: an
@@ -137,7 +137,7 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
     /// lands in the operator's real home and outlives the run. An overlay would
     /// take the rollout with it when deleted; see <see cref="CodexHooks"/>.
     /// </remarks>
-    public string ResumeCommand(string sessionId) => $"codex exec resume {sessionId}";
+    public virtual string ResumeCommand(string sessionId) => $"codex exec resume {sessionId}";
 
     /// <summary>
     /// No door: confirmed against a real, logged-in CLI on 2026-10-20 (HA-910's
@@ -153,7 +153,7 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
     /// </summary>
     public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => null;
 
-    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+    public virtual UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         UsageLimit.RecogniseCodex(said, endedAt, runnerZone);
 
     /// <summary>
@@ -190,6 +190,12 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
         return readOnly;
     }
 
+    /// <summary>Flags a subclass needs on every spawn, added right after <c>exec</c> and before <c>-m</c>; e.g. a provider's own sandbox or network switch.</summary>
+    protected virtual IReadOnlyList<string> ProviderArgs => [];
+
+    /// <summary>Environment a subclass needs on every spawn, set right after the runner is reached; e.g. a provider's own API key or base URL.</summary>
+    protected virtual void ConfigureEnvironment(IDictionary<string, string?> environment) { }
+
     private ProcessStartInfo Base(SessionRequest request, bool exec)
     {
         var start = new ProcessStartInfo
@@ -204,11 +210,18 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
         // runner that dispatched it, not the person the checkout belongs to.
         Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
         Reach.AsRunner(start.Environment, request.RunnerName);
+        ConfigureEnvironment(start.Environment);
 
         if (exec) start.ArgumentList.Add("exec");
 
-        start.ArgumentList.Add("-m");
-        start.ArgumentList.Add(MapModel(request.Model));
+        foreach (var arg in ProviderArgs) start.ArgumentList.Add(arg);
+
+        if (ModelFlag(request.Model) is { } id)
+        {
+            start.ArgumentList.Add("-m");
+            start.ArgumentList.Add(id);
+        }
+
         start.ArgumentList.Add("-C");
         start.ArgumentList.Add(request.Root);
         foreach (var dir in request.AddDirs)
@@ -237,7 +250,7 @@ public sealed class CodexAdapter(string? configured = null, string? path = null)
     /// <c>opus</c>/<c>fable</c> collapse onto it here rather than naming an id
     /// this login cannot reach; API-key auth was not tried and may unlock more.
     /// </remarks>
-    private static string MapModel(string model) => model switch
+    protected virtual string? ModelFlag(string model) => model switch
     {
         "haiku" => "gpt-6-luna",
         "sonnet" or "opus" or "fable" => "gpt-5.6-terra",
