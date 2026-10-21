@@ -224,6 +224,104 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_REPOS"));
     }
 
+    // ---- HATCH_TAGS ----
+
+    [Fact]
+    public void HATCH_TAGS_splits_on_commas_trims_and_drops_blanks()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_TAGS=macos, xcode");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal(["macos", "xcode"], settings.Tags);
+    }
+
+    [Fact]
+    public void HATCH_TAGS_lowercases_and_drops_blank_entries()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_TAGS=MacOS,,xcode, ");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal(["macos", "xcode"], settings.Tags);
+    }
+
+    [Fact]
+    public void HATCH_TAGS_deduplicates_case_insensitively()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_TAGS=gpu,GPU");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal(["gpu"], settings.Tags);
+    }
+
+    [Fact]
+    public void HATCH_TAGS_unset_is_empty_and_not_null()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Empty(settings.Tags);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_TAGS"));
+    }
+
+    [Fact]
+    public void An_exported_HATCH_TAGS_beats_the_checkout_file_which_beats_the_per_user_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://mine", "HATCH_TAGS=checkout-tag");
+        var user = Write("user.config", "HATCH_TAGS=user-tag");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_BASE", "https://mine"), ("HATCH_TAGS", "exported-tag")),
+            out var exported, out _, user));
+        Assert.Equal(["exported-tag"], exported.Tags);
+        Assert.Equal(Settings.Layer.Environment, exported.SourceOf("HATCH_TAGS"));
+
+        Assert.True(Settings.TryLoad(checkout, Env(("HATCH_BASE", "https://mine")), out var checkoutWins, out _, user));
+        Assert.Equal(["checkout-tag"], checkoutWins.Tags);
+        Assert.Equal(Settings.Layer.Checkout, checkoutWins.SourceOf("HATCH_TAGS"));
+
+        Assert.True(Settings.TryLoad(null, Env(("HATCH_BASE", "https://mine")), out var userWins, out _, user));
+        Assert.Equal(["user-tag"], userWins.Tags);
+        Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_TAGS"));
+    }
+
+    [Fact]
+    public void HATCH_TAGS_with_a_space_inside_a_tag_refuses_to_load()
+    {
+        Assert.False(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_TAGS", "gpu big")), out _, out var refusal,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Contains("no space or comma", refusal);
+    }
+
+    [Fact]
+    public void HATCH_TAGS_with_a_tag_over_32_characters_refuses_to_load()
+    {
+        var tooLong = new string('a', 33);
+
+        Assert.False(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_TAGS", tooLong)), out _, out var refusal,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Contains("at most 32", refusal);
+    }
+
+    [Fact]
+    public void HATCH_TAGS_with_nine_tags_refuses_to_load()
+    {
+        var nine = string.Join(',', Enumerable.Range(1, 9).Select(n => $"tag{n}"));
+
+        Assert.False(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_TAGS", nine)), out _, out var refusal,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Contains("at most 8", refusal);
+    }
+
     // ---- HATCH_AGENT ----
 
     [Fact]
