@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { DocsSearch } from './DocsSearch';
-import { docIndex, docSearchStatus, keepDocHighlight, resultId, searchDocs, type DocResult } from '../lib/docsSearch';
+import { docSearchStatus, keepDocHighlight, resultId, searchDocs, type DocResult } from '../lib/docsSearch';
+import { docIndex } from '../lib/docsIndex';
 
 /** The address the reader is on - a string, or a location object when the test
     needs navigation state. There is no jsdom here, so nothing can type; the
@@ -53,7 +54,7 @@ describe('DocsSearch', () => {
 
   it('draws at most ten rows, one highlighted and named by aria-activedescendant, each linking to its page and anchor', () => {
     const query = term();
-    const { results, total } = searchDocs(query);
+    const { results, total } = searchDocs(query, docIndex());
     expect(results.length).toBeGreaterThan(0);
     expect(results.length).toBeLessThanOrEqual(10);
 
@@ -99,7 +100,7 @@ describe('DocsSearch', () => {
     'reads ?q= on %s: the field holds it, the list is open on the first row',
     (path) => {
       const query = term();
-      const { results } = searchDocs(query);
+      const { results } = searchDocs(query, docIndex());
       const html = render(`${path}?q=${encodeURIComponent(query)}`);
 
       expect(html).toContain(`value="${query}"`);
@@ -120,7 +121,7 @@ describe('DocsSearch', () => {
 
   it('keeps other params in every row target', () => {
     const query = term();
-    const { results } = searchDocs(query);
+    const { results } = searchDocs(query, docIndex());
     const rows = options(render(`/docs?q=${encodeURIComponent(query)}&flow=1`));
 
     expect(rows).toHaveLength(results.length);
@@ -137,7 +138,7 @@ describe('DocsSearch', () => {
     for (const entry of docIndex()) {
       if (entry.heading === null) continue;
       const candidate = entry.heading.split(/\s+/)[0];
-      anchored = searchDocs(candidate).results.find((r) => r.anchor !== null);
+      anchored = searchDocs(candidate, docIndex()).results.find((r) => r.anchor !== null);
       if (anchored) {
         word = candidate;
         break;
@@ -152,7 +153,7 @@ describe('DocsSearch', () => {
 
   it('renders closed, text kept, for an entry whose navigation state says a result was taken', () => {
     const query = term();
-    const slug = searchDocs(query).results[0].slug;
+    const slug = searchDocs(query, docIndex()).results[0].slug;
     const html = render({ pathname: `/docs/${slug}`, search: `?q=${encodeURIComponent(query)}`, state: { docsSearchTaken: true } });
 
     expect(html).toContain(`value="${query}"`);

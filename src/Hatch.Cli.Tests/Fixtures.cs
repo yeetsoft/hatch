@@ -508,6 +508,21 @@ public static class Fixtures
             locations = Array.Empty<object>(),
         });
 
+    /// <summary>Same envelope as the overload above, with <paramref name="toolName"/> and <paramref name="rawInput"/> free to vary - for the reads ledger's own tests.</summary>
+    public static string GrokToolCall(string toolName, object rawInput, string toolCallId = "call_1") =>
+        JsonSerializer.Serialize(new
+        {
+            type = "tool_call",
+            toolCallId,
+            title = toolName,
+            kind = "read",
+            status = "pending",
+            toolName,
+            rawInput,
+            content = Array.Empty<object>(),
+            locations = Array.Empty<object>(),
+        });
+
     public static string GrokToolUpdate(string toolCallId = "call_1", string status = "completed") =>
         JsonSerializer.Serialize(new
         {

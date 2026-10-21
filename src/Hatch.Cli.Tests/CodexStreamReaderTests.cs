@@ -14,6 +14,74 @@ public sealed class CodexStreamReaderTests
         return (facts, lines);
     }
 
+    private static CodexStreamReader Reader(params string[] events)
+    {
+        var reader = new CodexStreamReader("/tmp/checkout", new RunFacts(), "gpt-5-codex");
+        events.SelectMany(reader.Read).ToList();
+        return reader;
+    }
+
+    private static IEnumerable<(string Path, int Count)> ReadsOf(CodexStreamReader reader) =>
+        reader.Reads.Select(r => (r.Path, r.Count));
+
+    [Fact]
+    public void ACommandExecution_OfHatchApi_CountsItsEndpointWithoutTheQuery()
+    {
+        var reader = Reader(Fixtures.CodexItemStarted("command_execution", command: "hatch api GET /api/hatch/issues?parentKey=HA-1"));
+        Assert.Equal([("/api/hatch/issues", 1)], ReadsOf(reader));
+    }
+
+    [Fact]
+    public void ACommandExecution_OfAHatchVerb_CountsTheVerb_AndTheDisplayLineIsUntouched()
+    {
+        var command = Fixtures.CodexItemStarted("command_execution", command: "hatch show HA-1");
+        var reader = new CodexStreamReader("/tmp/checkout", new RunFacts(), "gpt-5-codex");
+        var lines = reader.Read(command).ToList();
+
+        Assert.Equal([("hatch show", 1)], ReadsOf(reader));
+        Assert.Contains(lines, l => l == "  ⏺ command_execution  hatch show HA-1");
+    }
+
+    [Fact]
+    public void ACommandExecution_OfAnythingElse_CountsNothing()
+    {
+        var reader = Reader(Fixtures.CodexItemStarted("command_execution", command: "cat foo.txt"));
+        Assert.Empty(reader.Reads);
+    }
+
+    [Theory]
+    [InlineData("file_change")]
+    [InlineData("mcp_tool_call")]
+    [InlineData("web_search")]
+    public void OtherItemTypes_CountNothing(string itemType)
+    {
+        var reader = Reader(Fixtures.CodexItemStarted(itemType, tool: "t", query: "q"));
+        Assert.Empty(reader.Reads);
+    }
+
+    [Fact]
+    public void AnItemStartedAndCompleted_CountsOnce()
+    {
+        var reader = Reader(
+            Fixtures.CodexItemStarted("command_execution", command: "hatch show HA-1"),
+            Fixtures.CodexItemCompleted("command_execution"));
+        Assert.Equal([("hatch show", 1)], ReadsOf(reader));
+    }
+
+    [Fact]
+    public void Reads_KeepsTheHeaviestFifty()
+    {
+        var events = Enumerable.Range(0, 51)
+            .SelectMany(i => Enumerable.Repeat(Fixtures.CodexItemStarted("command_execution", command: $"hatch api GET /p{i}"), i + 1))
+            .ToArray();
+
+        var reader = Reader(events);
+
+        Assert.Equal(50, reader.Reads.Count);
+        Assert.DoesNotContain(reader.Reads, r => r.Path == "/p0");
+        Assert.Equal(("/p50", 51), (reader.Reads[0].Path, reader.Reads[0].Count));
+    }
+
     [Fact]
     public void The_session_id_arrives_off_thread_started()
     {
