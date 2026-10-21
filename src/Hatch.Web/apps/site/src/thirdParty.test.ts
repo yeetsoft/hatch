@@ -34,7 +34,7 @@ beforeAll(async () => {
   assets = readdirSync(join(site.dir, 'assets'))
 })
 
-describe.each(['index.html', '404.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
+describe.each(['index.html', '404.html', 'docs/index.html', 'docs/getting-started/index.html'])('%s', (file: string) => {
   let html: string
   beforeAll(() => {
     html = withoutComments(site.read(file))
