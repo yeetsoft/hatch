@@ -38,7 +38,10 @@ interface DocsModule {
   docSections(pages: DocsPage[]): LandingSection[]
   docNeighbours(pages: DocsPage[], slug: string): { previous: DocsPage | null; next: DocsPage | null }
   createSlugger(): (text: string) => string
-  renderDocs(source: string, resolveHref?: (slug: string, fragment: string) => string): { html: string; outline: OutlineEntry[] }
+  renderDocs(
+    source: string,
+    resolveHref?: (slug: string, fragment: string) => string,
+  ): { html: string; outline: OutlineEntry[]; mermaidCount: number }
 }
 
 /** The three pages HA-663 has yet to write. A link to one of these still becomes
@@ -74,16 +77,21 @@ interface Frame {
   main: string
   /** The `../` prefix from the page's directory to `packages/ui/src/assets/`. */
   up: string
+  /** Whether the page carries at least one mermaid fence - draws the one extra
+      script that renders them. Omitted by `renderLanding`, which is never
+      fenced. */
+  mermaid?: boolean
 }
 
 /** The document every docs page shares - head, header, skip link, footer - so the
     footer's `<!--site:repository-->` block cannot drift between the landing and
     the pages. `title` and `description` are escaped here; `main` is trusted
     markup. */
-function renderFrame({ title, description, main, up }: Frame): string {
+function renderFrame({ title, description, main, up, mermaid }: Frame): string {
   const safeTitle = escapeHtml(title)
   const safeDescription = escapeHtml(description)
   const icon = `${up}packages/ui/src/assets/hatch-logo.png`
+  const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -96,7 +104,7 @@ function renderFrame({ title, description, main, up }: Frame): string {
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/png" href="${icon}" />
     <link rel="stylesheet" href="/src/site.css" />
-    <script type="module" src="/src/theme.ts"></script>
+    <script type="module" src="/src/theme.ts"></script>${diagramsScript}
   </head>
   <body>
     <a class="site-skip" href="#main">Skip to content</a>
@@ -175,7 +183,7 @@ export function renderPager(base: string, previous: DocsPage | null, next: DocsP
 
 function renderPage(
   page: DocsPage,
-  rendered: { html: string; outline: readonly OutlineEntry[] },
+  rendered: { html: string; outline: readonly OutlineEntry[]; mermaidCount: number },
   base: string,
   sections: readonly LandingSection[],
   neighbours: { previous: DocsPage | null; next: DocsPage | null },
@@ -187,6 +195,7 @@ function renderPage(
     title: `Hatch: ${page.title}`,
     description: page.summary,
     up: '../../../../',
+    mermaid: rendered.mermaidCount > 0,
     main: `      <h1>${escapeHtml(page.title)}</h1>
       <div class="site-docs${outlined}">
 ${renderSidebar(base, sections, page.slug)}${outline === '' ? '' : `

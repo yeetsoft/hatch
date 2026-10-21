@@ -1286,6 +1286,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("PromptChars")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Reads")
+                        .HasColumnType("jsonb");
+
                     b.Property<int?>("Requests")
                         .HasColumnType("integer");
 

@@ -1224,6 +1224,11 @@ public class WorkController(
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
 
+        int? nextBriefLimit = null;
+        if (kind == WorkKinds.Advance && !hopped && rowTo is not null && children.Count == 0
+            && Columns.Target(statuses, rowTo) is { } beyond)
+            nextBriefLimit = (await _dispatch.MatchAsync(rowTo.Id, beyond.Id, issue.Type, false, issue.ProjectId, ct))?.Playbook?.BriefLimit;
+
         // The values the increment will actually run on, in place rather than
         // beside them. An issue's own model and effort beat whichever playbook
         // speaks for its next move, and a client that had to remember to check
@@ -1280,7 +1285,8 @@ public class WorkController(
             lastCheckFindings,
             implementationStatus?.Name,
             match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash),
-            asksReleaseNote);
+            asksReleaseNote,
+            nextBriefLimit);
     }
 
     /// <summary>

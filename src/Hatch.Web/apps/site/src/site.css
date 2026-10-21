@@ -449,6 +449,21 @@ summary.site-action::-webkit-details-marker {
   background: var(--card);
 }
 
+.hatch-docs-mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.hatch-docs-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.hatch-docs-mermaid-error {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* Shown on hover or keyboard focus; a finger has no hover, so it always shows. */
 .hatch-docs-anchor {
   margin-left: var(--sp-2);

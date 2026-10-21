@@ -130,6 +130,7 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.IssueType = request.IssueType;
         entry.PlaybookModel = request.PlaybookModel;
         entry.PlaybookEffort = request.PlaybookEffort;
+        entry.Reads = WorkLogRollup.WriteReads(request.Reads ?? []);
 
         await db.SaveChangesAsync(ct);
 
@@ -232,7 +233,8 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         w.PlaybookToStatusId,
         w.IssueType,
         w.PlaybookModel,
-        w.PlaybookEffort);
+        w.PlaybookEffort,
+        WorkLogRollup.ReadReads(w.Reads));
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>
