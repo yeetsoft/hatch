@@ -12,7 +12,7 @@ const env = siteEnv(process.env)
 
 export default defineConfig({
   base: env.base,
-  plugins: [siteHtml(env), docsHtml(), contentHtml(env.cloneUrl)],
+  plugins: [siteHtml(env), docsHtml(env.canonical), contentHtml(env.cloneUrl)],
   appType: 'mpa',
   build: {
     outDir: resolve(__dirname, 'dist'),
