@@ -230,12 +230,12 @@ describe('DocsPage', () => {
     expect(outlineHrefs(html)).toContain('one-increment-hatch-work');
   });
 
-  it('draws How work flows with a mermaid placeholder for each diagram', () => {
-    const page = docPage(DOC_PAGES, 'how-work-flows');
+  it('draws The lifecycle of a ticket with a mermaid placeholder for its diagram', () => {
+    const page = docPage(DOC_PAGES, 'the-lifecycle-of-a-ticket');
     expect(page).toBeDefined();
-    const html = renderAt('/docs/how-work-flows');
+    const html = renderAt('/docs/the-lifecycle-of-a-ticket');
 
-    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(2);
+    expect(html.split('class="hatch-docs-mermaid"').length - 1).toBe(1);
   });
 
   describe('anything else', () => {

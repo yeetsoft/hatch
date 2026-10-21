@@ -8,7 +8,7 @@ summary: The seven columns a stock board ships with, and who moves work out of e
 This is the stock board. An operator may rename its columns, add more and
 reorder them, so nothing below depends on a name: each column is described by
 what happens in it, and the names are only what a fresh install calls them.
-[How work flows](how-work-flows) follows a ticket across them.
+[The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows a ticket across them.
 
 ## The seven stock columns
 
@@ -62,8 +62,8 @@ The hops the board makes are:
 - **Close** — a pre-approved parent in review with every child done goes into
   the first Done column to its right.
 
-`the-lifecycle-of-a-ticket` follows one ticket across every column and hop
-above, start to finish.
+[The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
+across every column and hop above, start to finish.
 
 ## Column flags
 
@@ -145,6 +145,5 @@ moves across them: dependencies, deferring, and closing a subtree.
 
 Pages this one links to that are not written yet:
 
-- `the-lifecycle-of-a-ticket`
 - `flow-wip-and-the-battery`
 - `review-pull-requests-and-the-merge-train`
