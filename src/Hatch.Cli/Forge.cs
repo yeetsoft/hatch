@@ -37,6 +37,20 @@ public sealed record PullRequestAnswer(
     string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null,
     string? ReviewDecision = null, string? Base = null, string? BaseSha = null);
 
+/// <summary>
+/// What a forge answered about every open pull request of a checkout at once: the
+/// open ones by url, or why it could not say. Absence means nothing - see
+/// <see cref="IForge.ReadOpenPullRequestsAsync"/>.
+/// </summary>
+/// <param name="Open">The open pull requests the forge listed, keyed by url with no trailing slash and compared case-insensitively. Null where the list was not read.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Open"/> was read.</param>
+public sealed record PullRequestListAnswer(IReadOnlyDictionary<string, PullRequestAnswer>? Open, string? Why)
+{
+    /// <summary>The listed pull request at <paramref name="url"/>, or null where the list does not hold it. Case and a trailing <c>/</c> do not matter.</summary>
+    public PullRequestAnswer? Find(string url) =>
+        Open is not null && Open.TryGetValue(url.TrimEnd('/'), out var hit) ? hit : null;
+}
+
 /// <summary>What a forge answered about a merge attempt: whether it took, or why it did not.</summary>
 /// <param name="Merged">True where the merge went through.</param>
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Merged"/> is true.</param>
@@ -92,6 +106,14 @@ public interface IForge
     /// The only read that tells a merge from a close: see <see cref="PullRequestStates"/>.
     /// </summary>
     Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct);
+
+    /// <summary>
+    /// Every open pull request of the checkout's repository, in one read. Absence from the list
+    /// means nothing: <c>--state open</c> cannot tell a merged pull request from a closed one,
+    /// from one past the list's limit, or from another repository's. Only
+    /// <see cref="ReadPullRequestAsync"/> can.
+    /// </summary>
+    Task<PullRequestListAnswer> ReadOpenPullRequestsAsync(CancellationToken ct);
 
     /// <summary>Merges the pull request at <paramref name="url"/>, provided its head is still <paramref name="sha"/>.</summary>
     Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct);
@@ -154,6 +176,9 @@ public sealed class GhForge(
     /// <summary>The most bytes one failing check's excerpt has.</summary>
     public const int MaxExcerptBytes = 12 * 1024;
 
+    /// <summary>The most pull requests one <see cref="ReadOpenPullRequestsAsync"/> asks for - one GraphQL page. A pull request past it is not in the list, and is read on its own.</summary>
+    public const int OpenPullRequestLimit = 100;
+
     private readonly Func<string, IReadOnlyDictionary<string, string>, IReadOnlyList<string>, CancellationToken, Task<Ran>> _run =
         run ?? Execute;
 
@@ -204,19 +229,61 @@ public sealed class GhForge(
         try
         {
             using var doc = JsonDocument.Parse(ran.Out);
-            var state = Text(doc.RootElement, "state");
-            var number = doc.RootElement.TryGetProperty("number", out var n) && n.TryGetInt64(out var num) ? num : (long?)null;
-            var isDraft = doc.RootElement.TryGetProperty("isDraft", out var d) && d.ValueKind == JsonValueKind.True;
-            return new PullRequestAnswer(
-                ClassifyState(state), null, Text(doc.RootElement, "headRefOid"), number,
-                ClassifyMergeState(Text(doc.RootElement, "mergeStateStatus"), isDraft),
-                ClassifyReviewDecision(Text(doc.RootElement, "reviewDecision")),
-                Text(doc.RootElement, "baseRefName"), Text(doc.RootElement, "baseRefOid"));
+            return ToAnswer(doc.RootElement);
         }
         catch (JsonException)
         {
             return new PullRequestAnswer(null, "gh answered with something that is not a pull request");
         }
+    }
+
+    /// <summary>
+    /// One <c>gh pr list</c> for every open pull request, at most <see cref="OpenPullRequestLimit"/>
+    /// of them. It takes no <c>--hostname</c>: <c>GH_REPO</c> carries the host, as for <c>pr view</c>.
+    /// </summary>
+    public async Task<PullRequestListAnswer> ReadOpenPullRequestsAsync(CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new PullRequestListAnswer(null, "its repository is a local path, so there is no forge to read pull requests from");
+
+        var ran = await _run(path, Env(), [
+            "pr", "list", "--state", "open", "--limit", OpenPullRequestLimit.ToString(),
+            "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid",
+        ], ct);
+        if (ran.Code != 0) return new PullRequestListAnswer(null, Why(ran));
+
+        try
+        {
+            using var doc = JsonDocument.Parse(ran.Out);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return new PullRequestListAnswer(null, "gh answered with something that is not a list of pull requests");
+
+            var open = new Dictionary<string, PullRequestAnswer>(StringComparer.OrdinalIgnoreCase);
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                if (element.ValueKind == JsonValueKind.Object && Text(element, "url") is { Length: > 0 } url)
+                    open[url.TrimEnd('/')] = ToAnswer(element);
+            }
+
+            return new PullRequestListAnswer(open, null);
+        }
+        catch (JsonException)
+        {
+            return new PullRequestListAnswer(null, "gh answered with something that is not a list of pull requests");
+        }
+    }
+
+    /// <summary>One pull request as <c>gh</c> prints it, to its answer - shared by <c>pr view</c> and <c>pr list</c> so the two cannot read it differently.</summary>
+    private static PullRequestAnswer ToAnswer(JsonElement pr)
+    {
+        var number = pr.TryGetProperty("number", out var n) && n.TryGetInt64(out var num) ? num : (long?)null;
+        var isDraft = pr.TryGetProperty("isDraft", out var d) && d.ValueKind == JsonValueKind.True;
+        return new PullRequestAnswer(
+            ClassifyState(Text(pr, "state")), null, Text(pr, "headRefOid"), number,
+            ClassifyMergeState(Text(pr, "mergeStateStatus"), isDraft),
+            ClassifyReviewDecision(Text(pr, "reviewDecision")),
+            Text(pr, "baseRefName"), Text(pr, "baseRefOid"));
     }
 
     public async Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

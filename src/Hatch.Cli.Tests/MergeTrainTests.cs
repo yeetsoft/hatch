@@ -241,6 +241,124 @@ public sealed class MergeTrainTests
         Assert.Single(rig.H.Forge.PullRequestReads);
     }
 
+    private static string PullUrl(int n) => $"https://github.com/o/r/pull/{n}";
+
+    private static void Listed(Rig rig, params (string Url, PullRequestAnswer Answer)[] open) =>
+        rig.H.Forge.PullRequestList = new(open.ToDictionary(o => o.Url, o => o.Answer), null);
+
+    [Fact]
+    public async Task Twenty_rows_in_review_cost_one_list_and_no_read_of_their_own()
+    {
+        var rows = Enumerable.Range(1, 20).Select(n => Holding($"AER-{n}", PullUrl(n))).ToArray();
+        using var rig = new Rig().Board(rows);
+        Listed(rig, [.. Enumerable.Range(1, 20).Select(n => (PullUrl(n), Forged()))]);
+
+        await rig.RunAsync();
+
+        Assert.Equal([rig.H.Root], rig.H.Forge.PullRequestListReads);
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_row_absent_from_the_list_is_read_on_its_own_and_absence_alone_never_advances_it()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl), Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Forge.PullRequestFor[PrUrl] = Forged(PullRequestStates.Merged);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}", $"{rig.H.Root} {PrUrl2}"], rig.H.Forge.PullRequestReads);
+        Assert.Single(rig.H.Wire.To("POST", Merged("AER-1")));
+        Assert.Empty(rig.H.Wire.To("POST", Merged("AER-2")));
+    }
+
+    [Fact]
+    public async Task A_row_the_list_holds_open_is_never_read_on_its_own_and_an_identical_one_is_not_put()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        Listed(rig, (PrUrl, Forged()));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Theory]
+    [InlineData("head")]
+    [InlineData("merge")]
+    [InlineData("review")]
+    public async Task A_listed_change_in_only_one_of_the_three_is_put_without_a_read_of_its_own(string which)
+    {
+        using var rig = new Rig().Board(Holding(
+            "AER-1", PrUrl,
+            head: which == "head" ? Tip2 : null,
+            merge: which == "merge" ? MergeStates.Behind : MergeStates.Clean,
+            review: which == "review" ? ReviewDecisions.ReviewRequired : ReviewDecisions.Approved));
+        Listed(rig, (PrUrl, Forged()));
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1")));
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
+
+    [Fact]
+    public async Task A_listed_row_whose_merge_state_is_not_yet_computed_is_read_on_its_own()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        Listed(rig, (PrUrl, Forged(merge: MergeStates.Unknown)));
+        rig.H.Forge.PullRequestFor[PrUrl] = Forged();
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}"], rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_list_that_cannot_be_read_complains_once_for_the_checkout_and_reads_no_row()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl), Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Forge.PullRequestList = new(null, "gh is not installed");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(["hatch: could not read pull requests in checkout - gh is not installed"], rig.H.Say.Complained);
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
+
+    [Fact]
+    public async Task Rows_on_two_checkouts_cost_one_list_each()
+    {
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: true, matchedRemote: "https://example.test/two.git");
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", [one], pullRequestUrl: PrUrl), Fixtures.Review("AER-2", [two], pullRequestUrl: PrUrl2));
+
+        var runtime = rig.H.Runtime with
+        {
+            Clock = rig.Clock,
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: true),
+            ],
+        };
+
+        await rig.Train.TickAsync(runtime, default);
+
+        Assert.Equal(["/checkouts/one", "/checkouts/two"], rig.H.Forge.PullRequestListReads.Order());
+    }
+
     // ---- The merge half ----
 
     private const string MergeCanonical = "example.test/repo";
