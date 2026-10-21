@@ -17,7 +17,7 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
 
     public IHookOutputWriter HookOutput { get; } = new CodexHookOutputWriter();
 
-    public bool CanSpawn(out string refusal)
+    public virtual bool CanSpawn(out string refusal)
     {
         if (_bin is not null)
         {
