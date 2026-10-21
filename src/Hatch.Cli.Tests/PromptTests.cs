@@ -605,6 +605,37 @@ public sealed class PromptTests
         Assert.Contains("a fail sends it to \"Implementation\"", section, StringComparison.Ordinal);
     }
 
+    // ---- HA-1180: only an increment bound for the implementation column is told to start ----
+
+    [Fact]
+    public void The_start_line_is_printed_when_the_increment_is_bound_for_the_implementation_column()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", from: "To Do", to: "In Progress", failStatusName: "In Progress"));
+
+        Assert.Contains("hatch start AER-12", prompt, StringComparison.Ordinal);
+        Assert.Contains("hatch move AER-12 <column>", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("is the marker", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_start_line_is_absent_and_the_claim_is_the_marker_on_any_other_destination()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", from: "Backlog", to: "To Do", failStatusName: "In Progress"));
+
+        Assert.DoesNotContain("hatch start AER-12", prompt, StringComparison.Ordinal);
+        Assert.Contains("the marker that you have started", prompt, StringComparison.Ordinal);
+        Assert.Contains("hatch move AER-12 <column>", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_start_line_is_absent_when_the_board_has_no_implementation_column()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", from: "Backlog", to: "To Do", failStatusName: null));
+
+        Assert.DoesNotContain("hatch start AER-12", prompt, StringComparison.Ordinal);
+        Assert.Contains("the marker that you have started", prompt, StringComparison.Ordinal);
+    }
+
     // ---- HA-557: the last check's findings are carried forward after a fail ----
 
     [Fact]

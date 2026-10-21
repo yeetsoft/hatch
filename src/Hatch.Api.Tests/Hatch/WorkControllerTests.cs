@@ -1385,6 +1385,104 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
+    // ---- WorkDto.NextBriefLimit ----
+    //
+    // The matched row's BriefLimit out of (destination column -> the column
+    // after it), for the issue's type, carried so the client knows at least
+    // what the *next* session will be spawned under - not this one's, and
+    // never the queue's - see HA-1204.
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsTheRowCoveringTheColumnAfterTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Equal(8000, Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task NextWork_NextBriefLimit_IsTheRowCoveringTheColumnAfterTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Equal(8000, Value(await h.Work.GetNextWork(0, null, null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWithNoPlaybookOutOfTheDestination()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenTheRowBeyondDoesNotCoverTheType()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenTheRowBeyondHasNoLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "a story in todo", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullForAnIssueWithChildren()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "already broken down", h.Todo);
+        await h.FileAsync("task", "a task under it", h.Todo, parentId: issue.Id);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullWhenNothingBeyondTheDestinationHasAPlaybook()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        var issue = await h.FileAsync("story", "already in progress", h.InProgress);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
+    [Fact]
+    public async Task Work_NextBriefLimit_IsNullOnAHoppedDispatch()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 8000));
+        var issue = await h.FileAsync("story", "carried across anyway", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).NextBriefLimit);
+    }
+
     // ---- Brief limit, the send-back hop ----
     //
     // The same fold, carried one step further: a childless issue over its
@@ -4097,6 +4195,223 @@ public class WorkControllerTests
             Assert.Equal(
                 board.Issues.Where(c => c.StatusId == column).Select(c => c.Key),
                 queue.Where(e => e.FromStatus.Id == column).Select(e => e.Issue.Key));
+    }
+
+    // ---- Tags (HA-1201) ----
+
+    [Fact]
+    public async Task Queue_NamesTheTagsTheProjectRequires()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+
+        var none = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            none.Blocked);
+        Assert.Equal(BlockedKinds.Other, none.BlockedKind);
+
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            Only(await h.Work.GetQueue(0, null, default, tag: ["linux"])).Blocked);
+
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, tag: ["macos"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode", "linux"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AProjectRequiringNoTags_IsClearWhateverTheCallerSends()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "built anywhere", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ATagRequiringProjectsStoryInTodo_IsClearForATaglessCaller()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.FileAsync("story", "not yet in progress", h.Todo);
+
+        // Todo is not the implementation column, and a move into it is nobody's
+        // to be gated by a runner's tags - the same reason a repository fold
+        // only reaches as far as the implementation column.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AConflictedReviewRow_FoldsByTagsTheSameWayImplementationDoes()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, conflicted", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACleanReviewRow_KeepsItsOwnSentenceRatherThanTheTagFold()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default)).Blocked;
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("implemented only by", blocked);
+    }
+
+    [Fact]
+    public async Task Next_FoldsByTagsForATaglessCaller_AndAnswersForATaggedOne()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+        Assert.Equal(
+            Key(issue),
+            Value(await h.Work.GetNextWork(0, null, null, default, tag: ["macos", "xcode"])).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Work_CarriesTheSameTagSentence_AndIsClearWithTheTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, tag: ["macos", "xcode"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_InATagRequiringProject_IsNotFoldedByTheTagSentenceForATaglessCaller()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var already = await h.FileAsync("story", "already in the target column", h.InProgress, rank: 1024);
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.InProgress, moved.StatusId);
+        Assert.Equal(h.InProgress, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_FoldsByTheRowsOwnTagsRatherThanTheQueryString()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+
+        h.Db.Runners.AddRange(
+            new EfHatchRunner
+            {
+                Name = "linux-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, Tags = "linux",
+            },
+            new EfHatchRunner
+            {
+                Name = "mac-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, Tags = "macos\nxcode",
+            },
+            new EfHatchRunner
+            {
+                Name = "bare-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, Tags = null,
+            });
+        await h.Db.SaveChangesAsync();
+
+        // The query string's own tags are ignored beside asRunner, even where
+        // they disagree with the row's: the row's own declaration is what is read.
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "linux-box", ["macos", "xcode"])).Blocked);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "mac-box")).Blocked);
+
+        Assert.Equal(
+            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "bare-box")).Blocked);
+    }
+
+    [Fact]
+    public async Task Tag_WithASpaceInside_Is400OnNextQueueAndWork()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "clear", h.Todo);
+        const string expected = "a tag has no space or comma inside - not \"a b\"";
+
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetNextWork(0, null, null, default, tag: ["a b"])).Result).Value);
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetQueue(0, null, default, tag: ["a b"])).Result).Value);
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetWork(Key(issue), null, default, tag: ["a b"])).Result).Value);
+    }
+
+    [Fact]
+    public async Task Tag_NineOfThem_Is400OnNextQueueAndWork()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "clear", h.Todo);
+        var nine = Enumerable.Range(1, 9).Select(i => $"t{i}").ToList();
+        const string expected = "a runner carries at most 8 tags";
+
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetNextWork(0, null, null, default, tag: nine)).Result).Value);
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetQueue(0, null, default, tag: nine)).Result).Value);
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetWork(Key(issue), null, default, tag: nine)).Result).Value);
+    }
+
+    [Fact]
+    public async Task Queue_ARepositoryFoldComesBeforeATagFold()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.FileAsync("story", "bound elsewhere and tag-gated", h.InProgress);
+
+        Assert.Equal(
+            "bound to https://example.com/o/r, and this runner has no checkout of it",
+            Only(await h.Work.GetQueue(0, null, standing: true, ct: default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ATagFoldedExpeditedRowParksNothingBelowIt()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos");
+        var hurry = await h.FileAsync("bug", "expedited, tag-gated", h.InProgress);
+        await h.ExpediteAsync(hurry);
+        var normal = await h.FileAsync("bug", "normal, otherwise clear", h.Todo);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotNull(queue.Single(e => e.Issue.Key == Key(hurry)).Blocked);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
     // ---- Express, the hop ----
@@ -11508,6 +11823,14 @@ public class WorkControllerTests
             Db.ProjectRepositories.Add(repo);
             await Db.SaveChangesAsync();
             return repo;
+        }
+
+        /// <summary>The project's own required tags, written straight onto the row.</summary>
+        public async Task RequireTagsAsync(params string[] tags)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.RunnerTags = EfHatchProject.WriteRunnerTags(tags);
+            await Db.SaveChangesAsync();
         }
     }
 

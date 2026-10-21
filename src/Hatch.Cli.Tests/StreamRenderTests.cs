@@ -133,6 +133,53 @@ public sealed class StreamRenderTests
         Assert.Equal("What I actually did", title);
     }
 
+    private const string MiddleFence = "```work-log\nMiddle title\n\nMiddle body.\n```";
+
+    [Fact]
+    public void A_fence_in_a_middle_message_describes_the_row_when_the_final_message_has_none()
+    {
+        var (facts, _) = Play(
+            Fixtures.Init(),
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.ToolUse("Bash", "hatch pr HA-1 https://example.test/pull/1"),
+            Fixtures.AssistantText("Done."),
+            Fixtures.Result(said: "Done."));
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+        Assert.Equal("Middle body.", facts.Result.Summary);
+    }
+
+    [Fact]
+    public void A_fence_in_the_result_text_beats_one_in_a_middle_message()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.ToolUse("Bash", "make test-api"),
+            Fixtures.Result(said: "```work-log\nFinal title\n```"));
+
+        Assert.Equal("Final title", facts.Result!.Title);
+    }
+
+    [Fact]
+    public void An_empty_final_fence_does_not_erase_a_middle_one()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence),
+            Fixtures.Result(said: "```work-log\n\n```"));
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+    }
+
+    [Fact]
+    public void A_fence_only_a_sub_agent_wrote_is_not_the_sessions()
+    {
+        var (facts, _) = Play(
+            Fixtures.AssistantText(MiddleFence, parentToolUseId: "toolu_1"),
+            Fixtures.Result(said: "Done."));
+
+        Assert.Null(facts.Result!.Title);
+    }
+
     [Fact]
     public void A_session_that_writes_a_title_label_does_not_keep_it()
     {

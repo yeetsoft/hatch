@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -27,6 +28,57 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public static class WorkLogRollup
 {
+    /// <summary>camelCase, matching the wire - the same options the model breakdown column is written with.</summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// What goes in <see cref="EfHatchWorkLogEntry.Reads"/>, or null when nothing
+    /// was posted.
+    /// </summary>
+    /// <remarks>
+    /// Both caps are enforced here, clipped rather than refused, the way a long
+    /// summary is: heaviest first (count descending, then path ascending so two
+    /// writes of the same reads store the same bytes), at most
+    /// <see cref="EfHatchWorkLogEntry.MaxReads"/> of them, each path cut to
+    /// <see cref="EfHatchWorkLogEntry.MaxReadPathLength"/>. Here rather than on
+    /// the controller because the leaderboard folds read the same column and must
+    /// agree with the write path about what it means.
+    /// </remarks>
+    internal static string? WriteReads(IReadOnlyList<WorkLogReadDto> reads)
+    {
+        var kept = reads
+            .Where(r => !string.IsNullOrEmpty(r.Path))
+            .OrderByDescending(r => r.Count)
+            .ThenBy(r => r.Path, StringComparer.Ordinal)
+            .Take(EfHatchWorkLogEntry.MaxReads)
+            .Select(r => new WorkLogReadDto(
+                r.Path.Length > EfHatchWorkLogEntry.MaxReadPathLength
+                    ? r.Path[..EfHatchWorkLogEntry.MaxReadPathLength]
+                    : r.Path,
+                r.Count))
+            .ToList();
+
+        return kept.Count > 0 ? JsonSerializer.Serialize(kept, Json) : null;
+    }
+
+    /// <summary>
+    /// The stored reads, or nothing at all. A column that will not parse reads as
+    /// empty rather than throwing the whole log away, as the model breakdown does.
+    /// </summary>
+    internal static IReadOnlyList<WorkLogReadDto> ReadReads(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<WorkLogReadDto>>(stored, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>
     /// One issue's totals, with or without everything beneath it.
     /// </summary>

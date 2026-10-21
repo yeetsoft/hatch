@@ -55,12 +55,11 @@
   min-width: 0;
 }
 
-/* Even with the attention and overnight controls narrowed to their content
-   (HA-960), the trailing cluster alone - battery, overnight, attention,
-   gear - plus the brand link and the bar's two gaps still run to roughly
-   416px at 390 CSS pixels. Stepping the bar's own padding and each side's
-   gap down by one token saves about 20px, landing near 396px by the same
-   estimate - narrowing the row, not a measured fit; see HA-959. */
+/* The bar's padding and each side's gap step down one token at phone width,
+   which is what lets the trailing cluster - battery, overnight, attention,
+   gear - sit beside the brand link on a 393px viewport. The fit is measured,
+   in the bar's widest state and at rest, by BarFitsPhoneTests in
+   Hatch.Api.Tests/E2e (HA-1228). */
 @media (max-width: 40rem) {
   .hatch-topbar__inner {
     padding-inline: var(--sp-4);

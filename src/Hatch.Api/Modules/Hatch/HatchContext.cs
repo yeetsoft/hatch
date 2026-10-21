@@ -208,6 +208,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // jsonb for the reason the event payload is - see
             // EfHatchWorkLogEntry.ModelUsage.
             e.Property(w => w.ModelUsage).HasColumnType("jsonb");
+            e.Property(w => w.Reads).HasColumnType("jsonb");
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as

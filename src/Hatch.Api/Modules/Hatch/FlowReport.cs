@@ -17,8 +17,13 @@ public static class FlowReport
     /// <summary>One raw issue event, as the fold needs it - <c>status_changed</c> and <c>claim_released</c> are read.</summary>
     public sealed record Event(long IssueId, long EventId, string Kind, DateTimeOffset At, string? Payload);
 
-    /// <summary>One question asked of an issue.</summary>
-    public sealed record Question(long IssueId, long Id, DateTimeOffset AskedAt, DateTimeOffset? AnsweredAt);
+    /// <summary>
+    /// One question asked of an issue. <paramref name="AnsweredAt"/> is when a
+    /// person first answered it; <paramref name="LapsedAt"/> is when the board
+    /// answered it itself by lapsing it, and is only set where no person has.
+    /// </summary>
+    public sealed record Question(
+        long IssueId, long Id, DateTimeOffset AskedAt, DateTimeOffset? AnsweredAt, DateTimeOffset? LapsedAt = null);
 
     /// <summary>One work-log session against an issue.</summary>
     public sealed record Session(long IssueId, DateTimeOffset EndedAt, bool IsError);
@@ -32,7 +37,7 @@ public static class FlowReport
 
     /// <summary>The window-wide half of a flow report, over the issues the filters keep.</summary>
     public sealed record Window(int Dropped, IReadOnlyList<Hop> Hops, int SendBacks,
-        int QuestionsAsked, int QuestionsAnswered, long? MedianAnswerWaitSeconds, long? LongestAnswerWaitSeconds,
+        int QuestionsAsked, int QuestionsAnswered, int QuestionsLapsed, long? MedianAnswerWaitSeconds, long? LongestAnswerWaitSeconds,
         int Sessions, int SessionErrors);
 
     public sealed record Result(IReadOnlyList<Column> Columns, Window Window, int Unresolved);
@@ -82,6 +87,7 @@ public static class FlowReport
         var sendBacks = 0;
         var questionsAsked = 0;
         var questionsAnswered = 0;
+        var questionsLapsed = 0;
         var waits = new List<long>();
         var sessionCount = 0;
         var sessionErrors = 0;
@@ -145,6 +151,8 @@ public static class FlowReport
                     questionsAnswered++;
                     waits.Add(Math.Max(0, (long)Math.Round((answeredAt - q.AskedAt).TotalSeconds)));
                 }
+
+                if (q.LapsedAt is { } lapsedAt && lapsedAt >= from && lapsedAt < to) questionsLapsed++;
             }
 
             foreach (var ses in sessionsByIssue[row.Id])
@@ -162,7 +170,7 @@ public static class FlowReport
 
         var window = new Window(
             Dropped: dropped, Hops: HopKindOrder.Select(k => new Hop(k, hopCounts[k])).ToList(), SendBacks: sendBacks,
-            QuestionsAsked: questionsAsked, QuestionsAnswered: questionsAnswered,
+            QuestionsAsked: questionsAsked, QuestionsAnswered: questionsAnswered, QuestionsLapsed: questionsLapsed,
             MedianAnswerWaitSeconds: Median(waits), LongestAnswerWaitSeconds: waits.Count == 0 ? null : waits.Max(),
             Sessions: sessionCount, SessionErrors: sessionErrors);
 
