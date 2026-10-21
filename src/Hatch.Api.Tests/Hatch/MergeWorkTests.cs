@@ -34,6 +34,7 @@ public class MergeWorkTests
     };
 
     const string Remote = "https://example.com/o/r";
+    static readonly string OtherHead = new('c', 40);
 
     [Fact]
     public void ClosedPullRequest_HoldsAheadOfAConflict()
@@ -241,13 +242,16 @@ public class MergeWorkTests
         Assert.Contains("no checks ran on it", judgement.Sentence);
     }
 
-    static MergeWork.Judgement CleanNoChecksAt(TimeSpan after, bool checksRequired, string? mergeState, string? mergeStateSha)
+    static MergeWork.Judgement CleanNoChecksAt(
+        TimeSpan after, bool checksRequired, string? mergeState, string? mergeStateSha, DateTimeOffset? pullRequestHeadSince = null)
     {
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.None) };
 
-        return MergeWork.Judge(bound, merges, builds, null, checksRequired, mergeState, mergeStateSha, Now + after);
+        return MergeWork.Judge(
+            bound, merges, builds, null, checksRequired, mergeState, mergeStateSha, Now + after,
+            pullRequestHeadSince: pullRequestHeadSince);
     }
 
     [Fact]
@@ -301,12 +305,21 @@ public class MergeWorkTests
     }
 
     [Fact]
-    public void ForgeCleanAtAnotherSha_HoldsAsItAlwaysHas()
+    public void ForgeCleanAtAnotherSha_WaitsForTheForgeToCatchUp()
     {
-        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, MergeStates.Clean, new string('c', 40));
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, MergeStates.Clean, OtherHead);
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("waiting for the forge to catch up with its branch", judgement.Sentence);
+    }
+
+    [Fact]
+    public void ForgeCleanAtAnotherSha_HoldsPastTheForgeCatchUpWindow()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(15), true, MergeStates.Clean, OtherHead);
 
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
-        Assert.EndsWith("no checks ran on it", judgement.Sentence);
+        Assert.Contains("has not caught up with its branch in 15 minutes", judgement.Sentence);
     }
 
     [Fact]
@@ -352,5 +365,155 @@ public class MergeWorkTests
 
         Assert.Equal(WorkKinds.Merge, judgement.Kind);
         Assert.Contains("its build passes", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_TipBuildNone_PendingNamesBothShas()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.None) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, OtherHead, Now);
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("ccccccc", judgement.Sentence);
+        Assert.Contains("bbbbbbb", judgement.Sentence);
+        Assert.DoesNotContain("no checks ran", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_TipBuildPassed_PendingNotMerge()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, OtherHead, Now);
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("waiting for the forge to catch up with its branch", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_TipBuildNoneAt16Minutes_Holds()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.None) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, OtherHead, Now.AddMinutes(16));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Contains("has not caught up with its branch in 15 minutes", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_TipBuildNoneAt14Minutes_StillPending()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.None) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, OtherHead, Now.AddMinutes(14));
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("waiting for the forge to catch up with its branch", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_NotHoldingTrunk_PendingNotUpdate()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: false) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, OtherHead, Now);
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("waiting for the forge to catch up with its branch", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_NoBuildChecksAtAllAt20Minutes_PendingWithNoClock()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, OtherHead, Now.AddMinutes(20));
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("waiting for the forge to catch up with its branch", judgement.Sentence);
+    }
+
+    [Fact]
+    public void OtherHead_TipBuildFailed_StillPushback()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Failed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, OtherHead, Now);
+
+        Assert.Equal(WorkKinds.Pushback, judgement.Kind);
+    }
+
+    // The #983 timeline: the forge catches up with the tip 11 minutes after the
+    // build was first heard of, so the settle window counts from there, not
+    // from the build's own ShaSince.
+    [Fact]
+    public void SettleWindow_CountsFromTheForgeCatchingUp_PendingAt12Minutes()
+    {
+        var judgement = CleanNoChecksAt(
+            TimeSpan.FromMinutes(12), true, null, new string('b', 40), pullRequestHeadSince: Now.AddMinutes(11));
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+        Assert.Contains("no checks ran on it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void SettleWindow_CountsFromTheForgeCatchingUp_PendingAt20Minutes()
+    {
+        var judgement = CleanNoChecksAt(
+            TimeSpan.FromMinutes(20), true, null, new string('b', 40), pullRequestHeadSince: Now.AddMinutes(11));
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+    }
+
+    [Fact]
+    public void SettleWindow_CountsFromTheForgeCatchingUp_HoldsAt22Minutes()
+    {
+        var judgement = CleanNoChecksAt(
+            TimeSpan.FromMinutes(22), true, null, new string('b', 40), pullRequestHeadSince: Now.AddMinutes(11));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+    }
+
+    [Fact]
+    public void MatchingShaWithNoPullRequestHeadSince_HoldsAtTheSettleWindow()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, null, new string('b', 40));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith("no checks ran on it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void NullMergeStateShaWithPullRequestHeadSince_IsIgnored_HoldsAtTheSettleWindow()
+    {
+        var judgement = CleanNoChecksAt(
+            TimeSpan.FromMinutes(10), true, null, null, pullRequestHeadSince: Now.AddMinutes(11));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith("no checks ran on it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void PullRequestHeadSinceEarlierThanShaSince_CountsFromShaSince()
+    {
+        var judgement = CleanNoChecksAt(
+            TimeSpan.FromMinutes(10), true, null, new string('b', 40), pullRequestHeadSince: Now.AddMinutes(-5));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith("no checks ran on it", judgement.Sentence);
     }
 }
