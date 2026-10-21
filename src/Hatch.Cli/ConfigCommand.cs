@@ -32,7 +32,7 @@ public sealed record ConfigCommand(
     public static readonly string[] ConfigUsage =
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir>]",
+        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...]",
         "",
         "  hatch config                    asks for the origin, the key and the runner",
         "                                     name, and writes them",
@@ -46,6 +46,8 @@ public sealed record ConfigCommand(
         "  hatch config --workspace <dir>  clone every repository the board binds that",
         "                                     this runner has no checkout of, into <dir>",
         "  hatch config --workspace off    ...never clone: serve only the checkouts it has",
+        "  hatch config --tag <tag>        advertise this tag, repeatable",
+        "  hatch config --tag              ...alone, clears them",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
@@ -76,6 +78,14 @@ public sealed record ConfigCommand(
         "  clones) is two owners of one path. With none written, the default is a",
         "  `workspace` directory beside the per-user file; `--workspace off` writes",
         "  `off`, which keeps this runner from cloning at all.",
+        "",
+        "  --tag writes HATCH_TAGS: the tags this runner advertises, so a project's",
+        "  own runner tags can ask for one and only a runner carrying it is matched.",
+        "  A tag is a word a project's runner tags ask for - macos, gpu - at most 8",
+        "  on a runner, each at most 32 characters, lowercased, with no space or",
+        "  comma. A tag that breaks that rule is refused, naming it, with nothing",
+        "  written. Bare --tag clears the tags this runner advertises. Needs no",
+        "  checkout: a tag is a fact about the machine, not about one of them.",
         "",
         "  Written to the per-user file, mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
@@ -138,6 +148,8 @@ public sealed record ConfigCommand(
 
         if (args.Length > 0 && args[0] == "--workspace") return Workspace(args);
 
+        if (args.Length > 0 && args[0] == "--tag") return Tag(args);
+
         if (args.Length > 0)
             return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
 
@@ -159,6 +171,7 @@ public sealed record ConfigCommand(
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = fold("HATCH_TAGS").Value ?? "";
 
         Say.Line($"Writing {ConfigPath}. Enter keeps what is shown in brackets.");
         Say.Line("");
@@ -237,7 +250,7 @@ public sealed record ConfigCommand(
             }
         }
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
@@ -295,8 +308,9 @@ public sealed record ConfigCommand(
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = fold("HATCH_TAGS").Value ?? "";
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
 
         Environment["HATCH_BASE"] = origin;
 
@@ -339,6 +353,7 @@ public sealed record ConfigCommand(
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = fold("HATCH_TAGS").Value ?? "";
 
         if (origin.Length == 0)
         {
@@ -349,7 +364,7 @@ public sealed record ConfigCommand(
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin);
+        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags);
 
         Environment["HATCH_KEY"] = key;
 
@@ -491,6 +506,7 @@ public sealed record ConfigCommand(
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = fold("HATCH_TAGS").Value ?? "";
 
         // The reverse of the check `--workspace` makes: a checkout named here
         // that sits inside the workspace already configured is the same two
@@ -502,7 +518,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin);
+        Write(origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags);
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
 
@@ -535,6 +551,7 @@ public sealed record ConfigCommand(
         var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var reposRaw = fold("HATCH_REPOS").Value ?? "";
+        var tags = fold("HATCH_TAGS").Value ?? "";
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
@@ -542,7 +559,7 @@ public sealed record ConfigCommand(
         if (Settings.IsWorkspaceOff(dir))
         {
             // A word and not a directory: nothing to overlap and nothing to make.
-            Write(origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin);
+            Write(origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags);
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {ConfigPath}");
             return 0;
@@ -561,9 +578,66 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin);
+        Write(origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags);
 
         Environment["HATCH_WORKSPACE"] = dir;
+
+        Say.Line($"wrote {ConfigPath}");
+        return 0;
+    }
+
+    /// <summary>
+    /// The tags this runner advertises, taken from the command line and
+    /// written without a question being asked - the mirror of <see cref="Repo"/>:
+    /// everything else is carried forward unchanged.
+    /// </summary>
+    /// <remarks>
+    /// A fact about the machine, not about a checkout: unlike <see cref="RunnerAsync"/>
+    /// this needs no <see cref="Root"/>, and unlike <see cref="OriginAsync"/> it
+    /// needs no origin and makes no call - there is nothing here a board could
+    /// refuse.
+    /// </remarks>
+    private int Tag(string[] args)
+    {
+        var values = new List<string>();
+
+        // A bare --tag is the one shape with an odd count: it clears rather
+        // than pairing with a value. Anything else - a trailing bare --tag, two
+        // values with no --tag between them - is shaped wrong and refused.
+        if (args is not ["--tag"])
+        {
+            for (var i = 0; i < args.Length; i += 2)
+            {
+                if (args[i] != "--tag" || i + 1 >= args.Length)
+                    return Usage.Refuse(
+                        Say, "config --tag takes one or more tags, each after its own --tag", ConfigUsage);
+
+                values.Add(args[i + 1]);
+            }
+        }
+
+        // Checked before anything is written, and against the typed values
+        // rather than a comma-split of them - a `--tag a,b` is refused by the
+        // same rule that refuses a comma inside one tag, not split into two.
+        if (RunnerTags.Normalise(values, out var tags) is { } sentence)
+        {
+            Say.Complain($"hatch: {sentence}");
+            return 1;
+        }
+
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var origin = fold("HATCH_BASE").Value ?? "";
+        var key = fold("HATCH_KEY").Value ?? "";
+        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
+        var agent = fold("HATCH_AGENT").Value ?? "";
+        var reposRaw = fold("HATCH_REPOS").Value ?? "";
+        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+
+        Write(origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags));
+
+        Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
 
         Say.Line($"wrote {ConfigPath}");
         return 0;
@@ -661,6 +735,22 @@ public sealed record ConfigCommand(
                 continue;
             }
 
+            if (name == "HATCH_TAGS")
+            {
+                if (value is not { Length: > 0 })
+                {
+                    Say.Line($"{(name + ":").PadRight(19)}<unset>");
+                    continue;
+                }
+
+                var sentence = Settings.ParseTags(value, out var parsed);
+                Say.Line(sentence is null
+                    ? $"{(name + ":").PadRight(19)}{string.Join(", ", parsed)}{where}"
+                    : $"{(name + ":").PadRight(19)}{value}  (refused: {sentence}){where}");
+
+                continue;
+            }
+
             var shown = value is not { Length: > 0 }
                 ? name == "HATCH_KEY"
                     ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
@@ -700,7 +790,7 @@ public sealed record ConfigCommand(
     /// </remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
-        string agent = "", string grokBin = "")
+        string agent = "", string grokBin = "", string tags = "")
     {
         var directory = Path.GetDirectoryName(ConfigPath);
         if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
@@ -729,6 +819,7 @@ public sealed record ConfigCommand(
         if (agent.Length > 0) lines.Add($"HATCH_AGENT={agent}");
         if (repos.Length > 0) lines.Add($"HATCH_REPOS={repos}");
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
+        if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
 
         File.WriteAllLines(temp, lines);
         if (!OperatingSystem.IsWindows())
