@@ -25,6 +25,7 @@ import {
   withDocQuery,
   type DocResult,
 } from '../lib/docsSearch';
+import { docIndex } from '../lib/docsIndex';
 import type { Mark } from '../lib/goTo';
 
 const DEBOUNCE_MS = 300;
@@ -86,7 +87,7 @@ export function DocsSearch() {
   const base = useId();
   const listId = `${base}-list`;
 
-  const { results, total } = useMemo(() => searchDocs(draft), [draft]);
+  const { results, total } = useMemo(() => searchDocs(draft, docIndex()), [draft]);
   const active = keepDocHighlight(results, highlight);
   const open = draft.trim() !== '' && !(taken && draft === urlQ);
 
