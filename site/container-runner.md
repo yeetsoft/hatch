@@ -7,7 +7,7 @@ permalink: /container-runner/
 [Running the agent bare](running-the-agent.md) is the primary path. This page
 is the shortcut: rather than putting a binary on your `PATH` and keeping a
 terminal open, the same Compose stack can start a container that carries the
-runner, `git` and the `claude` CLI, mounts one of your checkouts, and works
+runner, `git` and an agent CLI, mounts one of your checkouts, and works
 tickets under the control of the Runners page like any other runner.
 
 It is off unless you ask for it. Nothing about the stack changes if you never
@@ -15,9 +15,9 @@ type the word `runner`.
 
 ## Whether it is for you
 
-The container carries `git`, `openssh-client`, the `claude` CLI, and the
-`hatch` binary. It carries **no language runtimes**: no .NET, no Node, no
-Python, no compilers.
+The container carries `git`, `openssh-client`, the `claude`, `codex` and
+`grok` CLIs, and the `hatch` binary. It carries **no language runtimes**: no
+.NET, no Node, no Python, no compilers.
 
 So it can plan, break work down, analyse a repository and write code in any
 repository at all, and it can commit and push what it wrote. It **cannot build
@@ -66,21 +66,30 @@ docker compose --profile runner logs -f runner
 
 is what it is saying while it works.
 
-## Its Claude credential
+## Its credential
 
-The container's Claude credential comes from the **Settings** page of your
-Hatch, and from nowhere else. There is nothing to log in to inside the
-container.
+`HATCH_AGENT` picks which agent the container's loop runs: `claude` (the
+default), `codex` or `grok`. Anything else is a refusal, naming the three,
+before the container waits on anything.
 
-1. On a machine with the `claude` CLI logged in, run `claude setup-token` and
-   authorise it in the browser prompt that opens.
-2. It prints a token starting with `sk-ant-oat-`. Copy it.
-3. Paste it into **Settings → Claude subscription token** and save.
+Its credential comes from the **Settings** page of your Hatch, and from
+nowhere else; there is nothing to log in to inside the container. Which field
+you fill depends on the agent `HATCH_AGENT` names:
 
-The container picks it up on its next look. If none is saved when it starts,
-it says so once and then waits, looking again every minute, so the order you
-do these two things in does not matter. The same token is what lets the bar
-show how much headroom the account has left.
+| Agent | What to paste, and where it comes from | Variable exported |
+|---|---|---|
+| `claude` | **Claude subscription token.** On a machine with `claude` logged in, run `claude setup-token` and authorise it in the browser prompt that opens; it prints a token starting with `sk-ant-oat-` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `codex` | **Codex API key**, from the OpenAI platform dashboard. A ChatGPT login does not travel to a container, since `auth.json` is a file and not one value | `CODEX_API_KEY` |
+| `grok` | **Grok Build API key.** `grok login` is for an interactive machine and does not travel to a container either | `XAI_API_KEY` |
+
+If none is saved when it starts, it says so once and then waits, asking
+again every minute, so the order you do these two things in does not matter.
+It reads the credential **once, at start**: save a new one on the Settings
+page and the container keeps the old one until it is restarted:
+
+```
+docker compose --profile runner restart runner
+```
 
 ## Letting it push
 
@@ -159,8 +168,8 @@ order a person would fix them:
 3. **Something to push with.** If `HATCH_GIT_TOKEN` is set, an askpass helper
    answers git's username and password prompts with it. The other two shapes
    arrive already configured through the mounts above.
-4. **The Claude credential.** Fetched from Hatch, waited for if absent, as
-   described above.
+4. **The agent's credential.** Fetched from Hatch, waited for if absent, as
+   described above, for whichever agent `HATCH_AGENT` names.
 5. `exec hatch go-to-work`, as pid 1, so a `docker stop` reaches the loop and
    an increment interrupted mid-ticket lets go of its claim on the way out.
 
@@ -178,17 +187,29 @@ hand the loop bounds such as `--max-runs` or `--under`, add a `command:` to the
 | `HATCH_GIT_TOKEN` | An HTTPS push token, handed to git through askpass | Empty |
 | `HATCH_GH_TOKEN` | The operator secret `gh` reads, as `GH_TOKEN`, to check builds and merge pull requests | Empty |
 | `HATCH_RUNNER_NAME` | What the Runners page calls it | `hatch-runner` |
+| `HATCH_AGENT` | `claude`, `codex` or `grok` | `claude` |
 | `HATCH_TAGS` | The tags it advertises, comma-separated | Empty |
 | `HATCH_PUBLIC_URL` | The address a browser opens Hatch at, set on the `api` service. The pull requests the runner opens link back to their ticket, and without this the link is `http://api:8080/…`, which only the container can open | Empty, which uses the runner's own `HATCH_BASE` |
 
 Inside the container `HATCH_BASE` is the API over Compose's own network,
 `HATCH_ROOT` is `/checkout`, and `HATCH_WORKSPACE` is `/workspace` - a named
 volume, so what it clones survives the container being recreated rather than
-being cloned fresh on every start. The image sets `IS_SANDBOX=1`, because the
-`claude` CLI refuses to bypass permission prompts as root unless it is told it
-is in a sandbox, and an unattended increment has nobody to answer a prompt. A
-container with one bind-mounted checkout in it, or one workspace of its own
-clones, is the isolation that guard asks after.
+being cloned fresh on every start. The image sets `IS_SANDBOX=1`, which is
+`claude`'s own flag: the CLI refuses to bypass permission prompts as root
+unless it is told it is in a sandbox, and an unattended increment has nobody
+to answer a prompt. A container with one bind-mounted checkout in it, or one
+workspace of its own clones, is the isolation that guard asks after.
+
+`codex` and `grok` ask nothing like it. `codex`'s `workspace-write` sandbox
+starts as root in the unprivileged container on its own - the bundled
+bubblewrap it needs is an installed package here, so no `security_opt`,
+`cap_add` or non-root user is needed - and `grok` runs with `--trust
+--always-approve` as root with no privilege error either. Not proven: a
+completed increment under either agent. The `codex` key hit "Quota exceeded"
+against the OpenAI platform, and the `grok` credential saved during that
+check answered "Not signed in" - it reads like a `grok.com` login token
+rather than an `xai-` developer key. Whether `~/.codex` and `~/.grok` survive
+the container being recreated was not reached either.
 
 ## One container, one workspace
 
