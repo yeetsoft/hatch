@@ -28,6 +28,11 @@ for it (next); on iOS it cannot be, see *What iOS cannot do* below. A link
 that leaves Hatch still opens outside it, in a tab that closes back to the
 app rather than stacking up behind it.
 
+On a phone the board opens on what is waiting on you and a **New issue**
+button, with the columns stacked one under another instead of side by side. A
+**Full board** toggle, remembered per browser, brings the columns back side by
+side.
+
 ## Letting it own links on Android
 
 Until Android is told which installed app may answer for this origin, a

@@ -37,6 +37,14 @@ the runner reads it between increments, at its next heartbeat, never in the
 middle of one. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
 
+A runner holding a ticket shows on that ticket too. On the board, its card
+carries a small robot head - blue while the runner is being heard from, amber
+once it has gone quiet on a lease it still holds. The issue page says which
+checkout holds the claim, since when, and the last line the runner printed.
+Clearing a claim by hand makes the ticket claimable again at once; the runner
+notices and stops at its next heartbeat, within a minute by default, so until
+then its session may still push or move the ticket.
+
 ## Overnight
 
 **Agents → Overnight** is the newest night: the run of landings nearest the
@@ -63,6 +71,25 @@ notional USD or when it ran. Nothing on this page writes - there is no
 control that could, and the server refuses a browser outright.
 [What a session is told](what-a-session-is-told#the-work-log-block) says what
 goes into one of these rows in the first place.
+
+## Reports
+
+**Reports** is a link in the nav bar, beside Board and Plan, and opens on a
+card per report. **Timeline** answers when each top-level epic was in flight,
+and how long its work sat in each column, drawn in the board's own column
+colours; **Cumulative flow** shows how much work sat in each column over time,
+and where it is piling up. A ticket counts as in flight while it stands in any
+column after the first that is neither done nor parked - the first column is
+where work waits, a done column is where it ended, and a parked one is a
+siding, so a stretch in any of the three is a gap in the drawing.
+
+The Timeline has three controls. The window - **Earlier**, **Today**, **Later**
+and a **Length**, ninety days to begin with - moves what is charted. **Project**
+(drawn only where there is more than one) and **Creator** narrow it to one
+project or one person's work. And an epic's row can be hidden: a **Hidden**
+list appears beside the controls naming each one, with **Show** beside it and **Show
+all** beneath, and what is hidden is remembered for this browser only, never
+for anybody else looking at the same board.
 
 ## History and the work log
 
