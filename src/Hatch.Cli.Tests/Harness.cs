@@ -507,6 +507,12 @@ public sealed class FakeForge
     /// <summary>What a read of one pull request's url answers.</summary>
     public Dictionary<string, PullRequestAnswer> PullRequestFor { get; } = [];
 
+    /// <summary>Every list of open pull requests asked for, as the path, in order.</summary>
+    public List<string> PullRequestListReads { get; } = [];
+
+    /// <summary>What every list of open pull requests answers. By default it accounts for no row, so each falls back to its own read.</summary>
+    public PullRequestListAnswer PullRequestList { get; set; } = new(new Dictionary<string, PullRequestAnswer>(), null);
+
     /// <summary>
     /// What a pull request read answers, given the path, the url and the
     /// 1-based call number for that url - for a test that has to say
@@ -582,6 +588,12 @@ public sealed class FakeForge
             return Task.FromResult(
                 owner.PullRequestReading?.Invoke(path, url, call)
                 ?? owner.PullRequestFor.GetValueOrDefault(url, owner.PullRequestAnswer));
+        }
+
+        public Task<PullRequestListAnswer> ReadOpenPullRequestsAsync(CancellationToken ct)
+        {
+            owner.PullRequestListReads.Add(path);
+            return Task.FromResult(owner.PullRequestList);
         }
 
         public Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

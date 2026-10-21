@@ -143,7 +143,9 @@ public sealed class MergeTrain : IAsyncDisposable
 
     /// <summary>
     /// The pull request half: for every issue in review that carries a
-    /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads and, on <c>merged</c>,
+    /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads - from one list of the
+    /// checkout's open pull requests, or, for a row the list does not account
+    /// for, from a read of that pull request alone - and, on <c>merged</c>,
     /// advance the issue; on <c>open</c>, put the forge's head, merge state and
     /// review decision on the board where they differ from what it holds (see
     /// <see cref="PutPullRequestStateAsync"/>). There is no stored verdict and no
@@ -157,7 +159,13 @@ public sealed class MergeTrain : IAsyncDisposable
     /// but a pull request url is one field on one issue however many
     /// repositories its project binds - so the checkout is only somewhere for
     /// <c>gh</c> to run, taken as the first one <see cref="Checkouts.ToPoll"/>
-    /// yields for the issue. <c>failed</c> is the per-checkout dedupe the other
+    /// yields for the issue. The list is per checkout too: asked at most once a
+    /// tick, by the first row that resolves to the path, and kept for the rest.
+    /// A row is accounted for by it when its url is listed with a merge state
+    /// that is not <see cref="MergeStates.Unknown"/>; any other row - absent
+    /// because merged, closed, past the list's limit or in another repository,
+    /// or listed before the forge had computed its mergeability - falls back to
+    /// the read of its own. <c>failed</c> is the per-checkout dedupe the other
     /// halves get for free by being grouped by checkout already: the first
     /// failing <c>gh</c> call for a path adds it, and every later issue on that
     /// path is skipped silently for the rest of this tick. The outer try/catch
@@ -168,6 +176,7 @@ public sealed class MergeTrain : IAsyncDisposable
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
     {
         var failed = new HashSet<string>();
+        var lists = new Dictionary<string, PullRequestListAnswer>();
         try
         {
             foreach (var issue in review)
@@ -181,7 +190,24 @@ public sealed class MergeTrain : IAsyncDisposable
                 if (where is null || failed.Contains(where.Path)) continue;
 
                 var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
-                var answer = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                var forge = runtime.Forge(where.Path, where.Canonical);
+
+                if (!lists.TryGetValue(where.Path, out var list))
+                    lists[where.Path] = list = await forge.ReadOpenPullRequestsAsync(ct);
+
+                if (list.Open is null)
+                {
+                    failed.Add(where.Path);
+                    if (list.Why is { } listWhy) complain($"hatch: could not read pull requests in {name} - {listWhy}");
+                    continue;
+                }
+
+                // A row the list does not hold, or holds with a merge state the forge had not yet
+                // computed, is read on its own: absence cannot tell merged from closed from past
+                // the limit, and only pr view can.
+                var answer = list.Find(url) is { MergeState: not MergeStates.Unknown } listed
+                    ? listed
+                    : await forge.ReadPullRequestAsync(url, ct);
                 if (answer.State is not { } state)
                 {
                     failed.Add(where.Path);

@@ -436,6 +436,95 @@ public sealed class ForgeTests
         Assert.Empty(runs.Calls);
     }
 
+    // ---- ReadOpenPullRequestsAsync ----
+
+    private const string TwoOpen = """
+        [
+          {"url":"https://forge.example/owner/repo/pull/7","state":"OPEN","headRefOid":"abc123","number":7,"mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","isDraft":false},
+          {"url":"https://forge.example/owner/repo/pull/8","state":"OPEN","headRefOid":"def456","number":8,"mergeStateStatus":"BLOCKED","reviewDecision":"","isDraft":true},
+          {"state":"OPEN","number":9}
+        ]
+        """;
+
+    [Fact]
+    public async Task It_asks_gh_pr_list_once_for_every_open_pull_request_and_no_hostname()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "[]", "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.Null(answer.Why);
+        Assert.Empty(answer.Open!);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["pr", "list", "--state", "open", "--limit", "100", "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
+        Assert.DoesNotContain("--hostname", call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task Each_listed_pull_request_is_classified_as_a_single_read_would_and_one_with_no_url_is_skipped()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, TwoOpen, "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.Equal(2, answer.Open!.Count);
+        Assert.Equal(
+            new PullRequestAnswer(PullRequestStates.Open, null, "abc123", 7, MergeStates.Clean, ReviewDecisions.Approved),
+            answer.Find("https://forge.example/owner/repo/pull/7"));
+        Assert.Equal(
+            new PullRequestAnswer(PullRequestStates.Open, null, "def456", 8, MergeStates.Draft, ReviewDecisions.None),
+            answer.Find("https://forge.example/owner/repo/pull/8"));
+    }
+
+    [Fact]
+    public async Task A_listed_pull_request_is_found_whatever_its_case_or_trailing_slash()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, TwoOpen, "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.NotNull(answer.Find("HTTPS://Forge.Example/Owner/Repo/pull/7/"));
+        Assert.Null(answer.Find("https://forge.example/owner/repo/pull/9"));
+        Assert.Null(new PullRequestListAnswer(null, "why").Find("https://forge.example/owner/repo/pull/7"));
+    }
+
+    [Fact]
+    public async Task A_missing_gh_is_said_in_one_line_for_the_list_too()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(-1, "", "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.Null(answer.Open);
+        Assert.Equal("gh is not installed", answer.Why);
+    }
+
+    [Theory]
+    [InlineData("<html>")]
+    [InlineData("""{"url":"https://forge.example/owner/repo/pull/7"}""")]
+    public async Task A_list_that_is_not_a_json_array_is_a_why_and_not_an_exception(string printed)
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, printed, "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.Null(answer.Open);
+        Assert.NotNull(answer.Why);
+    }
+
+    [Fact]
+    public async Task A_local_path_asks_gh_nothing_for_the_list()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: "/srv/git/repo.git").ReadOpenPullRequestsAsync(default);
+
+        Assert.Null(answer.Open);
+        Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
+
     // ---- MergeAsync ----
 
     [Fact]
