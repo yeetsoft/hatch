@@ -1801,6 +1801,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// or a parentless epic's closeout. False for a child, whose release note is
 /// its story's or epic's to write, and false for any other dispatch.
 /// </param>
+/// <param name="NextBriefLimit">
+/// Characters the *next* row's session is spawned on at most - the board
+/// sends a longer brief back (<see cref="SentBackDto"/>). Null where that
+/// row has none, where the dispatch is not a plain advance, or where the
+/// issue has children (their briefs are the children's).
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1828,7 +1834,8 @@ public record WorkDto(
     string? LastCheckFindings = null,
     string? FailStatusName = null,
     PlaybookFileReferenceDto? PlaybookFile = null,
-    bool AsksReleaseNote = false);
+    bool AsksReleaseNote = false,
+    int? NextBriefLimit = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -2299,9 +2306,10 @@ public record FlowHopDto(string Kind, int Count);
 /// <param name="Hops">Every hop kind with its count, in the fold's fixed order.</param>
 /// <param name="SendBacks">How many moves went to an earlier column.</param>
 /// <param name="QuestionsAsked">How many questions were asked in the window.</param>
-/// <param name="QuestionsAnswered">How many questions were answered in the window.</param>
-/// <param name="MedianAnswerWaitSeconds">The median wait for an answer; null when none was answered.</param>
-/// <param name="LongestAnswerWaitSeconds">The longest wait for an answer; null when none was answered.</param>
+/// <param name="QuestionsAnswered">How many questions a person answered in the window; a question the board answered by lapsing it is not counted here.</param>
+/// <param name="QuestionsLapsed">How many questions were answered in the window by the board lapsing them, not by a person.</param>
+/// <param name="MedianAnswerWaitSeconds">The median wait for a person's answer; null when no person answered.</param>
+/// <param name="LongestAnswerWaitSeconds">The longest wait for a person's answer; null when no person answered.</param>
 /// <param name="Sessions">How many work-log sessions ended in the window.</param>
 /// <param name="SessionErrors">How many of those ended in error.</param>
 public record FlowWindowDto(
@@ -2310,6 +2318,7 @@ public record FlowWindowDto(
     int SendBacks,
     int QuestionsAsked,
     int QuestionsAnswered,
+    int QuestionsLapsed,
     long? MedianAnswerWaitSeconds,
     long? LongestAnswerWaitSeconds,
     int Sessions,

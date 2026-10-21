@@ -33,6 +33,7 @@ function project(overrides: Partial<Project>): Project {
     repoSourced: false,
     repoSourcedBy: null,
     repoSourcedAt: null,
+    runnerTags: [],
     ...overrides,
   };
 }
@@ -71,5 +72,24 @@ describe('ProjectEditDialog', () => {
     const html = render(project({ repoSourced: true }));
 
     expect(html).toContain('playbooks sourced from the repository.');
+  });
+
+  it('summarizes runner tags as "Any runner." when the list is empty', () => {
+    const html = render(project({ runnerTags: [] }));
+
+    expect(html).toContain('Any runner.');
+  });
+
+  it('summarizes runner tags as "Runners tagged X and Y." when the list is not empty', () => {
+    const html = render(project({ runnerTags: ['macos', 'xcode'] }));
+
+    expect(html).toContain('Runners tagged macos and xcode.');
+  });
+
+  it('shows an owner the runner tags textarea, one tag per line', () => {
+    const html = render(project({ canAdminister: true, runnerTags: ['macos', 'xcode'] }));
+
+    expect(html).toContain('macos\nxcode');
+    expect(html).not.toContain('Any runner.');
   });
 });

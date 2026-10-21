@@ -67,6 +67,7 @@ const PAIRS: { fg: string; bg: string; floor: number }[] = [
 // Referenced by site.css but not a resting foreground/background pair.
 const NOT_A_PAIR: Record<string, string> = {
   '--line': 'a hairline card/pre/header divider, decorative only',
+  '--line-strong': 'a docs blockquote rule, decorative only',
   '--primary-bg': 'a translucent hover wash over --bg, not a resting pair',
 }
 

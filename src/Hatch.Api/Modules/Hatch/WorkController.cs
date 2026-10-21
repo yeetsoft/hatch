@@ -100,6 +100,13 @@ public class WorkController(
     /// decides nothing else about them - the same contract <paramref
     /// name="ancestorKey"/> carries.
     /// </param>
+    /// <param name="tag">
+    /// What the caller's runner advertises, repeatable - see
+    /// <see cref="TagDeclaration"/>. Absent is a caller that declared no tags
+    /// at all, which still folds a project that requires some; a scan asking
+    /// for no runner in particular is <see cref="TagDeclaration.Unjudged"/>
+    /// and never reaches this route.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -109,10 +116,13 @@ public class WorkController(
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
         [FromQuery] bool mine = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] List<string>? tag = null)
     {
+        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -123,7 +133,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, ct);
     }
 
     /// <summary>
@@ -173,6 +183,15 @@ public class WorkController(
     /// matching no row inside <see cref="Runners.DropBefore"/> is refused by
     /// name rather than answered as an undeclared caller.
     /// </param>
+    /// <param name="tag">
+    /// What the caller's runner advertises, repeatable - see
+    /// <see cref="TagDeclaration"/>. Ignored, not refused and not validated,
+    /// beside <paramref name="asRunner"/>: that row's own
+    /// <see cref="EfHatchRunner.Tags"/> is what is read instead, the same way
+    /// its repositories, clone allowance, <paramref name="mine"/> and
+    /// <paramref name="ancestorKey"/> come off the row and not the query
+    /// string.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -186,8 +205,11 @@ public class WorkController(
         // trailing optional parameter leaves every one of them compiling
         // unchanged. Do not move this back beside mine - that reopens the churn.
         CancellationToken ct = default,
-        [FromQuery] string? asRunner = null)
+        [FromQuery] string? asRunner = null,
+        [FromQuery] List<string>? tag = null)
     {
+        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
         RepositoryDeclaration repos;
@@ -212,6 +234,7 @@ public class WorkController(
                 row.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Standing, row.Clones);
             ancestorKey = row.Under;
             mine = row.Mine ?? false;
+            tags = TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
 
             if (mine)
             {
@@ -231,7 +254,7 @@ public class WorkController(
             repos = RepositoryDeclaration.From(remote, standing, clones);
         }
 
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -395,15 +418,22 @@ public class WorkController(
     /// this is what keeps a runner re-reading its own ticket from being refused
     /// by its own lease.
     /// </param>
+    /// <param name="tag">
+    /// What the caller's runner advertises, repeatable - see
+    /// <see cref="TagDeclaration"/> and <see cref="GetNextWork"/>.
+    /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
         string key, [FromQuery] Guid? heldToken = null,
         [FromQuery] List<string>? remote = null,
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] List<string>? tag = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
@@ -426,6 +456,7 @@ public class WorkController(
             RepositoryDeclaration.From(remote, standing, clones),
             await Wip.LoadAsync(db, claims, statuses, now, ct),
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            tags,
             ct);
     }
 
@@ -1071,10 +1102,16 @@ public class WorkController(
     /// a fact about the board, so an issue somebody named by hand is held by
     /// its epic's limit too.
     /// </param>
+    /// <param name="tags">
+    /// What the caller's runner advertises - see <see cref="TagDeclaration"/>.
+    /// The scan's own for a loop's dispatch, so a row it called clear on tags
+    /// cannot come back blocked here; a caller's own declaration for a named
+    /// dispatch.
+    /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics, CancellationToken ct)
+        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -1181,11 +1218,16 @@ public class WorkController(
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing);
+            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
+
+        int? nextBriefLimit = null;
+        if (kind == WorkKinds.Advance && !hopped && rowTo is not null && children.Count == 0
+            && Columns.Target(statuses, rowTo) is { } beyond)
+            nextBriefLimit = (await _dispatch.MatchAsync(rowTo.Id, beyond.Id, issue.Type, false, issue.ProjectId, ct))?.Playbook?.BriefLimit;
 
         // The values the increment will actually run on, in place rather than
         // beside them. An issue's own model and effort beat whichever playbook
@@ -1243,7 +1285,8 @@ public class WorkController(
             lastCheckFindings,
             implementationStatus?.Name,
             match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash),
-            asksReleaseNote);
+            asksReleaseNote,
+            nextBriefLimit);
     }
 
     /// <summary>

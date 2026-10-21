@@ -57,7 +57,7 @@ public sealed class GrokStreamReaderTests
     }
 
     [Fact]
-    public void TheFinalMessage_IsReadFromTextAfterTheLastToolCall_NotAnEarlierQuotedFence()
+    public void ALaterFence_BeatsAnEarlierQuotedOne()
     {
         var (facts, reader) = New();
 
@@ -69,6 +69,22 @@ public sealed class GrokStreamReaderTests
 
         Assert.Equal("The real title", facts.Result!.Title);
         Assert.Equal("The real summary.", facts.Result.Summary);
+    }
+
+    [Fact]
+    public void AFence_InAnEarlierMessage_DescribesTheRowWhenTheFinalMessageHasNone()
+    {
+        var (facts, reader) = New();
+
+        reader.Read(Fixtures.GrokText("```work-log\nMiddle title\n\n"));
+        reader.Read(Fixtures.GrokText("Middle body.\n```"));
+        reader.Read(Fixtures.GrokToolCall());
+        reader.Read(Fixtures.GrokToolUpdate());
+        reader.Read(Fixtures.GrokText("Done."));
+        reader.Read(Fixtures.GrokEnd());
+
+        Assert.Equal("Middle title", facts.Result!.Title);
+        Assert.Equal("Middle body.", facts.Result.Summary);
     }
 
     [Fact]
