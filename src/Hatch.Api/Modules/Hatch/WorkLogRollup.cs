@@ -218,7 +218,8 @@ public static class WorkLogRollup
                 w.Requests,
                 w.PeakContextTokens,
                 w.PromptChars,
-                w.Agent))
+                w.Agent,
+                w.Reads))
             .ToListAsync(ct);
 
         var ranked = sort switch
@@ -246,7 +247,8 @@ public static class WorkLogRollup
             Fold(rows.ConvertAll(Meter)),
             await FirstEndedAsync(db, scope, ascending: true, ct),
             await FirstEndedAsync(db, scope, ascending: false, ct),
-            ordered);
+            ordered,
+            FoldReads(rows.Select(r => r.Reads)));
     }
 
     /// <summary>
@@ -287,7 +289,8 @@ public static class WorkLogRollup
                 w.CacheReadTokens,
                 w.CostUsd,
                 w.PeakContextTokens,
-                w.PromptChars))
+                w.PromptChars,
+                w.Reads))
             .ToListAsync(ct);
 
         var names = (await db.Statuses.AsNoTracking().ToListAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
@@ -301,7 +304,8 @@ public static class WorkLogRollup
                     FromStatusName = r.FromStatusId is { } f ? names.GetValueOrDefault(f) : null,
                     ToStatusName = r.ToStatusId is { } t ? names.GetValueOrDefault(t) : null,
                 })
-                .ToList());
+                .ToList(),
+            FoldReads(rows.Select(r => r.Reads)));
     }
 
     /// <summary>
@@ -417,7 +421,8 @@ public static class WorkLogRollup
         int? Requests,
         long? PeakContextTokens,
         int? PromptChars,
-        string? Agent);
+        string? Agent,
+        string? Reads);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
     private static long Tokens(SessionRow r) =>
@@ -521,7 +526,8 @@ public static class WorkLogRollup
         long CacheReadTokens,
         decimal? CostUsd,
         long? PeakContextTokens,
-        int? PromptChars);
+        int? PromptChars,
+        string? Reads);
 
     /// <summary>
     /// Folds sessions into one row per distinct playbook, transition, issue
@@ -583,6 +589,41 @@ public static class WorkLogRollup
             .ThenBy(r => r.Model, StringComparer.Ordinal)
             .ThenBy(r => r.Effort, StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>
+    /// A ranked read endpoint answers at most this many paths - a different cap
+    /// than <see cref="EfHatchWorkLogEntry.MaxReads"/>, which bounds what one
+    /// entry stores rather than what an endpoint's answer ranks.
+    /// </summary>
+    public const int MaxTopReads = 50;
+
+    /// <summary>
+    /// Every path read across a population of sessions, summed and ranked.
+    /// Pure: no database, so it is tested directly.
+    /// </summary>
+    /// <remarks>
+    /// Each row's stored reads column is read with <see cref="ReadReads"/>,
+    /// which already answers an empty list for a row that carries none - so a
+    /// population with no reads at all folds to an empty list rather than a
+    /// special case here. Ranked heaviest-count-first, then path ascending so
+    /// two folds of the same population agree on their order, and capped at
+    /// <see cref="MaxTopReads"/>.
+    /// </remarks>
+    internal static IReadOnlyList<WorkLogReadDto> FoldReads(IEnumerable<string?> stored)
+    {
+        var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        foreach (var row in stored)
+        foreach (var read in ReadReads(row))
+            counts[read.Path] = counts.GetValueOrDefault(read.Path) + read.Count;
+
+        return counts
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(MaxTopReads)
+            .Select(kv => new WorkLogReadDto(kv.Key, (int)kv.Value))
+            .ToList();
+    }
 
     /// <summary>The middle value, or the mean of the two middle ones; null for no values.</summary>
     private static double? Median(List<double> values)
