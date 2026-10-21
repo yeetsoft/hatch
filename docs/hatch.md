@@ -4240,6 +4240,12 @@ The rest of that section is unchanged. The attach is best-effort: when it
 fails, the runner complains and keeps the claim, which then names no playbook,
 so the move is not refused and `hatch verdict` answers `400`.
 
+Outside a check, the *Reaching Hatch* block prints `hatch start` only on the
+increment bound for the implementation column - the one whose destination is
+the column named by `FailStatusName`. Every other increment is told the claim
+is the marker and that the ticket moves once, at the end, to the column named
+under *Where this increment ends*.
+
 **The verdict is a record, not a move.** `POST /issues/{key}/verdicts`, open to
 a key and to a person, takes `pass` or `fail` and optional findings, and writes
 a [verdict](#verdict) row and a `verdict_recorded` event. It is a `400` unless
