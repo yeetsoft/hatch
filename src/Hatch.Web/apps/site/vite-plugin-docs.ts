@@ -116,15 +116,40 @@ ${main}
 `
 }
 
-function renderPage(page: DocsPage, body: string): string {
+/** The docs sidebar: every section's pages as links, in order, twice from one
+    list - a desk `<nav>` and a phone `<details>` - since a closed `<details>`
+    cannot be forced open on the desk by CSS, and CSS shows one of the two. The
+    link for `currentSlug` carries `aria-current="page"`; the landing passes none.
+    The app's own sidebar leads Reference with its changelog; the public site has
+    none, so there is no such entry here. */
+export function renderSidebar(base: string, sections: readonly LandingSection[], currentSlug?: string): string {
+  const groups = sections
+    .map(({ section, pages }) => {
+      const items = pages
+        .map((page) => {
+          const current = page.slug === currentSlug ? ' aria-current="page"' : ''
+          return `<li><a href="${escapeHtml(docHref(base, page.slug, ''))}"${current}>${escapeHtml(page.title)}</a></li>`
+        })
+        .join('')
+      return `<p class="site-docs-sidebar-heading">${escapeHtml(section)}</p><ul>${items}</ul>`
+    })
+    .join('')
+  return `      <nav class="site-docs-sidebar" aria-label="Docs">${groups}</nav>
+      <details class="site-docs-sidebar-phone"><summary>Pages</summary><nav aria-label="Docs">${groups}</nav></details>`
+}
+
+function renderPage(page: DocsPage, body: string, base: string, sections: readonly LandingSection[]): string {
   return renderFrame({
     title: `Hatch: ${page.title}`,
     description: page.summary,
     up: '../../../../',
     main: `      <h1>${escapeHtml(page.title)}</h1>
+      <div class="site-docs">
+${renderSidebar(base, sections, page.slug)}
       <article class="hatch-docs-body">
 ${body}
-      </article>`,
+      </article>
+      </div>`,
   })
 }
 
@@ -160,8 +185,11 @@ ${items}
     description: LANDING_DESCRIPTION,
     up: '../../../',
     main: `      <h1>Docs</h1>
+      <div class="site-docs">
+${renderSidebar(base, sections)}
       <div class="hatch-docs-landing">
 ${blocks.join('\n')}
+      </div>
       </div>`,
   })
 }
@@ -204,6 +232,7 @@ export function docsHtml(): Plugin {
     },
     configResolved(resolvedConfig) {
       const module = docsModule!
+      const sections = module.docSections(module.DOC_PAGES)
       const knownSlugs = new Set(module.DOC_PAGES.map((p) => p.slug))
       const broken: BrokenDocsLink[] = []
 
@@ -213,10 +242,10 @@ export function docsHtml(): Plugin {
           return docHref(resolvedConfig.base, slug, fragment)
         }
         const id = resolve(__dirname, `docs/${page.slug}/index.html`)
-        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref).html))
+        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref).html, resolvedConfig.base, sections))
       }
 
-      pages.set(LANDING_ID, renderLanding(resolvedConfig.base, module.docSections(module.DOC_PAGES), module.createSlugger()))
+      pages.set(LANDING_ID, renderLanding(resolvedConfig.base, sections, module.createSlugger()))
 
       checkDocsLinks(broken)
     },
