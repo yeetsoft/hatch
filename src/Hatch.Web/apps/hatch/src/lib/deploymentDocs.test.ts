@@ -10,13 +10,27 @@ const authOptions = readFileSync(
   new URL(`${repoRoot}src/Hatch.Api/Services/Auth/AuthOptions.cs`, import.meta.url),
   'utf8',
 );
+const program = readFileSync(new URL(`${repoRoot}src/Hatch.Api/Program.cs`, import.meta.url), 'utf8');
+const authGate = readFileSync(
+  new URL(`${repoRoot}src/Hatch.Api/Services/Auth/AuthGate.cs`, import.meta.url),
+  'utf8',
+);
 
 const environmentVariables = docPage(DOC_PAGES, 'environment-variables');
 const deploymentOverview = docPage(DOC_PAGES, 'deployment-overview');
+const kubernetes = docPage(DOC_PAGES, 'kubernetes');
 
 /** Every distinct HATCH_* name in `compose.yaml`, word-bounded so `HATCH_RUNNER`
     is not found inside `HATCH_RUNNER_NAME`. */
 const hatchVariables = [...new Set(compose.match(/\bHATCH_[A-Z][A-Z0-9_]*\b/g) ?? [])].sort();
+
+/** Every distinct path `Program.cs` maps with `MapHealthChecks("...")`. */
+const healthPaths = [...new Set([...program.matchAll(/MapHealthChecks\(\s*"([^"]+)"/g)].map(([, path]) => path))].sort();
+
+/** The text of every inline code span in a markdown body. */
+function codeSpans(markdown: string): string[] {
+  return [...markdown.matchAll(/`([^`\n]+)`/g)].map(([, span]) => span);
+}
 
 /** The body of the named class, by brace-counting from its opening `{`. */
 function classBody(source: string, className: string): string {
@@ -73,5 +87,25 @@ describe('deployment-overview names every Auth__* key AuthOptions.cs binds', () 
   it.each(authKeys())('%s', (key) => {
     expect(deploymentOverview).toBeDefined();
     expect(new RegExp(`\\b${key}\\b`).test(deploymentOverview!.body)).toBe(true);
+  });
+});
+
+describe('Program.cs health paths', () => {
+  it('maps at least one, so the blocks below are not vacuous', () => {
+    expect(healthPaths.length).toBeGreaterThan(0);
+  });
+});
+
+describe('kubernetes names every health path Program.cs maps', () => {
+  it.each(healthPaths)('%s', (path) => {
+    expect(kubernetes).toBeDefined();
+    // `GET /health/live` counts; `/health/*` does not.
+    expect(codeSpans(kubernetes!.body).some((span) => span.split(/\s+/).includes(path))).toBe(true);
+  });
+});
+
+describe('AuthGate.cs exempts every health path Program.cs maps', () => {
+  it.each(healthPaths)('%s', (path) => {
+    expect(authGate.includes(`"${path}"`)).toBe(true);
   });
 });
