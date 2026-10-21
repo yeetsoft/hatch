@@ -119,13 +119,25 @@ public sealed class GoToWorkPollTests
         Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
     }
 
+    /// <summary>
+    /// The head of the merge train, judged <see cref="WorkKinds.Hold"/> so the merge half stays out of it, with
+    /// a clean check on a bound repository and a board that takes a build: the one row the train's own build
+    /// read will touch.
+    /// </summary>
+    private static void HeadInReview(Harness h, string key = "AER-9")
+    {
+        h.Wire.Json("GET", Review, new[] { Fixtures.MergeRow(key, $"{key.ToLowerInvariant()}-thing", PrUrl, WorkKinds.Hold) });
+        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/build-check", Fixtures.Build(BuildVerdicts.Passed, Fixtures.MergeCanonical, Tip));
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Passed, []), null);
+    }
+
     [Fact]
     public async Task A_paused_runner_polls_nothing_but_the_merge_train_keeps_ticking()
     {
         using var h = new Harness();
         OneTicket(h);
-        InReview(h, pullRequestUrl: PrUrl);
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto("paused", null, null, null, null));
+        HeadInReview(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("paused", null, null, null, null, Drives: ["AER"]));
 
         using var interrupting = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Runtime)
@@ -136,6 +148,7 @@ public sealed class GoToWorkPollTests
         // reads as paused - the old rule, that nothing here calls Review at
         // all, no longer holds once the train is ticking on its own clock.
         await Harness.Eventually(() => h.Forge.PullRequestReads.Count >= 1, "the train to read the pull request while paused");
+        await Harness.Eventually(() => h.Forge.Reads.Count >= 1, "the train to read the head's build while paused");
 
         await interrupting.CancelAsync();
         await running;
@@ -149,8 +162,8 @@ public sealed class GoToWorkPollTests
     {
         using var h = new Harness();
         OneTicket(h);
-        InReview(h, pullRequestUrl: PrUrl);
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, null, null, null));
+        HeadInReview(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, null, null, null, Drives: ["AER"]));
 
         Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }
             .Write(h.Supervised.NightStatePath));
@@ -162,6 +175,7 @@ public sealed class GoToWorkPollTests
 
         // Same proof as the paused case: the train ticks through exhaustion too.
         await Harness.Eventually(() => h.Forge.PullRequestReads.Count >= 1, "the train to read the pull request while exhausted");
+        await Harness.Eventually(() => h.Forge.Reads.Count >= 1, "the train to read the head's build while exhausted");
 
         await interrupting.CancelAsync();
         await running;
