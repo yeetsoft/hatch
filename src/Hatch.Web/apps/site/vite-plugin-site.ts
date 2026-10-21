@@ -7,7 +7,7 @@ export interface SiteHtmlValues {
   cloneUrl: string | undefined
 }
 
-/** `site/index.md:83`'s own fallback, as a markdown code block renders it: already entity-encoded. */
+/** What shows where the clone URL would be when the build was told no repository, as a markdown code block renders it: already entity-encoded. */
 const CLONE_URL_FALLBACK = "&lt;the repository's clone URL&gt;"
 
 const CANONICAL_RE = /^([ \t]*)<!--site:canonical-->[ \t]*\r?\n?/m

@@ -38,7 +38,7 @@ RUN npm --prefix src/Hatch.Web ci
 COPY src/Hatch.Web src/Hatch.Web
 ARG HATCH_REVISION
 ARG HATCH_SEQUENCE
-# Where this repository publishes its setup guide (site/setup.md), stamped into
+# Where this repository publishes its setup guide (src/Hatch.Web/apps/site/content/setup.md), stamped into
 # index.html beside the revision for the gear's Setup Prompt and the Docs page.
 # publish.yml supplies it; a local `docker compose up` does not, and the board
 # then offers no setup line rather than one that names somebody else's site.

@@ -81,7 +81,7 @@ describe('renderTemplate', () => {
       expect(html).not.toMatch(/site:clone-url/)
     })
 
-    it("becomes the escaped fallback text matching site/index.md's default when unset", () => {
+    it("becomes the escaped fallback text matching the fallback shown where the clone URL would be when unset", () => {
       const html = renderTemplate(FIXTURE, NONE)
       expect(html).toContain("<p>&lt;the repository's clone URL&gt;</p>")
       expect(html).not.toMatch(/site:clone-url/)

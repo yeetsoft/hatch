@@ -54,9 +54,9 @@ jobs:
         run: |
           echo "sequence=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
 
-      # Where this repository's Pages site publishes site/setup.md, asked of
-      # GitHub rather than written down (docs/ethos.md), so a fork's image hands
-      # out a line that sets people up from the fork, custom domain or not. The
+      # Where this repository's Pages site publishes
+      # src/Hatch.Web/apps/site/content/setup.md, asked of GitHub rather than
+      # written down (docs/ethos.md), so a fork's image hands out a line that sets people up from the fork, custom domain or not. The
       # board stamps it into index.html for the gear's Setup Prompt and the top
       # of the Docs page. A repository with Pages off answers 404, the address
       # is empty, and the board offers no line - never a failed publish.
