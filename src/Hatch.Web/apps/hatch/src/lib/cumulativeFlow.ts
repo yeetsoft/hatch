@@ -169,3 +169,30 @@ export function bandStyle(statuses: Status[], statusId: number): Record<string, 
 export function isEmpty(answer: CumulativeFlow): boolean {
   return answer.points.length === 0 || answer.points.every((point) => point.counts.every((count) => count === 0));
 }
+
+/** What can move the pinned point: a press or a drag onto the point at
+    `index` (straight from `pointIndexAt`, so `null` off the pane), a
+    keyboard step of one point, or a new answer landing. */
+export type PinAction =
+  | { type: 'press' | 'move'; index: number | null }
+  | { type: 'step'; delta: -1 | 1 }
+  | { type: 'answer' };
+
+/** The pin's next index given `action`, against `answer.points.length` as
+    `count`: `null` with nothing to pin, clamped to `[0, count - 1]`
+    otherwise. A `press`/`move` off the pane (`index: null`) leaves `pin`
+    where it was; a `step` with nothing yet pinned lands on the last point
+    regardless of which way `delta` points. */
+export function pinAfter(pin: number | null, count: number, action: PinAction): number | null {
+  if (count === 0) return null;
+
+  switch (action.type) {
+    case 'answer':
+      return null;
+    case 'press':
+    case 'move':
+      return action.index === null ? pin : Math.min(count - 1, Math.max(0, action.index));
+    case 'step':
+      return pin === null ? count - 1 : Math.min(count - 1, Math.max(0, pin + action.delta));
+  }
+}

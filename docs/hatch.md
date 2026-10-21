@@ -2947,8 +2947,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
-| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
-| `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
+| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
+| `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
+| `/settings/credentials/{agent}` | GET | The same kind of route, generalised past Claude: `{agent}` is `claude`, `codex` or `grok`, else `404`. Wrapped with the same `SecretProtector`, taken by a key or a keyless runner the same way, and refused outright wherever the wall is up — all exactly as `/settings/claude-token`'s row above. `204` when that agent's credential is unset |
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
@@ -3141,17 +3142,20 @@ it at the moment somebody asks: `ok` inside five minutes of it, `stale`
 outside. The Refresh button in the modal re-reads Hatch's own row; there is
 nothing upstream left for it to bypass.
 
-### The token, still
+### The credentials, still
 
 `ClaudeSubscriptionToken` — the secret-valued site setting on Hatch's own
-**Settings** page — no longer feeds the battery, but it has not left. It is
-what the *container* runner's entrypoint (`containers/hatch-runner/`) reads to
-authenticate the `claude` CLI it starts, via `hatch runner-claude-token` and
-`GET /api/hatch/settings/claude-token`. An install whose runners all run on
-somebody's own machine needs none of this. It is stored the way the Immich key
-and the Anthropic key already are: obfuscated at rest, redacted on read, never
-leaving the API — and, like every other credential in Hatch, it is the
-operator's own to supply ([`docs/ethos.md`](ethos.md)).
+**Settings** page — no longer feeds the battery, but it has not left; two
+more sit beside it, `CodexApiKey` and `XaiApiKey`, one Settings field per
+agent. All three are what the *container* runner's entrypoint
+(`containers/hatch-runner/`) reads to authenticate whichever agent CLI
+`HATCH_AGENT` starts, via `hatch runner-credential <agent>` and
+`GET /api/hatch/settings/credentials/{agent}` (`/settings/claude-token`
+still answers too, for an older container). An install whose runners all run
+on somebody's own machine needs none of this. All three are stored the way
+the Immich key and the Anthropic key already are: obfuscated at rest,
+redacted on read, never leaving the API — and, like every other credential in
+Hatch, each is the operator's own to supply ([`docs/ethos.md`](ethos.md)).
 
 
 ## What is waiting on you
@@ -4980,7 +4984,7 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s five halves (`MergeTrain.cs:161, 258,
+which gates every one of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
 370, 470, 520`): a runner acts only on a project it was elected to drive.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
@@ -4991,7 +4995,13 @@ reads build and merge-conflict verdicts. Cross-reference
 [Checking the branches in review](#checking-the-branches-in-review), which
 already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
-this new section is that explanation.
+this new section is that explanation. The head's own build is read on this
+clock too (`ReadHeadBuildsAsync`): the sha and branch come from the head's
+clean merge check, so it needs no git, and a pass is noticed within one
+`--merge-interval` of the forge reporting it rather than whenever a runner next
+finishes an increment. A verdict that concluded is read once per sha; a
+`pending` one, and a `none` inside the poll's ten-minute window, are asked
+again every tick.
 
 **A merge with no checks rides the same train.** A merge judged under the
 last item of the judge's list — a project that requires no checks, or a forge
@@ -7190,7 +7200,7 @@ single binary called `hatch`. Every command is a command of it: `board`, `next`,
 
 One command in it is not for a person: `inbox`, which the hooks a spawned session
 runs call to be handed a message and mark it read. It sits beside
-`runner-claude-token` in `Program.Internal`, a command no session is ever told
+`runner-credential` in `Program.Internal`, a command no session is ever told
 about — if sessions knew of it, one could mark its operator's messages read
 without reading them, and the page would say something untrue.
 `DocsContractTests` holds that.
