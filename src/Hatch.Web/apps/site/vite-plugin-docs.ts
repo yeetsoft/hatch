@@ -179,6 +179,19 @@ export function renderPager(base: string, previous: DocsPage | null, next: DocsP
   return `      <nav class="site-docs-pager" aria-label="Previous and next">${links}</nav>`
 }
 
+// The sitemap protocol's own namespace, stable since 2005 - structural, true
+// of every installation, not this one's.
+const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9' // ethos:allow
+
+/** `sitemap.xml`'s body: the home page, the docs landing, then one address per
+    slug, each once, under `canonical` (already `siteEnv`-normalised, so it
+    ends in `/`). Pure, so a test can call it with no build involved. */
+export function renderSitemap(canonical: string, slugs: readonly string[]): string {
+  const locs = [canonical, `${canonical}docs/`, ...slugs.map((slug) => `${canonical}docs/${slug}/`)]
+  const urls = locs.map((loc) => `<url><loc>${escapeHtml(loc)}</loc></url>`).join('')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="${SITEMAP_NAMESPACE}">${urls}</urlset>\n`
+}
+
 function renderPage(
   page: DocsPage,
   rendered: { html: string; outline: readonly OutlineEntry[]; mermaidCount: number },
@@ -258,8 +271,12 @@ ${blocks.join('\n')}
  * The virtual inputs are registered in `config`, the hook that can still edit
  * `config.build` - but each page's HTML, which needs `base` to build its
  * hrefs, is only rendered in `configResolved`, once `base` is final.
+ *
+ * `canonical` (`siteEnv`'s own, `undefined` with no `base_url`) gates a
+ * `sitemap.xml` written in `generateBundle`, once the build has a real
+ * address to make every page's address absolute under.
  */
-export function docsHtml(): Plugin {
+export function docsHtml(canonical: string | undefined): Plugin {
   const pages = new Map<string, string>()
   let docsModule: DocsModule | undefined
 
@@ -308,6 +325,15 @@ export function docsHtml(): Plugin {
     },
     load(id) {
       return pages.get(id)
+    },
+    generateBundle() {
+      if (canonical === undefined) return
+      const module = docsModule!
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sitemap.xml',
+        source: renderSitemap(canonical, module.DOC_PAGES.map((p) => p.slug)),
+      })
     },
   }
 }
