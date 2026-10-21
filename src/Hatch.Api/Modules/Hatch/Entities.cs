@@ -802,6 +802,19 @@ public class EfHatchIssue
     public DateTimeOffset? PullRequestReadAt { get; set; }
 
     /// <summary>
+    /// When the merge train last brought this issue's branch current, or null
+    /// until it has. The train re-elects its head on every read, so this is how
+    /// the board learns which row a build is running for. A mark only counts
+    /// while <see cref="BroughtCurrentTrunkSha"/> is still the trunk sha the
+    /// issue's own clean merge check reads - see <see cref="Dispatch.Train"/>.
+    /// </summary>
+    public DateTimeOffset? BroughtCurrentAt { get; set; }
+
+    /// <summary>The trunk sha the branch was brought current to.</summary>
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public string? BroughtCurrentTrunkSha { get; set; }
+
+    /// <summary>
     /// The model every agent increment dispatched for this issue runs on,
     /// whichever playbook speaks for the move - or null, which is every issue
     /// on a stock board and means "whatever the playbook says".
@@ -1724,6 +1737,9 @@ public class EfHatchIssueEvent
     public const string Redescribed = "redescribed";
     public const string Retyped = "retyped";
     public const string StatusChanged = "status_changed";
+
+    /// <summary>The merge train brought the branch current - see <see cref="EfHatchIssue.BroughtCurrentAt"/>. Written on every call: the train only reports a real update.</summary>
+    public const string BroughtCurrent = "brought_current";
 
     /// <summary>A check session recorded a verdict - see <see cref="EfHatchVerdict"/>. Written unconditionally: this is not a poll, so there is no "only when changed" guard.</summary>
     public const string VerdictRecorded = "verdict_recorded";

@@ -31,7 +31,11 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// <param name="Number">The pull request's own number. Null where it was not read.</param>
 /// <param name="MergeState">One of <see cref="MergeStates"/>. Null where it was not read - a failed read, a local path, a fake that says nothing - which is not the same as <see cref="MergeStates.Unknown"/>.</param>
 /// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>. Null where it was not read, which is not the same as <see cref="ReviewDecisions.None"/>.</param>
-public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null, string? ReviewDecision = null);
+/// <param name="Base">The branch the pull request merges into, by name. Null where it was not read.</param>
+/// <param name="BaseSha">That branch's tip at the time of this read. Null where it was not read.</param>
+public sealed record PullRequestAnswer(
+    string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null,
+    string? ReviewDecision = null, string? Base = null, string? BaseSha = null);
 
 /// <summary>
 /// What a forge answered about every open pull request of a checkout at once: the
@@ -219,7 +223,7 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try
@@ -245,7 +249,7 @@ public sealed class GhForge(
 
         var ran = await _run(path, Env(), [
             "pr", "list", "--state", "open", "--limit", OpenPullRequestLimit.ToString(),
-            "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft",
+            "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid",
         ], ct);
         if (ran.Code != 0) return new PullRequestListAnswer(null, Why(ran));
 
@@ -278,7 +282,8 @@ public sealed class GhForge(
         return new PullRequestAnswer(
             ClassifyState(Text(pr, "state")), null, Text(pr, "headRefOid"), number,
             ClassifyMergeState(Text(pr, "mergeStateStatus"), isDraft),
-            ClassifyReviewDecision(Text(pr, "reviewDecision")));
+            ClassifyReviewDecision(Text(pr, "reviewDecision")),
+            Text(pr, "baseRefName"), Text(pr, "baseRefOid"));
     }
 
     public async Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

@@ -18,6 +18,8 @@ public sealed class MergeTrainTests
     private static readonly string Moved = new('c', 40);
     private static readonly string Tip = new('b', 40);
     private static readonly string Tip2 = new('d', 40);
+    private static readonly string Updated = new('e', 40);
+    private static readonly string NewTrunk = new('f', 40);
 
     private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
 
@@ -784,13 +786,14 @@ public sealed class MergeTrainTests
     /// </summary>
     private static ReviewCheckDto UpdateRow(
         string key, string branch, string? pullRequestUrl = PrUrl, string? kind = WorkKinds.Update, string? judgedSha = null,
-        bool isHead = true)
+        bool isHead = true, string? playbookFilePath = null)
     {
         var sha = judgedSha ?? Tip;
         var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
         var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
         {
             Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = sha,
+            PlaybookFilePath = playbookFilePath,
         };
 
         return Fixtures.Review(
@@ -847,6 +850,67 @@ public sealed class MergeTrainTests
         var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
         Assert.Equal("Its branch does not merge cleanly with main - nothing was pushed.", comment);
         Assert.Empty(rig.H.Say.Said.Where(l => l.StartsWith("hatch: AER-1", StringComparison.Ordinal)));
+        Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_successful_update_writes_its_own_merge_check_when_the_second_read_already_shows_the_new_head()
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing", playbookFilePath: ".hatch/playbooks.yaml"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+
+        // Before UpdateAsync runs, every read (including the pull request
+        // half's own, ahead of this one) still finds the judged sha; the
+        // read right after it - the fast path's own - already shows the new
+        // head the forge's merge produced.
+        rig.H.Forge.PullRequestReading = (_, _, _) => rig.H.Forge.UpdateCalls.Count == 0
+            ? new PullRequestAnswer(PullRequestStates.Open, null, HeadSha: Tip, Number: 7)
+            : new PullRequestAnswer(PullRequestStates.Open, null, HeadSha: Updated, Base: "main", BaseSha: NewTrunk);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", Put("AER-1"))).Read<MergeCheckRequest>();
+        Assert.Equal(Updated, put.BranchSha);
+        Assert.Equal("aer-1-thing", put.Branch);
+        Assert.Equal(MergeVerdicts.Clean, put.Verdict);
+        Assert.True(put.HoldsTrunk);
+        Assert.Empty(put.Files!);
+        Assert.Equal(".hatch/playbooks.yaml", put.PlaybookFilePath);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(NewTrunk, put.TrunkSha);
+        Assert.Empty(rig.H.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task A_successful_update_s_merge_check_follows_on_a_later_tick_once_the_background_merge_finishes()
+    {
+        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+
+        var finished = false;
+        rig.H.Forge.PullRequestReading = (_, _, _) => rig.H.Forge.UpdateCalls.Count == 0
+            ? new PullRequestAnswer(PullRequestStates.Open, null, HeadSha: Tip, Number: 7)
+            : finished
+                ? new PullRequestAnswer(PullRequestStates.Open, null, HeadSha: Updated, Base: "main", BaseSha: NewTrunk)
+                // The fast path's own read, same tick as the update: the
+                // forge's background merge has not finished yet, so this
+                // still shows the old head.
+                : new PullRequestAnswer(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
+
+        finished = true;
+        await rig.Later().RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", Put("AER-1"))).Read<MergeCheckRequest>();
+        Assert.Equal(Updated, put.BranchSha);
+        Assert.True(put.HoldsTrunk);
+        Assert.Empty(rig.H.Workspace.Calls);
     }
 
     [Fact]

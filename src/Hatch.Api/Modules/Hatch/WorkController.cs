@@ -365,7 +365,9 @@ public class WorkController(
                 verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
                 builds.TryGetValue(i.Id, out var bv) ? bv : [],
                 i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow()));
-            trainSlots = Dispatch.Train(merging, judged, effective);
+            var marked = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
+            var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, marked, ct);
+            trainSlots = Dispatch.Train(merging, judged, effective, verdicts, statusChanges);
         }
 
         return held.Select(i =>
