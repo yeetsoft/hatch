@@ -236,20 +236,20 @@ public sealed class Claim : IAsyncDisposable
     private async Task BeatAsync(CancellationToken ct)
     {
         string? sent = null;
-        var lastGood = DateTimeOffset.UtcNow;
+        var lastGood = _client.Clock.GetUtcNow();
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(_interval, ct);
+                await Task.Delay(_interval, _client.Clock, ct);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
 
-            if (_stallLapse is { } lapse && lapse > TimeSpan.Zero && DateTimeOffset.UtcNow - lastGood >= lapse)
+            if (_stallLapse is { } lapse && lapse > TimeSpan.Zero && _client.Clock.GetUtcNow() - lastGood >= lapse)
             {
                 _lost.Set($"no answer from Hatch for over {(int)lapse.TotalSeconds}s");
                 return;
@@ -274,7 +274,7 @@ public sealed class Claim : IAsyncDisposable
             if (answer.Ok)
             {
                 sent = line;
-                lastGood = DateTimeOffset.UtcNow;
+                lastGood = _client.Clock.GetUtcNow();
 
                 // A 200 instead of the ordinary 204: the board has picked this
                 // runner to stand down for an emergency. The lease is still
