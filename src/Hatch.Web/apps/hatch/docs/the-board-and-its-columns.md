@@ -134,7 +134,7 @@ the approval, and the runner then merges the ticket's pull request once its
 branch is current and its build is green, with no session reading the diff
 and nothing spent. A ticket already pre-approved while it stood in review is
 carried into the column by the approve hop above, with no person moving it at
-all. `review-pull-requests-and-the-merge-train` covers reading the pull
+all. [Review, pull requests and the merge train](review-pull-requests-and-the-merge-train) covers reading the pull
 request itself, and the train an approved ticket joins behind whatever else
 in its project is also approved.
 
@@ -152,4 +152,3 @@ moves across them: dependencies, deferring, and closing a subtree.
 Pages this one links to that are not written yet:
 
 - `flow-wip-and-the-battery`
-- `review-pull-requests-and-the-merge-train`

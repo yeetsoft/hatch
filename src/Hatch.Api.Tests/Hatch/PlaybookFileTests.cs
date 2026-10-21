@@ -387,7 +387,7 @@ public class PlaybookFileTests
         Assert.Null(rows);
         Assert.Contains(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok) - not \"nonsense-1\"",
+            "(claude-opus-5 for claude; gpt-6-luna for codex; grok-4.7 for grok; qwen3-coder:30b for ollama) - not \"nonsense-1\"",
             problem);
     }
 
@@ -411,6 +411,23 @@ public class PlaybookFileTests
 
         Assert.Null(problem);
         Assert.Equal("fake-1", Assert.Single(rows!).Model);
+    }
+
+    [Fact]
+    public void APinnedId_OfTheOllamaFamily_IsAccepted()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                prompt: hi
+                model: qwen3-coder:30b
+            """;
+
+        var (rows, problem) = Parse(yaml, families: ModelFamilies.Default);
+
+        Assert.Null(problem);
+        Assert.Equal("qwen3-coder:30b", Assert.Single(rows!).Model);
     }
 
     [Fact]
