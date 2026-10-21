@@ -9,5 +9,14 @@
     "strict": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["vite.config.ts", "vite-plugin-site.ts", "vite-plugin-docs.ts", "frame.ts", "vite-plugin-content.ts", "src/siteEnv.ts", "src/lib/content.ts"]
+  "include": [
+    "vite.config.ts",
+    "vite-plugin-site.ts",
+    "vite-plugin-docs.ts",
+    "frame.ts",
+    "vite-plugin-content.ts",
+    "vite-plugin-redirects.ts",
+    "src/siteEnv.ts",
+    "src/lib/content.ts"
+  ]
 }
