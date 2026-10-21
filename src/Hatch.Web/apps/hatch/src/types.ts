@@ -1904,6 +1904,8 @@ export interface Runner {
   under: string | null;
   /** The checkouts this runner is serving, canonical, from its own heartbeat. */
   repositories: string[];
+  /** The tags this runner carries, canonical, from its own heartbeat. */
+  tags: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;

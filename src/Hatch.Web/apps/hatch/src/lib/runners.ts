@@ -147,6 +147,11 @@ export function repositoriesLabel(runner: Runner): string | null {
   return runner.clones ? `${repos}, clones what it lacks` : repos;
 }
 
+/** A runner's tags, joined - or null where it has named none. */
+export function tagsLabel(runner: Runner): string | null {
+  return runner.tags.length === 0 ? null : runner.tags.join(', ');
+}
+
 /** Whether this runner was started with do-my-work or --mine, as the word for the row - or null, drawn the same as `clones`. */
 export function mineLabel(runner: Runner): string | null {
   return runner.mine ? 'own tickets only' : null;
