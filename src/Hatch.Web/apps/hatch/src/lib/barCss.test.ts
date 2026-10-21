@@ -1,6 +1,7 @@
 /* The phone-width bar: the battery beside an attention and an overnight
    control that carry no min-width at phone width, all three 44px on a coarse
-   pointer, and the attention control's two states still measuring the same.
+   pointer, the attention control's two states still measuring the same, and
+   its four pills folded into one total.
    Read as text, the way touchCss.test.ts, wipCss.test.ts and
    confirmationsCss.test.ts read App.css - there is no DOM in this runner to
    lay anything out in. */
@@ -126,6 +127,25 @@ describe('the attention and overnight controls at phone width', () => {
     expect(declarationsOf('.hatch-attention-rest')).not.toHaveProperty('min-width');
     expect(declarationsOf('.hatch-attention-asking')).not.toHaveProperty('width');
     expect(declarationsOf('.hatch-attention-asking')).not.toHaveProperty('min-width');
+  });
+});
+
+describe('the attention pills at phone width', () => {
+  it('fold into one total: the pills are hidden and the total drawn inside the phone query', () => {
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-pills').display).toBe('none');
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-pill-total').display).toBe('inline-flex');
+  });
+
+  it('draw the pills, and not the total, outside it', () => {
+    expect(declarationsOutsideMedia('.hatch-attention-pills').display).toBe('flex');
+    expect(declarationsOutsideMedia('.hatch-attention-pill-total').display).toBe('none');
+  });
+
+  it('give the total the colours of the review pill', () => {
+    const total = declarationsOf('.hatch-attention-pill-total');
+    const review = declarationsOf('.hatch-attention-pill-review');
+    expect(total.background).toBe(review.background);
+    expect(total.color).toBe(review.color);
   });
 });
 

@@ -11,6 +11,7 @@ import {
   deadlockedEmptyWords,
   failingBuildEmptyWords,
   landingHeldEmptyWords,
+  pillCount,
   questionEmptyWords,
   resetWords,
   resumeWords,
@@ -205,6 +206,39 @@ describe('attentionCount', () => {
 
   it('reads an absent trunkBuilds as none, for a board that predates it', () => {
     expect(attentionCount(attention({ trunkBuilds: undefined }))).toBe(0);
+  });
+});
+
+describe('pillCount', () => {
+  it('counts each of the four sections that draw a pill, alone', () => {
+    expect(pillCount(attention({ deadlocked: [deadlocked()] }))).toBe(1);
+    expect(pillCount(attention({ trunkBuilds: [trunkBuild(), trunkBuild()] }))).toBe(2);
+    expect(pillCount(attention({ reviews: [review(), review(), review()] }))).toBe(3);
+    expect(pillCount(attention({ questions: [question(), question(), question(), question()] }))).toBe(4);
+  });
+
+  it('is the sum of all four', () => {
+    expect(
+      pillCount(
+        attention({
+          deadlocked: [deadlocked()],
+          trunkBuilds: [trunkBuild(), trunkBuild()],
+          reviews: [review(), review(), review()],
+          questions: [question(), question(), question(), question()],
+        }),
+      ),
+    ).toBe(10);
+  });
+
+  it('does not count a section that lights the control but draws no pill', () => {
+    // approvedHeld and landingHeld are in attentionCount and have panel rows,
+    // but the bar has no pill for them, so the folded total must not either.
+    expect(pillCount(attention({ approvedHeld: [approvedHeld()] }))).toBe(0);
+    expect(attentionCount(attention({ approvedHeld: [approvedHeld()] }))).toBe(1);
+  });
+
+  it('is zero before the first answer', () => {
+    expect(pillCount(null)).toBe(0);
   });
 });
 

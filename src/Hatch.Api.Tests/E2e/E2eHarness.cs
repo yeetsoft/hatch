@@ -169,8 +169,10 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// A fresh context - the launch profile's device, or 1280x800 with none -
     /// with tracing on and <c>PageError</c> recorded from before the first
     /// navigation, then the given path under the SPA's own address.
+    /// <paramref name="beforeNavigate"/> runs once the context exists and before
+    /// the first request, so a case's routes are in place for it.
     /// </summary>
-    public async Task OpenAsync(Deadline deadline, string baseUrl, string path)
+    public async Task OpenAsync(Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null)
     {
         await deadline.BoundAsync("opening the page", async () =>
         {
@@ -180,6 +182,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
 
             context = await browser!.NewContextAsync(options);
             await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true });
+
+            if (beforeNavigate is not null) await beforeNavigate(context);
 
             page = await context.NewPageAsync();
             page.SetDefaultTimeout(0);
@@ -193,6 +197,14 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>Any path under <c>/apps/hatch/</c>, in the context <see cref="OpenBoardAsync"/> or <see cref="OpenAsync"/> already opened.</summary>
     public Task GoToAsync(Deadline deadline, string path) =>
         deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
+
+    /// <summary>Drops every route a case installed, so the next load meets the real host: one context goes from a stubbed state to the state at rest.</summary>
+    public Task UnrouteAllAsync(Deadline deadline) =>
+        deadline.BoundAsync("removing the routes", () => context!.UnrouteAllAsync());
+
+    /// <summary>The first element matching <paramref name="selector"/>, visible; the selector is in the phase so a stall names what it waited for.</summary>
+    public Task WaitForVisibleAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"waiting for {selector}", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Visible }));
 
     public Task WaitForTopBarAsync(Deadline deadline) =>
         deadline.BoundAsync("waiting for the top bar", () => page!.Locator(TopBar).WaitForAsync(new() { State = WaitForSelectorState.Visible }));
