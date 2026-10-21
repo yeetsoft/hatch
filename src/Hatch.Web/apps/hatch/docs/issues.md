@@ -41,6 +41,9 @@ column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
 
+**Plan** draws its own meter from this same rollup, one row per epic in the
+house.
+
 ## Rank and ordering
 
 A card's place in its column is a rank picked by the server, never the
@@ -147,3 +150,14 @@ lands every one of them in whichever [Done column](the-board-and-its-columns)
 the parent itself landed in; a ticket that has already stopped, terminal or
 deferred, is left exactly where it is, never re-closed in a different
 flavour.
+
+## Import and bulk edit
+
+**Manage → Import** reads a directory of `.md` files, previews what each one
+would become against the board's own columns, and copies it in - retiring
+the source file stays a deliberate manual act, never this page's.
+
+**Manage → Bulk edit** runs the same server-side filters the board does -
+project, type, status, parent, ancestor, text - then applies one edit to
+every result still ticked when the button is pressed, not to whatever the
+filter would return if run again later.

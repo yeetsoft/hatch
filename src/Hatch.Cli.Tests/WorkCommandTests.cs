@@ -486,6 +486,20 @@ public sealed class WorkCommandTests
         Assert.Empty(h.Wire.Calls);
     }
 
+    /// <summary>Ollama has no binary setting of its own - it spawns through the same codex harness, so the missing-CodexBin refusal is the one it hits.</summary>
+    [Fact]
+    public async Task Agent_ollama_with_no_CLI_installed_refuses_before_it_reads_the_board()
+    {
+        using var h = new Harness();
+        var missing = Path.Combine(h.Temp, "nowhere", "codex");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { CodexBin = missing } };
+
+        Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "ollama", "AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
     [Fact]
     public async Task A_dry_run_prints_its_prompt_with_no_CLI_installed()
     {

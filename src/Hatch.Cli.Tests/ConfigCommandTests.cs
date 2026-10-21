@@ -92,6 +92,31 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("grok CLI path", input.Asked[3]);
     }
 
+    [Fact]
+    public async Task Choosing_ollama_asks_for_the_codex_CLI_then_the_Ollama_host()
+    {
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "ollama", "/opt/codex", "http://box:11434");
+
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_CODEX_BIN=/opt/codex", written);
+        Assert.Contains("HATCH_OLLAMA_HOST=http://box:11434", written);
+        Assert.Contains("codex CLI path", input.Asked[3]);
+        Assert.Contains("Ollama host", input.Asked[4]);
+    }
+
+    [Fact]
+    public async Task Choosing_an_agent_keeps_the_Ollama_host_already_written()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_OLLAMA_HOST=http://kept:11434"]);
+
+        Assert.Equal(0, await Command(new Replies("", "", "codex", "/opt/codex")).RunAsync([], default));
+
+        Assert.Contains("HATCH_OLLAMA_HOST=http://kept:11434", File.ReadAllLines(ConfigPath));
+    }
+
     /// <summary>Switching agent is not a reason to forget the other one's path.</summary>
     [Fact]
     public async Task Choosing_an_agent_keeps_the_other_agents_binary_already_written()
@@ -555,6 +580,22 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Show_prints_HATCH_OLLAMA_HOST_and_HATCH_OLLAMA_TIERS_with_their_layers()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_OLLAMA_HOST"] = "http://box:11434",
+                    ["HATCH_OLLAMA_TIERS"] = "sonnet=qwen3-coder:30b",
+                })
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_OLLAMA_HOST: http://box:11434  (exported)", Said);
+        Assert.Contains("HATCH_OLLAMA_TIERS:  sonnet=qwen3-coder:30b  (exported)", Said);
+    }
+
+    [Fact]
     public async Task Show_says_the_agent_is_unset_when_nothing_set_it()
     {
         await Command(new Replies()).RunAsync(["--show"], default);
@@ -732,6 +773,36 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--origin", "https://new"], default));
 
         Assert.Contains("HATCH_CODEX_BIN=/opt/codex", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Origin_keeps_the_Ollama_host_and_tiers()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(
+            ConfigPath,
+            ["HATCH_BASE=https://old", "HATCH_OLLAMA_HOST=http://kept:11434", "HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--origin", "https://new"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_OLLAMA_HOST=http://kept:11434", written);
+        Assert.Contains("HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b", written);
+    }
+
+    [Fact]
+    public async Task Tag_keeps_the_Ollama_host_and_tiers()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(
+            ConfigPath,
+            ["HATCH_BASE=https://kept", "HATCH_OLLAMA_HOST=http://kept:11434", "HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_OLLAMA_HOST=http://kept:11434", written);
+        Assert.Contains("HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b", written);
     }
 
     [Fact]
