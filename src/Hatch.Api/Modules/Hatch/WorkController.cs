@@ -403,7 +403,8 @@ public class WorkController(
                 landingWork is { } w ? new LandingWorkDto(w.Kind, w.Sentence) : null,
                 i.PullRequestMergeState,
                 i.PullRequestReviewDecision,
-                i.PullRequestHeadSha);
+                i.PullRequestHeadSha,
+                i.PullRequestHeadSince);
         }).ToList();
     }
 
