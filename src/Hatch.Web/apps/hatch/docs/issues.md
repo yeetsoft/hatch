@@ -5,7 +5,7 @@ order: 20
 summary: What hangs under what, and what the board does with each field on a ticket.
 ---
 
-A ticket crosses the columns [how work flows](how-work-flows) describes. This
+A ticket crosses the columns [the lifecycle of a ticket](the-lifecycle-of-a-ticket) describes. This
 page is about the fields that travel with it along the way.
 
 ## Types, and what may hang under what
@@ -152,5 +152,4 @@ flavour.
 
 Pages this one links to that are not written yet:
 
-- `the-lifecycle-of-a-ticket`
 - `questions-and-decisions`
