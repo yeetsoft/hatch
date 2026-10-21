@@ -113,6 +113,89 @@ docker compose up -d
 A sha tag pins a version; `latest` follows the trunk. If the packages are
 private, `docker login ghcr.io` first, with a token that can read packages.
 
+## The variables
+
+`compose.yaml` is set from the shell or from a `.env` beside it, and
+[Environment variables](environment-variables) has every one. The operator's
+eight: `HATCH_PORT`; `HATCH_AUTH` → `Auth__Enabled`; the three
+`HATCH_GOOGLE_*` variables → `Auth__Google__*`; `HATCH_PUBLIC_URL` →
+`Apps__PublicBaseUrl`; and the two `HATCH_ANDROID_*` variables →
+`Apps__AssetLinks__0__…`. The runner's own variables are on
+[the container runner](the-container-runner#the-variables). `api` passes the
+shell's own `USERNAME`/`USER` as `Auth__LocalPerson__Name`, so there is
+nothing to set for that one.
+
+## Where secrets go
+
+- **The `.env` beside `compose.yaml`.** Git-ignored (`.gitignore:13-17`).
+- **`src/Hatch.Api/.env.json`.** Bind-mounted at `/App/.env.json`
+  (`compose.yaml:80`) and git-ignored (`.gitignore:12`). It loads after the
+  environment, so it wins (`Program.cs:56-62`). It holds `ha_host`, `ha_port`
+  and `ha_token`, imported once into site settings
+  (`Services/DeviceMapping/DeviceMappingSeeder.cs:131-146`), and
+  `vm_log_shipper_token` (`Controllers/VmConsoleLogsController.cs:29`). A board
+  needs none of them.
+- **Never the repository**, a commit, an issue or a plan (`docs/ethos.md`).
+- **In a cluster, a Secret:** `kubernetes`, below.
+
+## What the API reads
+
+Each key below is the environment spelling (`__` per level) of an
+`appsettings.json` section. Defaults are the initialisers; the only hosts
+named anywhere here are `localhost`, `db` and compose's own service names.
+
+| Key | Default | What it does |
+|---|---|---|
+| **`Auth__*`, bound by `Services/Auth/AuthOptions.cs`** | | |
+| `Auth__Enabled` | `false` | Whether the wall refuses anything at all; `false` leaves the app behaving exactly as it did before auth existed. |
+| `Auth__EnforceInProcess` | `true` | Whether this pod also refuses on its own, rather than only answering `/api/auth/verify` on Traefik's behalf. |
+| `Auth__CookieName` | `__Secure-hatch_grant` | The cookie the grant token rides in. |
+| `Auth__CookieDomain` | empty | The cookie's `Domain` attribute; empty makes the cookie host-only. |
+| `Auth__ExemptHosts__0` | empty | A hostname the gate never challenges, whatever the path. |
+| `Auth__InviteTtlMinutes` | `15` | How long an invite code is worth typing. |
+| `Auth__BootstrapInviteTtlMinutes` | `60` | TTL for the invite the migration mints into an empty install. |
+| `Auth__GrantRenewAfterDays` | `30` | Re-issues the cookie once it is this old. |
+| `Auth__LastSeenThrottleSeconds` | `60` | Floor on how often a grant's last-seen time is written. |
+| `Auth__SignInPath` | `/apps/auth/` | Where a document request with no grant is sent. |
+| `Auth__RedeemAttemptsPerWindow` | `10` | Redemption attempts one client IP may spend per window. |
+| `Auth__RedeemWindowSeconds` | `60` | The window `RedeemAttemptsPerWindow` is counted over. |
+| `Auth__LocalPerson__Name` | empty | Who local mode says is sitting at the machine when there is no wall to ask. `api` passes the shell's own `USERNAME`/`USER` here, so there is nothing to set. |
+| `Auth__Google__ClientId` | empty | The Google sign-in client's id. |
+| `Auth__Google__ClientSecret` | empty | **A secret.** The Google sign-in client's secret. |
+| `Auth__Google__RedirectUri` | empty | Where Google sends a person back to; set it behind a TLS proxy, where the scheme and host the API sees are not the ones Google has registered. |
+| **`Apps__*`, bound by `Modules/AppsOptions.cs`** | | |
+| `Apps__PublicBaseUrl` | empty | The address a browser opens this Hatch at, printed into a QR label or a pull request's link back to its ticket. |
+| `Apps__AssetLinks__0__PackageName` | empty | One phone's installed app, trusted to open this install's links without the user granting it by hand. |
+| `Apps__AssetLinks__0__Sha256CertFingerprints__0` | empty | That app's signing certificate fingerprint. |
+| **`Hatch__*`, bound by `Modules/Hatch/HatchOptions.cs`** | | |
+| `Hatch__ClaimTtlSeconds` | `300` | How long a claim survives without a heartbeat. |
+| `Hatch__RunnerGoneAfterSeconds` | `90` | How long a runner may go without a heartbeat before its row reads *gone*. |
+| `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
+| `Hatch__StallResumeMinutes` | `15` | How long a marked issue is folded before the loop picks it back up on its own. |
+| `Hatch__StallResumeLimit` | `3` | How many consecutive stalls an issue may resume through before it holds for a person instead. |
+| `Hatch__DoneHorizonHours` | `48` | How long a card sits in a terminal column before the board stops handing it over. |
+| **The database** | | |
+| `ConnectionStrings__Hatch` | `Host=localhost` | Where `hatch`'s own schema lives. Under `DOTNET_ENVIRONMENT=Docker`, which `compose.yaml` sets, the default is `Host=db` instead. |
+| `ConnectionStrings__Quartz` | `Host=localhost` | Where Quartz's tables live - created only by `containers/hatch-db/pginit.sql`. Also `Host=db` under `DOTNET_ENVIRONMENT=Docker`. |
+| **Everything else** | | |
+| `HATCH_MIGRATE` | unset | `1` makes the image run as the migration, which applies the schema and exits, instead of serving. |
+| `KioskFiles__BaseAddress` | `http://files/` | Where the kiosk app's signature checksum comes from. A board never calls it. |
+| `DOMAIN` | unset | The host the kiosk app's download link is built against. A board never calls it. |
+| `DOTNET_ENVIRONMENT` | | Any value but `Development` writes the log as JSON lines instead of the human-formatted default. |
+
+`Auth__SignInPath` cannot usefully move: the wall exempts the literal
+`/apps/auth` (`Services/Auth/AuthGate.cs:180`), so pointing it elsewhere opens
+a redirect loop. The wall's own off/on/required states have a page coming,
+`the-wall-off-on-and-required`, below.
+
+A malformed `Apps__AssetLinks` entry stops the API at start
+(`Modules/AssetLinksValidation.cs`), unlike `Apps__PublicBaseUrl`, which
+degrades quietly.
+
+The migration creates `hatch`'s schema on every start; see
+[where the data is, and how to back it up](where-the-data-is-and-how-to-back-it-up)
+for backup and restore.
+
 ## How to stop
 
 ```
@@ -137,3 +220,4 @@ otherwise.
 Pages this one links to that are not written yet:
 
 - `kubernetes`
+- `the-wall-off-on-and-required`
