@@ -20,7 +20,7 @@
      with no session of its own. */
 
 import { shortSha } from './playbookFiles';
-import type { WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
+import type { Status, WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
 
 /**
  * The headline figure, short enough to sit in a row: `1.4M`, `912k`, `840`.
@@ -189,6 +189,38 @@ export function playbookSourcePhrase(
     default:
       return null;
   }
+}
+
+/** What a row says about the column it moved between - the transition its
+    playbook ran. Null only when the row carries no transition at all: an
+    older runner's row, with both ids null.
+
+    A status id the board no longer carries (a deleted column) still falls
+    back to the raw numeric id rather than null or a thrown error - a deleted
+    column is still a fact about the row, the same reason `PlaybookFileRowLine`
+    falls back to a name string instead of hiding its row; a work-log row just
+    has no stored name to fall back to, only the id. */
+export function transitionPhrase(
+  entry: Pick<WorkLogEntry, 'playbookFromStatusId' | 'playbookToStatusId'>,
+  statuses: Status[],
+): string | null {
+  if (entry.playbookFromStatusId === null && entry.playbookToStatusId === null) return null;
+
+  const name = (id: number | null): string | number => {
+    if (id === null) return '';
+    return statuses.find((s) => s.id === id)?.name ?? id;
+  };
+
+  return `${name(entry.playbookFromStatusId)} → ${name(entry.playbookToStatusId)}`;
+}
+
+/** What a row says about the model and effort its session ran at, e.g.
+    `"opus/high"`. Null for the reason `transitionPhrase` is - an older
+    runner's row. The CLI only ever sends the two together, so there is no
+    partial case to decide. */
+export function modelEffortPhrase(entry: Pick<WorkLogEntry, 'playbookModel' | 'playbookEffort'>): string | null {
+  if (entry.playbookModel === null && entry.playbookEffort === null) return null;
+  return `${entry.playbookModel}/${entry.playbookEffort}`;
 }
 
 /** The command that shows the exact bytes a file-sourced row's playbook was
