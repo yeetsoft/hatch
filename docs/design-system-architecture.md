@@ -172,6 +172,10 @@ One breakpoint, `40rem`, governs layout everywhere it changes:
 exports it as `PHONE_QUERY`, and every app's CSS writes the same value in the
 same words, as a bare `@media (max-width: 40rem)`.
 
+It is seen, not merely read, at the `iPhone 14 Pro` profile
+[docs/browser-testing.md](browser-testing.md) renders — never on a hand-held
+device.
+
 That is a literal, and "The rules" §1 above says a literal is a bug — but a
 media query cannot read a custom property, so a breakpoint has nowhere else to
 live. It is the one width value the vocabulary's closed list does not reach:
