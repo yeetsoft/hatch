@@ -115,6 +115,36 @@ entrypoint ends by `exec`ing `hatch go-to-work`, so the loop is the container's
 first process and receives the signal itself; an increment interrupted
 mid-ticket lets go of its claim on the way out.
 
+## Reaching an Ollama outside the container
+
+`ollama` needs no credential, so the container does not wait on the Settings
+page for it. It does need a host, since the image never carries an Ollama of its
+own, and `HATCH_OLLAMA_HOST` is where you say where one is:
+
+```
+HATCH_AGENT=ollama \
+HATCH_OLLAMA_HOST=http://host.docker.internal:11434 \
+docker compose --profile runner up -d
+```
+
+**An Ollama on the machine running the container.** On Docker Desktop,
+`host.docker.internal` already means that machine. On Linux it does not, until
+you add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `runner:`
+service in `compose.yaml`.
+
+**An Ollama in its own container on the same Compose network.** Use the
+service's name as the host, such as `http://ollama:11434`. Nothing more is
+needed, since Compose's network resolves service names for its members.
+
+**Making it reachable at all.** Ollama listens on loopback only by default, and
+a container, whichever of the two ways above it comes, is not on that machine's
+loopback. Setting `OLLAMA_HOST=0.0.0.0` on the Ollama side is yours to do; this
+repository sets nothing there on your behalf.
+
+`HATCH_OLLAMA_TIERS` is the other half: it says which model each alias (`haiku`,
+`sonnet`, `opus`, `fable`) means to an `ollama` agent. Both are in
+*The variables* below.
+
 ## Letting it push
 
 The container starts with no credential of its own, so pushing needs one of
@@ -226,6 +256,8 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_GH_TOKEN` | The token `gh` reads, as `GH_TOKEN`, to check builds and merge | Empty |
 | `HATCH_RUNNER_NAME` | What **Agents → Runners** calls it | `hatch-runner` |
 | `HATCH_AGENT` | `claude`, `codex` or `grok` | `claude` |
+| `HATCH_OLLAMA_HOST` | Where the Ollama server is, for an `ollama` agent (see *Reaching an Ollama outside the container*) | Empty; required under `ollama` |
+| `HATCH_OLLAMA_TIERS` | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent | Empty: the CLI's own default model |
 | `HATCH_TAGS` | The tags it advertises, comma-separated | Empty |
 | `HATCH_KEY` | An API key, for a Hatch with its wall on | Empty. Not required, and not useful here: against a wall the container cannot fetch its credential |
 
