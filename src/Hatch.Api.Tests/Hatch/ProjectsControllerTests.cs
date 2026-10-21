@@ -1019,6 +1019,8 @@ public class ProjectsControllerTests
         var result = await h.Projects.PutRunnerTags(h.ProjectId, new ProjectRunnerTagsWriteRequest(["gpu"]), default);
 
         Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Contains("operator's to set", Reason(result.Result));
+        Assert.Equal("[]", (await h.Db.Projects.FindAsync(h.ProjectId))!.RunnerTags);
     }
 
     [Fact]
@@ -1052,11 +1054,15 @@ public class ProjectsControllerTests
         var h = await NewAsync();
         var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
         await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default);
-        var countBefore = await h.Db.Projects.CountAsync();
+        // The same tags, spaced the way WriteRunnerTags never writes them: a rewrite
+        // would replace this string, a no-op leaves it.
+        const string Sentinel = "[\"gpu\", \"windows\"]";
+        (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags = Sentinel;
+        await h.Db.SaveChangesAsync();
 
         var result = Value(await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default));
 
-        Assert.Equal(countBefore, await h.Db.Projects.CountAsync());
+        Assert.Equal(Sentinel, (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags);
         Assert.Equal(["gpu", "windows"], result.RunnerTags);
     }
 
