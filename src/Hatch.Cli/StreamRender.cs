@@ -59,6 +59,30 @@ public sealed class RunFacts
     /// reset instant over the sentence's.
     /// </summary>
     public IReadOnlyList<UsageWindow>? Usage { get; set; }
+
+    private (string? Title, string? Summary) _workLog;
+
+    /// <summary>
+    /// Looks for a <c>work-log</c> fence in one assistant message as it arrives, and
+    /// keeps the latest one that names a title. A session that writes its fence and
+    /// then makes one more call (a comment, a push) ends on whatever it says after,
+    /// so the fence is read from every message and not only the last.
+    /// </summary>
+    internal void Scan(string said)
+    {
+        if (StreamRender.WorkLog(said) is { Title: not null } found) _workLog = found;
+    }
+
+    /// <summary>
+    /// The work-log fence the session ended on: the final message's own when it
+    /// has one, else the latest <see cref="Scan"/> found. The last fence wins, and
+    /// a final message with none never erases an earlier one.
+    /// </summary>
+    internal (string? Title, string? Summary) WorkLogFrom(string finalText)
+    {
+        var last = StreamRender.WorkLog(finalText);
+        return last.Title is null ? _workLog : last;
+    }
 }
 
 /// <summary>
@@ -240,6 +264,9 @@ public sealed partial class StreamRender : IAgentStreamReader
     {
         Count(e);
 
+        // A sub-agent's message carries its parent's tool use id; its fence is not the session's.
+        var own = Text(e, "parent_tool_use_id") is null;
+
         foreach (var part in Content(e))
         {
             switch (Text(part, "type"))
@@ -250,6 +277,7 @@ public sealed partial class StreamRender : IAgentStreamReader
 
                 case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 } text:
                     _facts.LastAssistantText = text;
+                    if (own) _facts.Scan(Text(part, "text") ?? "");
                     yield return "";
                     foreach (var said in (Text(part, "text") ?? "").ReplaceLineEndings("\n").Split('\n'))
                         yield return said;
@@ -318,7 +346,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         if (cost is { } spent) _facts.CostUsd = spent;
 
         var resultText = Text(e, "result") ?? "";
-        var (title, summary) = WorkLog(resultText);
+        var (title, summary) = _facts.WorkLogFrom(resultText);
         _facts.ReleaseNote = ReleaseNote(resultText);
 
         _facts.ResultText = resultText;
