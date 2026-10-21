@@ -1801,6 +1801,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// or a parentless epic's closeout. False for a child, whose release note is
 /// its story's or epic's to write, and false for any other dispatch.
 /// </param>
+/// <param name="NextBriefLimit">
+/// Characters the *next* row's session is spawned on at most - the board
+/// sends a longer brief back (<see cref="SentBackDto"/>). Null where that
+/// row has none, where the dispatch is not a plain advance, or where the
+/// issue has children (their briefs are the children's).
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1828,7 +1834,8 @@ public record WorkDto(
     string? LastCheckFindings = null,
     string? FailStatusName = null,
     PlaybookFileReferenceDto? PlaybookFile = null,
-    bool AsksReleaseNote = false);
+    bool AsksReleaseNote = false,
+    int? NextBriefLimit = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -2299,9 +2306,10 @@ public record FlowHopDto(string Kind, int Count);
 /// <param name="Hops">Every hop kind with its count, in the fold's fixed order.</param>
 /// <param name="SendBacks">How many moves went to an earlier column.</param>
 /// <param name="QuestionsAsked">How many questions were asked in the window.</param>
-/// <param name="QuestionsAnswered">How many questions were answered in the window.</param>
-/// <param name="MedianAnswerWaitSeconds">The median wait for an answer; null when none was answered.</param>
-/// <param name="LongestAnswerWaitSeconds">The longest wait for an answer; null when none was answered.</param>
+/// <param name="QuestionsAnswered">How many questions a person answered in the window; a question the board answered by lapsing it is not counted here.</param>
+/// <param name="QuestionsLapsed">How many questions were answered in the window by the board lapsing them, not by a person.</param>
+/// <param name="MedianAnswerWaitSeconds">The median wait for a person's answer; null when no person answered.</param>
+/// <param name="LongestAnswerWaitSeconds">The longest wait for a person's answer; null when no person answered.</param>
 /// <param name="Sessions">How many work-log sessions ended in the window.</param>
 /// <param name="SessionErrors">How many of those ended in error.</param>
 public record FlowWindowDto(
@@ -2310,6 +2318,7 @@ public record FlowWindowDto(
     int SendBacks,
     int QuestionsAsked,
     int QuestionsAnswered,
+    int QuestionsLapsed,
     long? MedianAnswerWaitSeconds,
     long? LongestAnswerWaitSeconds,
     int Sessions,
@@ -2355,6 +2364,14 @@ public record WorkLogModelUseDto(
     decimal? CostUsd);
 
 /// <summary>
+/// One file a session read, and how many times - a path and a count, and never
+/// anything else. No contents, no arguments, no line ranges.
+/// </summary>
+/// <param name="Path">As the agent spelled it, clipped to <c>EfHatchWorkLogEntry.MaxReadPathLength</c>.</param>
+/// <param name="Count">How many times the session read it.</param>
+public record WorkLogReadDto(string Path, int Count);
+
+/// <summary>
 /// One finished session, as the dispatcher reports it.
 /// </summary>
 /// <remarks>
@@ -2387,6 +2404,7 @@ public record WorkLogModelUseDto(
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -2411,7 +2429,8 @@ public record WorkLogEntryRequest(
     int? PlaybookToStatusId = null,
     string? IssueType = null,
     string? PlaybookModel = null,
-    string? PlaybookEffort = null);
+    string? PlaybookEffort = null,
+    IReadOnlyList<WorkLogReadDto>? Reads = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -2433,6 +2452,7 @@ public record WorkLogEntryRequest(
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -2464,7 +2484,8 @@ public record WorkLogEntryDto(
     int? PlaybookToStatusId,
     string? IssueType,
     string? PlaybookModel,
-    string? PlaybookEffort);
+    string? PlaybookEffort,
+    IReadOnlyList<WorkLogReadDto> Reads);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
@@ -2615,6 +2636,11 @@ public record WorkLogSessionDto(
 /// you asked for" without fetching the graph's data to say it.
 /// </param>
 /// <param name="LastSessionAt">The latest, read the same way.</param>
+/// <param name="TopReads">
+/// Every path read by a session in the filtered population, counts summed
+/// across sessions, heaviest-count-first then path ascending, capped at
+/// <see cref="WorkLogRollup.MaxTopReads"/>.
+/// </param>
 public record WorkLogSessionsDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -2622,7 +2648,8 @@ public record WorkLogSessionsDto(
     WorkLogTotalsDto Totals,
     DateTimeOffset? FirstSessionAt,
     DateTimeOffset? LastSessionAt,
-    IReadOnlyList<WorkLogSessionDto> Sessions);
+    IReadOnlyList<WorkLogSessionDto> Sessions,
+    IReadOnlyList<WorkLogReadDto> TopReads);
 
 /// <summary>
 /// The sessions in a range, folded by the playbook they ran under: one row per
@@ -2633,10 +2660,16 @@ public record WorkLogSessionsDto(
 /// half-open, exactly as <see cref="WorkLogSessionsDto"/> echoes it. Every group
 /// in the window is answered - this is neither ranked nor capped.
 /// </remarks>
+/// <param name="TopReads">
+/// Every path read by a session in the filtered population, counts summed
+/// across sessions, heaviest-count-first then path ascending, capped at
+/// <see cref="WorkLogRollup.MaxTopReads"/>.
+/// </param>
 public record WorkLogByPlaybookDto(
     DateTimeOffset From,
     DateTimeOffset To,
-    IReadOnlyList<WorkLogByPlaybookRowDto> Rows);
+    IReadOnlyList<WorkLogByPlaybookRowDto> Rows,
+    IReadOnlyList<WorkLogReadDto> TopReads);
 
 /// <summary>
 /// One playbook/transition/type/model/effort combination, and what its sessions

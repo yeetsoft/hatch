@@ -53,3 +53,66 @@ API expects of a cluster, and what an operator writes.
   every replica's check-in collapses onto one cluster row
   (`Jobs/SchedulerCheckout.cs:21-25`). The sign-in rate limiter is per
   process (`Program.cs:284-288`).
+
+## Reading Flux, optionally
+
+Only a cluster that runs Flux has anything to read here, and the API runs
+without it.
+
+- **What it reads.** In a cluster (`KUBERNETES_SERVICE_HOST` set), the API
+  lists Flux `GitRepository` (`source.toolkit.fluxcd.io/v1`) and
+  `Kustomization` (`kustomize.toolkit.fluxcd.io/v1`) objects in
+  `flux-system` (`Services/FluxRevisionReader.cs:41,144-145`).
+  - It uses its own service account's token.
+  - It reads at most every 30 seconds (`FluxRevisionReader.cs:42`).
+- **The shape.** Each GitRepository carries its name, branch and sha. Under
+  it sit the Kustomizations that point at it by `spec.sourceRef.name`, each
+  with its name, the sha it last applied, and Ready: true, false, or null
+  when Flux does not say (`Models/HatchRevision/ClusterRevisions.cs`).
+- **Where it goes.** What each object last applied comes back in the
+  `cluster` field of `GET /api/hatch-revision`. That field goes to signed-in
+  callers, or to everyone with the wall off
+  (`Controllers/HatchRevisionController.cs:51-52`).
+- **No screen in the Hatch app draws it today.** The `cluster` field is
+  typed `unknown` (`src/Hatch.Web/apps/hatch/src/types.ts:2061-2070`). Read
+  it from the API.
+- **The RBAC it wants.** A Role in `flux-system` with `get` and `list` on
+  `gitrepositories` and `kustomizations`, bound to the API's service
+  account. The code only lists; the comment at
+  `FluxRevisionReader.cs:30-32` asks for both.
+- **Without it,** the field says the cluster's Flux resources could not be
+  read, and the API logs a Warning (`FluxRevisionReader.cs:154-155`). Two
+  other cases say so in the same field:
+  - Outside a cluster it says it is not running in a Kubernetes cluster,
+    with no log (`FluxRevisionReader.cs:64-70`).
+  - When the client cannot be built from the service-account files, it says
+    it could not read the cluster's service-account credentials, with a
+    Warning (`FluxRevisionReader.cs:76-79`).
+
+  Nothing else breaks.
+
+## The objects you would write
+
+One line each: what it is for, and which part above it carries.
+
+- **A Secret:** the Google client secret and the connection strings. See
+  [What the API expects](#what-the-api-expects), configuration through
+  environment.
+- **A ServiceAccount.** The Pod runs as it. Add the Role and RoleBinding
+  from [Reading Flux, optionally](#reading-flux-optionally) only if you want
+  that read.
+- **The migration Job,** or whatever your deploy tool runs before a
+  rollout: a Helm pre-upgrade hook, or a Flux Kustomization the app depends
+  on. See the migration before every rollout, above.
+- **A Deployment:** one replica, the two probes, and the environment from
+  the Secret. See one replica, probes and configuration through
+  environment, above.
+- **A Service** on port 8080. See port 8080, above.
+- **An Ingress:** one host, TLS, every path to the one Service. Optionally a
+  forward-auth middleware: see [Forward
+  auth](the-wall-off-on-and-required#forward-auth). See one origin, above.
+- **The Postgres,** or a managed one. See a Postgres with two databases,
+  above.
+
+The image is `ghcr.io/<owner>/hatch-api`, pinned by a sha tag. See
+[Building it or pulling it](deployment-overview#building-it-or-pulling-it).

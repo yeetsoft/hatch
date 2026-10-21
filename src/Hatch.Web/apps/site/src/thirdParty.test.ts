@@ -7,10 +7,14 @@ import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildSite } from './testing/buildSite'
 import { attr, tagsOf, withoutComments } from './testing/html'
+import { isAllowedMermaidUrl, reachable } from './lib/mermaidChunkGraph'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
 
 const ABSOLUTE_URL = /https?:\/\//
+// The full text of each absolute URL a script names, so one can be checked
+// against isAllowedMermaidUrl rather than merely detected.
+const ABSOLUTE_URL_TEXT = /https?:\/\/[^\s"'`)]*/g
 // A bare `//` can turn up in the inlined font's base64 body, so only a `//`
 // that opens a url(), a quoted value or an attribute value counts.
 const PROTOCOL_RELATIVE = /(?:url\(|["'=])\/\//
@@ -77,18 +81,60 @@ describe('the built assets', () => {
     }
   })
 
-  it('has JavaScript that names no absolute URL and brings no React or network call', () => {
+  it('has JavaScript that names only allowed absolute URLs, and brings no React or network call', () => {
+    const chunks = site.output.filter((chunk) => chunk.type === 'chunk')
+    const facade = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith('src/lib/mermaid.ts')))!
+    const mermaidSubtree = reachable(chunks, [facade.fileName])
+
     const scripts = assetsEnding('.js')
     expect(scripts.length).toBeGreaterThan(0)
     for (const script of scripts) {
       const js = readAsset(script)
-      expect(js, script).not.toMatch(ABSOLUTE_URL)
+      const urls = js.match(ABSOLUTE_URL_TEXT) ?? []
+      if (mermaidSubtree.has(`assets/${script}`)) {
+        for (const url of urls) expect(isAllowedMermaidUrl(url), `${script}: ${url}`).toBe(true)
+      } else {
+        expect(js, script).not.toMatch(ABSOLUTE_URL)
+      }
       expect(js, script).not.toMatch(/react-dom|jsx-runtime/)
-      expect(js, script).not.toMatch(/\bfetch\(|XMLHttpRequest/)
+      // A real `fetch()` call always carries an argument - katex (one of
+      // mermaid's dependencies) names its own LaTeX token-reader method
+      // `fetch()` on its Parser class, both as `this.fetch()` calls and as
+      // the method's own definition (`fetch(){...}`, indistinguishable from
+      // a call once minified), and every occurrence of either is
+      // zero-argument, so this needs no exception by chunk name.
+      expect(js, script).not.toMatch(/\bfetch\([^)]|XMLHttpRequest/)
     }
   })
 
   it('holds the self-hosted font', () => {
     expect(assetsEnding('.woff2').length).toBeGreaterThan(0)
+  })
+})
+
+describe('isAllowedMermaidUrl', () => {
+  it('rejects a url outside every allow-listed prefix', () => {
+    expect(isAllowedMermaidUrl('https://evil.example/')).toBe(false)
+  })
+
+  it('allows a url inside each allow-listed prefix', () => {
+    const allowed = [
+      'http://www.w3.org/2000/svg',
+      'http://www.eclipse.org/elk/',
+      'http:///org/eclipse/elk/core',
+      'https://chevrotain.io/docs/',
+      'https://github.com/chevrotain/chevrotain/issues/1',
+      'https://en.wikipedia.org/wiki/LL_parser',
+      'https://github.com/markedjs/marked',
+      'https://github.com/mermaid-js/mermaid/releases',
+      'https://langium.org/docs/',
+      'https://rolldown.rs/guide/',
+    ]
+    for (const url of allowed) expect(isAllowedMermaidUrl(url), url).toBe(true)
+  })
+
+  it('allows the bare http:// literal, but not anything appended to it', () => {
+    expect(isAllowedMermaidUrl('http://')).toBe(true)
+    expect(isAllowedMermaidUrl('http://evil.example/')).toBe(false)
   })
 })

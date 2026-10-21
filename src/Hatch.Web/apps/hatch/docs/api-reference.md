@@ -627,6 +627,7 @@ unset or blank answers `204` rather than either refusal.
 | GET | `/issues/{key}/work-log` | key | This issue's own sessions, and what its whole subtree has cost |
 | GET | `/work-log/history` | key | Spend over time, in equal buckets |
 | GET | `/work-log/sessions` | key | The sessions in a range, ranked, and what the range cost in total |
+| GET | `/work-log/by-playbook` | key | The sessions in a range, folded by the playbook, transition, issue type, model and effort they ran under |
 | GET | `/overnight` | key | What landed in the newest night |
 | POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
 | GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
@@ -648,6 +649,13 @@ range's length unless named, and answers the bucket size it actually used;
 `ancestorKey`, read inclusive of the issue itself - deliberately unlike the
 same parameter on `GET /issues` - so the graph, the table and the issue
 page's own meter can never describe different populations.
+`/work-log/by-playbook` folds the same range by the playbook, transition,
+issue type, model and effort each session ran under, and takes `projectId`
+in place of `ancestorKey`; it answers every group, heaviest first by total
+tokens, with no sort or limit to choose, and an unknown `projectId` answers
+no rows rather than a refusal. Sessions from an older runner, which did not
+record those, fold into one row of nulls, and a status name is the board's
+current one - null where the column has since gone.
 
 `/overnight` answers an `OvernightDto(From, To, Count, Rows, Unseen)`,
 grouping and gap-splitting the newest night's terminal landings; `seen` is a
@@ -669,7 +677,7 @@ app's nav draws from, not a page of its own.
 name, or a request whose buckets would exceed 1000. `sessions` 400s an
 unrecognised sort or a limit outside 1-500. `activity` 400s a limit outside
 1-500 or a negative offset. `changelog` 400s a window under one day or a
-project that does not exist. `history`/`sessions`/`changelog` all 400 an
+project that does not exist. `history`/`sessions`/`by-playbook`/`changelog` all 400 an
 unparseable range bound, in the order `to`, then `from`, then the inversion.
 
 ### Reports and the battery

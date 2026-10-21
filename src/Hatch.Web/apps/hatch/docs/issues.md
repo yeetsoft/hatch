@@ -147,9 +147,3 @@ lands every one of them in whichever [Done column](the-board-and-its-columns)
 the parent itself landed in; a ticket that has already stopped, terminal or
 deferred, is left exactly where it is, never re-closed in a different
 flavour.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `questions-and-decisions`

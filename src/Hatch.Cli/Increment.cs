@@ -241,9 +241,9 @@ public sealed class IncrementReport
     public int? Turns { get; set; }
 
     /// <summary>
-    /// What the board says the increment did to the ticket, whatever the
-    /// override that forced <see cref="Moved"/> false claims: a move to another
-    /// column and children filed under it. Empty when neither happened.
+    /// What the board says the increment did to the ticket: a move to another
+    /// column and children filed under it. Empty when neither happened - the
+    /// one case <see cref="Cause"/>'s override still forces a stall over.
     /// </summary>
     internal string Done
     {
@@ -623,23 +623,24 @@ public sealed class Increment(
                 if (checkTreeUnchanged is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                     await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
 
-                // A plain increment's own board-read verdict, above, does not
-                // know what the session actually said: a session that wrote
-                // no work-log title, or whose result event came back
-                // is_error, moved or filed something anyway only because the
-                // board read ran before anything looked at facts.Result. A
-                // conflict, build or check increment already has its own
-                // independent, git-verified refusal (JudgeAsync's
-                // still-conflicts branch, JudgeBuildAsync's still-failing
-                // branch, JudgeCheckAsync's applied-is-null branch) and must
-                // keep final say over its own verdict, so this is guarded off
-                // for all three.
+                // A plain increment's session may have written no work-log
+                // title, or its result event may have come back is_error -
+                // either way its own account cannot be trusted, which is
+                // recorded regardless of what the board read above found. But
+                // that is only forced into a stall when the board read itself
+                // found nothing: a move or a filed child is real whether or
+                // not the session said so, and stands. A conflict, build or
+                // check increment already has its own independent,
+                // git-verified refusal (JudgeAsync's still-conflicts branch,
+                // JudgeBuildAsync's still-failing branch, JudgeCheckAsync's
+                // applied-is-null branch) and must keep final say over its
+                // own verdict, so this is guarded off for all three.
                 if (conflict is null && build is null && checkTreeUnchanged is null
                     && (facts.Result?.Title is null || facts.Result is { IsError: true }))
                 {
                     report.NoWorkLog = facts.Result?.Title is null;
                     report.ResultErrored = facts.Result is { IsError: true };
-                    (report.Moved, report.Stalled) = (false, true);
+                    if (report.Done.Length == 0) (report.Moved, report.Stalled) = (false, true);
                 }
 
                 // Whatever the session asked for on its way out. This is the
@@ -705,23 +706,16 @@ public sealed class Increment(
                         // The ticket goes straight back onto the board, free
                         // for the next pass to try again - one comment saying
                         // why, and what to resume, and nothing that blocks it.
-                        //
-                        // When the override above forced this stall over a
-                        // ticket the board says did move or gain children, it
-                        // is not true that the ticket was left where it was
-                        // found, and the sentences say what happened instead.
-                        var untouched = report.Done.Length == 0;
                         var why = said is { Length: > 0 }
                             ? $"the session ended with an error - \"{said}\""
-                            : untouched ? "the session ended without moving it" : $"the session {report.Cause}";
-                        if (!untouched) why += $", and it {report.Done}";
+                            : "the session ended without moving it";
 
-                        await LetGo.LeftAsync(board, say, adapter, report.Key, why, report.SessionId, ct, untouched);
+                        await LetGo.LeftAsync(board, say, adapter, report.Key, why, report.SessionId, ct);
                         report.LetGo = true;
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         say.Line("");
-                        say.Line($"hatch: {report.Key} {Nothing(report)} - let go, and going on to the next");
+                        say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
                     }
                     else
                     {
@@ -1140,6 +1134,7 @@ public sealed class Increment(
             {
                 Requests = render.Requests,
                 PeakContextTokens = render.PeakContextTokens,
+                Reads = render.Reads,
                 PromptChars = prompt.Length,
             };
 
@@ -1316,7 +1311,7 @@ public sealed class Increment(
         if (open is not { } waiting)
         {
             report.Flag = "not flagged - its questions could not be read";
-            say.Complain($"hatch: {report.Key} {Nothing(report)} and could not be flagged - a later pass may offer it again");
+            say.Complain($"hatch: {report.Key} moved nothing and could not be flagged - a later pass may offer it again");
             return;
         }
 
@@ -1335,11 +1330,6 @@ public sealed class Increment(
               files that still conflict:
 
               {string.Join('\n', report.StillConflicting.Select(f => $"- {f}"))}
-              """
-            : (report.NoWorkLog || report.ResultErrored) && report.Done.Length > 0
-            ? $"""
-              An unattended increment ran here, and its session {report.Cause}, so its own account of
-              the work cannot be trusted. It {report.Done}; the board says so. A person should look.
               """
             : $"""
               An unattended increment ran here and left this issue where it found it:
@@ -1365,14 +1355,14 @@ public sealed class Increment(
             // session it was.
             body += "\n\nThere is already a question open here, and that is the flag: nothing further\n"
                   + "will be dispatched at this issue until somebody answers it.";
-            say.Line($"hatch: {report.Key} {Nothing(report)}, and is already waiting on a question");
+            say.Line($"hatch: {report.Key} moved nothing, and is already waiting on a question");
         }
         else
         {
             body += "\n\nThis ticket is marked stalled along with this comment, so the loop\n"
                   + "picks it back up by itself after a while rather than waiting on anybody\n"
                   + "to answer a question about it.";
-            say.Line($"hatch: {report.Key} {Nothing(report)} - marking it stalled, and going on to the next");
+            say.Line($"hatch: {report.Key} moved nothing - marking it stalled, and going on to the next");
         }
 
         say.Line("");
@@ -1392,8 +1382,6 @@ public sealed class Increment(
                     ? $"the build on {report.BuildBranch} still fails"
                     : report.StillConflicting.Count > 0
                     ? $"the branch still conflicts with {report.ConflictTrunk}"
-                    : (report.NoWorkLog || report.ResultErrored) && report.Done.Length > 0
-                    ? $"the session {report.Cause}, and it {report.Done}"
                     : $"left it in \"{report.From}\" without moving it";
 
                 await board.StallAsync(report.Key, why, ct);
@@ -1407,14 +1395,6 @@ public sealed class Increment(
             say.Complain($"hatch: {report.Key} could not be flagged - a later pass may offer it again");
         }
     }
-
-    /// <summary>
-    /// What the console says the increment did, in the stall lines: nothing,
-    /// unless the board shows the ticket moved or gained children under an
-    /// override that forced the stall (see <see cref="IncrementReport.Done"/>).
-    /// </summary>
-    private static string Nothing(IncrementReport report) =>
-        report.Done.Length == 0 ? "moved nothing" : $"{report.Done}, but its account of it cannot be trusted";
 
     /// <summary>
     /// <c>2</c> as "second", the common case - a lone prior let-go turning

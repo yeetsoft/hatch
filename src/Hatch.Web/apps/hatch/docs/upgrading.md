@@ -86,13 +86,13 @@ none in it is normal. The `Migrating module context` lines and the exit code
 are the evidence.
 
 Healthy means `docker compose ps -a` shows `migrate` as exited with 0. That
-`migrate` is exited at all is correct — see the Docker section of
-[if something is wrong](if-something-is-wrong).
+`migrate` is exited at all is correct — see
+[the board does not come up](troubleshooting#the-board-does-not-come-up).
 
 Anything else, an exception in the log or a non-zero exit, means `api` never
 starts. It does not restart in a loop; it sits in `Created`, because it is
 waiting for a `migrate` that never completed. Fix what the log names and run
-`docker compose up -d` again. The `troubleshooting` page, when it is written, will have the
+`docker compose up -d` again. The [troubleshooting](troubleshooting) page has the
 failures worth knowing by name.
 
 ## Rolling back
@@ -125,9 +125,3 @@ A loop running under Hatch's own supervisor restarts itself as a newer build
 when its source changes ([Restarts](one-increment-and-the-loop#restarts)). The
 container runner never does; a new build reaches it only through the commands
 above.
-
-## Coming
-
-Pages this one links to that are not written yet:
-
-- `troubleshooting`

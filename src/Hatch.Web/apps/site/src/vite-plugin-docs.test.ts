@@ -18,12 +18,12 @@ describe('checkDocsLinks', () => {
   })
 
   it('does not throw for a slug on PENDING_PAGES', () => {
-    expect(() => checkDocsLinks([{ page: 'a', slug: 'playbooks' }])).not.toThrow()
+    expect(() => checkDocsLinks([{ page: 'a', slug: 'flow-wip-and-the-battery' }])).not.toThrow()
   })
 
   it('lists every broken link, not just the first, and leaves out a pending one', () => {
     const links: BrokenDocsLink[] = [
-      { page: 'a', slug: 'playbooks' },
+      { page: 'a', slug: 'flow-wip-and-the-battery' },
       { page: 'b', slug: 'bad-one' },
       { page: 'c', slug: 'bad-two' },
     ]
@@ -34,7 +34,7 @@ describe('checkDocsLinks', () => {
       const message = (error as Error).message
       expect(message).toContain('bad-one')
       expect(message).toContain('bad-two')
-      expect(message).not.toContain('playbooks')
+      expect(message).not.toContain('flow-wip-and-the-battery')
     }
   })
 })
