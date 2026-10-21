@@ -196,7 +196,8 @@ public static class Prompt
             sharesPullRequest: issue.Type == "story" && issue.OnePr,
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
-            asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type));
+            asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
+            startsHere: BoundForImplementation(work)));
         return string.Join('\n', lines);
     }
 
@@ -494,6 +495,18 @@ public static class Prompt
     }
 
     /// <summary>
+    /// Whether this increment's destination is the board's implementation
+    /// column - the only increment that is told to <c>hatch start</c>, since
+    /// <c>start</c> moves a ticket into that column. The stored
+    /// <c>isImplementation</c> flag is not read: on a stock board nothing is
+    /// ticked and the column is measured, which the dispatch has already done
+    /// in <see cref="WorkDto.FailStatusName"/>.
+    /// </summary>
+    internal static bool BoundForImplementation(WorkDto work) =>
+        work.ToStatus is { } destination && work.FailStatusName is { } implementation
+        && string.Equals(destination.Name, implementation, StringComparison.Ordinal);
+
+    /// <summary>
     /// The part that is the same for every ticket: how to reach Hatch, what to
     /// do with a decision that is not the implementer's, and where the
     /// increment ends.
@@ -502,7 +515,7 @@ public static class Prompt
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
-        bool asksReleaseNote = false, string? issueType = null) =>
+        bool asksReleaseNote = false, string? issueType = null, bool startsHere = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -513,16 +526,24 @@ public static class Prompt
         $"hatch comments {key}          the comments alone, since the brief above is already current",
         ..(isCheck
             ? new[] { $"hatch verdict {key} pass|fail [\"findings\"]   record this check's own verdict" }
-            : new[]
-            {
-                $"hatch start {key}             move it to in progress",
-                $"hatch move {key} <column>     move it anywhere non-terminal",
-            }),
+            : startsHere
+                ? new[]
+                {
+                    $"hatch start {key}             move it to in progress",
+                    $"hatch move {key} <column>     move it anywhere non-terminal",
+                }
+                : new[] { $"hatch move {key} <column>     move it anywhere non-terminal" }),
         $"hatch comment {key} \"...\"     write on the ticket",
         $"hatch ask {key} \"...\"         ask for a decision, and stop",
         $"hatch api GET /api/hatch/issues?parentKey={key}",
         "```",
         "",
+        ..(isCheck || startsHere ? Array.Empty<string>() : new[]
+        {
+            "Claiming is the marker that you have started. The ticket moves once, at the end,",
+            "to the column under \"Where this increment ends\".",
+            "",
+        }),
         "Filing issues, editing descriptions and dates all go through `api` -",
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
