@@ -304,6 +304,100 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// HA-1146: the row names the playbook, its transition, the issue's type and the
+    /// model and effort the session ran on - all read off the dispatch, none looked up.
+    /// </summary>
+    [Fact]
+    public async Task An_increment_bills_a_board_row_with_its_key_transition_type_model_and_effort()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var work = Fixtures.Work("AER-1");
+
+        await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal("1", billed.PlaybookKey);
+        Assert.Equal(3, billed.PlaybookFromStatusId);
+        Assert.Equal(4, billed.PlaybookToStatusId);
+        Assert.Equal(work.Issue.Type, billed.IssueType);
+        Assert.Equal("opus", billed.PlaybookModel);
+        Assert.Equal("high", billed.PlaybookEffort);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-1146: a file row has no id worth keying on, so it is keyed by the types and shape
+    /// the file gave it, in the file's own order, with <c>*</c> for a row naming no types.
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "task", "bug" }, "task,bug:any")]
+    [InlineData(new string[0], "*:any")]
+    public async Task An_increment_keys_a_file_sourced_playbook_by_its_types_and_shape(string[] types, string expected)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
+        var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
+        {
+            Playbook = Fixtures.Playbook(projectKey: "AER") with { Source = "file", Types = types, Shape = "any" },
+        };
+
+        await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(expected, billed.PlaybookKey);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-1146: the model and effort billed are the ones the session was spawned with, which
+    /// differ from the playbook's exactly when the operator overrode them; an empty one is null.
+    /// </summary>
+    [Theory]
+    [InlineData("sonnet", "low", "sonnet", "low")]
+    [InlineData("", "", null, null)]
+    public async Task An_increment_bills_the_model_and_effort_it_ran_on_not_the_playbooks(
+        string model, string effort, string? expectedModel, string? expectedEffort)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, model, effort, quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(expectedModel, billed.PlaybookModel);
+        Assert.Equal(expectedEffort, billed.PlaybookEffort);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-245: <see cref="IncrementReport.EndedInReview"/> is the board's own
     /// read of whether the ticket is sitting in the review column right now,
     /// taken in the same call <see cref="IncrementReport.Ended"/> is - not the
