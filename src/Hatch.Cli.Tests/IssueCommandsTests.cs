@@ -309,7 +309,7 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
-    public async Task Show_names_the_default_on_an_epic_with_no_limit_set()
+    public async Task Show_says_no_limit_on_an_epic_with_no_limit_set()
     {
         using var h = new CliHarness();
         h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = null });
@@ -318,7 +318,7 @@ public sealed class IssueCommandsTests
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.Contains("stories at once: 1 (default)", h.Said);
+        Assert.Contains("stories at once: no limit", h.Said);
     }
 
     /// <summary>A value stranded on a retyped issue is not this type's to print.</summary>

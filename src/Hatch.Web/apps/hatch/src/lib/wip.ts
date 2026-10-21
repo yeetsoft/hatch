@@ -78,10 +78,6 @@ export function limitRequest(draft: string): string {
   return draft.trim();
 }
 
-/** What a null EfHatchIssue.WipLimit reads as - one story at once. Mirrors
-    EfHatchIssue.DefaultEpicWipLimit, the one constant that says so. */
-export const DEFAULT_EPIC_WIP_LIMIT = 1;
-
 /** What an epic's "Stories at once" field shows: blank for unset, the number
     otherwise. Bare rather than WipSliceSetting-shaped, like `limitDraft`
     above: an epic's limit is not a slice of the board. */
@@ -89,8 +85,8 @@ export function wipLimitDraft(limit: number | null): string {
   return limit === null ? '' : String(limit);
 }
 
-/** The field, trimmed, as the wire's `limit` - blank clears it back to
-    DEFAULT_EPIC_WIP_LIMIT. */
+/** The field, trimmed, as the wire's `limit` - blank clears it to no
+    limit. */
 export function wipLimitRequest(draft: string): string {
   return draft.trim();
 }

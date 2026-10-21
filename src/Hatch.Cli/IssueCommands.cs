@@ -136,7 +136,7 @@ public sealed class IssueCommands(Cli cli)
         {
             cli.Say.Line(issue.WipLimit is { } limit
                 ? $"stories at once: {limit}"
-                : $"stories at once: {IssueWipLimitRequest.DefaultLimit} (default)");
+                : "stories at once: no limit");
         }
         if (issue.ParentKey is { Length: > 0 } parent) cli.Say.Line($"parent:   {parent}");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");

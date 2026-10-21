@@ -178,7 +178,8 @@ public static class Wip
     /// distinct non-null parent ids a caller hands in - a memoizable, bulk-safe
     /// counterpart to <see cref="LoadAsync"/>'s own board-wide reads. A parent
     /// id that is not an epic is simply absent, so a story's story parent (a
-    /// task's story) never looks like an epic with a limit.
+    /// task's story) never looks like an epic with a limit - and so is an epic
+    /// whose <c>WipLimit</c> is null, which has no limit of its own.
     /// </summary>
     public static async Task<IReadOnlyDictionary<long, EpicLimit>> EpicsAsync(
         HatchContext db, IEnumerable<long?> parentIds, CancellationToken ct)
@@ -188,17 +189,17 @@ public static class Wip
 
         var runsChildren = IssueTypeKinds.RunsChildrenTypes;
         var rows = await db.Issues.AsNoTracking()
-            .Where(i => ids.Contains(i.Id) && runsChildren.Contains(i.Type))
+            .Where(i => ids.Contains(i.Id) && runsChildren.Contains(i.Type) && i.WipLimit != null)
             .Select(i => new { i.Id, i.Project!.Key, i.Number, i.WipLimit })
             .ToListAsync(ct);
 
         return rows.ToDictionary(
             r => r.Id,
-            r => new EpicLimit(r.Id, IssueKey.Format(r.Key, r.Number), r.WipLimit ?? EfHatchIssue.DefaultEpicWipLimit));
+            r => new EpicLimit(r.Id, IssueKey.Format(r.Key, r.Number), r.WipLimit!.Value));
     }
 }
 
-/// <summary>An epic's own limit, as <see cref="Wip.EpicsAsync"/> reads it - the key for the sentence, the limit for the gate and the fold.</summary>
+/// <summary>An epic's own limit, as <see cref="Wip.EpicsAsync"/> reads it for an epic that has one - the key for the sentence, the limit for the gate and the fold.</summary>
 public sealed record EpicLimit(long Id, string Key, int Limit);
 
 /// <summary>

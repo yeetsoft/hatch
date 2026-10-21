@@ -589,14 +589,6 @@ public class EfHatchIssue
     public const int MaxClaimRunnerLength = ClaimRequest.MaxRunnerLength;
 
     /// <summary>
-    /// What a null <see cref="WipLimit"/> reads as - one story at once. An
-    /// alias of <see cref="IssueWipLimitRequest.DefaultLimit"/>, the way
-    /// <see cref="MaxClaimRunnerLength"/> aliases <see cref="ClaimRequest.MaxRunnerLength"/>,
-    /// so the CLI can read the same number without seeing this entity.
-    /// </summary>
-    public const int DefaultEpicWipLimit = IssueWipLimitRequest.DefaultLimit;
-
-    /// <summary>
     /// Room for a line of chatter. A sentence, not a log - what is stored is
     /// what a card draws under "working on it", and anything longer is
     /// truncated to this.
@@ -950,8 +942,8 @@ public class EfHatchIssue
 
     /// <summary>
     /// How many of an epic's stories may be in progress at once. Means
-    /// something on an epic and nothing on any other type; null reads as
-    /// <see cref="DefaultEpicWipLimit"/>, not as unlimited.
+    /// something on an epic and nothing on any other type; null is no
+    /// limit - as many at once as the board's other rules allow.
     /// </summary>
     /// <remarks>
     /// Written only through <see cref="IssueWipLimitController"/>, by a person

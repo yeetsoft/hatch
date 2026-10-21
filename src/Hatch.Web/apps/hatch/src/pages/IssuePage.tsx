@@ -81,7 +81,7 @@ import { useMoveProject } from '../lib/useMoveProject';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useCoarsePointer } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
-import { DEFAULT_EPIC_WIP_LIMIT, wipLimitDraft, wipLimitRequest } from '../lib/wip';
+import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
@@ -1717,12 +1717,11 @@ function WipLimitField({ limit, onSetLimit }: { limit: number | null; onSetLimit
   }
 
   return (
-    <Field label="Stories at once" hint={`Blank means ${DEFAULT_EPIC_WIP_LIMIT}.`}>
+    <Field label="Stories at once" hint="Blank means no limit.">
       <input
         inputMode="numeric"
         value={draft}
-        placeholder={String(DEFAULT_EPIC_WIP_LIMIT)}
-        onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const next = wipLimitRequest(draft);
           if (next !== wipLimitDraft(limit)) onSetLimit(next);

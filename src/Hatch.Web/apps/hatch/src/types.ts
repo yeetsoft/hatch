@@ -617,7 +617,7 @@ export interface Issue {
       IssueCard.closedAt and IssueDto.ClosedAt. */
   closedAt?: string | null;
   /** How many of an epic's stories may be in progress at once, or null for
-      DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
+      no limit - meaningful on an epic and on nothing else.
       Readable by anybody a dispatch reaches and writable only by a person,
       through its own route - see IssueWipLimitController. */
   wipLimit: number | null;
@@ -929,7 +929,7 @@ export interface IssuePlaybookRequest {
 }
 
 /** How many of an epic's stories may run at once. Null leaves it alone and
-    `''` clears it back to DEFAULT_EPIC_WIP_LIMIT, the same bulk rule every
+    `''` clears it to no limit, the same bulk rule every
     other clearable field in Hatch follows.
 
     Its own request because it is its own route: setting one is closed to an
