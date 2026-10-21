@@ -213,3 +213,58 @@ describe('the moving parts', () => {
     },
   )
 })
+
+describe('the life of a ticket', () => {
+  const figure = figuresOf(page).find((f) => attr(f, 'data-diagram') === 'life-of-a-ticket')
+  const svgs = svgsOf(figure ?? '')
+
+  const OWNER_WORDS: Record<string, string> = { operator: 'you', agent: 'agent' }
+
+  const lines = readFileSync(new URL('../../../../../docs/hatch.md', import.meta.url), 'utf8').split(/\r?\n/)
+  const header = lines.findIndex((line) => line.startsWith('| Column | Sort |'))
+  const rows: string[] = []
+  for (let i = header + 2; header >= 0 && i < lines.length && lines[i].startsWith('|'); i++) rows.push(lines[i])
+  const columns = rows.map((row) => {
+    const cells = row.split('|')
+    const whose = cells[5].split(';')[0].replace(/\*/g, '').trim()
+    const owner = OWNER_WORDS[whose]
+    if (owner === undefined) throw new Error(`the Status table names an owner this test does not know: "${whose}"`)
+    return { name: cells[1].trim(), owner }
+  })
+
+  it('reads seven stock columns from the docs', () => {
+    expect(columns).toHaveLength(7)
+  })
+
+  it('has a figure with exactly two svgs', () => {
+    expect(svgs).toHaveLength(2)
+  })
+
+  it.each(svgs.map((svg) => [attr(openingTagOf(svg), 'class') ?? '', svg] as const))(
+    '%s holds the stock columns and their owners',
+    (_class, svg) => {
+      const texts = textsOf(svg)
+
+      const at = columns.map((column) => texts.indexOf(column.name))
+      columns.forEach((column, i) => {
+        expect(at[i], `${column.name} is an entry`).toBeGreaterThanOrEqual(0)
+        expect(texts[at[i] + 1], `the owner after ${column.name}`).toBe(column.owner)
+      })
+      expect(at, 'the columns appear in docs order').toEqual([...at].sort((a, b) => a - b))
+
+      const approved = texts.indexOf('Approved')
+      expect(approved, 'Approved sits between In Review and Done').toBeGreaterThan(texts.indexOf('In Review'))
+      expect(approved).toBeLessThan(texts.indexOf('Done'))
+
+      for (const note of [/optional/, /you add/, /merge train/, /no session/])
+        expect(texts.filter((t) => note.test(t)), `one entry matching ${note}`).toHaveLength(1)
+
+      expect(texts.some((t) => t.includes('conflict'))).toBe(true)
+      expect(texts.some((t) => t.includes('failed build'))).toBe(true)
+
+      const desc = svg.match(/<desc\b[^>]*>([\s\S]*?)<\/desc>/)?.[1]
+      expect(desc).toContain('merge train')
+      expect(desc).toContain('reaches Done')
+    },
+  )
+})
