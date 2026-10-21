@@ -87,7 +87,8 @@ public static class Fixtures
         string? failStatusName = null,
         string? landing = null,
         PlaybookFileReferenceDto? playbookFile = null,
-        bool asksReleaseNote = false) =>
+        bool asksReleaseNote = false,
+        int? nextBriefLimit = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -111,7 +112,8 @@ public static class Fixtures
             FailStatusName: failStatusName,
             Landing: landing,
             PlaybookFile: playbookFile,
-            AsksReleaseNote: asksReleaseNote);
+            AsksReleaseNote: asksReleaseNote,
+            NextBriefLimit: nextBriefLimit);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
@@ -287,6 +289,15 @@ public static class Fixtures
         {
             type = "assistant",
             message = new { content = new[] { new { type = "tool_use", name, input = new { command } } } },
+        });
+
+    /// <summary>A tool call with any input object; a sub-agent's carries its parent's tool use id.</summary>
+    public static string ToolUse(string name, object input, string? parentToolUseId = null) =>
+        JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["type"] = "assistant",
+            ["parent_tool_use_id"] = parentToolUseId,
+            ["message"] = new { content = new[] { new { type = "tool_use", name, input } } },
         });
 
     /// <summary>One assistant message of a single text block; a sub-agent's carries its parent's tool use id.</summary>
