@@ -18,7 +18,7 @@ Everything the board can decide from its own shape — a column, a flag, a date,
 - **Stalls and let-go** — an increment that ends with its ticket exactly where it found it is let go once, quietly; each one after that marks it and holds the next dispatch for fifteen minutes, after which the board resumes it on its own — until three have stalled in a row, when it holds for a person instead. [One increment and the loop](one-increment-and-the-loop#stalls) has the counts.
 - **The WIP gates** — a limit on how many stories, bugs and epics may stand in the columns marked WIP at once, read off the board's own load and held until something leaves; an epic can carry a limit of its own on top of the section's. `flow-wip-and-the-battery` has the numbers.
 - **The battery** — the account an unattended pass would spend, read before it will touch anything at economy or low priority, so a quiet night never spends past what is actually left. `flow-wip-and-the-battery` covers the reading.
-- **The build and merge checks** — what a runner found when it looked at a branch: whether it merges cleanly with the trunk, and whether the build on its tip passed. A session is dispatched into review for one of the two gone wrong, and for nothing else. `review-pull-requests-and-the-merge-train` covers reading them.
+- **The build and merge checks** — what a runner found when it looked at a branch: whether it merges cleanly with the trunk, and whether the build on its tip passed. A session is dispatched into review for one of the two gone wrong, and for nothing else. [Review, pull requests and the merge train](review-pull-requests-and-the-merge-train#the-build-check-and-the-merge-check) covers reading them.
 
 ## What a session does
 
