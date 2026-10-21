@@ -1,0 +1,60 @@
+import { escapeHtml } from './vite-plugin-site'
+
+export interface Frame {
+  title: string
+  description: string
+  main: string
+  /** The `../` prefix from the page's directory to `packages/ui/src/assets/`. */
+  up: string
+  /** Whether the page carries at least one mermaid fence - draws the one extra
+      script that renders them. Omitted by `renderLanding`, which is never
+      fenced. */
+  mermaid?: boolean
+}
+
+/** The document every page shares - head, header, skip link, footer - so the
+    footer's `<!--site:repository-->` block cannot drift between pages. `title`
+    and `description` are escaped here; `main` is trusted markup. */
+export function renderFrame({ title, description, main, up, mermaid }: Frame): string {
+  const safeTitle = escapeHtml(title)
+  const safeDescription = escapeHtml(description)
+  const icon = `${up}packages/ui/src/assets/hatch-logo.png`
+  const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <meta name="description" content="${safeDescription}" />
+    <meta property="og:title" content="${safeTitle}" />
+    <meta property="og:description" content="${safeDescription}" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="${icon}" />
+    <link rel="stylesheet" href="/src/site.css" />
+    <script type="module" src="/src/theme.ts"></script>${diagramsScript}
+  </head>
+  <body>
+    <a class="site-skip" href="#main">Skip to content</a>
+    <header class="site-header site-column">
+      <a class="site-brand" href="%BASE_URL%">
+        <img class="site-mark" src="${icon}" alt="" width="40" height="40" />
+        <span>Hatch</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="%BASE_URL%docs/">Docs</a>
+      </nav>
+    </header>
+    <main id="main" class="site-column">
+${main}
+    </main>
+    <footer class="site-footer site-column">
+      <!--site:repository-->
+      <p>Hatch is open source.</p>
+      <a href="{{repository-url}}">Source</a>
+      <!--/site:repository-->
+    </footer>
+  </body>
+</html>
+`
+}
