@@ -15,6 +15,7 @@ import {
   ownPhrase,
   playbookFileShowCommand,
   playbookSourcePhrase,
+  readsLabel,
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
@@ -133,6 +134,22 @@ function Entry({ entry, statuses }: { entry: WorkLogEntry; statuses: Status[] })
           <Command command={playbookFileShowCommand(entry.playbookFileSha)} />
         )}
       </div>
+
+      {/* Folded by default - the native element's own state - and in the
+          server's order, heaviest first. */}
+      {entry.reads.length > 0 && (
+        <details className="hatch-worklog-reads">
+          <summary className="text-muted">{readsLabel(entry.reads)}</summary>
+          <ul>
+            {entry.reads.map((r) => (
+              <li key={r.path}>
+                <span className="hatch-worklog-reads__path">{r.path}</span>
+                <span className="text-muted">×{r.count}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </li>
   );
 }
