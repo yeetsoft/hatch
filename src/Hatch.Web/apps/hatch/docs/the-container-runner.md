@@ -27,10 +27,10 @@ repository where "done" means a green build, which is most of them, use
 
 **And it is for a Hatch with its wall off.** The container gets its agent
 credential by asking Hatch for it, and Hatch answers that request with a
-`403` whenever the wall is on. A Hatch behind a sign-in
-([putting a front door on it](putting-a-front-door-on-it)) is a Hatch this
-container cannot take a credential from; run the runner on your own machine
-there.
+`403` whenever the wall is on. A Hatch with its wall on
+([the wall, off, on and required](the-wall-off-on-and-required)) is a Hatch
+this container cannot take a credential from; run the runner on your own
+machine there.
 
 ## Starting it
 
