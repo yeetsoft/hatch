@@ -54,11 +54,12 @@ saying so; those are read from the environment alone.
 | **The `hatch` binary** | | | |
 | `HATCH_BASE` | `hatch` | none; `hatch` refuses to run without it | The origin of your Hatch, as `<your-hatch-origin>`. A trailing `/` is trimmed. Settings file: yes. |
 | `HATCH_KEY` | `hatch` | empty | **A secret.** The API key, shaped `hatch_ak_...`. Optional against a Hatch with its wall off. Settings file: yes. |
-| `HATCH_AGENT` | `hatch`; the container's entrypoint | `claude`; blank also means `claude` | Which agent a session spawns: `claude`, `codex` or `grok`. An unknown id is refused. Settings file: yes. |
+| `HATCH_AGENT` | `hatch`; the container's entrypoint | `claude`; blank also means `claude` | Which agent a session spawns: `claude`, `codex`, `grok` or `ollama`. An unknown id is refused. Settings file: yes. |
 | `HATCH_CLAUDE_BIN` | `hatch` | unset: found on `PATH` | The `claude` CLI, if it is not on `PATH`. Settings file: yes. |
 | `HATCH_CODEX_BIN` | `hatch` | unset: found on `PATH` | The `codex` CLI, if it is not on `PATH`. Settings file: yes. |
 | `HATCH_GROK_BIN` | `hatch` | unset: found on `PATH` | The `grok` CLI, if it is not on `PATH`. Settings file: yes. |
-| `HATCH_OLLAMA_HOST` | `hatch`, through `OllamaHost.Resolve` | unset: falls back to Ollama's own `OLLAMA_HOST`, then `http://127.0.0.1:11434` | Hatch's own override for where an `ollama` agent's server is. `CanSpawn` asks it once for `GET /api/tags`, and names it in the refusal when the host is not answering. Settings file: no. |
+| `HATCH_OLLAMA_HOST` | `hatch`, through `OllamaHost.Resolve` | unset: falls back to Ollama's own `OLLAMA_HOST`, then `http://127.0.0.1:11434` | Hatch's own override for where an `ollama` agent's server is. `CanSpawn` asks it once for `GET /api/tags`, and names it in the refusal when the host is not answering. Settings file: yes (`OLLAMA_HOST` itself is read only from the process environment, never from a settings file). |
+| `HATCH_OLLAMA_TIERS` | `hatch`, through `OllamaAdapter.ParseTiers` | empty | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent, as comma-separated `alias=id` entries. An entry that is not `alias=id`, names an unknown alias or repeats one, or whose id is not an Ollama model id refuses every command. It has no `hatch config` flag. Settings file: yes. |
 | `HATCH_BASE_BRANCH` | `hatch` | unset: the branch origin calls its default | The trunk `go-to-work` resets to between increments. It has no `hatch config` flag. Settings file: yes. |
 | `HATCH_RUNNER` | `hatch` | unset: a cast-list name, chosen once per checkout | What the board calls this runner ([the runner](the-runner#the-runners-name)). Settings file: yes. |
 | `HATCH_REPOS` | `hatch` | empty | The checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows). Blanks are dropped. Settings file: yes. |
