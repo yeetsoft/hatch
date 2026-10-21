@@ -108,47 +108,63 @@ fi
 agent="${HATCH_AGENT:-claude}"
 
 case "$agent" in
-    claude|codex|grok) ;;
+    claude|codex|grok|ollama) ;;
     *)
-        say "unknown HATCH_AGENT \"$agent\" - known: claude, codex, grok."
+        say "unknown HATCH_AGENT \"$agent\" - known: claude, codex, grok, ollama."
         exit 1
         ;;
 esac
 
-errors=/tmp/hatch-runner-credential.err
-told=""
-
-while true; do
-    code=0
-    credential=$(hatch runner-credential "$agent" 2>"$errors") || code=$?
-
-    if [ "$code" -eq 0 ]; then
-        break
+if [ "$agent" = ollama ]; then
+    # ollama needs no credential, but it does need to know where its Ollama
+    # is before the loop starts - loopback's container-local meaning makes an
+    # unset host a trap under restart: on-failure, retried forever against
+    # the container itself rather than the machine running Docker.
+    if [ -z "${HATCH_OLLAMA_HOST:-}" ]; then
+        say "HATCH_OLLAMA_HOST is not set - ollama's default is loopback, which"
+        say "  inside a container means the container itself, not the machine"
+        say "  running Docker, so the loop would refuse every increment forever"
+        say "  under restart: on-failure. Point HATCH_OLLAMA_HOST at it - try"
+        say "  host.docker.internal on Docker Desktop."
+        exit 1
     fi
+    say "ollama needs no credential - spawning against $HATCH_OLLAMA_HOST."
+else
+    errors=/tmp/hatch-runner-credential.err
+    told=""
 
-    if [ "$code" -eq 2 ]; then
-        state=none
-    else
-        state=unreachable
-    fi
+    while true; do
+        code=0
+        credential=$(hatch runner-credential "$agent" 2>"$errors") || code=$?
 
-    if [ "$state" != "$told" ]; then
-        if [ "$state" = none ]; then
-            say "no $agent credential saved on Hatch's Settings page yet - waiting, and looking again every minute."
-        else
-            cat "$errors" >&2
-            say "could not read the $agent credential - waiting, and looking again every minute."
+        if [ "$code" -eq 0 ]; then
+            break
         fi
-        told="$state"
-    fi
 
-    sleep 60
-done
+        if [ "$code" -eq 2 ]; then
+            state=none
+        else
+            state=unreachable
+        fi
 
-# One NAME=value line. `export "$credential"` is POSIX and does no re-parsing,
-# where an eval would, so a value with spaces or quotes arrives as it was saved.
-export "$credential"
-unset credential
+        if [ "$state" != "$told" ]; then
+            if [ "$state" = none ]; then
+                say "no $agent credential saved on Hatch's Settings page yet - waiting, and looking again every minute."
+            else
+                cat "$errors" >&2
+                say "could not read the $agent credential - waiting, and looking again every minute."
+            fi
+            told="$state"
+        fi
+
+        sleep 60
+    done
+
+    # One NAME=value line. `export "$credential"` is POSIX and does no re-parsing,
+    # where an eval would, so a value with spaces or quotes arrives as it was saved.
+    export "$credential"
+    unset credential
+fi
 
 # exec, so the loop is pid 1 and gets the signal a `docker stop` sends: an
 # increment interrupted mid-ticket lets go of its claim on the way out, and
