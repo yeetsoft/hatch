@@ -18,23 +18,33 @@ describe('checkDocsLinks', () => {
   })
 
   it('does not throw for a slug on PENDING_PAGES', () => {
-    expect(() => checkDocsLinks([{ page: 'a', slug: 'flow-wip-and-the-battery' }])).not.toThrow()
+    PENDING_PAGES.add('a-pending-page')
+    try {
+      expect(() => checkDocsLinks([{ page: 'a', slug: 'a-pending-page' }])).not.toThrow()
+    } finally {
+      PENDING_PAGES.delete('a-pending-page')
+    }
   })
 
   it('lists every broken link, not just the first, and leaves out a pending one', () => {
-    const links: BrokenDocsLink[] = [
-      { page: 'a', slug: 'flow-wip-and-the-battery' },
-      { page: 'b', slug: 'bad-one' },
-      { page: 'c', slug: 'bad-two' },
-    ]
+    PENDING_PAGES.add('a-pending-page')
     try {
-      checkDocsLinks(links)
-      expect.unreachable('expected checkDocsLinks to throw')
-    } catch (error) {
-      const message = (error as Error).message
-      expect(message).toContain('bad-one')
-      expect(message).toContain('bad-two')
-      expect(message).not.toContain('flow-wip-and-the-battery')
+      const links: BrokenDocsLink[] = [
+        { page: 'a', slug: 'a-pending-page' },
+        { page: 'b', slug: 'bad-one' },
+        { page: 'c', slug: 'bad-two' },
+      ]
+      try {
+        checkDocsLinks(links)
+        expect.unreachable('expected checkDocsLinks to throw')
+      } catch (error) {
+        const message = (error as Error).message
+        expect(message).toContain('bad-one')
+        expect(message).toContain('bad-two')
+        expect(message).not.toContain('a-pending-page')
+      }
+    } finally {
+      PENDING_PAGES.delete('a-pending-page')
     }
   })
 })
