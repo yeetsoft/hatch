@@ -43,7 +43,7 @@ public sealed class CredentialCommand(Cli cli)
         "  output as NAME=value - the variable that agent's CLI reads for headless",
         "  use. For the container runner's entrypoint, not for interactive use.",
         "",
-        "  <agent> is claude, codex or grok.",
+        "  <agent> is claude, codex, grok or ollama. ollama needs none and exits 0 printing nothing.",
         "",
         "  Exits 0 having printed one, 2 where this Hatch holds none yet, and 1",
         "  where the call itself failed. Refused outright by a Hatch with its",
@@ -52,7 +52,8 @@ public sealed class CredentialCommand(Cli cli)
 
     /// <summary>
     /// The variable an agent's CLI reads its headless credential from, or null
-    /// for an agent this build has never heard of. Lives here and not on the
+    /// for an agent this build has never heard of, and for ollama, which has
+    /// nothing to store. Lives here and not on the
     /// server or on <c>IAgentAdapter</c>: this is the side that knows vendor
     /// vocabulary. Each was read off the vendor's own page and confirmed live
     /// on 2026-10-20 - claude: <c>https://code.claude.com/docs/en/authentication</c>
@@ -80,10 +81,18 @@ public sealed class CredentialCommand(Cli cli)
 
         var agent = args[0];
         if (Variable(agent) is not { } variable)
+        {
+            if (Settings.KnownAgentIds.Contains(agent))
+            {
+                cli.Say.Complain($"hatch: {agent} needs no credential");
+                return 0;
+            }
+
             return Usage.Refuse(
                 cli.Say,
                 $"runner-credential does not know an agent called \"{agent}\" (known: {string.Join(", ", Settings.KnownAgentIds)})",
                 CredentialUsage);
+        }
 
         var path = $"/api/hatch/settings/credentials/{agent}";
 
