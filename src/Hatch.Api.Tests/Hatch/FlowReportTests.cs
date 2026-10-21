@@ -349,6 +349,40 @@ public class FlowReportTests
     }
 
     [Fact]
+    public void ALapsedQuestion_IsCountedApartFromAPersonsAnswer_AndLeavesTheWaitsAlone()
+    {
+        var issue = Issue(1, "task", 2, Day(-10));
+        var questions = new[]
+        {
+            new FlowReport.Question(1, 1, Day(-1), null, LapsedAt: Day(-1).AddSeconds(300)),
+            new FlowReport.Question(1, 2, Day(-1), Day(-1).AddSeconds(3600)),
+        };
+
+        var result = Fold([issue], questions: questions);
+
+        Assert.Equal(2, result.Window.QuestionsAsked);
+        Assert.Equal(1, result.Window.QuestionsAnswered);
+        Assert.Equal(1, result.Window.QuestionsLapsed);
+        Assert.Equal(3600, result.Window.MedianAnswerWaitSeconds);
+        Assert.Equal(3600, result.Window.LongestAnswerWaitSeconds);
+    }
+
+    [Fact]
+    public void OnlyLapsedQuestions_LeaveBothWaitFiguresNull()
+    {
+        var issue = Issue(1, "task", 2, Day(-10));
+        var questions = new[] { new FlowReport.Question(1, 1, Day(-1), null, LapsedAt: Day(-1).AddSeconds(300)) };
+
+        var result = Fold([issue], questions: questions);
+
+        Assert.Equal(1, result.Window.QuestionsAsked);
+        Assert.Equal(0, result.Window.QuestionsAnswered);
+        Assert.Equal(1, result.Window.QuestionsLapsed);
+        Assert.Null(result.Window.MedianAnswerWaitSeconds);
+        Assert.Null(result.Window.LongestAnswerWaitSeconds);
+    }
+
+    [Fact]
     public void MedianAndLongestAnswerWait_AreComputedOverAnsweredQuestions_AndNullWithNone()
     {
         var issue = Issue(1, "task", 2, Day(-10));
@@ -407,21 +441,22 @@ public class FlowReportTests
         var atFrom = FlowReport.Fold(
             [issue],
             [ClaimReleased(1, 1, from, ClaimOutcomes.Dropped), MoveWithFlag(1, 2, from, 3, 2, "\"express\":true")],
-            [new FlowReport.Question(1, 10, from, from)],
+            [new FlowReport.Question(1, 10, from, from), new FlowReport.Question(1, 11, from, null, LapsedAt: from)],
             [new FlowReport.Session(1, from, IsError: false)],
             Board(), from, to, null, null);
 
         Assert.Equal(1, atFrom.Window.Dropped);
         Assert.Equal(1, atFrom.Window.Hops.Single(h => h.Kind == HopKinds.Express).Count);
         Assert.Equal(1, atFrom.Window.SendBacks);
-        Assert.Equal(1, atFrom.Window.QuestionsAsked);
+        Assert.Equal(2, atFrom.Window.QuestionsAsked);
         Assert.Equal(1, atFrom.Window.QuestionsAnswered);
+        Assert.Equal(1, atFrom.Window.QuestionsLapsed);
         Assert.Equal(1, atFrom.Window.Sessions);
 
         var atTo = FlowReport.Fold(
             [issue],
             [ClaimReleased(1, 1, to, ClaimOutcomes.Dropped), MoveWithFlag(1, 2, to, 3, 2, "\"express\":true")],
-            [new FlowReport.Question(1, 10, to, to)],
+            [new FlowReport.Question(1, 10, to, to), new FlowReport.Question(1, 11, to, null, LapsedAt: to)],
             [new FlowReport.Session(1, to, IsError: false)],
             Board(), from, to, null, null);
 
@@ -430,6 +465,7 @@ public class FlowReportTests
         Assert.Equal(0, atTo.Window.SendBacks);
         Assert.Equal(0, atTo.Window.QuestionsAsked);
         Assert.Equal(0, atTo.Window.QuestionsAnswered);
+        Assert.Equal(0, atTo.Window.QuestionsLapsed);
         Assert.Equal(0, atTo.Window.Sessions);
     }
 
@@ -450,6 +486,8 @@ public class FlowReportTests
         {
             new FlowReport.Question(1, 1, Day(0), Day(0)),
             new FlowReport.Question(2, 2, Day(0), Day(0)),
+            new FlowReport.Question(1, 3, Day(0), null, LapsedAt: Day(0)),
+            new FlowReport.Question(2, 4, Day(0), null, LapsedAt: Day(0)),
         };
         var sessions = new[]
         {
@@ -459,11 +497,13 @@ public class FlowReportTests
 
         var byProject = Fold(rows, events, questions: questions, sessions: sessions, projectId: 1);
         Assert.Equal(1, byProject.Window.Dropped);
+        Assert.Equal(1, byProject.Window.QuestionsLapsed);
         Assert.Equal(1, byProject.Window.Sessions);
         Assert.Equal(0, byProject.Window.SessionErrors);
 
         var byType = Fold(rows, events, questions: questions, sessions: sessions, type: "task");
         Assert.Equal(1, byType.Window.Dropped);
+        Assert.Equal(1, byType.Window.QuestionsLapsed);
         Assert.Equal(1, byType.Window.Sessions);
         Assert.Equal(0, byType.Window.SessionErrors);
     }

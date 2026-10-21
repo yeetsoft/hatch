@@ -2317,7 +2317,8 @@ names the comment and the runner), `asked`, `answered` (payload `{ questionId,
 lapsed }` - `lapsed: true` only on a row written before the stall mark
 replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
-stopped at, same as `letGo` above), `imported`.
+stopped at, same as `letGo` above, and counted apart from a person's answers
+by the flow report), `imported`.
 
 Only two kinds are read back. `status_changed` is read by the
 [Timeline](#the-timeline) and by both flow reports ([the cumulative
@@ -3714,10 +3715,16 @@ included — as:
   a merge, a push back, a landing, a check's verdict — is not a hop;
 - `sendBacks` — any move to a column **left** of the one it came from, in board
   order, so the `sendback` hop is counted here as well as in `hops`;
-- `questionsAsked` and `questionsAnswered` — questions whose own time falls in
-  the window, and `medianAnswerWaitSeconds` and `longestAnswerWaitSeconds`, the
-  wait from the ask to its earliest answer (never below `0`), both `null` when
-  nothing was answered in the window;
+- `questionsAsked`, `questionsAnswered` and `questionsLapsed` — questions whose
+  own time falls in the window, and `medianAnswerWaitSeconds` and
+  `longestAnswerWaitSeconds`, the wait from the ask to its earliest answer
+  (never below `0`), both `null` when nothing was answered in the window.
+  `questionsAnswered` and both waits are over a **person's** answers only: an
+  answer the board wrote itself by lapsing the question (the `answered` event
+  with `lapsed: true`) is counted in `questionsLapsed` and nowhere else, so a
+  lapse minutes after the ask cannot pull the wait down. A lapsed question is
+  in `questionsAsked` and `questionsLapsed` only, unless a person answered it
+  afterwards, when it counts as answered and the wait is to that answer;
 - `sessions` and `sessionErrors` — work-log sessions that **ended** in the
   window, and how many of them ended in error.
 
