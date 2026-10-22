@@ -220,6 +220,25 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
+    public async Task Brief_is_the_start_of_show_for_a_claimed_ticket()
+    {
+        using var full = new CliHarness(clock: new FrozenClock(Now));
+        full.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
+        full.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        full.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        using var brief = new CliHarness(clock: new FrozenClock(Now));
+        brief.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
+        brief.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        Assert.Equal(0, await new IssueCommands(full.Cli).ShowAsync(["AER-12"], default));
+        Assert.Equal(0, await new IssueCommands(brief.Cli).ShowAsync(["AER-12", "--brief"], default));
+
+        Assert.Contains("runner:", brief.Said);
+        Assert.StartsWith(brief.Said + "\n\n", full.Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Show_makes_no_request_beyond_the_ones_it_always_made()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
