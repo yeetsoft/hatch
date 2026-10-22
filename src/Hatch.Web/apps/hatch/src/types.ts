@@ -730,6 +730,7 @@ export type IssueEventKind =
   | 'claim_lapsed'
   | 'claim_released'
   | 'claim_cleared'
+  | 'ordered'
   | 'merge_check_changed'
   | 'pull_request_state_changed'
   | 'build_check_changed'

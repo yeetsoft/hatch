@@ -366,7 +366,10 @@ rows naming it on the Playbooks page - see [Playbooks](#playbooks)), with
 `RepoSourcedBy` and `RepoSourcedAt` beside it - who set it last and when, a
 name and an instant, null until the first write, and `RunnerTags` (a JSON array
 of strings, `"[]"` default - which runners may implement the project's work,
-written through its own route, `PUT /projects/{id}/runner-tags`). A project may
+written through its own route, `PUT /projects/{id}/runner-tags`; they are
+matched against a runner's *own* tags, which may be set from the Runners page
+rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)).
+A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
 An owner alone sets how a project's work lands. `Landing`, `ChecksRequired` and
@@ -2526,6 +2529,8 @@ had already gone quiet past its terms and is taking it over — payload
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none), `claim_cleared`,
+`ordered` (a person ordered this runner, from the Runners page, to work this
+ticket — payload `{ runner, by }`),
 `verdict_recorded` (a [check](#check) session recorded its verdict - payload
 `{ verdict, playbookId }`, written on every call, a replace under the same claim
 included), `verdict_held` (the apply found a second consecutive fail and moved
@@ -7651,12 +7656,17 @@ already does — so a `hatch work` run, or an older CLI build, leaves whatever a
 loop already reported in place rather than blanking it. `go-to-work --once`
 shares the loop's own heartbeat and reports the same way, once.
 
-**It also says what it is tagged.** Every heartbeat that names any tags
-overwrites the row's tags whole, the same tri-state `Remotes` already
-uses — absent leaves the row exactly as it was, an empty list clears it. The
-Runners page draws them beside the repositories line, drawing nothing for a
-runner that has named none. `hatch work`'s own one-off heartbeat carries none
-of this, and an older CLI never sends it at all, so either leaves a
+**It also says what it is tagged, once.** The first heartbeat a name is ever
+seen under that names tags seeds the row with them; every heartbeat after that
+leaves them alone, an absent field and a sent one alike. The Runners page, or a
+`PATCH` on the row, is what moves them from here on. The answer carries the
+row's tags back, and the loop adopts them on its next beat — saying so once,
+`hatch: the board set --tag ...`, or `--tag off` for none — so the very next
+dispatch read carries the board's list rather than the one the process started
+with. An older Hatch answers with none, which the loop reads as "leave my own
+alone". The Runners page draws them beside the repositories line, drawing
+nothing for a runner that has none. `hatch work`'s own one-off heartbeat
+carries none of this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
 **What it is working is not stored.** A row's ticket and the line beside it are

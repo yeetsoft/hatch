@@ -984,6 +984,21 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool?>("Mine")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("OrderKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("OrderKind")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTimeOffset?>("OrderedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OrderedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Remotes")
                         .HasColumnType("text");
 

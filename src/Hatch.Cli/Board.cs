@@ -15,9 +15,10 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
 
     /// <summary>
     /// The tags this runner declares on every dispatch read, one <c>tag=</c> each;
-    /// none where it has none.
+    /// none where it has none - and it follows the board's own list once a
+    /// heartbeat answers with one.
     /// </summary>
-    public IReadOnlyList<string> Tags { get; } = tags ?? [];
+    public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
 
     /// <summary>
     /// This machine's offset from UTC in minutes, which is what the API wants in

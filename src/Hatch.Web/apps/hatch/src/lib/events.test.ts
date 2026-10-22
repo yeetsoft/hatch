@@ -157,6 +157,16 @@ describe('describe', () => {
   it('draws a resumed event as blank', () => {
     expect(describeEvent(event({ kind: 'resumed', payload: { from: true, to: false } }))).toBe('');
   });
+
+  it('names the runner and who ordered it, for an order placed from the Runners page', () => {
+    expect(
+      describeEvent(event({ kind: 'ordered', payload: { runner: 'here:/checkouts/one', by: 'Nathan' } })),
+    ).toBe('ordered here:/checkouts/one to work, by Nathan');
+  });
+
+  it('draws an ordered event with a malformed payload as blank', () => {
+    expect(describeEvent(event({ kind: 'ordered', payload: { runner: 'here:/checkouts/one' } }))).toBe('');
+  });
 });
 
 describe('short', () => {

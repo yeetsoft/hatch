@@ -1195,9 +1195,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// somebody set at midnight survives the loop's own half-hourly restart -
     /// and sending them each time is what makes the row show the truth from its
     /// first appearance without the runner having to know whether it is new.
-    /// The tags are, like <c>Remotes</c>, sent every time so the row follows the
-    /// config: an empty list is serialised as <c>"tags":[]</c>, which
-    /// overwrites, so a removed tag leaves the row on the next beat.
+    /// The tags are still sent every beat, but the server takes them only on a
+    /// row's first-ever beat; after that the row is the board's, the answer
+    /// carries it back, and <see cref="Fold"/> adopts it.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
@@ -1250,7 +1250,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// Wholesale, including the absences: the row was seeded from the flags
     /// this process started with, so a field that is empty on it is a field
     /// somebody cleared. Reading an absence as "leave the flag alone" would
-    /// make a cap impossible to take off from the page that set it.
+    /// make a cap impossible to take off from the page that set it. The tags
+    /// are the exception in one respect: a null list is an older Hatch that
+    /// does not answer with them, so it leaves the loop's own alone, where a
+    /// null bound means cleared.
     /// </remarks>
     private string? Fold(RunnerInstructionDto told, Tally tally, string? under)
     {
@@ -1266,6 +1269,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (told.MaxRuns != tally.MaxRuns) moved.Add($"--max-runs {told.MaxRuns?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
         if (told.MaxSpend != tally.MaxSpend) moved.Add($"--max-spend {told.MaxSpend?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
         if (told.UntilAt != tally.UntilAt) moved.Add($"--until {told.UntilAt?.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) ?? "off"}");
+        if (told.Tags is { } tags && !tags.SequenceEqual(runtime.Board.Tags))
+        {
+            moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
+            runtime.Board.Tags = tags;
+        }
 
         if (moved.Count > 0) runtime.Say.Line($"hatch: the board set {string.Join(", ", moved)}");
 
