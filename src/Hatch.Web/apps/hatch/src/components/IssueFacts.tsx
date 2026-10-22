@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { runnerTagsSentence } from '../lib/runnerTags';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
@@ -55,6 +56,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       <Field label="Pre-approval" as="div">
         {preApprovalFact(issue.preApproval, issue.preApprovalFrom)}
       </Field>
+
+      {issue.runnerTags.length > 0 && (
+        <Field label="Runner tags" as="div">
+          {runnerTagsSentence(issue.runnerTags)}
+        </Field>
+      )}
 
       {/* Not `expandable`: that draws the chip as a <button>, which is a
           second focusable press this card is not supposed to carry in read

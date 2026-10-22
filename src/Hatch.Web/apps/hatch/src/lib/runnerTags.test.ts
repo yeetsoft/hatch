@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { runnerTagsDraft, runnerTagsRequest, runnerTagsSentence } from './runnerTags';
+import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, runnerTagsSentence } from './runnerTags';
+import type { RunnerTagSource } from '../types';
 
 describe('runnerTagsDraft', () => {
   it('shows no tags as a blank box', () => {
@@ -40,5 +41,35 @@ describe('runnerTagsSentence', () => {
 
   it('reads three or more tags with commas and a final "and"', () => {
     expect(runnerTagsSentence(['macos', 'xcode', 'windows'])).toBe('Runners tagged macos, xcode and windows.');
+  });
+});
+
+describe('joinTags', () => {
+  it('joins zero tags as nothing', () => {
+    expect(joinTags([])).toBe('');
+  });
+
+  it('joins one tag with no join word', () => {
+    expect(joinTags(['macos'])).toBe('macos');
+  });
+
+  it('joins two tags with "and" and no comma', () => {
+    expect(joinTags(['macos', 'xcode'])).toBe('macos and xcode');
+  });
+
+  it('joins three or more tags with commas and a final "and"', () => {
+    expect(joinTags(['macos', 'xcode', 'windows'])).toBe('macos, xcode and windows');
+  });
+});
+
+describe('runnerTagsFromLabel', () => {
+  it('names a project source "the project"', () => {
+    const source: RunnerTagSource = { kind: 'project', key: 'AER', tags: ['macos'] };
+    expect(runnerTagsFromLabel(source)).toBe('the project');
+  });
+
+  it('names an issue source by its key', () => {
+    const source: RunnerTagSource = { kind: 'issue', key: 'AER-1', tags: ['macos'] };
+    expect(runnerTagsFromLabel(source)).toBe('AER-1');
   });
 });
