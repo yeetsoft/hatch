@@ -4161,17 +4161,22 @@ missing configuration:
    worked from the caller's standing checkout exactly as before; one bound to
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
-9. The union of the project's, its ancestors' and its own tags requires
-   [runner tags](#project) the caller's runner does not fully advertise — on
-   every move a session is spawned for out of the implementation column (the
-   leaf implementation and the parent verification alike), and on the review
-   self-move while it is conflict or build work. Never a hop, never the move
-   into the implementation column, and never a review row the verdict below
-   already folds. A caller that sends no `?tag=` has advertised none; a
-   superset of the union qualifies. *"AER-12 is implemented only by a runner
-   advertising macos and xcode - this runner advertises linux"* (*"...
-   advertises none"* when the caller sent no tags), kind `other`. Waits on
-   nobody.
+9. The union of the project's, its ancestors' and its own tags, folded in with
+   the column being left's own, requires [runner tags](#project) the caller's
+   runner does not fully advertise — on every move a session is spawned for:
+   out of the implementation column (the leaf implementation and the parent
+   verification alike), on the review self-move while it is conflict or build
+   work, and on every move out of a column carrying its own runner tags,
+   whichever column that is. Never a hop. The move into the implementation
+   column is itself exempt, same as ever, unless the column being left carries
+   tags of its own — a fact about that column, not about implementation. Never
+   a review row the verdict below already folds. A caller that sends no
+   `?tag=` has advertised none; a superset of the union qualifies. *"AER-12 is
+   implemented only by a runner advertising macos and xcode - this runner
+   advertises linux"* (*"... advertises none"* when the caller sent no tags),
+   kind `other`. Named by the column only when that column's own tags are part
+   of why it folded: *"AER-12 in Breakdown is worked only by a runner
+   advertising gpu - this runner advertises none"*. Waits on nobody.
 10. Something it [depends on](#dependency) is unfinished, and the move is into
     the column where the code gets written, or a parent pull (hop kind 4) out of
     a `ParentPulls` column. Only those moves: a pull request that already exists
@@ -6027,16 +6032,18 @@ which one it failed is what `work/queue` reports:
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-12. **The union of the project's, its ancestors' and its own tags requires no
-    runner tag the caller's runner lacks.** A caller that sends no `?tag=` has
-    advertised none, so it fails a union that requires any; a runner
-    advertising a superset of the union qualifies. Checked on every move a
-    session is spawned for out of the implementation column (the leaf
-    implementation and the parent verification
-    alike), and on the review self-move while it is conflict or build work —
-    never a hop, never the move into the implementation column, and never a
-    review row the verdict below already folds. Kind `other`, and it waits on
-    nobody. See [the dispatcher](#the-dispatcher) for the exact sentence.
+12. **The union of the project's, its ancestors' and its own tags, folded in
+    with the column being left's own, requires no runner tag the caller's
+    runner lacks.** A caller that sends no `?tag=` has advertised none, so it
+    fails a union that requires any; a runner advertising a superset of the
+    union qualifies. Checked on every move a session is spawned for: out of
+    the implementation column (the leaf implementation and the parent
+    verification alike), on the review self-move while it is conflict or build
+    work, and on every move out of a column carrying its own runner tags,
+    whichever column that is — never a hop, and never a review row the verdict
+    below already folds. Kind `other`, and it waits on nobody. See
+    [the dispatcher](#the-dispatcher) for the exact sentence, named with the
+    column when that column's own tags are part of why it folded.
 13. **Nothing it depends on is unfinished** — and only when the move is into the
    column where the code gets written. Everything left of that still moves; an
    edge is satisfied only once the issue it names is in a terminal column. See

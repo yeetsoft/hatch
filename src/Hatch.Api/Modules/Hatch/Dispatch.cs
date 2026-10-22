@@ -359,6 +359,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // still passes through.
             var whole = scope is not null || mine || repos.IsDeclared
                 || (tags.Judged && candidates.Any(i => tree.EffectiveRunnerTags(i.Id).All.Count > 0))
+                || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
@@ -595,31 +596,42 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <summary>
     /// Whether a session spawned for this move writes code, and so needs a
     /// runner advertising the union this issue requires: every session spawned
-    /// out of the implementation column, and the review self-move only while it
-    /// is conflict or build work. Not the move into implementation, a hop, or a
-    /// review row <see cref="ReviewWork"/> folds - nothing is spawned for them.
+    /// out of the implementation column, the review self-move only while it
+    /// is conflict or build work, or any move out of a column carrying its own
+    /// runner tags. Not the move into implementation or a hop - nothing is
+    /// spawned for either, and <paramref name="hop"/> already says so.
     /// </summary>
     private static bool TagGated(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
         IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
         !hop && (from.Id == implementation?.Id
-                 || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
+                 || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null)
+                 || RunnerTagColumn.Read(from.RunnerTags).Count > 0);
 
     /// <summary>
     /// Why this caller's runner is not the one for the issue: the union of the
-    /// project's, its ancestors' and its own tags requires tags the caller did
-    /// not declare. Null when the scan is <see cref="TagDeclaration.Unjudged"/>,
-    /// when the union is empty, or when every tag in it is declared.
+    /// project's, its ancestors', its own and <paramref name="from"/>'s own tags
+    /// requires tags the caller did not declare. Null when the scan is
+    /// <see cref="TagDeclaration.Unjudged"/>, when the union is empty, or when
+    /// every tag in it is declared. Names the column by name only when the
+    /// column's own tags are part of why it folded, so a column with none of
+    /// its own reads exactly as it did before this fold existed.
     /// </summary>
-    private static string? TagFold(EfHatchIssue issue, TagDeclaration tags, DependencyGate gate)
+    private static string? TagFold(EfHatchIssue issue, EfHatchStatus from, TagDeclaration tags, DependencyGate gate)
     {
         if (!tags.Judged) return null;
 
-        var required = gate.EffectiveRunnerTags(issue.Id).All;
+        var columnTags = RunnerTagColumn.Read(from.RunnerTags);
+        var required = columnTags.Count == 0
+            ? gate.EffectiveRunnerTags(issue.Id).All
+            : gate.EffectiveRunnerTags(issue.Id).All.Concat(columnTags).Distinct(StringComparer.Ordinal).ToList();
         if (required.Count == 0 || required.All(tags.Has.Contains)) return null;
 
-        return $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is implemented only by a runner advertising {Listed(required)}" +
-               $" - this runner advertises {(tags.Has.Count == 0 ? "none" : Listed(tags.Has))}";
+        var has = tags.Has.Count == 0 ? "none" : Listed(tags.Has);
+        var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+        return columnTags.Count > 0
+            ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
+            : $"{key} is implemented only by a runner advertising {Listed(required)} - this runner advertises {has}";
     }
 
     /// <summary>
@@ -1166,7 +1178,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         }
 
         if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
-            && TagFold(issue, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
+            && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id

@@ -426,6 +426,72 @@ public class DispatchTests
         Assert.Contains("is implemented only by a runner advertising", RowFor(judged, p).Blocked);
     }
 
+    // ---- Tags: a column's own required tags, beside the project/ancestor/own union ----
+
+    [Fact]
+    public async Task ScanAsync_TheMoveOutOfATaggedColumn_IsTagGated()
+    {
+        var h = await NewAsync();
+        await h.TagColumnAsync(h.Todo, "macos", "xcode");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        var row = RowFor(scan, issue);
+        Assert.Equal(
+            $"{key} in todo is worked only by a runner advertising macos and xcode - this runner advertises none",
+            row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHopOutOfATaggedColumn_IsNotTagGated()
+    {
+        var h = await NewAsync();
+        await h.TagColumnAsync(h.Todo, "gpu");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        var row = RowFor(scan, issue);
+        Assert.True(row.Hop);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ATagFoldedRowWithTheTagOnTheColumnItself_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.TagColumnAsync(h.Todo, "macos", "xcode");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Unjudged);
+        var judged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Of([]));
+
+        foreach (var scan in new[] { unjudged, judged })
+            foreach (var issue in new[] { p, c, x })
+                Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(judged, c).Blocked);
+        Assert.Contains("in todo is worked only by a runner advertising", RowFor(judged, c).Blocked);
+    }
+
     // ---- Tags: the union an ancestor and the issue's own add to the project's ----
 
     [Fact]
@@ -754,6 +820,14 @@ public class DispatchTests
         {
             var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
             status.ExpressSkips = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A column's own required tags, written straight to its row - see <see cref="RequireTagsAsync"/> for the project's.</summary>
+        public async Task TagColumnAsync(int statusId, params string[] tags)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.RunnerTags = RunnerTagColumn.Write(tags);
             await Db.SaveChangesAsync();
         }
 
