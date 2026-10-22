@@ -3576,6 +3576,12 @@ public record RunnerUsageWindowDto(
 /// The project keys this row is the elected driver for - <see cref="RunnerDto.Drives"/>,
 /// answered back on the same heartbeat that asked.
 /// </param>
+/// <param name="Tags">
+/// The row's tags as they stand, <see cref="RunnerDto.Tags"/> - seeded once
+/// from this runner's own first heartbeat and from then on only a <c>PATCH</c>
+/// moves them, so a later beat reads back what the board set rather than what
+/// it just said.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -3583,7 +3589,8 @@ public record RunnerInstructionDto(
     decimal? MaxSpend,
     DateTimeOffset? UntilAt,
     string? For = null,
-    IReadOnlyList<string>? Drives = null);
+    IReadOnlyList<string>? Drives = null,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -3598,12 +3605,19 @@ public record RunnerInstructionDto(
 /// </remarks>
 /// <param name="State">One of <c>running</c>, <c>paused</c>, <c>stopping</c>. Not clearable - a runner is always in one of the three.</param>
 /// <param name="UntilAt">An instant (<c>2026-09-12T17:00:00Z</c>), read by <c>IssueMoment</c> the way a ready date is.</param>
+/// <param name="Tags">
+/// Absent leaves the row's tags alone, an empty list clears the board, a
+/// list sets it - <see cref="RunnerTags.Normalise"/>'s rule. Unlike the
+/// heartbeat's own tags, this is the one write that reaches a row after its
+/// first beat has seeded it.
+/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
     string? MaxRuns = null,
     string? MaxSpend = null,
-    string? UntilAt = null);
+    string? UntilAt = null,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.

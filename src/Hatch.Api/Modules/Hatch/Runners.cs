@@ -123,7 +123,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// so it is handed in rather than read off <paramref name="runner"/>.
     /// </summary>
     public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null) =>
-        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives);
+        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
+            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is
