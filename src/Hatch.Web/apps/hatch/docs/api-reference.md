@@ -601,7 +601,7 @@ state rather than a stall.
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner heard from lately, most recent first |
+| GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend and until |
@@ -625,6 +625,18 @@ agent that could raise them through its own heartbeat could raise its own
 budget, which is the failure the bounds exist to prevent. There is no
 `DELETE`: a row ages out of `GET /runners` on its own once nothing has heard
 from it in a while.
+
+`GET /runners` answers with the rows the caller may see:
+
+| Caller | Sees |
+|---|---|
+| A person at a browser, or any caller on a Hatch with its wall off | Every runner |
+| A key whose owner is an admin | Every runner |
+| A key whose owner is anyone else | Only that owner's runners |
+| A key with no owner | Only the runners that belong to nobody |
+
+`/runners/names` is the same list whoever asks, and carries no `where`, owner
+or claim, which is why a new runner can read it to pick a free name.
 
 `/runner` and `/runner/download/{rid}` carry no scope at all, unlike every
 other Hatch-scoped read on this page - the audience is a person at a browser
