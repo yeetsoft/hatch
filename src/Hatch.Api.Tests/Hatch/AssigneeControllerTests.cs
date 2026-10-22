@@ -336,6 +336,23 @@ public class AssigneeControllerTests
         Assert.Null(Value(await h.Assignee.GetAssignees(default)).Me);
     }
 
+    /// <summary>
+    /// Nobody's own browser: not a key, no grant, and the wall off with
+    /// <c>LocalAsync</c> answering null (HA-1425). The directory offers no
+    /// press and the local person's id is not a stand-in for them.
+    /// </summary>
+    [Fact]
+    public async Task TheDirectory_GivesAnUnidentifiedBrowserNobody()
+    {
+        var h = await NewAsync();
+        h.Actors.AddPerson("Ada");
+
+        var directory = Value(await h.Assignee.GetAssignees(default));
+
+        Assert.Null(directory.Me);
+        Assert.DoesNotContain(directory.Assignees, a => a.Id == LocalCaller.PersonId);
+    }
+
     // ---- Local mode ----
 
     /// <summary>

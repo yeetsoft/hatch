@@ -88,7 +88,13 @@ public class OvernightController(
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
 
-        var personId = (await directory.PrincipalAsync(ct))!.Id;
+        if (await directory.PrincipalAsync(ct) is not { } principal)
+            return new ObjectResult("marking the night as seen needs somebody signed in")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+
+        var personId = principal.Id;
         var now = time.GetUtcNow();
 
         var row = await db.OvernightSeen.FirstOrDefaultAsync(s => s.PersonId == personId, ct);

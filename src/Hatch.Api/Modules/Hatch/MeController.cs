@@ -11,11 +11,13 @@ namespace Hatch.Api.Modules.Hatch;
 /// What Hatch calls whoever is at the browser, so the nav strip can say it back
 /// to them and know what they may see.
 ///
-/// Answers in both modes: <c>kind: person</c> when a grant holds a person (the
+/// Answers in three modes: <c>kind: person</c> when a grant holds a person (the
 /// wall is up, or a browser signed in anyway), <c>kind: local</c> when the wall
-/// is off and the machine's own person is speaking. <c>204 No Content</c> only
-/// for a key or a runner, which is not somebody at a keyboard - the strip this
-/// feeds is a browser's, and it should draw nothing rather than an empty box.
+/// is off and the machine's own person is speaking, <c>kind: none</c> when the
+/// wall is off and nobody local answered either - a browser that has not
+/// signed in anywhere. <c>204 No Content</c> only for a key or a runner, which
+/// is not somebody at a keyboard - the strip this feeds is a browser's, and it
+/// should draw nothing rather than an empty box.
 /// </summary>
 /// <remarks>
 /// A read of an identity and not a way to set one. Writing it is
@@ -41,7 +43,18 @@ public class MeController(
         if (await caller.PersonAsync(ct) is { } signedIn)
             return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true, false);
 
-        if (await caller.LocalAsync(ct) is not { Kind: ActorKind.Person } person) return NoContent();
+        var local = await caller.LocalAsync(ct);
+        if (local is not { Kind: ActorKind.Person } person)
+        {
+            // The wall is off and nobody local answered either - not a key,
+            // not a runner, not a grant, not even the machine's own person.
+            // The sign-in page still redeems an invite without the wall or
+            // Google configured, so this caller can always sign in.
+            if (!options.Value.Enabled && local is null)
+                return new MeDto("none", "", null, true, false, true);
+
+            return NoContent();
+        }
 
         // Asked of the two sources rather than inferred by comparing the name
         // to the default, so an operator who genuinely calls themselves
@@ -57,7 +70,11 @@ public class MeController(
 /// <summary>
 /// Who is at the browser, as the nav strip needs them.
 /// </summary>
-/// <param name="Kind"><c>local</c> (the wall is off) or <c>person</c> (a grant holds a person).</param>
+/// <param name="Kind">
+/// <c>local</c> (the wall is off and the machine's own person is speaking),
+/// <c>person</c> (a grant holds a person), or <c>none</c> (the wall is off and
+/// nobody local answered either).
+/// </param>
 /// <param name="Name">What events written from this browser will say.</param>
 /// <param name="Role"><c>user</c> or <c>admin</c> for a person; null for local, which has no role to gate on.</param>
 /// <param name="Configured">

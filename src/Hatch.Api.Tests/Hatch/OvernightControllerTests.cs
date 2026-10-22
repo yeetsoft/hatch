@@ -148,6 +148,25 @@ public class OvernightControllerTests
         Assert.Equal("marking the night as seen is the operator's, not an agent's", refused.Value);
     }
 
+    /// <summary>
+    /// The wall off, nobody local either (HA-1425): not a program, so
+    /// <see cref="OvernightController.PostSeen"/> gets past its own gate, and
+    /// then finds no principal to mark the night seen for. A 403, not a
+    /// null-reference throw.
+    /// </summary>
+    [Fact]
+    public async Task PostSeen_WithNoPrincipalAtAll_IsRefused_NotThrown()
+    {
+        var h = await NewAsync();
+        h.Actors.Principal = null;
+
+        var refused = Assert.IsType<ObjectResult>(await h.Controller.PostSeen(CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal("marking the night as seen needs somebody signed in", refused.Value);
+        Assert.Empty(await h.Db.OvernightSeen.ToListAsync());
+    }
+
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
@@ -173,6 +192,7 @@ public class OvernightControllerTests
             Db = db,
             Controller = new OvernightController(db, caller, actors, time),
             Caller = caller,
+            Actors = actors,
             Time = time,
             ProjectId = project.Id,
             InProgress = inProgress.Id,
@@ -211,6 +231,7 @@ public class OvernightControllerTests
         public required HatchContext Db { get; init; }
         public required OvernightController Controller { get; init; }
         public required StubCaller Caller { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required int InProgress { get; init; }

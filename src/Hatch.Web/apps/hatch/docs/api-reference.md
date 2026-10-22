@@ -671,8 +671,10 @@ is up - a credential that crosses a network Hatch does not own is a
 different question from one handed to a container on the same laptop.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn)`
-- `kind: person` with the wall up, `kind: local` with it off, and `204` for
-a key or a keyless runner, which is not somebody at a keyboard.
+- `kind: person` when a grant holds a person, `kind: local` with the wall off
+and the machine's own person speaking, `kind: none` with the wall off and
+nobody local either (an unidentified browser, still able to sign in), and
+`204` for a key or a keyless runner, which is not somebody at a keyboard.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a
