@@ -201,7 +201,7 @@ The key stays out of the artifact: never a tracked file, a commit, a plan, an
 issue or a paste. `scripts/.env` is git-ignored for that reason, and the
 `hatch_ak_` prefix exists so that one which does leak is recognisable on
 sight. The per-user file sits outside every repository. The
-[CLAUDE.md block](the-claudemd-block) tells an agent the same.
+[agent block](the-claudemd-block) tells an agent the same.
 
 ## Reading the board, spending nothing
 
