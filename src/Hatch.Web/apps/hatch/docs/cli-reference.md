@@ -86,7 +86,10 @@ header instead. Never put it in a repository, either way.
 - `--tag <tag>` sets the tags this runner advertises
   ([the runner](the-runner#what-a-runner-advertises)). It is repeatable, bare
   `--tag` clears them, a tag that breaks the rule is refused with the rule's
-  sentence and nothing is written, and it needs no checkout.
+  sentence and nothing is written, and it needs no checkout. Once this
+  checkout's runner has a row, `--tag` seeds nothing further: the row's tags are
+  the board's, and the loop follows them
+  ([the runner](the-runner#what-a-runner-advertises)).
 - `--workspace <dir>` names the directory where the runner clones what the
   board binds and it has no checkout of. `--workspace off` never clones.
 
