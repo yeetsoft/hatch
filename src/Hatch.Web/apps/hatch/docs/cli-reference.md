@@ -386,7 +386,9 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 - The body is sent exactly as typed, so quote it for your shell.
 - A 2xx prints the body untouched, so it pipes to `jq`. A non-2xx exits 1 and
   prints the refusal, since here the refusal is the answer someone asked for.
-  A 403 means the key is working and the route is not one a key may take.
+  A 403 prints the API's own reason - a role-gate code, or a plain sentence -
+  except `key_not_accepted` and `scope_mismatch`, where it means the key is
+  working and the route is not one a key may take.
 
 What a call writes is whatever the route does, and the actor is the key's name
 as always. [`api-reference`](api-reference) has the routes.
@@ -521,15 +523,25 @@ own in prose; this table is the whole binary's.
 ## When a call fails
 
 A refused call is one line on standard error, starting `hatch: `, and exits
-`1` ([above](#exit-codes)). Five of the refusals have a sentence of their own:
+`1` ([above](#exit-codes)). A handful of the refusals have a sentence of
+their own:
 
 ```
 hatch: could not reach <origin> - <detail>
 hatch: 401 - no key was sent and this Hatch has its wall on. Run `hatch config`.
 hatch: 401 - the key was not accepted. Minted, not revoked, copied whole?
 hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).
+hatch: 403 - no key was sent, and this route is refused anyway (CLAUDE.md).
 hatch: 404 - no such issue or route: <path>
 ```
+
+A `403` prints the API's own reason where it has one - a role-gate code such
+as `hatch: 403 - not_admin`, or a plain sentence such as `hatch: 403 - only an
+owner or approver of AER may move work into "approved"`. The fixed sentence
+above is kept for the two codes that really are a scope refusal,
+`key_not_accepted` and `scope_mismatch`, where it replaces the code outright,
+and for a `403` with an empty body, where there is no reason in the answer to
+print - worded by whether a key was sent at all.
 
 The first has a second shape once a retry happened: `hatch: could not reach
 <origin> for <n>s - <detail>`. A call Hatch has not answered is tried again
@@ -543,8 +555,8 @@ slowly is a different case. Every call gives up after two minutes, whatever
 
 The two `401`s tell apart a key that was sent and refused from no key sent at
 all to a Hatch that wants one: the first sends you to check the key, the second
-to `hatch config`. A `403` means the key works and the route is not one a key
-may take, which is the gate and not a fault. [401 and
+to `hatch config`. A `403` is the gate and not a fault - it names its own
+cause, which is the API's own reason rather than always a scope. [401 and
 403](people-roles-and-keys#401-and-403) has both from the other side, and
 [People, roles and keys](people-roles-and-keys) has what a key's scopes reach.
 Anything else is `hatch: <code> - <body>`, with the body's own sentence where

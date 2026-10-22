@@ -392,7 +392,7 @@ public sealed class HatchClient : IDisposable
         }
     }
 
-    /// <summary>The four refusals worth their own sentence, and everything else.</summary>
+    /// <summary>The handful of refusals worth their own sentence, and everything else.</summary>
     internal string Refusal(Answer answer, string path) => answer.Status switch
     {
         // Retried until the window ran out is a different sentence from
@@ -408,8 +408,21 @@ public sealed class HatchClient : IDisposable
             "hatch: 401 - no key was sent and this Hatch has its wall on. Run `hatch config`.",
         HttpStatusCode.Unauthorized =>
             "hatch: 401 - the key was not accepted. Minted, not revoked, copied whole?",
-        HttpStatusCode.Forbidden =>
+        // An empty body carries no reason to print, so it falls back to the
+        // fixed sentence - worded by whether a key was even sent, the same
+        // split as the two Unauthorized arms above. A body with a reason -
+        // a role-gate code or a plain sentence - prints that reason instead,
+        // except the two role-gate codes that are a scope refusal in
+        // disguise, where the fixed hint replaces the code outright rather
+        // than sitting beside it.
+        HttpStatusCode.Forbidden when answer.Body.Trim().Length == 0 && Keyed =>
             "hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).",
+        HttpStatusCode.Forbidden when answer.Body.Trim().Length == 0 =>
+            "hatch: 403 - no key was sent, and this route is refused anyway (CLAUDE.md).",
+        HttpStatusCode.Forbidden when Sentence(answer.Body) is "key_not_accepted" or "scope_mismatch" =>
+            "hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).",
+        HttpStatusCode.Forbidden =>
+            $"hatch: 403 - {Sentence(answer.Body)}",
         HttpStatusCode.NotFound => $"hatch: 404 - no such issue or route: {path}",
         var code => $"hatch: {(int)code!} - {Sentence(answer.Body)}",
     };
