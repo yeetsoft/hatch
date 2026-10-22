@@ -87,8 +87,9 @@ docker compose up -d</code></pre>
         </p>
         <p>
           <code>hatch go-to-work</code> asks the board for the next increment, prepares a clean checkout, and spends
-          one headless Claude Code session on it — the ticket as the brief, a playbook as the instructions. Hatch
-          watches the session's Claude usage, so a night's work stops before your plan's budget does.
+          one headless session of the coding agent you chose (Claude Code, Codex, Grok Build or an Ollama model)
+          on it — the ticket as the brief, a playbook as the instructions. When the agent is Claude, Hatch reads the
+          account's remaining usage, so a night's work stops before your plan's budget does.
         </p>
         <p>
           The work lands in your repository on your forge — branches, pull requests, build checks and merges —
@@ -96,12 +97,12 @@ docker compose up -d</code></pre>
           anywhere Docker runs, under your own domain, with Google sign-in when you put the wall up; there is no
           account to make and no service in the middle.
         </p>
-        <!-- The moving parts: you, the board, the runner, a Claude Code session and your repository
+        <!-- The moving parts: you, the board, the runner, an agent session and your repository
              on the forge, drawn twice as inline SVG (narrow below 64rem, wide from it). -->
         <figure class="site-figure" data-diagram="moving-parts">
           <svg class="site-diagram-narrow" role="img" aria-labelledby="moving-parts-narrow-title moving-parts-narrow-desc" viewBox="0 0 326 530" width="326" height="530">
             <title id="moving-parts-narrow-title">The moving parts</title>
-            <desc id="moving-parts-narrow-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to a Claude Code session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
+            <desc id="moving-parts-narrow-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to an agent session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
             <g>
               <rect class="site-diagram-node" x="88" y="20" width="150" height="56" rx="8"/>
               <text class="site-diagram-text" text-anchor="middle" x="163" y="52">you</text>
@@ -116,7 +117,7 @@ docker compose up -d</code></pre>
             </g>
             <g>
               <rect class="site-diagram-node" x="88" y="344" width="150" height="56" rx="8"/>
-              <text class="site-diagram-text" text-anchor="middle" x="163" y="369">a Claude Code</text>
+              <text class="site-diagram-text" text-anchor="middle" x="163" y="369">an agent</text>
               <text class="site-diagram-text" text-anchor="middle" x="163" y="383">session</text>
             </g>
             <g>
@@ -145,7 +146,7 @@ docker compose up -d</code></pre>
           </svg>
           <svg class="site-diagram-wide" role="img" aria-labelledby="moving-parts-wide-title moving-parts-wide-desc" viewBox="0 0 870 260" width="870" height="260">
             <title id="moving-parts-wide-title">The moving parts</title>
-            <desc id="moving-parts-wide-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to a Claude Code session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
+            <desc id="moving-parts-wide-desc">You file a ticket on the board. The board dispatches it to the runner, which hands one increment to an agent session. The session opens a pull request on your repository on the forge; you review it, then merge it, or approve it and let the board's merge train merge it.</desc>
             <g>
               <rect class="site-diagram-node" x="20" y="20" width="140" height="56" rx="8"/>
               <text class="site-diagram-text" text-anchor="middle" x="90" y="52">you</text>
@@ -160,7 +161,7 @@ docker compose up -d</code></pre>
             </g>
             <g>
               <rect class="site-diagram-node" x="710" y="20" width="140" height="56" rx="8"/>
-              <text class="site-diagram-text" text-anchor="middle" x="780" y="45">a Claude Code</text>
+              <text class="site-diagram-text" text-anchor="middle" x="780" y="45">an agent</text>
               <text class="site-diagram-text" text-anchor="middle" x="780" y="59">session</text>
             </g>
             <g>
