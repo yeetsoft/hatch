@@ -109,7 +109,7 @@ public sealed class LoopLock : IDisposable
         return true;
     }
 
-    private static int? ReadPid(string dir)
+    internal static int? ReadPid(string dir)
     {
         try
         {
@@ -125,7 +125,7 @@ public sealed class LoopLock : IDisposable
     /// Whether that pid is still there. Asking for the process rather than
     /// signalling it, which is what <c>kill -0</c> was doing.
     /// </summary>
-    private static bool StillRunning(int pid)
+    internal static bool StillRunning(int pid)
     {
         try
         {
