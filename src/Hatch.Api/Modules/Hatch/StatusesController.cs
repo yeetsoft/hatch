@@ -18,13 +18,14 @@ namespace Hatch.Api.Modules.Hatch;
 /// than tightening it. Decorating every action explicitly is what keeps
 /// <see cref="PutExpressSkips"/>, <see cref="PutParentPulls"/> and
 /// <see cref="PutAgentFiles"/>, <see cref="PutImplementation"/>,
-/// <see cref="PutProtected"/> and <see cref="PutMergesPullRequest"/> closed to a
+/// <see cref="PutProtected"/>, <see cref="PutMergesPullRequest"/> and
+/// <see cref="PutRunnerTags"/> closed to a
 /// key whatever else is added beside it - each decides which gates the loop may pass unattended, the same kind
 /// of power <see cref="PutRepositories"/> guards over there.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
-public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
 {
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
@@ -320,6 +321,40 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
             status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+    }
+
+    /// <summary>
+    /// Replaces a column's own <see cref="StatusDto.RunnerTags"/> whole - the
+    /// runner tags a column requires on top of whatever an issue or its
+    /// project already names, refused to a program the same way
+    /// <see cref="PutProtected"/> and <see cref="PutMergesPullRequest"/> are.
+    /// No owner check unlike <see cref="ProjectsController.PutRunnerTags"/> -
+    /// a column has no owner, only the operator <see cref="NotAPerson"/>
+    /// already refuses this to.
+    /// </summary>
+    [HttpPut("{id:int}/runner-tags")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<StatusDto>> PutRunnerTags(int id, StatusRunnerTagsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (status is null) return NotFound();
+        if (request.Tags is null) return BadRequest("tags is required - send [] to clear");
+
+        var tagError = RunnerTags.Normalise(request.Tags, out var normalised);
+        if (tagError is not null) return BadRequest(tagError);
+
+        var current = RunnerTagColumn.Read(status.RunnerTags);
+        if (!current.SequenceEqual(normalised))
+        {
+            status.RunnerTags = RunnerTagColumn.Write(normalised);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Column {ColumnName} runner tags set to {RunnerTags} by {Actor}", status.Name, string.Join(",", normalised), await caller.ActorNameAsync(ct));
+        }
+
+        return new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
+            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
+            status.IsProtected, status.MergesPullRequest, normalised);
     }
 
     /// <summary>

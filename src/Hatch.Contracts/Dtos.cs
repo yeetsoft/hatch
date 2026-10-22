@@ -258,6 +258,13 @@ public record ProtectedRequest(bool On);
 /// </summary>
 public record MergesPullRequestRequest(bool On);
 
+/// <summary>
+/// Replaces a column's own <see cref="StatusDto.RunnerTags"/> whole - the
+/// same shape <see cref="ProjectRunnerTagsWriteRequest"/> is, for the same
+/// reason: a <c>PUT</c> that only ever sets the entire list.
+/// </summary>
+public record StatusRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
+
 // ---- Issues ----
 
 /// <summary>

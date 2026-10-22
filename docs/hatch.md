@@ -578,7 +578,7 @@ exists to prevent.
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
 `IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `IsImplementation`,
-`IsProtected`, `MergesPullRequest`, `Color` (`#rrggbb`).
+`IsProtected`, `MergesPullRequest`, `RunnerTags`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -716,6 +716,21 @@ person, through its own route
 (`PUT /api/hatch/statuses/{id}/merges-pull-request`), for the same reason
 `IsProtected` is: it decides whose code merges unattended, and that is a
 playbook's kind of power. Neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it.
+
+`RunnerTags` is a column's own runner tags, written through its own route,
+`PUT /api/hatch/statuses/{id}/runner-tags`, refused to a program the same
+way `IsProtected` and `MergesPullRequest` are - `NotAPerson` checked in the
+action, with no owner check beside it, since a column has no owner the way
+a project does. The list is replaced whole, run through
+`RunnerTags.Normalise` in `Hatch.Contracts` first - trimmed, folded to lower
+case and deduplicated, at most 8 tags, each at most 32 characters with no
+space or comma inside - the same rule a [project](#project)'s own list
+answers to. A tag that breaks it, a blank one included, or a list over 8 is
+refused `400`; a null body is refused `400` too, rather than read as "leave
+it alone", since this route only ever replaces the whole list. Re-sending
+the list the column already holds, the same tags in the same order, writes
+nothing, and an empty list clears it. Neither `POST /api/hatch/statuses` nor
 `PATCH /api/hatch/statuses/{id}` can set it.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
