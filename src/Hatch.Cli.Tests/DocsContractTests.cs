@@ -1,7 +1,7 @@
 namespace Hatch.Cli.Tests;
 
 /// <summary>
-/// The block a friend pastes into their own repository's <c>CLAUDE.md</c> tells
+/// The block a friend pastes into their own repository's <c>CLAUDE.md</c> or <c>AGENTS.md</c> tells
 /// their sessions which commands to type. Nothing else keeps it honest: the doc
 /// is prose in another directory, and a renamed verb would leave it saying the
 /// old name until somebody's overnight run failed on it.

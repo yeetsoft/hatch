@@ -184,4 +184,4 @@ its board is in [the runner](the-runner).
 - [The wall, off, on and required](the-wall-off-on-and-required), for signing in and running this somewhere more than one person reaches.
 - [Letting the loop merge for you](letting-the-loop-merge-for-you), for what has to be true before an approved pull request merges with nobody watching.
 - [Hatch on your phone](hatch-on-your-phone), for installing it as an app, and what it can and cannot do there.
-- [The CLAUDE.md block](the-claudemd-block), for the block to paste into this repository's own `CLAUDE.md` so an agent can reach the board.
+- [The agent block](the-claudemd-block), for the block to paste into this repository's own `CLAUDE.md` or `AGENTS.md` so an agent can reach the board.
