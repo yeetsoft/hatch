@@ -984,7 +984,7 @@ public class ProjectsControllerTests
 
         Assert.Equal(7, written.ReflectionCadenceDays);
         Assert.Null(written.ReflectionLastPeriodStart);
-        Assert.Equal(Now.AddDays(7), written.ReflectionNextDueAt);
+        Assert.Equal(Now, written.ReflectionNextDueAt);
     }
 
     [Fact]
@@ -1074,7 +1074,7 @@ public class ProjectsControllerTests
         var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
 
         Assert.Equal(7, read.ReflectionCadenceDays);
-        Assert.Equal(Now.AddDays(7), read.ReflectionNextDueAt);
+        Assert.Equal(Now, read.ReflectionNextDueAt);
     }
 
     // ---- Runner tags ----
