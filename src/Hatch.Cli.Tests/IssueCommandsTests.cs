@@ -440,6 +440,99 @@ public sealed class IssueCommandsTests
         Assert.Contains("status:   3", h.Said);
     }
 
+    [Fact]
+    public async Task Brief_prints_the_header_alone_with_no_fetch_of_the_comments()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[] { Fixtures.Comment("a note") });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
+
+        Assert.Equal(
+            """
+            AER-12  [task]  A ticket
+            status:   In Progress
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+    }
+
+    [Fact]
+    public async Task Brief_with_no_comments_stubbed_prints_the_same_header_and_stops_there()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
+
+        Assert.Equal(
+            """
+            AER-12  [task]  A ticket
+            status:   In Progress
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Brief_before_the_key_is_the_same_as_brief_after_it()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        var before = new CliHarness();
+        before.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        before.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default);
+        await new IssueCommands(before.Cli).ShowAsync(["--brief", "AER-12"], default);
+
+        Assert.Equal(h.Said, before.Said);
+        before.Dispose();
+    }
+
+    [Fact]
+    public async Task Brief_on_a_ticket_with_nothing_else_prints_exactly_two_lines()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default);
+
+        Assert.Equal(
+            """
+            AER-12  [task]  A ticket
+            status:   In Progress
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Show_with_an_unknown_flag_is_refused_and_nothing_is_fetched()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--verbose"], default));
+
+        Assert.Contains("show takes one issue key, and optionally --brief", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task Show_with_a_second_key_is_refused_and_nothing_is_fetched()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "AER-13"], default));
+
+        Assert.Contains("show takes one issue key, and optionally --brief", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
     // ---- comments ----
 
     [Fact]
