@@ -44,11 +44,10 @@ every variable.
 | `go-to-work` | Yes | Yes |
 | `do-my-work` | Yes | Yes |
 
-The order is the order the binary knows them in. `hatch --help` prints the same
-list with one exception: it does not print `landed`, so do not take it as the
-complete one. Two more commands exist and are left off the table because nobody
+The order is the order the binary knows them in, and `hatch --help` prints the
+same list. Two more commands exist and are left off the table because nobody
 types them: one is called by the container runner's entrypoint, and one by a
-session's hooks.
+session's hooks. They are in `--help`, in their own groups.
 
 Only `work`, `go-to-work` and `do-my-work` need a checkout, or a workspace to
 clone into. Everything else is one request and a sentence about the answer, so
