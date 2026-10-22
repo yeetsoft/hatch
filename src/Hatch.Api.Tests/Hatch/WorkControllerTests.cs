@@ -2518,6 +2518,19 @@ public class WorkControllerTests
         Assert.Contains(work.Statuses!, s => s.Id == h.InProgress && s.Name == "in progress");
     }
 
+    [Fact]
+    public async Task Work_CarriesAColumnsOwnRunnerTags()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "parent", h.Todo);
+        (await h.Db.Statuses.SingleAsync(s => s.Id == h.InProgress)).RunnerTags = RunnerTagColumn.Write(["macos", "xcode"]);
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal(["macos", "xcode"], work.Statuses!.Single(s => s.Id == h.InProgress).RunnerTags);
+    }
+
     // ---- The scan ----
     //
     // What a whole pass would do, rather than what its first step is. These

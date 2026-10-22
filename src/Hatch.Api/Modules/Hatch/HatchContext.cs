@@ -84,6 +84,14 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // migrated row carries.
         issue.Property(i => i.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
 
+        modelBuilder.Entity<EfHatchStatus>(e =>
+        {
+            // Mirrors EfHatchProject.RunnerTags' own default below, for the same
+            // reason: EnsureCreated must leave the same empty-array default a
+            // migrated row carries.
+            e.Property(s => s.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
+        });
+
         // Comments and events, on the other hand, have no meaning without their
         // issue - and this is the accepted MVP gap written down in the plan: a
         // deleted issue takes its audit trail with it.

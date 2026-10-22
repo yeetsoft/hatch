@@ -215,6 +215,32 @@ public class StatusesControllerTests
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
+    // ---- RunnerTags ----
+
+    [Fact]
+    public async Task ANewColumn_ReadsRunnerTagsAsEmpty()
+    {
+        var h = await NewAsync();
+        await h.SeedAsync();
+
+        var statuses = Value(await h.Statuses.GetStatuses(default));
+
+        Assert.Empty(Assert.Single(statuses).RunnerTags);
+    }
+
+    [Fact]
+    public async Task AColumnsStoredRunnerTags_AreReadBack()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        status.RunnerTags = RunnerTagColumn.Write(["macos", "xcode"]);
+        await h.Db.SaveChangesAsync();
+
+        var statuses = Value(await h.Statuses.GetStatuses(default));
+
+        Assert.Equal(["macos", "xcode"], Assert.Single(statuses).RunnerTags);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
