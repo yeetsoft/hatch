@@ -1,50 +1,38 @@
-import { escapeHtml } from "./vite-plugin-site";
+import { escapeHtml } from './vite-plugin-site'
 
 export interface Frame {
-  title: string;
-  description: string;
-  main: string;
+  title: string
+  description: string
+  main: string
   /** The `../` prefix from the page's directory to `packages/ui/src/assets/`. */
-  up: string;
+  up: string
   /** Whether the page carries at least one mermaid fence - draws the one extra
       script that renders them. Omitted by `renderLanding`, which is never
       fenced. */
-  mermaid?: boolean;
+  mermaid?: boolean
   /** Whether the page carries a docs sidebar - inserts the script that builds
       the search field into it (HA-1280). Set by `renderPage` and
       `renderLanding`, both of which emit a sidebar; left unset by
       `contentHtml`'s pages, which emit none. */
-  search?: boolean;
+  search?: boolean
   /** The page's own absolute address, carried as its canonical link and
       `og:url` when set (HA-1330); unset with no origin to build one under. */
-  canonical?: string;
+  canonical?: string
 }
 
 /** The document every page shares - head, header, skip link, footer - so the
     footer's `<!--site:repository-->` block cannot drift between pages. `title`
     and `description` are escaped here; `main` is trusted markup. */
-export function renderFrame({
-  title,
-  description,
-  main,
-  up,
-  mermaid,
-  search,
-  canonical,
-}: Frame): string {
-  const safeTitle = escapeHtml(title);
-  const safeDescription = escapeHtml(description);
-  const icon = `${up}packages/ui/src/assets/hatch-logo.svg`;
-  const diagramsScript = mermaid
-    ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>'
-    : "";
-  const searchScript = search
-    ? '\n    <script type="module" src="/src/docsSearchField.ts"></script>'
-    : "";
+export function renderFrame({ title, description, main, up, mermaid, search, canonical }: Frame): string {
+  const safeTitle = escapeHtml(title)
+  const safeDescription = escapeHtml(description)
+  const icon = `${up}packages/ui/src/assets/hatch-logo.svg`
+  const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
+  const searchScript = search ? '\n    <script type="module" src="/src/docsSearchField.ts"></script>' : ''
   const canonicalTags =
     canonical === undefined
-      ? ""
-      : `\n    <link rel="canonical" href="${escapeHtml(canonical)}" />\n    <meta property="og:url" content="${escapeHtml(canonical)}" />`;
+      ? ''
+      : `\n    <link rel="canonical" href="${escapeHtml(canonical)}" />\n    <meta property="og:url" content="${escapeHtml(canonical)}" />`
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -54,7 +42,7 @@ export function renderFrame({
     <meta name="description" content="${safeDescription}" />
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeDescription}" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content="website" />${canonicalTags}
     <link rel="icon" type="image/svg+xml" href="${icon}" />
     <link rel="stylesheet" href="/src/site.css" />
     <script type="module" src="/src/theme.ts"></script>${diagramsScript}${searchScript}
@@ -81,5 +69,5 @@ ${main}
     </footer>
   </body>
 </html>
-`;
+`
 }
