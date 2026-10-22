@@ -17,6 +17,7 @@ const status = (opts: Partial<Status> = {}): Status => ({
   isImplementation: false,
   isProtected: false,
   mergesPullRequest: false,
+  runnerTags: [],
   color: '#6b7280',
   ...opts,
 });
