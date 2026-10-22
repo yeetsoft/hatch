@@ -196,7 +196,7 @@ describe('the moving parts', () => {
     expect(svgs).toHaveLength(2)
   })
 
-  const NODES = ['you', 'the board', 'the runner', 'a Claude Code session', 'your repository on the forge']
+  const NODES = ['you', 'the board', 'the runner', 'an agent session', 'your repository on the forge']
   const EDGES = ['ticket', 'dispatch', 'increment', 'pull request', 'review', 'merge']
 
   it.each(svgs.map((svg) => [attr(openingTagOf(svg), 'class') ?? '', svg] as const))(
