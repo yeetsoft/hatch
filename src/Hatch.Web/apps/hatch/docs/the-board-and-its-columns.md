@@ -132,7 +132,9 @@ failing build — see the dispatcher's tag fold (`docs/hatch.md`, "The
 dispatcher") for the exact rule. A column with none set changes nothing; one
 with tags of its own gates every move out of it for a runner that does not
 advertise them all, and names the column by name in the sentence it folds
-with.
+with. Set it in the **Runner tags** column on the Statuses screen, one tag per
+line, saved the moment you leave the box; a refusal shows under the box
+rather than at the top of the page.
 
 ## Example: an Approved column
 

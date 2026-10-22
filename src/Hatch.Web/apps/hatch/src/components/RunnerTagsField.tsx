@@ -4,20 +4,22 @@ import { Field } from '@hatch/ui';
 export function RunnerTagsField({
   label,
   hint,
+  error,
   value,
   onChange,
   disabled = false,
   busy = false,
 }: {
-  label: string;
-  hint: ReactNode;
+  label: ReactNode;
+  hint?: ReactNode;
+  error?: ReactNode;
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
   busy?: boolean;
 }) {
   return (
-    <Field label={label} hint={hint} as="div">
+    <Field label={label} hint={hint} error={error} as="div">
       <textarea
         rows={2}
         className="hatch-grows"
