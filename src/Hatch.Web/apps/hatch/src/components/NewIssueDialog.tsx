@@ -10,9 +10,20 @@ import { IssuePicker } from './IssuePicker';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MomentField } from './MomentField';
 import { OnePrSteps, type OnePrSetting } from './OnePrControl';
+import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
+import { PriorityControl, type Priority } from './PriorityControl';
 import { ProjectChooser } from './ProjectChooser';
 import { ISSUE_TYPES } from '../types';
-import type { Issue, IssueCard, IssueType, Project } from '../types';
+import type { AssigneeDirectory, Issue, IssueCard, IssueType, Project } from '../types';
+
+/** What a filing sends for a level the dialog carries with a default: the
+    level itself when it was touched, nothing when it was left at the
+    default - the server refuses the field's raw presence from a key, even
+    the default, so an untouched dialog must send exactly what it always
+    has. */
+export function omitDefault<T>(level: T, defaultLevel: T): T | undefined {
+  return level === defaultLevel ? undefined : level;
+}
 
 /**
  * Filing an issue: a project, a type, the parent it hangs under, a title, and somewhere to
@@ -25,6 +36,7 @@ export function NewIssueDialog({
   projects,
   candidates,
   defaultProjectKey,
+  directory,
   onClose,
   onCreated,
 }: {
@@ -36,12 +48,18 @@ export function NewIssueDialog({
   /** The board's current project filter, `''` when unfiltered - tried before
       the remembered project. */
   defaultProjectKey: string;
+  /** Everybody who could own an issue, and who the caller is - handed
+      straight to `PriorityControl` and `PreApprovalControl`, the same as
+      the issue page and the peek already do. */
+  directory: AssigneeDirectory | null;
   onClose: () => void;
   onCreated: (created: Issue) => void;
 }) {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [type, setType] = useState<IssueType>('task');
   const [onePr, setOnePr] = useState<OnePrSetting>('inherit');
+  const [priority, setPriority] = useState<Priority>('normal');
+  const [preApproval, setPreApproval] = useState<PreApproval>('none');
   const [parentKey, setParentKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -60,6 +78,12 @@ export function NewIssueDialog({
   const parents = projectKey ? parentCandidates(candidates, projectKey, type) : [];
   const parent = parentKey && parents.some((c) => c.key === parentKey) ? parentKey : null;
   const keyPreview = projectKey ? `${projectKey}-…` : null;
+  const canApprove = projects.find((p) => p.id === chosen)?.canApprove ?? false;
+  // Clamped on the way out like `parent` is: a stored preapproved that the
+  // chosen project's approver may not set would otherwise be refused by the
+  // server once File it is pressed, rather than kept locked here as it was
+  // while the band was open.
+  const clampedPreApproval: PreApproval = !canApprove && preApproval === 'preapproved' ? 'none' : preApproval;
 
   function handleClose() {
     setProjectId(null);
@@ -83,6 +107,8 @@ export function NewIssueDialog({
         readyAt,
         dueAt,
         onePr: onePrToFile(type, onePr),
+        priority: omitDefault(priority, 'normal'),
+        preApproval: omitDefault(clampedPreApproval, 'none'),
       });
       // Only here, on the way out of the success path: a filing the server
       // refused goes to the catch below and raises nothing, and the dialog goes
@@ -92,6 +118,8 @@ export function NewIssueDialog({
       setProjectId(null);
       setParentKey(null);
       setOnePr('inherit');
+      setPriority('normal');
+      setPreApproval('none');
       setTitle('');
       setDescription('');
       setReadyAt('');
@@ -180,6 +208,31 @@ export function NewIssueDialog({
               onChange={setReadyAt}
             />
             <MomentField label="Due" value={dueAt} onChange={setDueAt} />
+
+            <Field label="Priority" as="div">
+              <PriorityControl
+                issueKey=""
+                priority={priority}
+                priorityOwn={priority}
+                priorityFrom={null}
+                directory={directory}
+                busy={saving}
+                onChange={setPriority}
+              />
+            </Field>
+
+            <Field label="Pre-approval" as="div">
+              <PreApprovalControl
+                issueKey=""
+                preApproval={clampedPreApproval}
+                preApprovalOwn={clampedPreApproval}
+                preApprovalFrom={null}
+                directory={directory}
+                canApprove={canApprove}
+                busy={saving}
+                onChange={setPreApproval}
+              />
+            </Field>
 
             {error && <p className="text-danger">{error}</p>}
           </>

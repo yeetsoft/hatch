@@ -956,6 +956,11 @@ export interface IssueCreateRequest {
   dueAt?: string | null;
   /** A story only; left out for any other type, which the server refuses it on. */
   onePr?: 'on' | 'off' | 'inherit' | null;
+  /** Left out for Normal - the server refuses the field's raw presence from a
+      key, even Normal, so an untouched dialog must send nothing here. */
+  priority?: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' | null;
+  /** Left out for None, the same reason `priority` is left out for Normal. */
+  preApproval?: 'none' | 'express' | 'preapproved' | null;
 }
 
 /** Null leaves a field alone. An empty `parentKey`, `readyAt`, `dueAt` or
