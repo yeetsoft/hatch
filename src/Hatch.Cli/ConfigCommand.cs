@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -129,26 +131,92 @@ public sealed record ConfigCommand(
             return await new Board(client).RunnersAsync(ct);
         };
 
+    /// <summary>
+    /// Whether <c>scripts/.env</c> is ignored by this checkout's own git - the
+    /// one check <c>--here</c> makes before it ever writes there, so a file
+    /// that is not ignored is never one <c>git add</c> could pick up by
+    /// accident. Replaced by a test, which has no git to ask.
+    /// </summary>
+    public Func<string, bool> CheckoutIgnoresEnv { get; init; } = DefaultCheckoutIgnoresEnv;
+
+    private static bool DefaultCheckoutIgnoresEnv(string root)
+    {
+        try
+        {
+            var start = new ProcessStartInfo
+            {
+                FileName = "git",
+                WorkingDirectory = root,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            start.ArgumentList.Add("check-ignore");
+            start.ArgumentList.Add("-q");
+            start.ArgumentList.Add(Path.Combine("scripts", ".env"));
+
+            using var proc = Process.Start(start);
+            if (proc is null) return false;
+
+            proc.WaitForExit();
+            return proc.ExitCode == 0;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException)
+        {
+            return false;
+        }
+    }
+
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
+        // Anywhere in the argument list, and stripped before anything below
+        // ever sees it - so `--here --tag x` and `--tag x --here` both leave
+        // the same `args` for the dispatch that follows.
+        var here = args.Contains("--here");
+        if (here) args = [.. args.Where(a => a != "--here")];
+
         if (Usage.Wanted(args)) return Usage.Print(Say, ConfigUsage);
+
+        if (here && args is ["--show"])
+            return Usage.Refuse(Say, "config --show takes no --here", ConfigUsage);
+
+        if (here && args.Length > 0 && args[0] == "--runner")
+        {
+            Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --here");
+            return 1;
+        }
+
+        if (here && Root is null)
+        {
+            Say.Complain("hatch: --here writes this checkout's scripts/.env - run it inside one");
+            return 1;
+        }
+
+        if (here && !CheckoutIgnoresEnv(Root!))
+        {
+            Say.Complain(
+                $"hatch: {CheckoutEnvFile} is not ignored by this checkout's git - add .env to " +
+                ".gitignore before --here can write it");
+            return 1;
+        }
+
         if (args is ["--show"]) return Show();
 
         // Before the refusal below, and the one mode that asks nothing: it is
         // what the Runner page prints for a machine being set up, where the
         // origin is already known and typing it back in by hand is the step
         // that gets it wrong.
-        if (args is ["--origin", var given]) return await OriginAsync(given, ct);
+        if (args is ["--origin", var given]) return await OriginAsync(given, here, ct);
 
-        if (args is ["--key", var givenKey]) return await KeyAsync(givenKey, ct);
+        if (args is ["--key", var givenKey]) return await KeyAsync(givenKey, here, ct);
 
         if (args.Length > 0 && args[0] == "--runner") return await RunnerAsync(args, ct);
 
-        if (args.Length > 0 && args[0] == "--repo") return Repo(args);
+        if (args.Length > 0 && args[0] == "--repo") return Repo(args, here);
 
-        if (args.Length > 0 && args[0] == "--workspace") return Workspace(args);
+        if (args.Length > 0 && args[0] == "--workspace") return Workspace(args, here);
 
-        if (args.Length > 0 && args[0] == "--tag") return Tag(args);
+        if (args.Length > 0 && args[0] == "--tag") return Tag(args, here);
 
         if (args.Length > 0)
             return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
@@ -160,25 +228,38 @@ public sealed record ConfigCommand(
         }
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
 
         // Whatever is loaded already is the default, so changing one setting is
-        // not an excuse to retype the other.
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var key = fold("HATCH_KEY").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var repos = fold("HATCH_REPOS").Value ?? "";
-        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = fold("HATCH_TAGS").Value ?? "";
+        // not an excuse to retype the other. Under --here the bracket still
+        // shows what is actually active (fold), but Enter alone keeps only
+        // what this checkout's own file already carries - never a value
+        // leaked in from an export or the per-user file.
+        var originShown = fold("HATCH_BASE").Value ?? "";
+        var origin = here ? Carry("HATCH_BASE") : originShown;
+        var keyShown = fold("HATCH_KEY").Value ?? "";
+        var key = here ? Carry("HATCH_KEY") : keyShown;
+        var claudeBinShown = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var claudeBin = here ? Carry("HATCH_CLAUDE_BIN") : claudeBinShown;
+        var codexBinShown = fold("HATCH_CODEX_BIN").Value ?? "";
+        var codexBin = here ? Carry("HATCH_CODEX_BIN") : codexBinShown;
+        var grokBinShown = fold("HATCH_GROK_BIN").Value ?? "";
+        var grokBin = here ? Carry("HATCH_GROK_BIN") : grokBinShown;
+        var ollamaHostShown = fold("HATCH_OLLAMA_HOST").Value ?? "";
+        var ollamaHost = here ? Carry("HATCH_OLLAMA_HOST") : ollamaHostShown;
+        var ollamaTiers = here ? Carry("HATCH_OLLAMA_TIERS") : fold("HATCH_OLLAMA_TIERS").Value ?? "";
+        var agentShown = fold("HATCH_AGENT").Value ?? "";
+        var agent = here ? Carry("HATCH_AGENT") : agentShown;
+        var repos = here ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
+        var workspace = here ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = here ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
 
-        Say.Line($"Writing {ConfigPath}. Enter keeps what is shown in brackets.");
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+        Say.Line($"Writing {target}. Enter keeps what is shown in brackets.");
         Say.Line("");
 
-        In.Prompt($"Hatch origin [{(origin.Length > 0 ? origin : "https://hatch.<your domain>")}]: ");
+        In.Prompt($"Hatch origin [{(originShown.Length > 0 ? originShown : "https://hatch.<your domain>")}]: ");
         if (In.Line() is { Length: > 0 } typedOrigin) origin = typedOrigin;
 
         if (origin.Length == 0)
@@ -191,7 +272,7 @@ public sealed record ConfigCommand(
 
         // Read without echo: this is the one value on the screen that a
         // screenshot, a shoulder or a scrollback should not be able to keep.
-        In.Prompt($"API key [{(key.Length > 0 ? Mask(key) : "hatch_ak_...")}]: ");
+        In.Prompt($"API key [{(keyShown.Length > 0 ? Mask(keyShown) : "hatch_ak_...")}]: ");
         if (In.Secret() is { Length: > 0 } typedKey) key = typedKey;
 
         if (key.Length == 0)
@@ -201,7 +282,7 @@ public sealed record ConfigCommand(
         else if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        In.Prompt($"agent ({string.Join(", ", Settings.KnownAgentIds)}), for `work` [{(agent.Length > 0 ? agent : "claude")}]: ");
+        In.Prompt($"agent ({string.Join(", ", Settings.KnownAgentIds)}), for `work` [{(agentShown.Length > 0 ? agentShown : "claude")}]: ");
         if (In.Line() is { Length: > 0 } typedAgent) agent = typedAgent;
 
         // Only the binary the chosen agent needs: asking for all of them every
@@ -210,22 +291,22 @@ public sealed record ConfigCommand(
         switch (agent.Length > 0 ? agent : "claude")
         {
             case "codex":
-                In.Prompt($"codex CLI path, for `work` [{(codexBin.Length > 0 ? codexBin : "on PATH")}]: ");
+                In.Prompt($"codex CLI path, for `work` [{(codexBinShown.Length > 0 ? codexBinShown : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedCodexBin) codexBin = typedCodexBin;
                 break;
             case "ollama":
-                In.Prompt($"codex CLI path, for `work` [{(codexBin.Length > 0 ? codexBin : "on PATH")}]: ");
+                In.Prompt($"codex CLI path, for `work` [{(codexBinShown.Length > 0 ? codexBinShown : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedOllamaCodexBin) codexBin = typedOllamaCodexBin;
 
-                In.Prompt($"Ollama host [{(ollamaHost.Length > 0 ? ollamaHost : OllamaHost.Default.Url)}]: ");
+                In.Prompt($"Ollama host [{(ollamaHostShown.Length > 0 ? ollamaHostShown : OllamaHost.Default.Url)}]: ");
                 if (In.Line() is { Length: > 0 } typedOllamaHost) ollamaHost = typedOllamaHost;
                 break;
             case "grok":
-                In.Prompt($"grok CLI path, for `work` [{(grokBin.Length > 0 ? grokBin : "on PATH")}]: ");
+                In.Prompt($"grok CLI path, for `work` [{(grokBinShown.Length > 0 ? grokBinShown : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedGrokBin) grokBin = typedGrokBin;
                 break;
             default:
-                In.Prompt($"claude CLI path, for `work` [{(claudeBin.Length > 0 ? claudeBin : "on PATH")}]: ");
+                In.Prompt($"claude CLI path, for `work` [{(claudeBinShown.Length > 0 ? claudeBinShown : "on PATH")}]: ");
                 if (In.Line() is { Length: > 0 } typedBin) claudeBin = typedBin;
                 break;
         }
@@ -259,7 +340,10 @@ public sealed record ConfigCommand(
             }
         }
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        Write(
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "");
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
@@ -275,7 +359,7 @@ public sealed record ConfigCommand(
         if (agent.Length > 0) Environment["HATCH_AGENT"] = agent;
 
         Say.Line("");
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
 
         return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
     }
@@ -299,7 +383,7 @@ public sealed record ConfigCommand(
     /// <para>Same refusals and same success sentence as the interactive path,
     /// because they are the same two helpers.</para>
     /// </remarks>
-    private async Task<int> OriginAsync(string origin, CancellationToken ct)
+    private async Task<int> OriginAsync(string origin, bool here, CancellationToken ct)
     {
         origin = origin.Trim();
 
@@ -312,29 +396,44 @@ public sealed record ConfigCommand(
         if (!HasScheme(origin)) return NoScheme(origin);
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var key = fold("HATCH_KEY").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var repos = fold("HATCH_REPOS").Value ?? "";
-        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = fold("HATCH_TAGS").Value ?? "";
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        // The key is a field this call does not touch - carried forward as
+        // this checkout's own line under --here, never one leaked in from an
+        // export or the per-user file.
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var repos = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+        var tags = Field("HATCH_TAGS");
+
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+        Write(
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "--origin");
 
         Environment["HATCH_BASE"] = origin;
 
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
 
-        if (key.Length == 0)
+        // What a real subsequent load resolves the key to - not just this
+        // checkout's own line, so a key already set at the user layer is not
+        // reported missing just because --here carries nothing of its own.
+        var keyForProbe = fold("HATCH_KEY").Value ?? "";
+        if (keyForProbe.Length == 0)
             Say.Complain(
                 $"hatch: no key - calls will name themselves \"{RunnerName}\", " +
                 "which only a Hatch with its wall off reads.");
 
-        return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+        return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = keyForProbe }, ct);
     }
 
     /// <summary>
@@ -348,7 +447,7 @@ public sealed record ConfigCommand(
     /// key is refused rather than written - blanking a credential is what the
     /// interactive prompt is for, where it is deliberate.
     /// </remarks>
-    private async Task<int> KeyAsync(string key, CancellationToken ct)
+    private async Task<int> KeyAsync(string key, bool here, CancellationToken ct)
     {
         key = key.Trim();
 
@@ -359,33 +458,45 @@ public sealed record ConfigCommand(
         }
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var repos = fold("HATCH_REPOS").Value ?? "";
-        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = fold("HATCH_TAGS").Value ?? "";
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
 
-        if (origin.Length == 0)
+        // What a real subsequent load resolves the origin to - checked and
+        // proved against this, even under --here, where the checkout's own
+        // file may carry none of its own and fall through to the user layer.
+        var originForProbe = fold("HATCH_BASE").Value ?? "";
+        if (originForProbe.Length == 0)
         {
             Say.Complain("hatch: no origin is set yet - run `hatch config --origin <origin>` first");
             return 1;
         }
 
+        var origin = Field("HATCH_BASE");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var repos = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+        var tags = Field("HATCH_TAGS");
+
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        Write(origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+        Write(
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "--key");
 
         Environment["HATCH_KEY"] = key;
 
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
 
-        return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+        return await ProveAsync(new Settings { Base = originForProbe.TrimEnd('/'), Key = key }, ct);
     }
 
     /// <summary>
@@ -483,7 +594,7 @@ public sealed record ConfigCommand(
     /// is no <see cref="ProveAsync"/> call here, and no requirement that an
     /// origin already be set.
     /// </remarks>
-    private int Repo(string[] args)
+    private int Repo(string[] args, bool here)
     {
         var paths = new List<string>();
 
@@ -514,16 +625,20 @@ public sealed record ConfigCommand(
         }
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var key = fold("HATCH_KEY").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = fold("HATCH_TAGS").Value ?? "";
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var workspace = Field("HATCH_WORKSPACE");
+        var tags = Field("HATCH_TAGS");
 
         // The reverse of the check `--workspace` makes: a checkout named here
         // that sits inside the workspace already configured is the same two
@@ -535,11 +650,15 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+        Write(
+            origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "--repo");
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
 
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
         return 0;
     }
 
@@ -555,32 +674,41 @@ public sealed record ConfigCommand(
     /// directory set, not one that can also be taken off from the command
     /// line.
     /// </remarks>
-    private int Workspace(string[] args)
+    private int Workspace(string[] args, bool here)
     {
         if (args is not ["--workspace", var dir])
             return Usage.Refuse(Say, "config --workspace takes one directory", ConfigUsage);
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var key = fold("HATCH_KEY").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var reposRaw = fold("HATCH_REPOS").Value ?? "";
-        var tags = fold("HATCH_TAGS").Value ?? "";
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var reposRaw = Field("HATCH_REPOS");
+        var tags = Field("HATCH_TAGS");
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
 
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+
         if (Settings.IsWorkspaceOff(dir))
         {
             // A word and not a directory: nothing to overlap and nothing to make.
-            Write(origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+            Write(
+                origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
+                ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+                path: here ? CheckoutEnvFile : null, here: here, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
-            Say.Line($"wrote {ConfigPath}");
+            Say.Line($"wrote {target}");
             return 0;
         }
 
@@ -597,11 +725,14 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags, ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        Write(
+            origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "--workspace");
 
         Environment["HATCH_WORKSPACE"] = dir;
 
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
         return 0;
     }
 
@@ -616,7 +747,7 @@ public sealed record ConfigCommand(
     /// needs no origin and makes no call - there is nothing here a board could
     /// refuse.
     /// </remarks>
-    private int Tag(string[] args)
+    private int Tag(string[] args, bool here)
     {
         var values = new List<string>();
 
@@ -645,22 +776,30 @@ public sealed record ConfigCommand(
         }
 
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var key = fold("HATCH_KEY").Value ?? "";
-        var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var codexBin = fold("HATCH_CODEX_BIN").Value ?? "";
-        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
-        var ollamaHost = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaTiers = fold("HATCH_OLLAMA_TIERS").Value ?? "";
-        var agent = fold("HATCH_AGENT").Value ?? "";
-        var reposRaw = fold("HATCH_REPOS").Value ?? "";
-        var workspace = fold("HATCH_WORKSPACE").Value ?? "";
+        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
+        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
 
-        Write(origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags), ollamaHost: ollamaHost, ollamaTiers: ollamaTiers);
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var reposRaw = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+
+        var target = here ? CheckoutEnvFile! : ConfigPath;
+        Write(
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            path: here ? CheckoutEnvFile : null, here: here, mode: "--tag");
 
         Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
 
-        Say.Line($"wrote {ConfigPath}");
+        Say.Line($"wrote {target}");
         return 0;
     }
 
@@ -705,7 +844,9 @@ public sealed record ConfigCommand(
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");
-        Say.Line($"checkout:         {CheckoutEnvFile ?? "<not in one>"}");
+        Say.Line(CheckoutEnvFile is { Length: > 0 } checkoutEnvFile
+            ? $"checkout:         {checkoutEnvFile}  (written by --here)"
+            : "checkout:         <not in one>");
 
         var runnerFold = fold("HATCH_RUNNER");
         if (runnerFold.Value is { Length: > 0 } explicitRunner)
@@ -813,28 +954,39 @@ public sealed record ConfigCommand(
     /// </remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
-        string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "")
+        string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
+        string? path = null, bool here = false, string mode = "")
     {
-        var directory = Path.GetDirectoryName(ConfigPath);
+        var target = path ?? ConfigPath;
+        var directory = Path.GetDirectoryName(target);
         if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
 
-        var temp = $"{ConfigPath}.{System.Environment.ProcessId}";
+        var temp = $"{target}.{System.Environment.ProcessId}";
 
-        var lines = new List<string>
-        {
-            "# Hatch's settings, written by `hatch config`.",
-            "#",
-            "# Mode 600, and outside every repository. The key does not belong in a",
-            "# commit, a plan, an issue or a paste - Hatch ships to other operators, and",
-            "# the hatch_ak_ prefix exists so that one which slips into a diff is",
-            "# recognisable on sight. Re-run `config` to change any of this.",
-            "",
-            $"HATCH_BASE={origin}",
+        var lines = here
+            ? new List<string>
+              {
+                  $"# This checkout's own overrides, written by `hatch config --here{(mode.Length > 0 ? " " + mode : "")}`.",
+                  "# Read at higher precedence than the per-user file `hatch config` writes.",
+                  "",
+              }
+            : new List<string>
+              {
+                  "# Hatch's settings, written by `hatch config`.",
+                  "#",
+                  "# Mode 600, and outside every repository. The key does not belong in a",
+                  "# commit, a plan, an issue or a paste - Hatch ships to other operators, and",
+                  "# the hatch_ak_ prefix exists so that one which slips into a diff is",
+                  "# recognisable on sight. Re-run `config` to change any of this.",
+                  "",
+              };
 
-            // Written even when empty, so the file records that the omission was
-            // deliberate rather than looking like a half-finished config.
-            $"HATCH_KEY={key}",
-        };
+        // Written even when empty for the per-user file, so it records that the
+        // omission was deliberate rather than looking like a half-finished
+        // config - but never for --here, which would otherwise leak an empty
+        // override on top of a real value the per-user file still carries.
+        if (!here || origin.Length > 0) lines.Add($"HATCH_BASE={origin}");
+        if (!here || key.Length > 0) lines.Add($"HATCH_KEY={key}");
 
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
         if (codexBin.Length > 0) lines.Add($"HATCH_CODEX_BIN={codexBin}");
@@ -850,7 +1002,7 @@ public sealed record ConfigCommand(
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
 
-        File.Move(temp, ConfigPath, overwrite: true);
+        File.Move(temp, target, overwrite: true);
     }
 
     /// <summary>Enough of a key to recognise which one it is, and not enough to use.</summary>
