@@ -2738,8 +2738,10 @@ closed to a person below the role it asks for. And a key is never an
 *administrator* — `RoleOutcome.Key` is its own outcome, and it means "this
 program reaches what its scopes name", not "this program is the operator".
 
-If a request comes back `403`, the key is working and the route is not one a key
-may take.
+If a request comes back `403` for `key_not_accepted` or `scope_mismatch`, the
+key is working and the route is not one a key may take. Any other `403` names
+its own cause instead - a different role-gate code, or a plain sentence about
+who may make the change.
 
 ### The one edge that is deliberately cut
 
