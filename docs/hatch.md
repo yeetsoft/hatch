@@ -7626,6 +7626,17 @@ owner and claim stay behind the listing's scope.
 not reported one - but carries no uniqueness check, since two runners sharing
 an agent id is not a conflict.
 
+**Who sees which runners.** `GET /api/hatch/runners` filters its rows by the
+caller. A person at a browser, and every caller on a Hatch with its wall off,
+read every runner; a key whose owner is an admin does too; a key whose owner
+is anyone else reads only that owner's runners; and a key with no owner reads
+only the runners that belong to nobody. `/runners/names` is unchanged - the
+same live names whoever asks. With the wall on, no key exists until an admin
+has minted one, so "the wall is on" stands for "an admin has claimed this
+Hatch". `Dispatch`, `DriversAsync`, `HeldAsync` and the attention read are
+unscoped on purpose: they read the `Runners` table, not the route, and the
+filter is on the route only.
+
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,
 canonicalised the same way a project's own bindings are (`RemoteIdentity`) —
