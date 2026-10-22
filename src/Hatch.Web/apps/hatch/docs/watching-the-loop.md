@@ -23,11 +23,13 @@ stops. Each row has:
   <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
   answering reads `Gone` whatever it was last asked to do. Silence is ninety
   seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
-  zero or less is not believed, and ninety stands.
+  zero or less is not believed, and ninety stands. The key in `Working <KEY>`
+  is a link to the ticket.
 - **Last said** - the last line it reported.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
-  than showing four empty caps.
+  than showing four empty caps. The `under` epic, where set, is a link to its
+  ticket too.
 
 There is no cost column here - spend lives on the **Leaderboard**. Own-tickets-only
 and the repositories a runner serves show on the row too, but neither is a

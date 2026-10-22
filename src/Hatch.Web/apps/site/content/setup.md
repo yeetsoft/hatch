@@ -4,9 +4,9 @@ summary: A guide a coding agent on your own machine follows to install what Hatc
 ---
 
 This page is written for Claude to read, not for you. You do not have to
-follow it yourself. Open Claude Code on the machine you want Hatch on, paste
-the line below into it, and put the address of this page in place of the
-angle brackets:
+follow it yourself. Open Claude Code on the machine you want Hatch on and
+paste the line below into it. If it still shows angle brackets, put the
+address of this page in place of them first:
 
 ```
 Set me up with Hatch: <the address of this page>

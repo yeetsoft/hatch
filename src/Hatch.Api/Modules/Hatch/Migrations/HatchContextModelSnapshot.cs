@@ -308,6 +308,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("ReleaseNote")
                         .HasColumnType("text");
 
+                    b.Property<string>("RunnerTags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
@@ -803,6 +809,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<long?>("ReflectNowIssueId")
+                        .HasColumnType("bigint");
+
                     b.Property<int?>("ReflectionCadenceDays")
                         .HasColumnType("integer");
 
@@ -831,6 +840,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("Key")
                         .IsUnique();
+
+                    b.HasIndex("ReflectNowIssueId");
 
                     b.ToTable("Projects", "hatch");
                 });
@@ -1486,6 +1497,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .WithMany()
                         .HasForeignKey("AutoHealBugStatusId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "ReflectNowIssue")
+                        .WithMany()
+                        .HasForeignKey("ReflectNowIssueId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ReflectNowIssue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectLogo", b =>

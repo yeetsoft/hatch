@@ -11,11 +11,12 @@ public class ReflectionCadenceTests
     private static readonly DateTimeOffset Now = new(2026, 10, 21, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void NeverReflected_IsDueFromNow()
+    public void NeverReflected_IsDueNow()
     {
         var due = ReflectionCadence.NextDue(7, null, Now);
 
-        Assert.Equal(Now.AddDays(7), due);
+        Assert.Equal(Now, due);
+        Assert.True(ReflectionCadence.IsDue(7, null, Now));
     }
 
     [Fact]

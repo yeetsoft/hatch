@@ -984,7 +984,7 @@ public class ProjectsControllerTests
 
         Assert.Equal(7, written.ReflectionCadenceDays);
         Assert.Null(written.ReflectionLastPeriodStart);
-        Assert.Equal(Now.AddDays(7), written.ReflectionNextDueAt);
+        Assert.Equal(Now, written.ReflectionNextDueAt);
     }
 
     [Fact]
@@ -1074,7 +1074,160 @@ public class ProjectsControllerTests
         var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
 
         Assert.Equal(7, read.ReflectionCadenceDays);
-        Assert.Equal(Now.AddDays(7), read.ReflectionNextDueAt);
+        Assert.Equal(Now, read.ReflectionNextDueAt);
+    }
+
+    // ---- Reflect now ----
+
+    [Fact]
+    public async Task AnOwnersPress_FilesOneReflectionWithA30DayWindowByDefault()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var (todo, _) = await AddPlaybookRowsAsync(h, created.Id, 1);
+
+        var filed = Value(await h.Projects.PostReflect(created.Id, default));
+
+        Assert.Equal("reflection", filed.Type);
+        Assert.Equal(todo.Id, filed.StatusId);
+        Assert.Contains(Now.AddDays(-30).ToString("yyyy-MM-dd"), filed.Description);
+        Assert.Contains(Now.ToString("yyyy-MM-dd"), filed.Description);
+        IssueKey.TryParse(filed.Key, out var projectKey, out var number);
+        var filedId = (await h.Db.Issues.WithKey(projectKey, number).SingleAsync()).Id;
+        Assert.Equal(filedId, (await h.Db.Projects.FindAsync(created.Id))!.ReflectNowIssueId);
+    }
+
+    [Fact]
+    public async Task ACadenceOf7_FilesA7DayWindow()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        await h.Projects.PutReflection(created.Id, new ProjectReflectionWriteRequest(7), default);
+
+        var filed = Value(await h.Projects.PostReflect(created.Id, default));
+
+        Assert.Contains(Now.AddDays(-7).ToString("yyyy-MM-dd"), filed.Description);
+    }
+
+    [Fact]
+    public async Task ASecondPressWhileItStands_ReturnsTheSameIssueAndFilesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+
+        var first = Value(await h.Projects.PostReflect(created.Id, default));
+        var second = Value(await h.Projects.PostReflect(created.Id, default));
+
+        Assert.Equal(first.Key, second.Key);
+        Assert.Equal(1, await h.Db.Issues.CountAsync(i => i.ProjectId == created.Id && i.Type == "reflection"));
+    }
+
+    [Fact]
+    public async Task OnceThatIssueIsTerminal_APressFilesASecondDifferentOne()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        var first = Value(await h.Projects.PostReflect(created.Id, default));
+
+        var done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
+        h.Db.Add(done);
+        await h.Db.SaveChangesAsync();
+        IssueKey.TryParse(first.Key, out var projectKey, out var number);
+        var firstIssue = await h.Db.Issues.WithKey(projectKey, number).SingleAsync();
+        firstIssue.StatusId = done.Id;
+        await h.Db.SaveChangesAsync();
+
+        var second = Value(await h.Projects.PostReflect(created.Id, default));
+
+        Assert.NotEqual(first.Key, second.Key);
+        Assert.Equal(2, await h.Db.Issues.CountAsync(i => i.ProjectId == created.Id && i.Type == "reflection"));
+    }
+
+    [Fact]
+    public async Task NoCoveringPlaybookRow_Is400NamingThePlaybooksPageAndFilesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PostReflect(created.Id, default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("has no reflection playbook row", reason);
+        Assert.Contains("Playbooks page", reason);
+        Assert.Equal(0, await h.Db.Issues.CountAsync(i => i.ProjectId == created.Id));
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPostReflectNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PostReflect(created.Id, default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.Equal(0, await h.Db.Issues.CountAsync(i => i.ProjectId == created.Id));
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPostReflect()
+    {
+        var h = await NewAsync(program: true);
+        await AddPlaybookRowsAsync(h, h.ProjectId, 1);
+
+        var result = await h.Projects.PostReflect(h.ProjectId, default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task AnUnknownProject_Is404OnPostReflect()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PostReflect(h.ProjectId + 999, default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AnIssueTheJobFiled_DoesNotSatisfyAPress()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var (todo, _) = await AddPlaybookRowsAsync(h, created.Id, 1);
+        var project = (await h.Db.Projects.FindAsync(created.Id))!;
+
+        // Simulating the job: filed directly, never through ReflectNowIssueId.
+        h.Db.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = created.Id,
+            Number = project.NextIssueNumber++,
+            Type = "reflection",
+            Title = "Reflection: job-filed",
+            Description = "",
+            StatusId = todo.Id,
+            Rank = 1024,
+            CreatedBy = ReflectionCadenceJob.Actor,
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var filed = Value(await h.Projects.PostReflect(created.Id, default));
+
+        Assert.Equal(2, await h.Db.Issues.CountAsync(i => i.ProjectId == created.Id && i.Type == "reflection"));
+        var afterPress = (await h.Db.Projects.FindAsync(created.Id))!;
+        IssueKey.TryParse(filed.Key, out var projectKey, out var number);
+        var filedIssue = await h.Db.Issues.WithKey(projectKey, number).SingleAsync();
+        Assert.Equal(filedIssue.Id, afterPress.ReflectNowIssueId);
     }
 
     // ---- Runner tags ----
@@ -1160,7 +1313,7 @@ public class ProjectsControllerTests
         var h = await NewAsync();
         var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
         await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default);
-        // The same tags, spaced the way WriteRunnerTags never writes them: a rewrite
+        // The same tags, spaced the way RunnerTagColumn.Write never writes them: a rewrite
         // would replace this string, a no-op leaves it.
         const string Sentinel = "[\"gpu\", \"windows\"]";
         (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags = Sentinel;
@@ -1198,7 +1351,7 @@ public class ProjectsControllerTests
         Assert.Equal(["gpu"], patched.RunnerTags);
     }
 
-    private static async Task AddPlaybookRowsAsync(Harness h, int projectId, int count)
+    private static async Task<(EfHatchStatus Todo, EfHatchStatus Doing)> AddPlaybookRowsAsync(Harness h, int projectId, int count)
     {
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
         var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
@@ -1223,6 +1376,7 @@ public class ProjectsControllerTests
         }
 
         await h.Db.SaveChangesAsync();
+        return (todo, doing);
     }
 
     // ---- Auto-heal ----
@@ -1589,9 +1743,11 @@ public class ProjectsControllerTests
             actors.Me = nathan;
         }
 
+        var ranks = new RankService(db);
+
         return new Harness
         {
-            Projects = new ProjectsController(db, time, caller, actors, new ProjectAccess(db, actors), NullLogger<ProjectsController>.Instance)
+            Projects = new ProjectsController(db, time, caller, actors, new ProjectAccess(db, actors), NullLogger<ProjectsController>.Instance, ranks, TestClaims.With())
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             },

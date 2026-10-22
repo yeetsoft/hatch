@@ -47,12 +47,21 @@ Four variables, none of which a dev checkout sets, shape the build:
 - `base_path` — the site's base path, e.g. `/hatch`. Everything the build
   emits is rooted under it.
 - `base_url` — the canonical origin. Adds a `<link rel="canonical">` and an
-  `og:url` meta tag pointing at it.
+  `og:url` meta tag to every page, each pointing at that page's own address.
 - `GITHUB_SERVER_URL` and `GITHUB_REPOSITORY` — together, the link to the
   source repository in the footer and the clone URL on the home page.
 
 With none of them set, the build writes no canonical URL, no repository
 link, and a base path of `/`.
+
+### A custom domain
+
+Moving the site from the project-site address to a custom domain is a
+setting in the repository's Pages settings plus records at the DNS host —
+never a file in this tree, and a workflow-published site needs no `CNAME`
+file. `actions/configure-pages` then reports `base_url` as the domain and
+`base_path` empty, which `siteEnv` already turns into a base of `/`, so the
+build needs no change of its own.
 
 ## Not plumbed into Hatch.Api
 

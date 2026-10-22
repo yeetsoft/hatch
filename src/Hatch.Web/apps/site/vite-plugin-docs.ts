@@ -162,6 +162,7 @@ function renderPage(
   base: string,
   sections: readonly LandingSection[],
   neighbours: { previous: DocsPage | null; next: DocsPage | null },
+  canonical?: string,
 ): string {
   const outline = renderOutline(rendered.outline)
   const outlined = outline === '' ? '' : ' site-docs--outlined'
@@ -172,6 +173,7 @@ function renderPage(
     up: '../../../../',
     mermaid: rendered.mermaidCount > 0,
     search: true,
+    canonical: canonical === undefined ? undefined : `${canonical}docs/${page.slug}/`,
     main: `      <h1>${escapeHtml(page.title)}</h1>
       <div class="site-docs${outlined}">
 ${renderSidebar(base, sections, page.slug)}${outline === '' ? '' : `
@@ -193,7 +195,12 @@ const LANDING_DESCRIPTION =
     site has no changelog, so there is no such entry here. Each section's id is
     `slugger(section)` - the rule the app gives its headings - so the home page's
     cards, which name those ids, are never tabled twice. */
-export function renderLanding(base: string, sections: readonly LandingSection[], slugger: (text: string) => string): string {
+export function renderLanding(
+  base: string,
+  sections: readonly LandingSection[],
+  slugger: (text: string) => string,
+  canonical?: string,
+): string {
   const blocks = sections.map(({ section, pages }) => {
     const id = escapeHtml(slugger(section))
     const items = pages
@@ -216,6 +223,7 @@ ${items}
     description: LANDING_DESCRIPTION,
     up: '../../../',
     search: true,
+    canonical: canonical === undefined ? undefined : `${canonical}docs/`,
     main: `      <h1>Docs</h1>
       <div class="site-docs">
 ${renderSidebar(base, sections)}
@@ -289,10 +297,13 @@ export function docsHtml(canonical: string | undefined): Plugin {
         }
         const id = resolve(__dirname, `docs/${page.slug}/index.html`)
         const neighbours = module.docNeighbours(module.DOC_PAGES, page.slug)
-        pages.set(id, renderPage(page, module.renderDocs(page.body, resolveHref), resolvedConfig.base, sections, neighbours))
+        pages.set(
+          id,
+          renderPage(page, module.renderDocs(page.body, resolveHref), resolvedConfig.base, sections, neighbours, canonical),
+        )
       }
 
-      pages.set(LANDING_ID, renderLanding(resolvedConfig.base, sections, module.createSlugger()))
+      pages.set(LANDING_ID, renderLanding(resolvedConfig.base, sections, module.createSlugger(), canonical))
 
       checkDocsLinks(broken)
     },

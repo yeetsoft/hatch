@@ -168,6 +168,14 @@ public class EfHatchProject
     public DateTimeOffset? ReflectionLastPeriodStart { get; set; }
 
     /// <summary>
+    /// The reflection this project's reflect-now press last filed, or null when
+    /// none is standing - HA-931. A scheduled reflection never sets this; only
+    /// a press does.
+    /// </summary>
+    public long? ReflectNowIssueId { get; set; }
+    public EfHatchIssue? ReflectNowIssue { get; set; }
+
+    /// <summary>
     /// Whether this project's playbooks are sourced from its repository rather
     /// than written on the board. Off by default, so a project nobody has
     /// touched this setting on keeps filing exactly as it always has. Written
@@ -203,16 +211,6 @@ public class EfHatchProject
     /// calls). Written only by <see cref="ProjectsController.PutRunnerTags"/>.
     /// </summary>
     public string RunnerTags { get; set; } = "[]";
-
-    /// <summary>What a reader gets back - never null, possibly empty.</summary>
-    public static IReadOnlyList<string> ReadRunnerTags(string stored) =>
-        JsonSerializer.Deserialize<List<string>>(stored, Json) ?? [];
-
-    /// <summary>What goes in the column. Always a real array, even when empty - see <see cref="RunnerTags"/>.</summary>
-    public static string WriteRunnerTags(IReadOnlyList<string> tags) =>
-        JsonSerializer.Serialize(tags, Json);
-
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
 /// <summary>
@@ -949,6 +947,19 @@ public class EfHatchIssue
     /// out, it reads whatever it reads next.</para>
     /// </remarks>
     public int PreApproval { get; set; }
+
+    /// <summary>
+    /// Which runners may implement this issue, as a jsonb array in the order
+    /// they were written - normalised, case folded and deduplicated by
+    /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
+    /// column, the same way <see cref="EfHatchProject.RunnerTags"/> does. Empty,
+    /// not null, so an issue nobody has tagged reads back "[]" the same way
+    /// <c>EnsureCreated</c> and every migrated row do. This is the issue's
+    /// *own* list, written only by the runner-tags route on the issue (a later
+    /// task of this ticket's parent) - never a value inherited from the
+    /// project and copied into the column.
+    /// </summary>
+    public string RunnerTags { get; set; } = "[]";
 
     /// <summary>
     /// Whether this story's tasks share the story's branch and one pull
@@ -1861,6 +1872,12 @@ public class EfHatchIssueEvent
     /// sides as <c>on</c>, <c>off</c> or <c>inherit</c>.
     /// </summary>
     public const string OnePrChanged = "one_pr_changed";
+
+    /// <summary>
+    /// An issue's own runner tags changed - see <see cref="EfHatchIssue.RunnerTags"/>.
+    /// The payload is <c>{ from, to }</c>, both sides a real array.
+    /// </summary>
+    public const string RunnerTagsChanged = "runner_tags_changed";
 
     /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.

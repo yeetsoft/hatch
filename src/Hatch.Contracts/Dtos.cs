@@ -273,6 +273,14 @@ public record MergesPullRequestRequest(bool On);
 public record AssigneeDto(string Kind, Guid Id, string Name);
 
 /// <summary>
+/// One contributor to an issue's effective runner tags - the project's own,
+/// or one ancestor's own - see <see cref="RunnerTagSourceKinds"/>.
+/// </summary>
+/// <param name="Kind"><c>project</c> or <c>issue</c> - see <see cref="RunnerTagSourceKinds"/>.</param>
+/// <param name="Key">The project's key, or the ancestor's issue key.</param>
+public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags);
+
+/// <summary>
 /// A card. What the board draws, and nothing more - descriptions and comments
 /// are a detail-page request, because the board holds every issue in the house
 /// and shipping every description with it would make the first paint the
@@ -353,6 +361,9 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
 /// <paramref name="OpenQuestions"/> is.
 /// </param>
+/// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -381,7 +392,18 @@ public record IssueCardDto(
     bool OnePr = false,
     bool? OnePrOwn = null,
     string? OnePrFrom = null,
-    DateTimeOffset? ClosedAt = null);
+    DateTimeOffset? ClosedAt = null,
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see RunnerDto.Tags for the same shape.
+    public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+}
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -544,6 +566,9 @@ public record IssueClaimDto(
 /// see <see cref="EfHatchIssue.ReleaseNote"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
+/// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -592,7 +617,18 @@ public record IssueDto(
     string? PullRequestHeadSha = null,
     DateTimeOffset? PullRequestReadAt = null,
     DateTimeOffset? ClosedAt = null,
-    string? ReleaseNote = null);
+    string? ReleaseNote = null,
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see RunnerDto.Tags for the same shape.
+    public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+}
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1612,6 +1648,9 @@ public record ExpressRequest(bool Express);
 /// </summary>
 public record OnePrRequest(string Value);
 
+/// <summary>A write to which runners may implement an issue's own work - see <see cref="EfHatchIssue.RunnerTags"/>.</summary>
+public record IssueRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
+
 /// <summary>
 /// An issue's release note. Null, empty or whitespace clears it.
 /// </summary>
@@ -1959,6 +1998,16 @@ public static class BlockedKinds
 
     /// <summary>Every other fold.</summary>
     public const string Other = "other";
+}
+
+/// <summary>The two kinds of <see cref="RunnerTagSourceDto"/> - see it for what each carries.</summary>
+public static class RunnerTagSourceKinds
+{
+    /// <summary>The issue's own project.</summary>
+    public const string Project = "project";
+
+    /// <summary>An ancestor issue, or the issue itself.</summary>
+    public const string Issue = "issue";
 }
 
 /// <summary>
@@ -3331,6 +3380,17 @@ public static class RunnerStates
 /// Empty for a runner carrying none, rather than null, so a client built
 /// against the current shape reads "no tags" without a null to guard.
 /// </param>
+/// <param name="For">
+/// Who this runner's <c>PATCH</c> belongs to - the same name
+/// <see cref="RunnerInstructionDto.For"/> carries back to the runner itself -
+/// or null for a runner that belongs to nobody.
+/// </param>
+/// <param name="CanControl">
+/// Whether the caller reading this row may <c>PATCH</c> it: the wall off, the
+/// runner belonging to nobody, the caller being <see cref="For"/>, or the
+/// caller being an admin. True whenever the wall is off, so a client never
+/// has to know the wall exists to draw its own controls.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3353,7 +3413,9 @@ public record RunnerDto(
     string? Agent,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<string>? Drives = null,
-    IReadOnlyList<string> Tags = null!)
+    IReadOnlyList<string> Tags = null!,
+    string? For = null,
+    bool CanControl = true)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

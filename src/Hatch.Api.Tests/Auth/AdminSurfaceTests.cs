@@ -484,6 +484,11 @@ public class AdminSurfaceTests
         // how every story is worked, is an owner's: ProjectsController.PutLanding.
         "IssueOnePrController.PutIssueOnePr",
 
+        // Which runners may implement an issue's own work - a statement about
+        // the ticket, not a power over the board, open to a key for the same
+        // reason one-pr is. IssueRunnerTagsController.
+        "IssueRunnerTagsController.PutIssueRunnerTags",
+
         // A release note, open to a key only under the issue's live claim: the
         // claim check is in the action, not the attribute, so a key can write the
         // note of the ticket it is working and no other. IssueReleaseNoteController.
@@ -547,6 +552,7 @@ public class AdminSurfaceTests
         "ProjectsController.DeleteMember",
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
+        "ProjectsController.PostReflect",
         "ProjectsController.PutPlaybooksSource",
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
@@ -690,6 +696,7 @@ public class AdminSurfaceTests
         "ProjectsController.DeleteMember",
         "ProjectsController.ClaimProject",
         "ProjectsController.PutLanding",
+        "ProjectsController.PostReflect",
         "ProjectsController.PutPlaybooksSource",
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",

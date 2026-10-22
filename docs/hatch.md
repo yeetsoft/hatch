@@ -413,7 +413,9 @@ or out.
 The dispatcher reads the list on every move a session is spawned for out of the
 implementation column, and on the review self-move while it is conflict or build
 work, folding a caller whose runner does not advertise every tag it holds - see
-[the dispatcher's ninth refusal](#the-dispatcher).
+[the dispatcher's ninth refusal](#the-dispatcher). The project's list is the
+floor: an issue's own tags and each of its ancestors' add to it, and never
+subtract from it.
 The project dialog carries it the same way: where `canAdminister` is false it
 reads the list out as a sentence after the landing one - *"Any runner."*
 where it is empty, *"Runners tagged macos and xcode."* where it is not - and
@@ -434,7 +436,11 @@ it files - `Dispatch.MatchReflection` ranked the same way `Dispatch.Match` is,
 with no from/to to pin since filing is not a transition - naming the Playbooks
 page (*"`<KEY>` has no reflection playbook row - add one on the Playbooks page
 first"*). This route writes only `ReflectionCadenceDays`; `ReflectionLastPeriodStart`
-is written only by the reflection job, never here. `ReflectionNextDueAt` - the
+is written only by the reflection job, never here. That job,
+`ReflectionCadenceJob` (`Modules/Hatch/`), polls every fifteen minutes and is
+idempotent by construction: it advances `ReflectionLastPeriodStart` to the
+due instant it just filed for, never to the instant it ran, so a firing that
+finds nothing newly due writes nothing twice. `ReflectionNextDueAt` - the
 start of the last period it reflected on plus the cadence, or now where it
 never has - is computed on every read, never stored. `ProjectPatchRequest`
 carries no field for any of the three, so this route is the only way to change
@@ -444,6 +450,21 @@ owner sees a *Reflects every ... day(s)* number box after the auto-heal controls
 the next due instant where a cadence is set; where `canAdminister` is false the
 landing sentence ends instead *"reflects every 5 day(s), next due ..."* or
 *"never reflects"*.
+`ReflectNowIssueId` (`long?`, a foreign key to the issue it names, `SetNull`
+on delete) is the reflection a reflect-now press last filed - HA-931; the
+job above never sets it. The press itself is `POST /projects/{id}/reflect`
+(`ProjectsController.PostReflect`), guarded the same way `PutReflection` is -
+`403` naming the project's key to anyone but an owner. It files through the
+same `Dispatch.MatchReflection` playbook match and the same title/description
+shape (`ReflectionCadence.Describe`) the job uses, over a window of
+`ReflectionCadenceDays` or 30 days ending now, through
+`IssuesController.CreateIssueAsync` so the pressing owner, not "the board",
+is the recorded actor. Where `ReflectNowIssueId` already names a
+non-terminal issue, a press answers that issue again and files nothing -
+checked on that field alone, never a broader search, so a reflection the job
+filed (which never sets the field) is never mistaken for one a press already
+owns. It never writes `ReflectionLastPeriodStart` either; a press neither
+postpones nor claims the job's next scheduled reflection.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -1105,6 +1126,39 @@ authenticates with a key, so the terminal shows the level (`show`, `board`,
 Setting a board up so a pre-approved epic runs this way end to end, with
 nobody pressing anything but the one drag [the hop](#the-hop) cannot make
 for it, is [its own walkthrough](#a-night-mode-board).
+
+#### Runner tags
+
+**An issue's own say over which runner may implement it.** `RunnerTags` is a
+jsonb array of strings on the issue, `"[]"` default, the same shape as
+[a project's](#project) - normalised, case folded and deduplicated by
+`RunnerTags.Normalise` in `Hatch.Contracts` before a tag ever reaches the
+column. Written only through its own route, `PUT
+/issues/{key}/runner-tags` (`IssueRunnerTagsController.PutIssueRunnerTags`),
+open to a key the same way [one pull request](#one-pull-request) is: it is a
+statement about which runner may pick the ticket up, not a power over the
+board, so a key is given nothing it could not already do by filing the
+ticket tagged that way. No type restriction, no claim gate, no lock - any
+issue may carry tags, and any key may set them at any time. `request.Tags`
+absent (JSON `null`) is `400` - *"tags is required - send `[]` to clear"* -
+since `Normalise` cannot otherwise tell "clear it" from "say nothing",
+answering null for both. The list is replaced whole: re-sending the list the
+issue already holds, the same tags in the same order, writes nothing; a
+change writes `runner_tags_changed` with `{ from, to }`, both sides a real
+array. `PATCH /issues/{key}`, create and the bulk endpoint carry no field
+for it, so this route is the only way in or out.
+
+**The tags a runner is actually held to are a union, not an override, and
+are read live at every request the same way `EffectivePreApproval` is.**
+`PriorityTree.EffectiveRunnerTags` walks the project's own list, then every
+ancestor's own, root-most to nearest, then the issue's own, deduplicating
+against what came before so a tag named twice counts once. A card or an
+issue carries all three: `runnerTagsOwn` is the issue's own row, exactly
+what `PUT .../runner-tags` last wrote and nothing else; `runnerTags` is the
+union just described; `runnerTagsFrom` names where each tag in `runnerTags`
+beyond the issue's own comes from, one entry per non-empty contributor in
+the same root-most-first order - the issue's own row is never named there,
+even when it carries tags.
 
 #### Stories at once
 
@@ -2940,6 +2994,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
+| `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
@@ -4106,16 +4161,17 @@ missing configuration:
    worked from the caller's standing checkout exactly as before; one bound to
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
-9. The project requires [runner tags](#project) the caller's runner does not
-   fully advertise — on every move a session is spawned for out of the
-   implementation column (the leaf implementation and the parent verification
-   alike), and on the review self-move while it is conflict or build work.
-   Never a hop, never the move into the implementation column, and never a
-   review row the verdict below already folds. A caller that sends no `?tag=`
-   has advertised none; a superset of what the project requires qualifies.
-   *"AER-12 is implemented only by a runner advertising macos and xcode - this
-   runner advertises linux"* (*"... advertises none"* when the caller sent no
-   tags), kind `other`. Waits on nobody.
+9. The union of the project's, its ancestors' and its own tags requires
+   [runner tags](#project) the caller's runner does not fully advertise — on
+   every move a session is spawned for out of the implementation column (the
+   leaf implementation and the parent verification alike), and on the review
+   self-move while it is conflict or build work. Never a hop, never the move
+   into the implementation column, and never a review row the verdict below
+   already folds. A caller that sends no `?tag=` has advertised none; a
+   superset of the union qualifies. *"AER-12 is implemented only by a runner
+   advertising macos and xcode - this runner advertises linux"* (*"...
+   advertises none"* when the caller sent no tags), kind `other`. Waits on
+   nobody.
 10. Something it [depends on](#dependency) is unfinished, and the move is into
     the column where the code gets written, or a parent pull (hop kind 4) out of
     a `ParentPulls` column. Only those moves: a pull request that already exists
@@ -5971,11 +6027,12 @@ which one it failed is what `work/queue` reports:
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-12. **The project requires no runner tag the caller's runner lacks.** A caller
-    that sends no `?tag=` has advertised none, so it fails a project that
-    requires any; a runner advertising a superset of what the project requires
-    qualifies. Checked on every move a session is spawned for out of the
-    implementation column (the leaf implementation and the parent verification
+12. **The union of the project's, its ancestors' and its own tags requires no
+    runner tag the caller's runner lacks.** A caller that sends no `?tag=` has
+    advertised none, so it fails a union that requires any; a runner
+    advertising a superset of the union qualifies. Checked on every move a
+    session is spawned for out of the implementation column (the leaf
+    implementation and the parent verification
     alike), and on the review self-move while it is conflict or build work —
     never a hop, never the move into the implementation column, and never a
     review row the verdict below already folds. Kind `other`, and it waits on
@@ -7688,7 +7745,10 @@ repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
 under the same lock every streamed and printed line already goes through, so a
 clock tick can never land mid-line; what it draws is a pure function of a
 snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
-a running increment and the idle loop between them both write to.
+a running increment and the idle loop between them both write to. Each redraw
+reaches the terminal as one whole frame — the erase, the line being printed and
+every footer row in a single write — and a clock tick that would draw the rows
+already on screen writes nothing.
 
 While an increment runs, its first row names the issue — key, title, the move
 or conflict or build it is for, and its address — and the second says whether
@@ -7707,6 +7767,12 @@ terminal's own width, read fresh on each draw, so a resize clips rather than
 scrambles it. On exit for any reason the runner can catch — the night ending,
 Ctrl-C, a restart onto a newer build — the footer is erased and the closing
 tally prints below the last banner, as it always has.
+
+**The agent's standard error prints through the runner.** A headless session's
+standard error, and the `/usage` probe's, is read by the runner beside the
+standard output and printed above the readout like any other line, exactly as
+the agent wrote it, so it can never land under the footer; `work -i` keeps the
+terminal as the attached session's own stdio and is not redirected.
 
 **The usage bars read the account, not Hatch's battery** — asked and answered
 on HA-120: every session's `stream-json` carries a `rate_limit_event` naming

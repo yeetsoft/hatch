@@ -53,6 +53,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/landing` | **person** | Sets `landing`, `checksRequired`, `onePullRequest` default, and the four `autoHealBug*` fields |
 | PUT | `/projects/{id}/playbooks-source` | **person** | Toggles `repoSourced` |
 | PUT | `/projects/{id}/reflection` | **person** | Sets `reflectionCadenceDays` |
+| POST | `/projects/{id}/reflect` | **person** | Files one reflection on the spot - the reflect-now control |
 | PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
@@ -68,7 +69,10 @@ the one field with a clear sentinel, `""`. The playbooks-source PUT body is
 `ProjectRepoSourcedWriteRequest(RepoSourced)`. The reflection PUT body is
 `ProjectReflectionWriteRequest(CadenceDays)` - a positive number of days, or
 null to turn reflection off; it never writes `reflectionLastPeriodStart`,
-only the reflection job does. The runner-tags PUT body is
+only the reflection job does. `POST .../reflect` takes no body, and answers
+an `IssueDto` - the reflection it just filed, or, pressed again while that
+one is still open, the same issue with nothing filed; it never writes
+`reflectionLastPeriodStart` either, only the job does. The runner-tags PUT body is
 `ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. Answers are a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
@@ -85,7 +89,9 @@ playbooks-source PUT 403s if the caller is not an owner, and 400s if the
 project binds no repository or any playbook row still names it. The
 reflection PUT 403s if the caller is not an owner, 400s on a cadence that is
 zero or negative, and 400s naming the Playbooks page if no playbook row would
-run the reflection a non-null cadence files. The
+run the reflection a non-null cadence files. `POST .../reflect` 403s if the
+caller is not an owner, and 400s naming the Playbooks page the same way if no
+playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit.
 
@@ -227,6 +233,7 @@ not mint an issue number - try again".
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories only |
+| runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
@@ -234,11 +241,13 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr` and `landing` are key-open despite sitting beside
-five person-only fields: one-pr is the story's own say over its project's
-default, which gives a key nothing it could not already do by filing the
-story that way; landing is a fact a session or a poll reports about a
-repository and a sha, not a power over the board. `stall` carries no
+assumed uniform. `one-pr`, `runner-tags` and `landing` are key-open despite
+sitting beside five person-only fields: one-pr is the story's own say over its
+project's default, which gives a key nothing it could not already do by
+filing the story that way; runner-tags is a statement about which runner may
+pick the ticket up, not a power over the board, for the same reason; landing
+is a fact a session or a poll reports about a repository and a sha, not a
+power over the board. `stall` carries no
 `[RequireRole]` at all, on the method or the class - it is reachable by
 anything the wall admits, person, key or a keyless runner that named itself,
 which is deliberate: a dispatcher is exactly who leaves this mark.
@@ -251,7 +260,10 @@ program caller only while holding the issue's live claim, sent as
 `normal`, `expedited`, `emergency`; `ExpediteRequest(Expedited)` is the
 two-level alias. `PreApprovalRequest(Level)` takes one of `none`, `express`,
 `preapproved`; `ExpressRequest(Express)` is the two-level alias.
-`OnePrRequest(Value)` takes `on`, `off` or `inherit`. `ReleaseNoteRequest`
+`OnePrRequest(Value)` takes `on`, `off` or `inherit`.
+`IssueRunnerTagsWriteRequest(Tags)` is the whole list, replaced; trimmed,
+lower-cased and deduplicated, at most 8 tags of at most 32 characters, none
+with a space or comma. `ReleaseNoteRequest`
 is an optional `Note` plus the query parameter `heldToken` (a guid, program
 callers only) - null or blank clears it. `StallRequest(Why)` is one line,
 truncated. `HoldRequest(Held)` is a boolean. `IssuePlaybookRequest(Model?,
@@ -264,7 +276,10 @@ unknown actor. `priority`/`expedite` 400 an unparseable level name - the
 alias is just a two-level write of the same field and the same trail.
 `one-pr` 400s on anything but a story, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
-task begun on one branch cannot be moved onto the other. `pre-approval` and
+task begun on one branch cannot be moved onto the other. `runner-tags` 400s
+a blank tag, one with a space or comma inside, one over 32 characters, or a
+list over 8; `404` for no such key; re-sending the list it already holds
+writes nothing. `pre-approval` and
 `express` gate by what is being set: raising to or lowering from
 `preapproved` needs an owner or approver, 403 otherwise, since that is the
 approve press given in advance; every other transition is gated like an
@@ -624,7 +639,9 @@ different question from one handed to a container on the same laptop.
 a key or a keyless runner, which is not somebody at a keyboard.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
-ever used - it edits, it never creates. `POST /runners/{name}` 409s when two
+ever used - it edits, it never creates. With the wall up, it also 403s a
+caller who is neither the runner's own owner nor an admin, naming the owner
+and the runner in the sentence. `POST /runners/{name}` 409s when two
 live runners would otherwise share one name. `credentials/{agent}` 404s an
 agent it does not know and 403s wherever the wall is up; a credential that is
 unset or blank answers `204` rather than either refusal.
@@ -736,7 +753,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **34** person-only paths on this page,
+on this page with both) - there are **35** person-only paths on this page,
 across both halves together:
 
 ```
@@ -749,6 +766,7 @@ POST   /projects/{id}/claim
 PUT    /projects/{id}/landing
 PUT    /projects/{id}/playbooks-source
 PUT    /projects/{id}/reflection
+POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips
 PUT    /statuses/{id}/parent-pulls
 PUT    /statuses/{id}/agent-files
@@ -776,7 +794,7 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-five belong to a project, a column, the WIP section, a ticket's own
+Twenty-six belong to a project, a column, the WIP section, a ticket's own
 fields, or image upload; the other nine are a runner's own record, the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 and the three playbook writes.

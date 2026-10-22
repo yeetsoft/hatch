@@ -358,7 +358,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // ring. A live claim is movable whoever holds it, so the token
             // still passes through.
             var whole = scope is not null || mine || repos.IsDeclared
-                || (tags.Judged && candidates.Any(i => EfHatchProject.ReadRunnerTags(i.Project!.RunnerTags).Count > 0))
+                || (tags.Judged && candidates.Any(i => tree.EffectiveRunnerTags(i.Id).All.Count > 0))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
@@ -594,9 +594,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     /// <summary>
     /// Whether a session spawned for this move writes code, and so needs a
-    /// runner advertising what the project requires: every session spawned out
-    /// of the implementation column, and the review self-move only while it is
-    /// conflict or build work. Not the move into implementation, a hop, or a
+    /// runner advertising the union this issue requires: every session spawned
+    /// out of the implementation column, and the review self-move only while it
+    /// is conflict or build work. Not the move into implementation, a hop, or a
     /// review row <see cref="ReviewWork"/> folds - nothing is spawned for them.
     /// </summary>
     private static bool TagGated(
@@ -606,19 +606,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                  || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
 
     /// <summary>
-    /// Why this caller's runner is not the one for the issue's project: the
-    /// project requires tags the caller did not declare. Null when the scan is
-    /// <see cref="TagDeclaration.Unjudged"/>, when the project requires
-    /// nothing, or when every required tag is declared.
+    /// Why this caller's runner is not the one for the issue: the union of the
+    /// project's, its ancestors' and its own tags requires tags the caller did
+    /// not declare. Null when the scan is <see cref="TagDeclaration.Unjudged"/>,
+    /// when the union is empty, or when every tag in it is declared.
     /// </summary>
-    private static string? TagFold(EfHatchIssue issue, TagDeclaration tags)
+    private static string? TagFold(EfHatchIssue issue, TagDeclaration tags, DependencyGate gate)
     {
         if (!tags.Judged) return null;
 
-        var required = EfHatchProject.ReadRunnerTags(issue.Project!.RunnerTags);
+        var required = gate.EffectiveRunnerTags(issue.Id).All;
         if (required.Count == 0 || required.All(tags.Has.Contains)) return null;
 
-        return $"{IssueKey.Format(issue.Project.Key, issue.Number)} is implemented only by a runner advertising {Listed(required)}" +
+        return $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is implemented only by a runner advertising {Listed(required)}" +
                $" - this runner advertises {(tags.Has.Count == 0 ? "none" : Listed(tags.Has))}";
     }
 
@@ -1166,7 +1166,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         }
 
         if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
-            && TagFold(issue, tags ?? TagDeclaration.Unjudged) is { } tagBlock)
+            && TagFold(issue, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
@@ -1821,10 +1821,19 @@ public sealed class PriorityTree
     // _rows rather than widening its tuple, which every other walk destructures.
     private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr, int StatusId, bool HasPr, bool Terminal)> _onePr;
 
-    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null)
+    // Each issue's own runner tags and its project's - the project's read once
+    // per issue here rather than re-derived per ancestor, since an issue and
+    // its parent always share one project.
+    private readonly Dictionary<long, (IReadOnlyList<string> Own, IReadOnlyList<string> Project)> _runnerTags;
+
+    internal PriorityTree(
+        Dictionary<long, (long?, string, int, int)> rows,
+        Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
+        Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
+        _runnerTags = runnerTags ?? new();
     }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
@@ -1835,6 +1844,7 @@ public sealed class PriorityTree
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "", Terminal = i.Status!.IsTerminal,
+                i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags,
             })
             .ToListAsync(ct);
 
@@ -1842,7 +1852,8 @@ public sealed class PriorityTree
             rows.ToDictionary(
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
-            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)));
+            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)),
+            rows.ToDictionary(r => r.Id, r => ((IReadOnlyList<string>)RunnerTagColumn.Read(r.RunnerTags), (IReadOnlyList<string>)RunnerTagColumn.Read(r.ProjectRunnerTags))));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -1887,6 +1898,58 @@ public sealed class PriorityTree
         }
 
         return (PreApprovalLevels.None, null);
+    }
+
+    /// <summary>
+    /// The runner tags live on this issue: the project's own, then each
+    /// ancestor's own root-most to nearest, then the issue's own - each
+    /// deduplicated against what came before, so first occurrence wins.
+    /// <c>From</c> names every non-empty contributor in that same order,
+    /// excluding the issue's own row even when it carries tags.
+    /// </summary>
+    public (IReadOnlyList<string> All, IReadOnlyList<RunnerTagSourceDto> From) EffectiveRunnerTags(long issueId)
+    {
+        var seen = new HashSet<long>();
+        var chain = new List<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            chain.Add(id);
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        chain.Reverse();
+
+        var all = new List<string>();
+        var from = new List<RunnerTagSourceDto>();
+        var has = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(IReadOnlyList<string> tags)
+        {
+            foreach (var tag in tags)
+                if (has.Add(tag)) all.Add(tag);
+        }
+
+        if (_runnerTags.TryGetValue(issueId, out var self))
+        {
+            Add(self.Project);
+            if (self.Project.Count > 0 && TryGet(issueId, out var selfRow)
+                && IssueKey.TryParse(selfRow.Key, out var projectKey, out _))
+                from.Add(new RunnerTagSourceDto(RunnerTagSourceKinds.Project, projectKey, self.Project));
+        }
+
+        foreach (var id in chain)
+        {
+            if (!_runnerTags.TryGetValue(id, out var tags)) continue;
+
+            Add(tags.Own);
+
+            if (id != issueId && tags.Own.Count > 0 && TryGet(id, out var row))
+                from.Add(new RunnerTagSourceDto(RunnerTagSourceKinds.Issue, row.Key, tags.Own));
+        }
+
+        return (all, from);
     }
 
     /// <summary>
@@ -2113,6 +2176,9 @@ public sealed class DependencyGate
 
     /// <summary>Whether one pull request is shared across the story this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
+
+    /// <summary>The runner tags live on this issue - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</summary>
+    public (IReadOnlyList<string> All, IReadOnlyList<RunnerTagSourceDto> From) EffectiveRunnerTags(long issueId) => _tree.EffectiveRunnerTags(issueId);
 
     /// <summary>The story whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);

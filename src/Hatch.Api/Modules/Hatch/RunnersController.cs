@@ -6,6 +6,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -39,7 +40,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth) : ControllerBase
 {
     /// <summary>
     /// Every runner that has spoken to this Hatch lately, most recently heard
@@ -71,7 +72,18 @@ public class RunnersController(
         var held = await runners.HeldAsync(db, claims, now, ct);
         var drivers = await runners.DriversAsync(db, now, ct);
 
-        return rows.Select(r => runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []))).ToList();
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+
+        var dtos = new List<RunnerDto>(rows.Count);
+        foreach (var r in rows)
+        {
+            var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
+            var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
+            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl));
+        }
+
+        return dtos;
     }
 
     /// <summary>
@@ -206,6 +218,17 @@ public class RunnersController(
         var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
         if (row is null) return NotFound();
 
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (!CanControl(row.ForPersonId, wallEnabled, callerPerson))
+        {
+            var forName = row.ForPersonId is { } forId
+                ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? "its owner"
+                : "its owner";
+            return new ObjectResult($"only {forName}, or an admin, may control {runner}")
+                { StatusCode = StatusCodes.Status403Forbidden };
+        }
+
         // Absent leaves a field alone, "" clears it, a value sets it - the
         // convention the two dates on an issue already established, and the
         // reason the numbers are strings on the wire: a nullable number can say
@@ -251,10 +274,13 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         var now = time.GetUtcNow();
+        var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
         return runners.Project(
             row,
             Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
-            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
+            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
+            ownerName,
+            CanControl(row.ForPersonId, wallEnabled, callerPerson));
     }
 
     // ---- The one narrowing ----
@@ -281,6 +307,16 @@ public class RunnersController(
                 StatusCode = StatusCodes.Status403Forbidden,
             }
             : null;
+
+    /// <summary>
+    /// Whether this caller may press this runner's controls: the wall off, the
+    /// runner belonging to nobody, the caller being the owner, or the caller
+    /// being an admin. Written so the order route (HA-1359) can call it once it
+    /// lands in this same controller.
+    /// </summary>
+    private static bool CanControl(Guid? forPersonId, bool wallEnabled, EfPerson? callerPerson) =>
+        !wallEnabled || forPersonId is not { } forId
+        || (callerPerson is not null && (callerPerson.Id == forId || callerPerson.Role >= PersonRole.Admin));
 
     // ---- The name ----
 

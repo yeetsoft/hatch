@@ -153,11 +153,13 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 
 ## What a runner advertises
 
-A tag is a word a project's runner tags require. A project that requires `gpu`
-is only worked by a runner that carries `gpu`. The runner says its tags in
-every heartbeat and the heartbeat replaces the row whole, so removing a tag
-from the config takes it off the board on the next beat. The board reads them
-again on every dispatch.
+A tag is a word a project's, a ticket's, or one of its ancestors' runner tags
+require. A project that requires `gpu` is only worked by a runner that carries
+`gpu`, and a ticket or an ancestor that requires a tag of its own adds to the
+project's, never away from it - a runner must carry the whole union. The
+runner says its tags in every heartbeat and the heartbeat replaces the row
+whole, so removing a tag from the config takes it off the board on the next
+beat. The board reads them again on every dispatch.
 
 A runner carries at most 8 tags. Each is at most 32 characters, with no space
 or comma inside, and is trimmed and lowercased. A tag that breaks the rule

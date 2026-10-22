@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -73,8 +75,10 @@ public sealed class LiveTerminal : Terminal, IDisposable
     private readonly Controls? _controls;
     private readonly TimeProvider _clock;
     private readonly bool _color;
+    private readonly TextWriter? _stdout;
     private readonly Timer _timer;
     private int _footerLines;
+    private string _lastRows = "";
     private bool _stopped;
 
     /// <param name="tickEvery">
@@ -91,15 +95,25 @@ public sealed class LiveTerminal : Terminal, IDisposable
     /// nothing reads keys for this run, which draws the footer exactly as
     /// before with no legend row.
     /// </param>
-    public LiveTerminal(ReadoutState state, TimeProvider clock, bool color, TimeSpan? tickEvery = null, Controls? controls = null)
+    /// <param name="stdout">
+    /// Where the footer and the lines printed around it go, flushed once per
+    /// frame - null reads <see cref="Console.Out"/> afresh at every write. A
+    /// writer given here needs a buffer larger than any frame: the console's
+    /// own writer hands the terminal 256 characters at a time, and a coloured
+    /// footer is well past that.
+    /// </param>
+    public LiveTerminal(
+        ReadoutState state, TimeProvider clock, bool color, TimeSpan? tickEvery = null, Controls? controls = null,
+        TextWriter? stdout = null)
     {
         _state = state;
         _clock = clock;
         _color = color;
         _controls = controls;
+        _stdout = stdout;
 
         var every = tickEvery ?? TimeSpan.FromMilliseconds(500);
-        _timer = new Timer(_ => Tick(), null, every, every);
+        _timer = new Timer(_ => Redraw(), null, every, every);
     }
 
     public override void Line(string line)
@@ -113,9 +127,7 @@ public sealed class LiveTerminal : Terminal, IDisposable
             {
                 if (_stopped) { Console.Out.WriteLine(line); return; }
 
-                Erase();
-                Console.Out.WriteLine(line);
-                Draw();
+                WriteFrame(Frame(line));
             }
         }
         catch (IOException)
@@ -131,9 +143,11 @@ public sealed class LiveTerminal : Terminal, IDisposable
             {
                 if (_stopped) { Console.Error.WriteLine(line); return; }
 
-                Erase();
+                // Three writes, because the line belongs to the other stream:
+                // the erase lands before it and the redraw after it.
+                WriteFrame(Erase());
                 Console.Error.WriteLine(line);
-                Draw();
+                WriteFrame(Frame(null));
             }
         }
         catch (IOException)
@@ -141,7 +155,12 @@ public sealed class LiveTerminal : Terminal, IDisposable
         }
     }
 
-    private void Tick()
+    /// <summary>
+    /// The clock's redraw - run by the timer, and by a test that does not want
+    /// to wait on it. Writes nothing when the rows are what is already on
+    /// screen, so a tick where nothing changed costs the terminal nothing.
+    /// </summary>
+    internal void Redraw()
     {
         // Runs on a timer thread - an exception left to escape a timer
         // callback takes the whole process down, claim and all.
@@ -151,8 +170,10 @@ public sealed class LiveTerminal : Terminal, IDisposable
             {
                 if (_stopped) return;
 
-                Erase();
-                Draw();
+                var rows = Rows();
+                if (_footerLines > 0 && string.Join("\n", rows) == _lastRows) return;
+
+                WriteFrame(Frame(null, rows));
             }
         }
         catch (IOException)
@@ -161,27 +182,51 @@ public sealed class LiveTerminal : Terminal, IDisposable
     }
 
     /// <summary>
+    /// The erase, the line being printed if there is one, and the footer
+    /// redrawn - all of it one string, so it can leave in one write.
+    /// </summary>
+    private string Frame(string? line, IReadOnlyList<string>? rows = null)
+    {
+        rows ??= Rows();
+        var frame = new StringBuilder(Erase());
+        if (line is not null) frame.Append(line).Append('\n');
+        foreach (var row in rows) frame.Append(row).Append('\n');
+
+        _footerLines = rows.Count;
+        _lastRows = string.Join("\n", rows);
+        return frame.ToString();
+    }
+
+    private IReadOnlyList<string> Rows() =>
+        Readout.Draw(_state.Snapshot(_controls?.Snapshot()), _clock.GetUtcNow(), SafeWidth(), _color);
+
+    /// <summary>
     /// <c>CPL</c> to the first footer row, then <c>ED 0J</c> to clear from
     /// there to the end of the display - both standard VT100, and both
     /// something a terminal that took the footer in the first place already
-    /// understands.
+    /// understands. Empty where no footer is on screen.
     /// </summary>
-    private void Erase()
+    private string Erase()
     {
-        if (_footerLines == 0) return;
+        if (_footerLines == 0) return "";
 
-        Console.Out.Write($"\x1b[{_footerLines}F\x1b[0J");
+        var erase = $"\x1b[{_footerLines}F\x1b[0J";
         _footerLines = 0;
+        _lastRows = "";
+        return erase;
     }
 
-    private void Draw()
+    /// <summary>
+    /// The only place this class writes to standard output: one write and one
+    /// flush, so the terminal is never handed half a footer.
+    /// </summary>
+    private void WriteFrame(string frame)
     {
-        var width = SafeWidth();
-        var rows = Readout.Draw(_state.Snapshot(_controls?.Snapshot()), _clock.GetUtcNow(), width, _color);
-        if (rows.Count == 0) return;
+        if (frame.Length == 0) return;
 
-        foreach (var row in rows) Console.Out.Write(row + "\n");
-        _footerLines = rows.Count;
+        var w = _stdout ?? Console.Out;
+        w.Write(frame);
+        w.Flush();
     }
 
     /// <summary>
@@ -216,7 +261,7 @@ public sealed class LiveTerminal : Terminal, IDisposable
             _stopped = true;
             try
             {
-                Erase();
+                WriteFrame(Erase());
             }
             catch (IOException)
             {
