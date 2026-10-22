@@ -168,6 +168,14 @@ public class EfHatchProject
     public DateTimeOffset? ReflectionLastPeriodStart { get; set; }
 
     /// <summary>
+    /// The reflection this project's reflect-now press last filed, or null when
+    /// none is standing - HA-931. A scheduled reflection never sets this; only
+    /// a press does.
+    /// </summary>
+    public long? ReflectNowIssueId { get; set; }
+    public EfHatchIssue? ReflectNowIssue { get; set; }
+
+    /// <summary>
     /// Whether this project's playbooks are sourced from its repository rather
     /// than written on the board. Off by default, so a project nobody has
     /// touched this setting on keeps filing exactly as it always has. Written

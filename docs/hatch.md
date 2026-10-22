@@ -448,6 +448,9 @@ owner sees a *Reflects every ... day(s)* number box after the auto-heal controls
 the next due instant where a cadence is set; where `canAdminister` is false the
 landing sentence ends instead *"reflects every 5 day(s), next due ..."* or
 *"never reflects"*.
+`ReflectNowIssueId` (`long?`, a foreign key to the issue it names, `SetNull`
+on delete) is the reflection a reflect-now press last filed - HA-931; the
+job above never sets it.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
