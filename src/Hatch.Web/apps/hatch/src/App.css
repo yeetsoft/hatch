@@ -563,6 +563,25 @@
   white-space: nowrap;
 }
 
+.hatch-column-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hatch-column-title .hatch-column-name {
+  flex: none;
+}
+
+.hatch-column-tags {
+  color: var(--muted);
+  font-size: var(--t-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hatch-column-count {
   color: var(--muted);
   font-size: var(--t-label);
