@@ -83,7 +83,9 @@ describe('setup/index.html', () => {
   it('lists the 15 numbered steps as headings, in order', () => {
     const expected = [...source.matchAll(STEP_HEADING)].map((m) => m[1])
     expect(expected).toHaveLength(15)
-    const headings = [...html.matchAll(/<h3\b[^>]*>([\s\S]*?)<a class="hatch-docs-anchor"/g)].map((m) => m[1])
+    const headings = [...html.matchAll(/<h3\b[^>]*>([\s\S]*?)<a class="hatch-docs-anchor"/g)].map((m) =>
+      decodeEntities(m[1]),
+    )
     expect(headings.filter((h) => /^\d+\. /.test(h))).toEqual(expected)
   })
 

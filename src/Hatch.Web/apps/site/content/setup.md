@@ -110,10 +110,11 @@ the same line there.
 At the end of step 15 the board is open with the person's name and a first
 project on it. `hatch` is installed, on the `PATH` and pointed at the board,
 and `hatch queue` has answered from the repository folder from step 10, with
-`claude` signed in, `gh` signed in where the person's code is on GitHub, and
-git knowing who they are (steps 7 to 10). If the steps below stop before
-then, the guide is not finished yet: do the steps that are there, then tell
-the person plainly that the rest is not published yet, and stop.
+the chosen coding agent signed in, `gh` signed in where the person's code is
+on GitHub, and git knowing who they are (steps 7 to 10). If the steps below
+stop before then, the guide is not finished yet: do the steps that are
+there, then tell the person plainly that the rest is not published yet, and
+stop.
 
 ### Which shell you are in
 
@@ -935,30 +936,35 @@ again.
 
 Reference: [Start-Process](https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process).
 
-### 7. The Claude Code CLI
+### 7. The coding agent's CLI
 
-**What this is.** `claude` is the program that Hatch's runner starts, once
-for each piece of work, to let an agent do it. It is looked for on the
-terminal's search path, so it has to be installed there and signed in to the
-person's Claude account. The Claude Code you are running as now may be
-another copy: the Claude desktop app has Claude Code built in but puts no
-`claude` in the terminal ([Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart)).
+**What this is.** The runner starts the CLI of one coding agent, once for
+each piece of work, to let an agent do it. Hatch works with four: `claude`,
+`codex`, `grok`, and `ollama`, which runs through the `codex` CLI against a
+model server on this machine instead of a cloud account. Whichever one is
+chosen has to be installed on the terminal's search path and signed in to
+the person's account; `ollama` needs no account at all.
+
+**Tell the person.** "Which coding agent should Hatch's runner use to do the
+work: Claude, from Anthropic; Codex, from OpenAI, if you already have a
+ChatGPT plan; Grok, from xAI, if you already have one there; or Ollama, if
+you would rather run a model on this machine with no account at all? The one
+you already pay for is the right answer, and Claude is a fine default if you
+have no preference." Record the answer as **agent: claude / codex / grok /
+ollama**. Keep it: steps 12 and 15 use it.
+
+**Do it.** Take the case that matches what was recorded.
+
+(a) `claude`. The Claude Code you are running as now may be another copy:
+the Claude desktop app has Claude Code built in but puts no `claude` in the
+terminal ([Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart)).
 So check, and do not assume.
 
-**Tell the person.** "Next I am going to make sure the `claude` program is
-installed in the terminal and signed in to your Claude account, because Hatch
-will start it to do the work. If it is not there, the install takes about two
-minutes and shows no progress while it downloads, so please be patient. The
-sign-in is yours to do, in your browser; I cannot do it for you. Claude Code
-needs a Claude Pro, Max, Team or Enterprise plan, or a Console account; the
-free claude.ai plan does not include it. Do you have one of those?" If they
-have none, say so plainly and stop.
-
-**Do it.** First run the check below. A version such as
-`2.1.287 (Claude Code)` means `claude` is installed: go to the sign-in below.
-On Windows, if it opens a window instead of printing a version, an old
-desktop app is answering to the name; treat `claude` as not installed and see
-the second **If you see** below.
+First run the check below. A version such as `2.1.287 (Claude Code)` means
+`claude` is installed: go to the sign-in below. On Windows, if it opens a
+window instead of printing a version, an old desktop app is answering to the
+name; treat `claude` as not installed and see the second **If you see**
+below.
 
 ```
 claude --version
@@ -1021,16 +1027,109 @@ Then the sign-in, which is the person's:
 > yourself. If the page shows a code, paste it at the `Paste code here if
 > prompted` prompt.
 
-**Check.** Both of these must pass. `claude --version` prints a version, and
-this exits 0 and prints a `Login method` line:
+(b) `codex`. First run the check below. A version such as `codex-cli
+0.163.0` means `codex` is installed: go to the sign-in below.
 
 ```
-claude auth status --text
+codex --version
 ```
 
-Tell the person `claude` is installed and which login method it showed, such
-as "Claude Max account". Quote only that line; never read out the
-organization or the email address.
+If it is not found, install it with the vendor's own installer.
+
+macOS and Linux:
+
+```
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
+
+The vendor publishes no separate Windows script; point the person at its own
+page instead ([Codex CLI](https://learn.chatgpt.com/docs/codex/cli)).
+
+Then the sign-in, which is the person's:
+
+> **Hand this to the person.** "Please open your own terminal window (not
+> this one) and run this line. On first run it asks you to **Sign in with
+> ChatGPT** (or another method) in the browser it opens. Tell me when you
+> are back at the Codex prompt."
+>
+> ```
+> codex
+> ```
+
+(c) `grok`. First run the check below. A version such as `grok 1.0.62
+(1474f9cbdd91) [stable]` means `grok` is installed: go to the sign-in below.
+
+```
+grok --version
+```
+
+If it is not found, install it with the vendor's own installer.
+
+macOS and Linux:
+
+```
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+Windows PowerShell:
+
+```
+irm https://x.ai/cli/install.ps1 | iex
+```
+
+Then the sign-in, which is the person's:
+
+> **Hand this to the person.** "Please open your own terminal window (not
+> this one) and run this line. It opens your browser at auth.x.ai to sign
+> in. Tell me when it says you are logged in."
+>
+> ```
+> grok login
+> ```
+
+(d) `ollama`. The runner reaches it through the `codex` CLI, so do (b) above
+first. Ollama itself needs no account, only a server that answers: if one is
+not already running on this machine, the person installs it from the
+vendor's own download page ([Download Ollama](https://ollama.com/download))
+and starts it.
+
+**Check.** Per case, a version line and a sign-in check; never read out an
+email address or an organization name.
+
+- (a) `claude --version` prints a version, and this exits 0 and prints a
+  `Login method` line:
+
+  ```
+  claude auth status --text
+  ```
+
+  Tell the person `claude` is installed and which login method it showed,
+  such as "Claude Max account". Quote only that line.
+
+- (b) `codex --version` prints a version, and this - not the in-TUI
+  `/status`, which is a slash command and cannot run from a shell - exits 0
+  and prints `Logged in using ChatGPT`, with no call to the API:
+
+  ```
+  codex login status
+  ```
+
+- (c) `grok --version` prints a version, and this prints something other
+  than `You are not authenticated.` as its first line; it calls no API and
+  spends nothing:
+
+  ```
+  grok models
+  ```
+
+- (d) both of (b)'s checks pass, and this prints JSON instead of failing to
+  connect. The default is `http://127.0.0.1:11434`<!-- ethos:allow - Ollama's
+  own hardcoded default, not this installation's -->; `HATCH_OLLAMA_HOST`
+  names another if the person set one:
+
+  ```
+  curl -s http://localhost:11434/api/tags
+  ```
 
 **If you see** `command not found` or `is not recognized` for `claude` in a
 new terminal, the installer put the file in a folder that is not on the
@@ -1053,9 +1152,9 @@ retyping it ([troubleshooting](https://code.claude.com/docs/en/troubleshoot-inst
 app is shadowing it. Tell the person to update the desktop app, then open a
 new terminal and check again.
 
-**If you see** an error from the installer, such as `syntax error near
-unexpected token '<'` or a `403`, stop and say what you saw. Do not retry in
-a loop. The vendor's troubleshooting page below covers it.
+**If you see** an error from `claude`'s installer, such as `syntax error
+near unexpected token '<'` or a `403`, stop and say what you saw. Do not
+retry in a loop. The vendor's troubleshooting page below covers it.
 
 **If you see** `claude auth status` exit 1 after the person said they were
 done, ask what the terminal said, hand them `claude auth login` again, and
@@ -1065,11 +1164,25 @@ check again. Do this at most twice, then stop and say what you saw.
 Foundry (cloud providers that can host Claude), this guide does not cover
 that. Stop and say so.
 
+**If you see** `command not found` or `is not recognized` for `codex` or
+`grok` in a new terminal after installing, open a new terminal first and
+check again. If it is still missing, the vendor's own install page has a
+PATH section for that platform; link it rather than retyping it
+([Codex CLI](https://learn.chatgpt.com/docs/codex/cli),
+[xAI CLI](https://docs.x.ai/build/overview)).
+
+**If you see** a plan or account type this guide does not name - an
+enterprise or team sign-in route for Codex or Grok, for instance - stop and
+say so. Do not improvise past it.
+
 Reference: [Claude Code setup](https://code.claude.com/docs/en/setup),
 [authentication](https://code.claude.com/docs/en/authentication),
 [CLI reference](https://code.claude.com/docs/en/cli-reference),
 [troubleshooting](https://code.claude.com/docs/en/troubleshoot-install),
-[Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart).
+[Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart),
+[Codex CLI](https://learn.chatgpt.com/docs/codex/cli),
+[xAI CLI](https://docs.x.ai/build/overview),
+[Download Ollama](https://ollama.com/download).
 
 ### 8. Where the code lives
 
@@ -1432,16 +1545,17 @@ one build at `/api/hatch/runner/download/` followed by a platform name. That
 name is a RID (runtime identifier), which is just the operating system and
 chip joined by a hyphen, such as `osx-arm64`. The search path, or `PATH`, is
 the list of folders a terminal looks in when a command is typed by name. The
-runner goes in the same folder step 7 used for `claude`: `$HOME/.local/bin`
-on macOS and Linux, `%USERPROFILE%\.local\bin` on Windows. It is put there
-for this person only, so it needs no password.
+runner goes in the user's own bin folder: `$HOME/.local/bin` on macOS and
+Linux, `%USERPROFILE%\.local\bin` on Windows - the same one step 7 used, if
+`claude` was the agent chosen there. It is put there for this person only, so
+it needs no password.
 
 **Tell the person.** "Next I am going to download the Hatch runner from your
-own board and put it in your user folder, beside `claude`. It is one small
-file and takes a few seconds. I may also need to add that folder to your
-terminal's search path so that typing `hatch` finds it; if so I will ask
-first. At the end I will ask you to open a new terminal window and try one
-command."
+own board and put it in your user folder (beside `claude`, if that is the
+agent you chose). It is one small file and takes a few seconds. I may also
+need to add that folder to your terminal's search path so that typing
+`hatch` finds it; if so I will ask first. At the end I will ask you to open a
+new terminal window and try one command."
 
 **Do it.** In each command `<port>` is the port step 5 settled on, and
 `<rid>` is the platform name chosen in the second part below. Do the parts in
@@ -1570,12 +1684,13 @@ the folder is already on the search path (perhaps step 7 did it): go on.
 ```
 
 If it prints nothing, the folder is not on the search path. If step 7 already
-added the `export PATH` line for `claude`, say so, and use that step's fix
-again for the shell file the person really uses, since this shell did not read
-it. Otherwise use the fix in step 7's first **If you see**: it changes the
-person's own shell file, so say so, ask first, hand them the `echo` and
-`source` lines there, and tell them afterwards what changed. Do not retype it
-here.
+added an `export PATH` line for the agent's own CLI, say so, and use that
+step's fix again for the shell file the person really uses, since this shell
+did not read it. Otherwise use the fix in step 7's first **If you see** for
+`claude`, with `$HOME/.local/bin` in place of its folder either way: it
+changes the person's own shell file, so say so, ask first, hand them the
+`echo` and `source` lines there, and tell them afterwards what changed. Do
+not retype it here.
 
 On Windows, the folder goes on the user's search path, which changes only this
 person's settings and needs no administrator. Say so, ask first, then:
@@ -1682,6 +1797,26 @@ followed by the port, and a list of the board's columns.
 **Check.** The command exited 0, and one of its lines begins `reached` and
 names `http://localhost:<port>`. Quote that address to the person, not the
 list of columns. Write down the path on the `wrote` line, for step 15.
+
+If the agent recorded in step 7 is not `claude`, there is one more thing to
+record: a `hatch config` run, inside the repository folder from step 10,
+which is where a per-user file remembers the choice for the runner to read
+later.
+
+> **Hand this to the person.** "One more short step, inside the repository
+> folder from step 10: a settings command that asks five things, one at a
+> time. Press Enter at the first two - the origin and the key - to keep
+> what is already there. When it asks for the **agent**, type `<agent>`,
+> the one you chose. Press Enter at the two after that - the CLI path and
+> the runner's name - to keep those too. Tell me when it finishes."
+>
+> ```
+> hatch config
+> ```
+
+Then `hatch config --show` must print a `HATCH_AGENT:` line naming that
+agent; the line is only written once an agent other than the default is
+recorded, so for `claude` nothing is written and the line stays absent.
 
 **If you see** `has no scheme`, the address lost its `http://`. Run the
 command again with it.
@@ -1841,8 +1976,8 @@ not happen.
    `<port>` the one step 5 settled on.
 2. **What was installed**, only what this run did: Git (step 2), Docker
    (step 3), Hatch's source in `~/hatch` and the running board (steps 4 and
-   5), the `claude` program (step 7), `gh` (step 8), and the `hatch` runner
-   (step 11).
+   5), the chosen coding agent's CLI (step 7), `gh` (step 8), and the `hatch`
+   runner (step 11).
 3. **What was changed**, again only what was done:
    - `~/hatch/.env`, which holds the port (step 5, if a line was written);
    - the line in the shell file, or the Windows user `PATH`, that puts a
@@ -1865,7 +2000,7 @@ not happen.
      step 10, then commit it and push it to the trunk. The runner starts
      each piece of work from the trunk, so the file has to be there.
    - (c) In their own terminal, inside that folder, run `hatch go-to-work
-     --once`. It starts an agent on the ticket, and that spends their Claude
+     --once`. It starts an agent on the ticket, and that spends their agent's
      usage.
 5. **Close with this**, in your own words but with this meaning: Claude never
    runs `go-to-work` itself, here or later. It can explain (a) to (c), and
