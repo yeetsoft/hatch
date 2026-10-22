@@ -26,6 +26,7 @@ every variable.
 | `next` | No | No |
 | `queue` | No | No |
 | `changelog` | No | No |
+| `runners` | No | No |
 | `show` | No | No |
 | `comments` | No | No |
 | `start` | No | Yes: moves the ticket |
@@ -164,6 +165,19 @@ nothing in it prints one sentence saying so. It writes nothing.
   calendar days. Seven by default.
 - `--before <date>` moves the window back to end before that date.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
+- `--json` prints the endpoint's own answer and nothing else.
+
+### runners
+
+```
+hatch runners [--json]
+```
+
+One line per runner that has spoken to this Hatch lately, most recently
+heard from first: its name, what it is doing, the ticket it holds (or
+*none*), and how long ago it last heartbeat. A caller with nothing to see
+prints one sentence saying so. It writes nothing.
+
 - `--json` prints the endpoint's own answer and nothing else.
 
 ### show

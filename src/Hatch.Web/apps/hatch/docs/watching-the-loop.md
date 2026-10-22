@@ -15,7 +15,8 @@ waiting on you for.
 a row appears within a minute of it starting and drops off two hours after it
 stops. This page lists every runner, because a person is looking; a key
 reading the same list gets its owner's runners, an admin's key gets every one,
-and a key with no owner gets only the runners that belong to nobody. Each row
+and a key with no owner gets only the runners that belong to nobody. `hatch
+runners` is the same read at a terminal, one line per row. Each row
 has:
 
 - **Runner** - its name, whether it is a `loop` or `one increment`, where it
