@@ -192,19 +192,34 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
-    public async Task A_name_held_by_a_live_runner_elsewhere_is_skipped()
+    public async Task A_name_held_by_a_live_runner_is_skipped()
+    {
+        var tree = Tree("one");
+        var wouldChoose = RunnerNames.Choose(
+            "kestrel", Checkout.Canonical(tree), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        // No own-where exclusion any more, so this also covers the checkout's
+        // own old row surviving after its record file was deleted.
+        var wire = new Wire();
+        wire.Json("GET", "/api/hatch/runners/names", new[] { wouldChoose });
+
+        var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);
+        var board = new Board(client);
+
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+
+        Assert.NotEqual(wouldChoose, chosen);
+    }
+
+    [Fact]
+    public async Task A_name_held_by_a_live_runner_is_skipped_regardless_of_case()
     {
         var tree = Tree("one");
         var wouldChoose = RunnerNames.Choose(
             "kestrel", Checkout.Canonical(tree), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
         var wire = new Wire();
-        wire.Json("GET", "/api/hatch/runners", new[]
-        {
-            new RunnerDto(
-                wouldChoose, "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                "running", null, null, null, null, 90, [], null, null, null, "elsewhere:/some/other/tree", null),
-        });
+        wire.Json("GET", "/api/hatch/runners/names", new[] { wouldChoose.ToUpperInvariant() });
 
         var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);
         var board = new Board(client);

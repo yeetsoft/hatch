@@ -59,8 +59,14 @@ public class IssueExpediteController(
     public Task<ActionResult<IssueDto>> PutIssuePriority(string key, PriorityRequest request, CancellationToken ct) =>
         PriorityLevels.TryParse(request.Priority, out var level)
             ? SetAsync(key, level, ct)
-            : Task.FromResult<ActionResult<IssueDto>>(
-                BadRequest($"\"{request.Priority}\" is not a priority - paused, economy, low, normal, expedited or emergency"));
+            : Task.FromResult<ActionResult<IssueDto>>(BadRequest(UnknownPriority(request.Priority)));
+
+    /// <summary>
+    /// The 400's sentence, shared with <c>POST /issues</c> so a priority named
+    /// at filing is refused in the words <c>PUT .../priority</c> uses.
+    /// </summary>
+    internal static string UnknownPriority(string? name) =>
+        $"\"{name}\" is not a priority - paused, economy, low, normal, expedited or emergency";
 
     /// <summary>
     /// Mark it expedited, or unmark it. The legacy two-level alias for

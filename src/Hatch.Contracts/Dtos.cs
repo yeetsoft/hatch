@@ -833,6 +833,20 @@ public record ClaimHeartbeatRequest(Guid Token, string? Chatter, int? PlaybookId
 /// leaves it as it is for any story, which is inheriting the project's
 /// default. Refused on anything but a story, <c>inherit</c> included.
 /// </param>
+/// <param name="Priority">
+/// The priority the issue is born at - one of the six names <c>PUT
+/// .../priority</c> takes. Absent (or null) is <c>normal</c>. A person's call:
+/// a key that names it, even as <c>normal</c>, is refused before anything
+/// else is read.
+/// </param>
+/// <param name="PreApproval">
+/// The pre-approval level the issue is born at - <c>none</c>, <c>express</c> or
+/// <c>preapproved</c>, the names <c>PUT .../pre-approval</c> takes. Absent (or
+/// null) is <c>none</c>. A person's call, gated the way setting it later is: an
+/// owner or approver for <c>preapproved</c>, and whoever may move work into
+/// the send-back column for <c>express</c>. Either way it is born in the one
+/// save, with no second event.
+/// </param>
 public record IssueCreateRequest(
     int ProjectId,
     string Type,
@@ -841,7 +855,9 @@ public record IssueCreateRequest(
     string? ParentKey,
     string? ReadyAt,
     string? DueAt,
-    string? OnePr = null);
+    string? OnePr = null,
+    string? Priority = null,
+    string? PreApproval = null);
 
 /// <summary>
 /// An edit. Every field is optional and null means "leave this alone", which
