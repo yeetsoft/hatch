@@ -104,6 +104,103 @@ public sealed class LiveTerminalTests
         return captured.ToString();
     }
 
+    // ---- A frame is one write (HA-1354) ----
+
+    [Fact]
+    public void A_line_reaches_standard_output_as_one_write()
+    {
+        var recording = new RecordingWriter();
+        using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1), stdout: recording);
+
+        live.Line("one");
+        var first = Assert.Single(recording.Writes);
+        Assert.StartsWith("one\n", first, StringComparison.Ordinal);
+        Assert.Contains("Chrissy for Nathan", first, StringComparison.Ordinal);
+
+        var footerHeight = first.Count(c => c == '\n') - 1;
+        live.Line("two");
+        Assert.Equal(2, recording.Writes.Count);
+        var second = recording.Writes[1];
+        Assert.StartsWith($"\x1b[{footerHeight}F\x1b[0J", second, StringComparison.Ordinal);
+        Assert.Contains("two", second, StringComparison.Ordinal);
+        Assert.Contains("Chrissy for Nathan", second, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Complain_is_three_writes_in_order()
+    {
+        var recording = new RecordingWriter();
+        var originalErr = Console.Error;
+        var err = new StringWriter();
+        Console.SetError(err);
+        try
+        {
+            using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1), stdout: recording);
+            live.Line("one");
+            var before = recording.Writes.Count;
+            var footerHeight = recording.Writes[0].Count(c => c == '\n') - 1;
+
+            var errAtEachWrite = new List<string>();
+            recording.OnWrite = () => errAtEachWrite.Add(err.ToString().Replace("\r\n", "\n"));
+            live.Complain("uh oh");
+
+            // The erase alone, then (on the other stream) the line, then the footer alone.
+            Assert.Equal(before + 2, recording.Writes.Count);
+            Assert.Equal($"\x1b[{footerHeight}F\x1b[0J", recording.Writes[before]);
+            Assert.Equal(["", "uh oh\n"], errAtEachWrite);
+            Assert.StartsWith("Chrissy", recording.Writes[before + 1], StringComparison.Ordinal);
+            Assert.DoesNotContain(recording.Writes, w => w.Contains("uh oh", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Console.SetError(originalErr);
+        }
+    }
+
+    [Fact]
+    public void A_tick_that_would_redraw_the_same_rows_writes_nothing()
+    {
+        var recording = new RecordingWriter();
+        var state = StateWithRunner();
+        using var live = new LiveTerminal(state, new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1), stdout: recording);
+
+        live.Line("one");
+        var drawn = recording.Writes.Count;
+
+        live.Redraw();
+        Assert.Equal(drawn, recording.Writes.Count);
+
+        state.SetRunner(new RunnerSnapshot("Chrissy", "Nathan", 2, TimeSpan.Zero, 0m, null));
+        live.Redraw();
+        Assert.Equal(drawn + 1, recording.Writes.Count);
+        Assert.StartsWith("\x1b[", recording.Writes[^1], StringComparison.Ordinal);
+        Assert.Contains("Chrissy for Nathan", recording.Writes[^1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Stop_after_a_line_writes_the_erase_alone()
+    {
+        var recording = new RecordingWriter();
+        using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1), stdout: recording);
+
+        live.Line("one");
+        var footerHeight = recording.Writes[0].Count(c => c == '\n') - 1;
+        live.Stop();
+
+        Assert.Equal(2, recording.Writes.Count);
+        Assert.Equal($"\x1b[{footerHeight}F\x1b[0J", recording.Writes[1]);
+    }
+
+    private sealed class RecordingWriter : TextWriter
+    {
+        public List<string> Writes { get; } = [];
+        public Action? OnWrite { get; set; }
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        public override void Write(string? value) { OnWrite?.Invoke(); Writes.Add(value ?? ""); }
+        public override void Write(char value) { OnWrite?.Invoke(); Writes.Add(value.ToString()); }
+        public override void WriteLine(string? value) { OnWrite?.Invoke(); Writes.Add((value ?? "") + "\n"); }
+    }
+
     // ---- A closed terminal (HA-115) ----
 
     [Fact]
@@ -118,6 +215,7 @@ public sealed class LiveTerminalTests
             using var live = new LiveTerminal(StateWithRunner(), new FrozenClock(Now), color: false, tickEvery: TimeSpan.FromHours(1));
             live.Line("hello");
             live.Complain("uh oh");
+            live.Redraw();
             live.Stop();
         }
         finally

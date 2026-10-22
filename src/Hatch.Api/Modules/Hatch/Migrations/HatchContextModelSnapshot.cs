@@ -308,6 +308,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("ReleaseNote")
                         .HasColumnType("text");
 
+                    b.Property<string>("RunnerTags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()

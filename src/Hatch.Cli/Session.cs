@@ -104,7 +104,7 @@ public static class Agents
         if (id == "claude")
         {
             adapter = new ClaudeAdapter(settings.ClaudeBin, warn);
-            runner = new AgentSessionRunner(adapter);
+            runner = new AgentSessionRunner(adapter, warn);
             refusal = "";
             return true;
         }
@@ -112,7 +112,7 @@ public static class Agents
         if (id == "codex")
         {
             adapter = new CodexAdapter(settings.CodexBin);
-            runner = new AgentSessionRunner(adapter);
+            runner = new AgentSessionRunner(adapter, warn);
             refusal = "";
             return true;
         }
@@ -120,7 +120,7 @@ public static class Agents
         if (id == "grok")
         {
             adapter = new GrokAdapter(settings.GrokBin, warn);
-            runner = new AgentSessionRunner(adapter);
+            runner = new AgentSessionRunner(adapter, warn);
             refusal = "";
             return true;
         }
@@ -128,7 +128,7 @@ public static class Agents
         if (id == "ollama")
         {
             adapter = new OllamaAdapter(settings.OllamaHost, settings.OllamaTiers, warn, settings.CodexBin);
-            runner = new AgentSessionRunner(adapter);
+            runner = new AgentSessionRunner(adapter, warn);
             refusal = "";
             return true;
         }

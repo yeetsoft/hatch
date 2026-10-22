@@ -123,6 +123,13 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
                 lines.Add(line);
         }, CancellationToken.None);
 
+        // Its stderr is the runner's console otherwise, under the readout.
+        var errors = Task.Run(async () =>
+        {
+            while (await process.StandardError.ReadLineAsync(CancellationToken.None) is { } line)
+                warn?.Invoke(line);
+        }, CancellationToken.None);
+
         using var timeout = new CancellationTokenSource(ProbeCeiling);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         try
@@ -134,7 +141,7 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
             Stop(process);
         }
 
-        await reading.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await Task.WhenAll(reading, errors).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         await process.WaitForExitAsync(CancellationToken.None);
 
         if (UsageReport.Turns(lines) > 0)
@@ -157,6 +164,7 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
             UseShellExecute = false,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
         start.ArgumentList.Add("-p");
         start.ArgumentList.Add("/usage");

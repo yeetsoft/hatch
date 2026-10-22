@@ -92,6 +92,12 @@ public sealed class ClaudeAdapterTests : IDisposable
     }
 
     [Fact]
+    public void The_probe_redirects_its_standard_error_so_it_cannot_write_under_the_readout()
+    {
+        Assert.True(Adapter().ProbeStart("/tmp").RedirectStandardError);
+    }
+
+    [Fact]
     public void CanSpawn_refuses_with_the_same_sentence_as_today_when_nothing_is_configured_or_on_path()
     {
         var adapter = new ClaudeAdapter(configured: "/does/not/exist");

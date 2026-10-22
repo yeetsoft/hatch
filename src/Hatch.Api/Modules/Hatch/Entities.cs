@@ -203,16 +203,6 @@ public class EfHatchProject
     /// calls). Written only by <see cref="ProjectsController.PutRunnerTags"/>.
     /// </summary>
     public string RunnerTags { get; set; } = "[]";
-
-    /// <summary>What a reader gets back - never null, possibly empty.</summary>
-    public static IReadOnlyList<string> ReadRunnerTags(string stored) =>
-        JsonSerializer.Deserialize<List<string>>(stored, Json) ?? [];
-
-    /// <summary>What goes in the column. Always a real array, even when empty - see <see cref="RunnerTags"/>.</summary>
-    public static string WriteRunnerTags(IReadOnlyList<string> tags) =>
-        JsonSerializer.Serialize(tags, Json);
-
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
 
 /// <summary>
@@ -949,6 +939,19 @@ public class EfHatchIssue
     /// out, it reads whatever it reads next.</para>
     /// </remarks>
     public int PreApproval { get; set; }
+
+    /// <summary>
+    /// Which runners may implement this issue, as a jsonb array in the order
+    /// they were written - normalised, case folded and deduplicated by
+    /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
+    /// column, the same way <see cref="EfHatchProject.RunnerTags"/> does. Empty,
+    /// not null, so an issue nobody has tagged reads back "[]" the same way
+    /// <c>EnsureCreated</c> and every migrated row do. This is the issue's
+    /// *own* list, written only by the runner-tags route on the issue (a later
+    /// task of this ticket's parent) - never a value inherited from the
+    /// project and copied into the column.
+    /// </summary>
+    public string RunnerTags { get; set; } = "[]";
 
     /// <summary>
     /// Whether this story's tasks share the story's branch and one pull

@@ -6,14 +6,21 @@ namespace Hatch.Cli;
 /// <summary>
 /// The spawn, generic over which agent's CLI is being run - see <see
 /// cref="IAgentAdapter"/> for the half of this that differs by agent.
+/// <paramref name="onError"/> takes each line the child writes to its standard
+/// error, exactly as written; with none, those lines are dropped.
 /// </summary>
-public sealed class AgentSessionRunner(IAgentAdapter adapter) : ISessionRunner, IUsageProbe
+public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? onError = null) : ISessionRunner, IUsageProbe
 {
     public bool CanSpawn(out string refusal) => adapter.CanSpawn(out refusal);
 
     public async Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct)
     {
         var start = adapter.BuildHeadless(request);
+
+        // The adapters build their own start info and none redirects this. Left
+        // alone, the child's stderr is the runner's own console, under the
+        // readout and outside its row count.
+        start.RedirectStandardError = true;
 
         try
         {
@@ -58,6 +65,14 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter) : ISessionRunner, 
                 }
             }, CancellationToken.None);
 
+            // Read beside stdout, so a child that fills either pipe cannot stall
+            // on the other.
+            var errors = Task.Run(async () =>
+            {
+                while (await process.StandardError.ReadLineAsync(CancellationToken.None) is { } line)
+                    onError?.Invoke(line);
+            }, CancellationToken.None);
+
             try
             {
                 await process.WaitForExitAsync(ct);
@@ -69,7 +84,7 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter) : ISessionRunner, 
 
             // Whatever was written before the kill is still worth having, and the
             // reader ends of its own accord once the pipe closes.
-            await Task.WhenAll(writing, reading).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            await Task.WhenAll(writing, reading, errors).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
             await process.WaitForExitAsync(CancellationToken.None);
 
             return new SessionResult(process.ExitCode, collected.ToString());
