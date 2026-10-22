@@ -1034,6 +1034,87 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(refusal.Result);
     }
 
+    // ---- Who may press ----
+
+    [Fact]
+    public async Task AnOwnersRunner_IsControllableByItsOwner()
+    {
+        var h = await NewAsync(wall: true);
+        await h.LoopBeatAsync(Runner, new Actor(ActorKind.Person, h.PersonId, "Nathan"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", patched.State);
+    }
+
+    [Fact]
+    public async Task ADifferentUsersRunner_Is403WithTheSentence()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(State: "paused"), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("Alice", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Contains(Runner, Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnAdmin_ControlsAnyonesRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", patched.State);
+    }
+
+    [Fact]
+    public async Task ARunnerThatBelongsToNobody_IsOpenToAnyUser()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", patched.State);
+    }
+
+    [Fact]
+    public async Task WithTheWallOff_AMismatchedOwner_StillControlsIt()
+    {
+        var h = await NewAsync();
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", patched.State);
+    }
+
+    [Fact]
+    public async Task GetRunners_AnswersForAndCanControl()
+    {
+        var h = await NewAsync(wall: true);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+        await h.LoopBeatAsync("here:/checkouts/two", null);
+
+        var rows = await h.ListAsync();
+
+        var owned = Assert.Single(rows, r => r.Name == Runner);
+        Assert.Equal("Alice", owned.For);
+        Assert.False(owned.CanControl);
+
+        var open = Assert.Single(rows, r => r.Name == "here:/checkouts/two");
+        Assert.Null(open.For);
+        Assert.True(open.CanControl);
+    }
+
     // ---- The edge that is cut ----
 
     [Fact]
@@ -1086,6 +1167,7 @@ public class RunnersControllerTests
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required StubActorDirectory Actors { get; init; }
+        public required Guid PersonId { get; init; }
 
         private int nextRepoOrder;
 
@@ -1186,7 +1268,8 @@ public class RunnersControllerTests
         }
     }
 
-    private static async Task<Harness> NewAsync(bool program = false, bool wall = false)
+    private static async Task<Harness> NewAsync(
+        bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -1200,6 +1283,7 @@ public class RunnersControllerTests
         var claims = TestClaims.With();
         var runners = new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }), Options.Create(new AuthOptions { Enabled = wall }));
 
+        var id = personId ?? Guid.NewGuid();
         var caller = program
             ? new StubCaller
             {
@@ -1212,18 +1296,19 @@ public class RunnersControllerTests
                     CreatedAt = Now,
                 },
             }
-            : new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
+            : new StubCaller { Person = new EfPerson { Id = id, Name = "Nathan", Role = role, CreatedAt = Now, UpdatedAt = Now } };
 
         var actors = new StubActorDirectory();
 
         return new Harness
         {
-            Runners = new RunnersController(db, runners, claims, caller, actors, time),
+            Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall })),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,
             Actors = actors,
+            PersonId = id,
         };
     }
 

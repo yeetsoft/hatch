@@ -65,9 +65,11 @@ public class EfPerson
     /// <summary>
     /// What this person may reach: nothing yet (<see cref="PersonRole.Pending"/>),
     /// the everyday apps (<see cref="PersonRole.User"/>), or the operator's
-    /// verbs as well (<see cref="PersonRole.Admin"/>). Read in exactly one place
-    /// (<see cref="Hatch.Api.Services.Auth.RoleGate"/>), and enforced whenever
-    /// the wall is on.
+    /// verbs as well (<see cref="PersonRole.Admin"/>). Read in exactly two
+    /// places - <see cref="Hatch.Api.Services.Auth.RoleGate"/>, and the
+    /// owner-or-admin gate on a runner's <c>PATCH</c>
+    /// (<see cref="Hatch.Api.Modules.Hatch.RunnersController"/>) - and enforced
+    /// whenever the wall is on.
     ///
     /// Stored as the enum's integer, and the CLR default is Pending on purpose:
     /// a row written by a code path that forgot to say is a person who reaches

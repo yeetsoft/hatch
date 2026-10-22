@@ -39,7 +39,8 @@ Users**: `pending`, `user` or `admin`.
   see the board."
 - **`user`** reaches every route on the board.
 - **`admin`** reaches what a user does and adds the operator's own controls:
-  people, sessions, API keys and the core settings.
+  people, sessions, API keys and the core settings. With the wall up, an
+  admin also controls every runner, not only the ones that work for them.
 
 The first `admin` is the first new Google identity to sign in while no admin
 exists. The `migrate` log says so, so that you sign in yourself before you
@@ -154,6 +155,7 @@ to sign-in instead.
     - `only an owner or approver of <KEY> may set pre-approval - it is the approve press given in advance`
     - `setting an issue's pre-approval level is a person's call, not an agent's`
     - `moving work into a protected column is an owner's or approver's call, not an agent's`
+    - `only <name>, or an admin, may control <runner>`
 - **What the CLI prints for a `403`** is the API's own reason: a role-gate
   code prints as itself (`hatch: 403 - not_admin`), and a plain-sentence
   refusal prints that sentence (`hatch: 403 - only an owner or approver of
