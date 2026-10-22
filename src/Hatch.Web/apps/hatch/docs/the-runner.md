@@ -28,8 +28,8 @@ chmod +x hatch
 
 The binary is self-contained: nothing else needs installing to run it, not
 .NET, not Node, not `jq`. It needs `git`, and the agent CLI it spawns, logged
-in: `claude` by default, or `codex` or `grok` when `HATCH_AGENT` or `--agent`
-says so. In a checkout of Hatch itself, `scripts/hatch.sh` (`scripts\hatch.ps1`
+in: `claude` by default, or `codex`, `grok` or `ollama` when `HATCH_AGENT` or
+`--agent` says so. In a checkout of Hatch itself, `scripts/hatch.sh` (`scripts\hatch.ps1`
 in PowerShell) finds or builds the binary and hands over, so nothing needs
 installing first — the wrapper itself needs the .NET SDK, and bash 3.2+ or
 PowerShell 5.1+. `make build-hatch` builds the binary once so every command
@@ -39,6 +39,29 @@ the Runner page serves.
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
 the [CLI reference](cli-reference).
+
+## Which agent it spawns
+
+Install and sign in to the one the runner will spawn, then name it with
+`HATCH_AGENT` or `--agent`. Vendor install lines move; the vendor's page wins
+over the line here.
+
+| id | install | signing in | needs |
+| --- | --- | --- | --- |
+| `claude` | [Claude Code setup](https://code.claude.com/docs/en/setup) | `claude auth login` | A Claude Pro, Max, Team or Enterprise plan, or a Console account; the free claude.ai plan has no Claude Code |
+| `codex` | [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) | The first run of `codex` offers *Sign in with ChatGPT*, or set `CODEX_API_KEY` | See the vendor's page for which plans include it |
+| `grok` | [Grok Build](https://docs.x.ai/build/overview) | Run `grok` once for the browser sign-in, or set `XAI_API_KEY` | No plan is named here: see the vendor's page |
+| `ollama` | Runs through the `codex` CLI: install `codex` | None: there is no account | An Ollama server reachable at `HATCH_OLLAMA_HOST` ([Reaching an Ollama](the-container-runner#reaching-an-ollama-outside-the-container)) |
+
+The install lines, as the vendors print them today:
+
+```
+curl -fsSL https://claude.ai/install.sh | bash          # claude
+irm https://claude.ai/install.ps1 | iex                 # claude, Windows
+curl -fsSL https://chatgpt.com/codex/install.sh | sh    # codex
+curl -fsSL https://x.ai/cli/install.sh | bash           # grok
+irm https://x.ai/cli/install.ps1 | iex                  # grok, Windows
+```
 
 ## Pointing it at a board
 
@@ -113,7 +136,7 @@ HATCH_KEY            hatch_ak_...; optional against a Hatch with its wall off
 HATCH_CLAUDE_BIN     the claude CLI, if it is not on PATH
 HATCH_CODEX_BIN      the codex CLI, if it is not on PATH
 HATCH_GROK_BIN       the grok CLI, if it is not on PATH
-HATCH_AGENT          claude, codex or grok (default: claude)
+HATCH_AGENT          claude, codex, grok or ollama (default: claude)
 HATCH_BASE_BRANCH    the trunk go-to-work resets to between increments
 HATCH_RUNNER         what the board calls this runner (default: a cast-list
                      character, chosen once per checkout)
@@ -299,7 +322,10 @@ reference](cli-reference) has each one in full.
   an editor extension's bundled copy, which moves with that extension's own
   updates and would break on somebody else's release schedule. Install the
   CLI, or name it in `HATCH_CLAUDE_BIN`, which must point at a file that
-  exists.
+  exists. Under another agent the message names that agent's CLI instead
+  (`hatch: no codex CLI on PATH.`) and the setting is `HATCH_CODEX_BIN` or
+  `HATCH_GROK_BIN`; `ollama` runs through the `codex` CLI, so it is
+  `HATCH_CODEX_BIN` there too.
 - **`hatch: cannot tell which branch is the trunk here`.** `origin/HEAD` is
   not set in this clone. `git remote set-head origin -a` fixes it, or name
   the branch in `HATCH_BASE_BRANCH`.
