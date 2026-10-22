@@ -2005,6 +2005,8 @@ export interface Runner {
   for: string | null;
   /** Whether this caller's PATCH would succeed - judged the same way the server's own gate judges it. */
   canControl: boolean;
+  /** The standing order this loop has not yet read back, or null. Mirrors RunnerOrderDto. */
+  order: { kind: 'work' | 'pass'; key: string | null; by: string | null; at: string | null } | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
@@ -2018,6 +2020,12 @@ export interface RunnerPatchRequest {
   /** An instant (`2026-09-12T17:00:00Z`). Never a bare date: "stop by the 12th"
       would be a midnight in a timezone nobody named. */
   untilAt?: string;
+}
+
+/** A one-off order for a loop: work this ticket, or run one pass. Mirrors RunnerOrderRequest. */
+export interface RunnerOrderRequest {
+  kind: 'work' | 'pass';
+  key?: string;
 }
 
 // ---- People ----

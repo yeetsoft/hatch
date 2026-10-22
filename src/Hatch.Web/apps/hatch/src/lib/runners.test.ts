@@ -7,6 +7,8 @@ import {
   boundsProblem,
   boundsRequest,
   drivesLabel,
+  isIssueKeyShape,
+  orderSentence,
   isControllable,
   MAX_SPEND_HINT,
   mineLabel,
@@ -47,6 +49,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   exhaustedUntil: null,
   for: null,
   canControl: true,
+  order: null,
   ...over,
 });
 
@@ -308,5 +311,31 @@ describe('the bounds form', () => {
     expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09' })).toContain('an hour');
     expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z' })).toBeNull();
     expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '' })).toBeNull();
+  });
+});
+
+describe('orderSentence', () => {
+  const ago = new Date(NOW.getTime() - 120_000).toISOString();
+
+  it('names a work order ticket and who gave it', () => {
+    expect(orderSentence({ kind: 'work', key: 'HA-12', by: 'Ada', at: ago }, NOW)).toBe(
+      'ordered to work HA-12 by Ada, 2 minutes ago',
+    );
+  });
+
+  it('leaves the key out of a pass and says somebody when nobody is named', () => {
+    expect(orderSentence({ kind: 'pass', key: null, by: null, at: ago }, NOW)).toBe(
+      'ordered to pass by somebody, 2 minutes ago',
+    );
+  });
+});
+
+describe('isIssueKeyShape', () => {
+  it.each(['HA-12', 'ha-12', ' HA-12 ', 'AER2-7'])('accepts %j', (text) => {
+    expect(isIssueKeyShape(text)).toBe(true);
+  });
+
+  it.each(['', 'HA', '12', 'HA-', 'HA-12 x'])('refuses %j', (text) => {
+    expect(isIssueKeyShape(text)).toBe(false);
   });
 });

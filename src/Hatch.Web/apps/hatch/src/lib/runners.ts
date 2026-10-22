@@ -174,6 +174,15 @@ export function drivesLabel(runner: Runner): string {
   return runner.drives.length === 0 ? 'driving nothing' : `driving ${runner.drives.join(', ')}`;
 }
 
+/** A held order as the row says it: what was asked, by whom, and how long ago. */
+export function orderSentence(order: NonNullable<Runner['order']>, now: Date): string {
+  return `ordered to ${order.kind}${order.key ? ' ' + order.key : ''} by ${order.by ?? 'somebody'}, ${agoPhrase(order.at, now)}`;
+}
+
+/** Whether the text is shaped like an issue key. Only gates the button - the
+    server does the real parse. */
+export const isIssueKeyShape = (text: string): boolean => /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(text.trim());
+
 /** The bounds as the form holds them: strings, because that is what inputs are
     and what the wire takes. */
 export interface RunnerBounds {

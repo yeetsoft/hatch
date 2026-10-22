@@ -1,7 +1,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
-import { patchRunner } from '../api/client';
+import { orderRunner, patchRunner, withdrawOrder } from '../api/client';
 import { MomentField } from '../components/MomentField';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
@@ -14,15 +14,17 @@ import {
   boundsRequest,
   drivesLabel,
   isControllable,
+  isIssueKeyShape,
   MAX_SPEND_HINT,
   mineLabel,
+  orderSentence,
   repositoriesLabel,
   runnerActivity,
   tagsLabel,
   type RunnerBounds,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
-import type { Runner, RunnerPatchRequest } from '../types';
+import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 /**
  * Every runner that has spoken to this Hatch lately, and the three things a
@@ -90,6 +92,8 @@ export function RunnersPage() {
                   runner={runner}
                   now={now}
                   onPatch={(request) => void act(() => patchRunner(runner.name, request))}
+                  onOrder={(request) => void act(() => orderRunner(runner.name, request))}
+                  onWithdraw={() => void act(() => withdrawOrder(runner.name))}
                 />
               ))}
             </tbody>
@@ -104,12 +108,17 @@ export function Row({
   runner,
   now,
   onPatch,
+  onOrder,
+  onWithdraw,
 }: {
   runner: Runner;
   now: Date;
   onPatch: (request: RunnerPatchRequest) => void;
+  onOrder: (request: RunnerOrderRequest) => void;
+  onWithdraw: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [key, setKey] = useState('');
   const activity = runnerActivity(runner, now);
   const controllable = isControllable(runner);
   const ownedByAnother = runner.kind === 'loop' && !runner.canControl;
@@ -144,7 +153,7 @@ export function Row({
         </td>
         <td>
           {controllable && (
-            <div className="hatch-reorder">
+            <div className="hatch-reorder hatch-reorder--wrap">
               <Button
                 onClick={() => onPatch({ state: runner.state === 'paused' ? 'running' : 'paused' })}
                 disabled={runner.state === 'stopping'}
@@ -159,6 +168,34 @@ export function Row({
                 Stop after this one
               </Button>
               <Button onClick={() => setOpen(!open)}>{open ? 'Hide bounds' : 'Bounds'}</Button>
+              {runner.order ? (
+                <>
+                  <Text tone="muted">{orderSentence(runner.order, now)}</Text>
+                  <Button onClick={onWithdraw}>Withdraw</Button>
+                </>
+              ) : (
+                <>
+                  <input
+                    aria-label="Ticket to work"
+                    placeholder="HA-12"
+                    value={key}
+                    disabled={runner.state === 'stopping'}
+                    onChange={(e) => setKey(e.target.value)}
+                  />
+                  <Button
+                    disabled={runner.state === 'stopping' || !isIssueKeyShape(key)}
+                    onClick={() => {
+                      onOrder({ kind: 'work', key: key.trim() });
+                      setKey('');
+                    }}
+                  >
+                    Work this ticket
+                  </Button>
+                  <Button disabled={runner.state === 'stopping'} onClick={() => onOrder({ kind: 'pass' })}>
+                    Run one pass
+                  </Button>
+                </>
+              )}
             </div>
           )}
           {ownedByAnother && <Text tone="muted">{`${runner.for ?? 'its owner'}'s to control`}</Text>}

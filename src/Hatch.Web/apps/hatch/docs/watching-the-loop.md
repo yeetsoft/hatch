@@ -42,7 +42,10 @@ control on this page.
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Bounds** form - **Under**,
 **Max runs**, **Max spend**, **Until** (an hour, not just a day), with
-**Save bounds** and **Revert**. A press only records what the board wants:
+**Save bounds** and **Revert** - and an Order control: a box for a ticket
+key with **Work this ticket**, and **Run one pass**. The loop takes an order at
+its next heartbeat, paused or running, then returns to what its state says.
+A press only records what the board wants:
 the runner reads it between increments, at its next heartbeat, never in the
 middle of one. Nothing on the server starts or stops a process, which is why
 the same buttons work for a runner in a container or on a laptop behind a
@@ -53,6 +56,10 @@ runners and heartbeat as one, but never set a bound or a control, since an
 agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
+
+An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
+<how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one
+at a time, so the Order control is replaced by that line while it stands.
 
 A runner holding a ticket shows on that ticket too. On the board, its card
 carries a small robot head - blue while the runner is being heard from, amber

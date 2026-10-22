@@ -58,6 +58,7 @@ import type {
   Revision,
   Runner,
   RunnerDownloads,
+  RunnerOrderRequest,
   RunnerPatchRequest,
   SearchResult,
   SessionSort,
@@ -260,6 +261,10 @@ export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/pl
 export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
+export const orderRunner = (name: string, request: RunnerOrderRequest) =>
+  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/order`, { method: 'POST', ...asJson(request) });
+export const withdrawOrder = (name: string) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/order`, { method: 'DELETE' });
 
 export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`);
 
