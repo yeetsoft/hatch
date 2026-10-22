@@ -51,6 +51,12 @@ public class RunnersController(
     /// cards on the busiest board this is for - matched to runners in memory,
     /// because the thing being matched on is a name a checkout computed and not
     /// a key anybody indexed.
+    ///
+    /// <para>Rows outside <see cref="VisibleAsync"/>'s reach are dropped from
+    /// the same table <see cref="Heartbeat"/> writes <c>ForPersonId</c> to,
+    /// through <see cref="IActorDirectory.PrincipalAsync"/> - the same
+    /// resolution, so "whose runner is this" and "who may see it" cannot
+    /// disagree.</para>
     /// </remarks>
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
@@ -64,8 +70,15 @@ public class RunnersController(
         // finds its own bounds still on it.
         var dropBefore = runners.DropBefore(now);
 
-        var rows = await db.Runners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= dropBefore)
+        var (all, personId) = await VisibleAsync(ct);
+
+        var query = db.Runners.AsNoTracking().Where(r => r.LastSeenAt >= dropBefore);
+        if (!all)
+        {
+            query = personId is { } id ? query.Where(r => r.ForPersonId == id) : query.Where(r => r.ForPersonId == null);
+        }
+
+        var rows = await query
             .OrderByDescending(r => r.LastSeenAt)
             .ToListAsync(ct);
 
@@ -205,6 +218,29 @@ public class RunnersController(
     /// null on its row.
     /// </summary>
     private async Task<Actor?> ForAsync(CancellationToken ct) => await actors.PrincipalAsync(ct);
+
+    /// <summary>
+    /// Whether <see cref="GetRunners"/> may answer with every row, or only the
+    /// ones <c>ForPersonId</c> ties to this caller: the wall off, a person
+    /// (cookie) calling, or a key whose owner is an admin all see everything;
+    /// anyone else sees only their own.
+    /// </summary>
+    /// <remarks>
+    /// A positive "is a person" test, not <c>!IsProgramAsync</c>, so a caller
+    /// the wall somehow let through with no identity at all falls to the
+    /// narrow arm, never the wide one. <c>PersonAsync</c> and
+    /// <c>ApiKeyAsync</c> are memoized on <see cref="ICallerIdentity"/>, so
+    /// asking again here costs no extra query even though <see cref="GetRunners"/>
+    /// already reads <c>PersonAsync</c> for its own <c>callerPerson</c>.
+    /// </remarks>
+    private async Task<(bool All, Guid? PersonId)> VisibleAsync(CancellationToken ct)
+    {
+        if (!auth.Value.Enabled) return (true, null);
+        if (await caller.PersonAsync(ct) is not null) return (true, null);
+        if (await caller.ApiKeyAsync(ct) is { Owner.Role: >= PersonRole.Admin }) return (true, null);
+
+        return (false, (await actors.PrincipalAsync(ct))?.Id);
+    }
 
     /// <summary>
     /// The windows off a non-empty reading, as JSON, percent clamped 0..100 -
