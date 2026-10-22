@@ -26,9 +26,9 @@ import {
   projectReflectionDiff,
   projectRepoSourcedDiff,
   projectRunnerTagsDiff,
-  runnerTagsSentence,
   type ProjectDraft,
 } from '../lib/projectDraft';
+import { runnerTagsSentence } from '../lib/runnerTags';
 import {
   hasOwner,
   openProjectMembersDraft,
