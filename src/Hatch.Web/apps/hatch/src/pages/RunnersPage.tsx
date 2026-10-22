@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
 import { patchRunner } from '../api/client';
 import { MomentField } from '../components/MomentField';
+import { RunnerTagsField } from '../components/RunnerTagsField';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
@@ -211,7 +212,7 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
 }
 
 /**
- * The four bounds, edited together.
+ * The bounds, edited together.
  *
  * Saved on a button rather than on blur, for the reason the playbook prompt is:
  * these are numbers somebody is part way through typing, and a PATCH fired
@@ -242,6 +243,12 @@ function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: Runn
           hint="An hour to stop by, in this browser's timezone."
           value={draft.untilAt === '' ? null : draft.untilAt}
           onChange={(next) => set('untilAt', next)}
+        />
+        <RunnerTagsField
+          label="Tags"
+          hint="One tag per line. Empty is any runner."
+          value={draft.tags}
+          onChange={(next) => set('tags', next)}
         />
       </div>
 

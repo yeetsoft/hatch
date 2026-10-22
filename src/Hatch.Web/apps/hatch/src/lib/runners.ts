@@ -14,6 +14,7 @@
 
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
+import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 /** The six states a row can be in, in the order they are decided. */
@@ -182,6 +183,7 @@ export interface RunnerBounds {
   maxSpend: string;
   /** The wire form, or `''` - what MomentField hands back. */
   untilAt: string;
+  tags: string;
 }
 
 /** What a row's bounds look like in the form that edits them. */
@@ -191,13 +193,17 @@ export function boundsOf(runner: Runner): RunnerBounds {
     maxRuns: runner.maxRuns === null ? '' : String(runner.maxRuns),
     maxSpend: runner.maxSpend === null ? '' : String(runner.maxSpend),
     untilAt: runner.untilAt ?? '',
+    tags: runnerTagsDraft(runner.tags),
   };
 }
 
 /** Whether the form is holding anything the row is not. */
 export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
   const saved = boundsOf(runner);
-  return (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim());
+  return (
+    (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim()) ||
+    !sameTags(runnerTagsRequest(draft.tags), runner.tags)
+  );
 }
 
 /**
@@ -227,5 +233,6 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     maxRuns: draft.maxRuns.trim(),
     maxSpend: draft.maxSpend.trim(),
     untilAt: draft.untilAt.trim(),
+    tags: runnerTagsRequest(draft.tags),
   };
 }
