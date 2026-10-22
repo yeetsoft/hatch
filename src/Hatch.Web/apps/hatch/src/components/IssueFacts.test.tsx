@@ -133,5 +133,13 @@ describe('IssueFacts', () => {
     expect(html).toContain('—');
     expect(html).toContain('the playbook decides');
     expect(html).not.toContain('Stories at once');
+    expect(html).not.toContain('Runner tags');
+  });
+
+  it('draws a Runner tags field with the union sentence when runnerTags is non-empty', () => {
+    const html = render(issue({ runnerTags: ['linux'] }));
+
+    expect(html).toContain('Runner tags');
+    expect(html).toContain('Runners tagged linux.');
   });
 });

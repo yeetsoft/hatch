@@ -23,11 +23,13 @@ import {
   setPreApproval,
   setHold,
   setOnePr,
+  setIssueRunnerTags,
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { PriorityControl } from '../components/PriorityControl';
 import { PreApprovalControl } from '../components/PreApprovalControl';
+import { RunnerTagsField } from '../components/RunnerTagsField';
 import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
@@ -58,6 +60,7 @@ import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint } from '../lib/playbookFiles';
+import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { moveBlocked } from '../lib/protectedColumns';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -97,6 +100,7 @@ import type {
   IssueType,
   Project,
   QuestionOption,
+  RunnerTagSource,
   Status,
   Work,
   WorkLog as WorkLogData,
@@ -136,6 +140,8 @@ export function IssuePage() {
   /* A pre-approval press is already out - PreApprovalControl's own flag, the
      same shape priorityBusy is. */
   const [preApprovalBusy, setPreApprovalBusy] = useState(false);
+  /* A runner-tags save is already out - the same shape as `preApprovalBusy`. */
+  const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
@@ -417,6 +423,22 @@ export function IssuePage() {
         setError(message(err));
       } finally {
         setPreApprovalBusy(false);
+      }
+    },
+    [key, load],
+  );
+
+  /* The own-tags save, the same shape savePreApproval is. */
+  const saveRunnerTags = useCallback(
+    async (tags: string[]) => {
+      setRunnerTagsBusy(true);
+      try {
+        await setIssueRunnerTags(key, { tags });
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setRunnerTagsBusy(false);
       }
     },
     [key, load],
@@ -730,6 +752,9 @@ export function IssuePage() {
               onChange={(level) => void savePreApproval(level)}
             />
           </Field>
+
+          <IssueRunnerTagsOwnField tags={issue.runnerTagsOwn} busy={runnerTagsBusy} onSave={(tags) => void saveRunnerTags(tags)} />
+          <RunnerTagsInherited from={issue.runnerTagsFrom} />
 
           {/* A story answers for its tasks, so it gets the control; a task under
               one that shares a pull request says so, since "why is there no PR
@@ -1762,6 +1787,57 @@ function PullRequestField({ url, onSave }: { url: string | null; onSave: (url: s
         }}
       />
     </Field>
+  );
+}
+
+/**
+ * This issue's own runner tags, editable right where they are read -
+ * blur-commit, re-sync when they change underneath, the way WipLimitField
+ * is. `RunnerTagsField` already renders its own Field around the textarea,
+ * so this wraps it in a bare div for the blur handler rather than a second
+ * Field, which would stack two "Runner tags" labels in the DOM.
+ */
+function IssueRunnerTagsOwnField({ tags, busy, onSave }: { tags: string[]; busy: boolean; onSave: (tags: string[]) => void }) {
+  const [draft, setDraft] = useState(runnerTagsDraft(tags));
+  const [known, setKnown] = useState(tags);
+
+  // Re-syncs when the issue changes underneath - see WipLimitField.
+  if (!sameTags(tags, known)) {
+    setKnown(tags);
+    setDraft(runnerTagsDraft(tags));
+  }
+
+  return (
+    <div
+      onBlur={() => {
+        const next = runnerTagsRequest(draft);
+        if (!sameTags(next, tags)) onSave(next);
+      }}
+    >
+      <RunnerTagsField
+        label="Runner tags"
+        hint="One tag per line. Only a runner advertising every one of these, and every tag inherited below, is handed this ticket's implementation. Blank adds nothing."
+        value={draft}
+        busy={busy}
+        onChange={setDraft}
+      />
+    </div>
+  );
+}
+
+/** One sentence per ancestor or project a tag is inherited from, in order -
+    the project unlinked, an issue linked back to its own page. */
+function RunnerTagsInherited({ from }: { from: RunnerTagSource[] }) {
+  if (from.length === 0) return null;
+  return (
+    <>
+      {from.map((source) => (
+        <p key={`${source.kind}-${source.key}`} className="hatch-section-hint text-muted">
+          Also {joinTags(source.tags)} from{' '}
+          {source.kind === 'issue' ? <Link to={`/issues/${source.key}`}>{source.key}</Link> : runnerTagsFromLabel(source)}.
+        </p>
+      ))}
+    </>
   );
 }
 
