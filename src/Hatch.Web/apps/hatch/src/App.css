@@ -3715,6 +3715,10 @@ input.hatch-inline-title-input {
   }
 }
 
+.hatch-statuses-tags {
+  min-width: 14rem;
+}
+
 /* ---- The importer ---- */
 
 /* A phase in the preview tree: its title, then its counts and its state pushed

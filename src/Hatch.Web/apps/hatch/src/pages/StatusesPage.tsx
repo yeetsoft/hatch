@@ -13,8 +13,10 @@ import {
   setMergesPullRequest,
   setParentPulls,
   setProtected,
+  setStatusRunnerTags,
 } from '../api/client';
 import { StatusPill } from '../components/StatusPill';
+import { StatusRunnerTagsField } from '../components/StatusRunnerTagsField';
 import { COLUMN_FLAGS } from '../lib/columnFlags';
 import { message } from '../lib/errors';
 import { useLoaded } from '../lib/useLoaded';
@@ -40,6 +42,8 @@ export function StatusesPage() {
   const section = data?.section;
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [tagsSaving, setTagsSaving] = useState<number | null>(null);
+  const [tagsRefusal, setTagsRefusal] = useState<{ id: number; text: string } | null>(null);
 
   async function act(action: () => Promise<unknown>) {
     try {
@@ -73,6 +77,21 @@ export function StatusesPage() {
       await patchStatus(a.id, { sortOrder: b.sortOrder });
       await patchStatus(b.id, { sortOrder: a.sortOrder });
     });
+  }
+
+  /** Not act(): a refusal here belongs under this column's own field, not at
+      the page's top, so it is kept apart from the shared error state. */
+  async function saveTags(status: Status, tags: string[]) {
+    setTagsSaving(status.id);
+    try {
+      await setStatusRunnerTags(status.id, { tags });
+      await reload();
+      setTagsRefusal(null);
+    } catch (err) {
+      setTagsRefusal({ id: status.id, text: message(err) });
+    } finally {
+      setTagsSaving(null);
+    }
   }
 
   return (
@@ -179,6 +198,13 @@ export function StatusesPage() {
                 Needs Protected ticked first.
               </dd>
             </div>
+            <div className="hatch-statuses-legend-row">
+              <dt>Runner tags</dt>
+              <dd className="text-muted">
+                Only a runner advertising every one of these, and every tag the project and the ticket add, is
+                handed a session out of this column. Blank adds nothing. A person sets them, never a key.
+              </dd>
+            </div>
           </dl>
         </Card>
       )}
@@ -195,6 +221,9 @@ export function StatusesPage() {
                     {flag.label}
                   </th>
                 ))}
+                <th title="One tag per line. Only a runner advertising every one of these works a session out of this column. Blank adds nothing.">
+                  Runner tags
+                </th>
                 <th>Order</th>
                 <th />
               </tr>
@@ -318,6 +347,14 @@ export function StatusesPage() {
                       title={mergesPullRequestBlocked(status) ?? undefined}
                       aria-label={`${status.name} merges the pull request`}
                       onChange={(e) => void act(() => setMergesPullRequest(status.id, e.target.checked))}
+                    />
+                  </td>
+                  <td className="hatch-statuses-tags">
+                    <StatusRunnerTagsField
+                      status={status}
+                      busy={tagsSaving === status.id}
+                      refusal={tagsRefusal?.id === status.id ? tagsRefusal.text : null}
+                      onSave={(tags) => void saveTags(status, tags)}
                     />
                   </td>
                   <td>
