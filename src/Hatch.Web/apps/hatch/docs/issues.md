@@ -122,6 +122,16 @@ current, or once every child is done, the board carries it on by itself,
 with nobody reading the diff first — a move [the lifecycle of a
 ticket](the-lifecycle-of-a-ticket) calls the hop.
 
+## Runner tags
+
+A ticket's own say over which runner may implement it — a project may
+require tags too, the same shape. What a runner is actually held to is the
+union of all three: the project's own, every ancestor's own, and the
+ticket's own, rather than whichever is nearest. By default nothing is
+required anywhere, so most tickets say nothing about tags at all; a runner
+that advertises none of what is required is skipped, the same way a
+dependency or a hold would be.
+
 ## Held
 
 A person's own mark, set from the ticket's **Hold for me** button and read
