@@ -386,6 +386,8 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   untilAt: null,
   goneAfterSeconds: 300,
   exhaustedUntil: null,
+  for: null,
+  canControl: true,
   ...over,
 });
 

@@ -112,6 +112,7 @@ export function Row({
   const [open, setOpen] = useState(false);
   const activity = runnerActivity(runner, now);
   const controllable = isControllable(runner);
+  const ownedByAnother = runner.kind === 'loop' && !runner.canControl;
   const { words, claimKey } = activityParts(runner, now);
 
   return (
@@ -160,6 +161,7 @@ export function Row({
               <Button onClick={() => setOpen(!open)}>{open ? 'Hide bounds' : 'Bounds'}</Button>
             </div>
           )}
+          {ownedByAnother && <Text tone="muted">{`${runner.for ?? 'its owner'}'s to control`}</Text>}
         </td>
       </tr>
       {open && (
