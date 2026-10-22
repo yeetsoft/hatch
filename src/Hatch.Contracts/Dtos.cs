@@ -353,6 +353,7 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
 /// <paramref name="OpenQuestions"/> is.
 /// </param>
+/// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -381,7 +382,14 @@ public record IssueCardDto(
     bool OnePr = false,
     bool? OnePrOwn = null,
     string? OnePrFrom = null,
-    DateTimeOffset? ClosedAt = null);
+    DateTimeOffset? ClosedAt = null,
+    IReadOnlyList<string> RunnerTagsOwn = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see RunnerDto.Tags for the same shape.
+    public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+}
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -544,6 +552,7 @@ public record IssueClaimDto(
 /// see <see cref="EfHatchIssue.ReleaseNote"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
+/// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -592,7 +601,14 @@ public record IssueDto(
     string? PullRequestHeadSha = null,
     DateTimeOffset? PullRequestReadAt = null,
     DateTimeOffset? ClosedAt = null,
-    string? ReleaseNote = null);
+    string? ReleaseNote = null,
+    IReadOnlyList<string> RunnerTagsOwn = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see RunnerDto.Tags for the same shape.
+    public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+}
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>

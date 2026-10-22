@@ -44,7 +44,9 @@ public class SearchControllerTests
             .ToDictionary(c => c.Key);
         foreach (var hit in result.Hits)
         {
-            Assert.Equal(cards[hit.Card.Key], hit.Card);
+            // RunnerTagsOwn is a list, which a record compares by reference.
+            Assert.Equal(cards[hit.Card.Key] with { RunnerTagsOwn = [] }, hit.Card with { RunnerTagsOwn = [] });
+            Assert.Equal(cards[hit.Card.Key].RunnerTagsOwn, hit.Card.RunnerTagsOwn);
             Assert.Empty(hit.Matched);
         }
 
@@ -342,7 +344,10 @@ public class SearchControllerTests
         public bool Equals(SearchDto? x, SearchDto? y) =>
             x is not null && y is not null && x.Total == y.Total && x.Hits.Count == y.Hits.Count &&
             x.Hits.Zip(y.Hits).All(p =>
-                p.First.Card == p.Second.Card && p.First.CreatedAt == p.Second.CreatedAt &&
+                // RunnerTagsOwn is a list, which a record compares by reference.
+                p.First.Card with { RunnerTagsOwn = [] } == p.Second.Card with { RunnerTagsOwn = [] } &&
+                p.First.Card.RunnerTagsOwn.SequenceEqual(p.Second.Card.RunnerTagsOwn) &&
+                p.First.CreatedAt == p.Second.CreatedAt &&
                 p.First.ClosedAt == p.Second.ClosedAt && p.First.Matched.SequenceEqual(p.Second.Matched));
 
         public int GetHashCode(SearchDto obj) => obj.Total;

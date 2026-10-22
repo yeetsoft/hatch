@@ -242,7 +242,8 @@ public static class IssueProjection
                 issue.PullRequestHeadSha,
                 issue.PullRequestReadAt,
                 issue.ClosedAt,
-                issue.ReleaseNote);
+                issue.ReleaseNote,
+                RunnerTagColumn.Read(issue.RunnerTags));
         });
     }
 
