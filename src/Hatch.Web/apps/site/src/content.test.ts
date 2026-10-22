@@ -108,4 +108,18 @@ describe('setup/index.html', () => {
     const withoutRepoHtml = withoutComments(withoutRepo.read('setup/index.html'))
     expect(preTexts(withoutRepoHtml)).toContain('cd "$HOME" && git clone <the repository\'s clone URL> hatch')
   })
+
+  it('substitutes its own address when base_url is set', async () => {
+    const withOrigin = await buildSite({ base_url: 'https://example.invalid/' })
+    const withOriginHtml = withoutComments(withOrigin.read('setup/index.html'))
+    const pageAddress = 'https://example.invalid/setup/'
+
+    expect(preTexts(withOriginHtml)).toContain(`Set me up with Hatch: ${pageAddress}`)
+    expect(preTexts(withOriginHtml)).toContain(`curl -fsSL ${pageAddress}`)
+    expect(preTexts(withOriginHtml)).toContain(
+      `Invoke-WebRequest -UseBasicParsing ${pageAddress} | Select-Object -ExpandProperty Content`,
+    )
+    expect(decodeEntities(withOriginHtml)).toContain(`<code>irm ${pageAddress}</code> in PowerShell 7.`)
+    expect(withOriginHtml).not.toContain('the address of this page')
+  })
 })

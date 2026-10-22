@@ -65,7 +65,10 @@ export function contentHtml({ cloneUrl, canonical }: { cloneUrl: string | undefi
           if (!knownSlugs.has(slug)) broken.push({ page: page.slug, slug })
           return docHref(resolvedConfig.base, slug, fragment)
         }
-        const body = page.body.replaceAll('{{clone-url}}', cloneUrl ?? "<the repository's clone URL>")
+        const pageAddress = canonical === undefined ? undefined : `${canonical}${page.slug}/`
+        const body = page.body
+          .replaceAll('{{clone-url}}', cloneUrl ?? "<the repository's clone URL>")
+          .replaceAll('<the address of this page>', pageAddress ?? '<the address of this page>')
         const rendered = module.renderDocs(body, resolveHref)
         const id = resolve(__dirname, `${page.slug}/index.html`)
         pages.set(
@@ -75,7 +78,7 @@ export function contentHtml({ cloneUrl, canonical }: { cloneUrl: string | undefi
             description: page.summary,
             up: '../../../',
             mermaid: rendered.mermaidCount > 0,
-            canonical: canonical === undefined ? undefined : `${canonical}${page.slug}/`,
+            canonical: pageAddress,
             main: `      <h1>${escapeHtml(page.title)}</h1>
       <article class="hatch-docs-body">
 ${rendered.html}
