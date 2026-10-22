@@ -46,6 +46,9 @@ export const THIRD_PARTY_DOMAINS = [
   'curl.se', // the curl manual
   'example.com', // the sample commit address
   'docker.app', // the macOS bundle name Docker.app, matched as a bare token - not a host
+  'chatgpt.com', // the Codex CLI installer and docs
+  'x.ai', // the Grok CLI installer, docs and sign-in
+  'ollama.com', // Ollama's own download page
 ]
 
 const WWW_RULE = { name: 'a www. host', pattern: /\bwww\./i }
