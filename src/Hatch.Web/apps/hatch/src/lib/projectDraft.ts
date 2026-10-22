@@ -11,6 +11,7 @@ import type {
   Project,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
+  ProjectReflectionWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepositoryWriteRequest,
   ProjectRunnerTagsWriteRequest,
@@ -32,6 +33,7 @@ export interface ProjectDraft {
     autoHealBugStatusId: number | null;
     repoSourced: boolean;
     runnerTags: string[];
+    reflectionCadenceDays: number | null;
   };
   name: string;
   key: string;
@@ -47,6 +49,8 @@ export interface ProjectDraft {
   autoHealBugStatusId: number | null;
   repoSourced: boolean;
   runnerTags: string;
+  /** Held as text, so a blank box reads as off rather than as 0. */
+  reflectionCadenceDays: string;
 }
 
 export interface ProjectDraftDiff {
@@ -78,6 +82,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       autoHealBugStatusId: project.autoHealBugStatusId,
       repoSourced: project.repoSourced,
       runnerTags,
+      reflectionCadenceDays: project.reflectionCadenceDays,
     },
     name: project.name,
     key: project.key,
@@ -93,6 +98,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     autoHealBugStatusId: project.autoHealBugStatusId,
     repoSourced: project.repoSourced,
     runnerTags: runnerTagsDraft(runnerTags),
+    reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
   };
 }
 
@@ -139,6 +145,18 @@ export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequ
     playbooks from its repository, never folded into projectLandingDiff. */
 export function projectRepoSourcedDiff(draft: ProjectDraft): ProjectRepoSourcedWriteRequest | null {
   return draft.repoSourced !== draft.known.repoSourced ? { repoSourced: draft.repoSourced } : null;
+}
+
+/** Its own route and its own request shape, like projectRepoSourcedDiff - an
+    object, so no change (null) is told from a change to off ({ cadenceDays:
+    null }). A blank box is off; text that is no number is sent as 0, which the
+    server refuses as not a positive number of days, rather than as a null that
+    would quietly switch the cadence off. */
+export function projectReflectionDiff(draft: ProjectDraft): ProjectReflectionWriteRequest | null {
+  const trimmed = draft.reflectionCadenceDays.trim();
+  const parsed = Number(trimmed);
+  const cadenceDays = trimmed === '' ? null : Number.isFinite(parsed) ? parsed : 0;
+  return cadenceDays === draft.known.reflectionCadenceDays ? null : { cadenceDays };
 }
 
 /** What the runner tags field shows: one tag per line, blank for any runner. */
