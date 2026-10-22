@@ -93,7 +93,8 @@ public class RunnersController(
         {
             var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
             var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
-            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl));
+            var order = r.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, r.OrderKey, r.OrderedBy, r.OrderedAt) : null;
+            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order));
         }
 
         return dtos;
@@ -187,7 +188,9 @@ public class RunnersController(
             try
             {
                 await db.SaveChangesAsync(ct);
-                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
+
+                // A row born on this very beat has never been ordered.
+                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), null);
             }
             catch (DbUpdateException)
             {
@@ -202,10 +205,24 @@ public class RunnersController(
             }
         }
 
+        // Read-and-clear, and only on a loop beat: Touch below overwrites
+        // row.Kind, and a `hatch work` (once) beat beside a loop shares this
+        // runner's name - letting it through here would swallow an order the
+        // loop has not had its next pass to read yet.
+        RunnerOrderDto? order = null;
+        if (kind == EfHatchRunner.LoopKind && row.OrderKind is { Length: > 0 } ok)
+        {
+            order = new RunnerOrderDto(ok, row.OrderKey, row.OrderedBy);
+            row.OrderKind = null;
+            row.OrderKey = null;
+            row.OrderedBy = null;
+            row.OrderedAt = null;
+        }
+
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags));
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
+        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order);
     }
 
     /// <summary>
@@ -341,12 +358,139 @@ public class RunnersController(
 
         var now = time.GetUtcNow();
         var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
+        var order = row.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, row.OrderKey, row.OrderedBy, row.OrderedAt) : null;
         return runners.Project(
             row,
             Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
             (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
-            CanControl(row.ForPersonId, wallEnabled, callerPerson));
+            CanControl(row.ForPersonId, wallEnabled, callerPerson),
+            order);
+    }
+
+    /// <summary>
+    /// Order this runner to work a named ticket, or to pass on its next pick -
+    /// a one-shot instruction its next loop heartbeat reads and clears. See
+    /// <see cref="EfHatchRunner.OrderKind"/>.
+    /// </summary>
+    /// <remarks>
+    /// Refused ahead of a row that will never read it back - a <c>once</c>
+    /// runner, or one already told to stop - and ahead of a standing order
+    /// already held, which a second order would silently overwrite rather
+    /// than queue.
+    /// </remarks>
+    [HttpPost("{name}/order")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<RunnerDto>> PostRunnerOrder(
+        string name, RunnerOrderRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        if (row is null) return NotFound();
+
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (!CanControl(row.ForPersonId, wallEnabled, callerPerson))
+        {
+            var forName = row.ForPersonId is { } forId
+                ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? "its owner"
+                : "its owner";
+            return new ObjectResult($"only {forName}, or an admin, may control {runner}")
+                { StatusCode = StatusCodes.Status403Forbidden };
+        }
+
+        var kind = request.Kind?.Trim().ToLowerInvariant();
+        if (kind is null || !RunnerOrderKinds.All.Contains(kind))
+            return BadRequest($"an order is {string.Join(", ", RunnerOrderKinds.All)} - not \"{request.Kind?.Trim()}\"");
+
+        EfHatchIssue? issue = null;
+        string? key = null;
+        if (kind == RunnerOrderKinds.Work)
+        {
+            if (request.Key is not { } wanted || wanted.Trim().Length == 0 || !IssueKey.TryParse(wanted, out var projectKey, out var number))
+                return BadRequest($"work names an issue, like AER-12 - not \"{request.Key?.Trim()}\"");
+
+            key = IssueKey.Format(projectKey, number);
+            issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+            if (issue is null) return NotFound($"{key} does not exist");
+        }
+
+        if (row.Kind == EfHatchRunner.OnceKind)
+            return Conflict($"{runner} is a single increment and will never read an order back");
+
+        if (row.State == EfHatchRunner.Stopping)
+            return Conflict($"{runner} is stopping and will not take another order");
+
+        if (row.OrderKind is { Length: > 0 } heldKind)
+        {
+            var held = heldKind == RunnerOrderKinds.Work ? $"{heldKind} {row.OrderKey}" : heldKind;
+            return Conflict($"{runner} already holds an order to {held} - withdraw it first");
+        }
+
+        var now = time.GetUtcNow();
+        var by = await caller.ActorNameAsync(ct);
+
+        row.OrderKind = kind;
+        row.OrderKey = key;
+        row.OrderedBy = by;
+        row.OrderedAt = now;
+
+        if (issue is not null)
+        {
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = by,
+                Kind = EfHatchIssueEvent.Ordered,
+                Payload = JsonSerializer.Serialize(new { runner, by }),
+                At = now,
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
+        return runners.Project(
+            row,
+            Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
+            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
+            ownerName,
+            CanControl(row.ForPersonId, wallEnabled, callerPerson),
+            new RunnerOrderDto(kind, key, by, now));
+    }
+
+    /// <summary>Withdraws whatever standing order this runner holds - see <see cref="PostRunnerOrder"/>.</summary>
+    [HttpDelete("{name}/order")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult> DeleteRunnerOrder(string name, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        if (row is null) return NotFound();
+
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (!CanControl(row.ForPersonId, wallEnabled, callerPerson))
+        {
+            var forName = row.ForPersonId is { } forId
+                ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? "its owner"
+                : "its owner";
+            return new ObjectResult($"only {forName}, or an admin, may control {runner}")
+                { StatusCode = StatusCodes.Status403Forbidden };
+        }
+
+        if (row.OrderKind is null) return NoContent();
+
+        row.OrderKind = null;
+        row.OrderKey = null;
+        row.OrderedBy = null;
+        row.OrderedAt = null;
+        await db.SaveChangesAsync(ct);
+
+        return NoContent();
     }
 
     // ---- The one narrowing ----

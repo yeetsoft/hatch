@@ -91,7 +91,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// </remarks>
     public RunnerDto Project(
         EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null,
-        string? forName = null, bool canControl = true) => new(
+        string? forName = null, bool canControl = true, RunnerOrderDto? order = null) => new(
         runner.Name,
         runner.Kind,
         runner.FirstSeenAt,
@@ -115,16 +115,21 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         drives,
         runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? [],
         forName,
-        canControl);
+        canControl,
+        order);
 
     /// <summary>
     /// What the loop reads back off its own heartbeat: the row's operator half,
     /// plus who it works for - a fact about the caller and not about the row,
-    /// so it is handed in rather than read off <paramref name="runner"/>.
+    /// so it is handed in rather than read off <paramref name="runner"/>. The
+    /// order is a pure projection too - the caller decides whether this beat
+    /// is the one that picks it up, since <see cref="EfHatchRunner.OrderKind"/>
+    /// has usually already been cleared by the time this is called.
     /// </summary>
-    public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null) =>
+    public static RunnerInstructionDto Instruct(
+        EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null, RunnerOrderDto? order = null) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
-            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is

@@ -1140,6 +1140,208 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(refusal.Result);
     }
 
+    // ---- The order ----
+
+    [Fact]
+    public async Task AnOrder_RoundTripsThroughOneLoopHeartbeatAndIsGoneByTheNext()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var issue = await h.FileAsync();
+
+        var ordered = await h.OrderAsync(Runner, new RunnerOrderRequest("work", issue.Key));
+        Assert.Equal("work", ordered.Order!.Kind);
+        Assert.Equal(issue.Key, ordered.Order.Key);
+        Assert.Equal("Nathan", ordered.Order.By);
+
+        var first = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal("work", first.Order!.Kind);
+        Assert.Equal(issue.Key, first.Order.Key);
+        Assert.Equal("Nathan", first.Order.By);
+
+        var second = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Null(second.Order);
+        Assert.Null((await h.OneAsync()).Order);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_LeavesAPendingOrderInPlace()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.OrderAsync(Runner, new RunnerOrderRequest("pass"));
+
+        // Touch overwrites row.Kind, and a `hatch work` beat beside a loop
+        // shares this runner's name - it must not swallow the order meant
+        // for the loop's own next pass.
+        var once = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once"));
+        Assert.Null(once.Order);
+
+        Assert.Equal("pass", (await h.OneAsync()).Order!.Kind);
+
+        var loop = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal("pass", loop.Order!.Kind);
+    }
+
+    [Fact]
+    public async Task OrderingWork_WritesTheOrderedEventWithTheActorAndPayload()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var issue = await h.FileAsync();
+
+        await h.OrderAsync(Runner, new RunnerOrderRequest("work", issue.Key));
+
+        var last = Assert.Single(await h.EventsAsync(issue.Key), e => e.Kind == EfHatchIssueEvent.Ordered);
+        Assert.Equal("Nathan", last.Actor);
+        Assert.Contains(Runner, last.Payload);
+        Assert.Contains("Nathan", last.Payload);
+    }
+
+    [Fact]
+    public async Task OrderingAPass_WritesNoIssueEvent_ThereIsNoIssueToWriteItOn()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var ordered = await h.OrderAsync(Runner, new RunnerOrderRequest("pass"));
+
+        Assert.Equal("pass", ordered.Order!.Kind);
+        Assert.Null(ordered.Order.Key);
+    }
+
+    [Fact]
+    public async Task AKindNobodyImplements_Is400WithTheSentence()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("sleep"), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("an order is work, pass", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkWithNoKey_Is400WithTheSentence()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("work"), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("work names an issue", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkWithAKeyThatIsNotAnIssueKey_Is400WithTheSentence()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("work", "the epic"), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("work names an issue", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkNamingAnIssueThatDoesNotExist_Is404WithTheSentence()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("work", "AER-999"), default);
+
+        Assert.Equal(404, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("AER-999", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AOnceRunner_RefusesAnOrderItWillNeverReadBack()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("single increment", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStoppingRunner_RefusesAnotherOrder()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "stopping"));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("stopping", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStandingOrder_RefusesASecondUntilItIsWithdrawn()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var issue = await h.FileAsync();
+        await h.OrderAsync(Runner, new RunnerOrderRequest("work", issue.Key));
+
+        var refusal = await h.Runners.PostRunnerOrder(Runner, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        var reason = Reason(refusal.Result);
+        Assert.Contains("work", reason, StringComparison.Ordinal);
+        Assert.Contains(issue.Key, reason, StringComparison.Ordinal);
+        Assert.Contains("withdraw it first", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeleteOnAnUnorderedRow_Is204AndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var seenAt = (await h.RowAsync()).LastSeenAt;
+
+        var result = await h.WithdrawAsync(Runner);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal(seenAt, (await h.RowAsync()).LastSeenAt);
+    }
+
+    [Fact]
+    public async Task DeleteOnAnOrderedRow_Is204AndClearsIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.OrderAsync(Runner, new RunnerOrderRequest("pass"));
+
+        var result = await h.WithdrawAsync(Runner);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Null((await h.OneAsync()).Order);
+        Assert.Null((await h.RowAsync()).OrderKind);
+    }
+
+    [Fact]
+    public async Task GetRunnersAndPatchRunner_AgreeWithTheRunnersOwnOrder()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var issue = await h.FileAsync();
+        var ordered = await h.OrderAsync(Runner, new RunnerOrderRequest("work", issue.Key));
+
+        var listed = await h.OneAsync();
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal(ordered.Order, listed.Order);
+        Assert.Equal(ordered.Order, patched.Order);
+    }
+
     // ---- Who may press ----
 
     [Fact]
@@ -1414,6 +1616,18 @@ public class RunnersControllerTests
 
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
+
+        public async Task<RunnerDto> OrderAsync(string name, RunnerOrderRequest request) =>
+            Value(await Runners.PostRunnerOrder(name, request, default));
+
+        public async Task<ActionResult> WithdrawAsync(string name) => await Runners.DeleteRunnerOrder(name, default);
+
+        /// <summary>An issue's own events, oldest first.</summary>
+        public async Task<IReadOnlyList<EfHatchIssueEvent>> EventsAsync(string key)
+        {
+            var issue = await Find(key);
+            return await Db.IssueEvents.Where(e => e.IssueId == issue.Id).OrderBy(e => e.At).ToListAsync();
+        }
 
         public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default));
 

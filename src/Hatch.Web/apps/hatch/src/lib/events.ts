@@ -96,6 +96,13 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'stalled') return typeof event.payload?.why === 'string' ? event.payload.why : '';
   if (event.kind === 'held' || event.kind === 'resumed') return '';
 
+  /* ordered carries { runner, by } - no from/to - a person's own order from
+     the Runners page, placed on the issue it names. */
+  if (event.kind === 'ordered') {
+    const { runner, by } = event.payload ?? {};
+    return typeof runner === 'string' && typeof by === 'string' ? `ordered ${runner} to work, by ${by}` : '';
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }
