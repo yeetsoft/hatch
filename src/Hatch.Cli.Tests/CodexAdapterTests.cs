@@ -309,4 +309,15 @@ public sealed class CodexAdapterTests : IDisposable
 
         Assert.Equal("test:/checkout", Adapter().BuildHeadless(request).Environment["HATCH_RUNNER"]);
         Assert.Equal("test:/checkout", Adapter().BuildAttached(request).Environment["HATCH_RUNNER"]);
+    }
+
+    [Fact]
+    public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
+    {
+        var request = Request() with { Settings = new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" } };
+
+        Assert.Equal("https://example.hatch", Adapter().BuildHeadless(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", Adapter().BuildHeadless(request).Environment["HATCH_KEY"]);
+        Assert.Equal("https://example.hatch", Adapter().BuildAttached(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", Adapter().BuildAttached(request).Environment["HATCH_KEY"]);
     }}
