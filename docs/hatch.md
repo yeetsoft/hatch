@@ -1110,6 +1110,27 @@ Setting a board up so a pre-approved epic runs this way end to end, with
 nobody pressing anything but the one drag [the hop](#the-hop) cannot make
 for it, is [its own walkthrough](#a-night-mode-board).
 
+#### Runner tags
+
+**An issue's own say over which runner may implement it.** `RunnerTags` is a
+jsonb array of strings on the issue, `"[]"` default, the same shape as
+[a project's](#project) - normalised, case folded and deduplicated by
+`RunnerTags.Normalise` in `Hatch.Contracts` before a tag ever reaches the
+column. Written only through its own route, `PUT
+/issues/{key}/runner-tags` (`IssueRunnerTagsController.PutIssueRunnerTags`),
+open to a key the same way [one pull request](#one-pull-request) is: it is a
+statement about which runner may pick the ticket up, not a power over the
+board, so a key is given nothing it could not already do by filing the
+ticket tagged that way. No type restriction, no claim gate, no lock - any
+issue may carry tags, and any key may set them at any time. `request.Tags`
+absent (JSON `null`) is `400` - *"tags is required - send `[]` to clear"* -
+since `Normalise` cannot otherwise tell "clear it" from "say nothing",
+answering null for both. The list is replaced whole: re-sending the list the
+issue already holds, the same tags in the same order, writes nothing; a
+change writes `runner_tags_changed` with `{ from, to }`, both sides a real
+array. `PATCH /issues/{key}`, create and the bulk endpoint carry no field
+for it, so this route is the only way in or out.
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
@@ -2944,6 +2965,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
+| `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |

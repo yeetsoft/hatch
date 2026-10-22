@@ -1628,6 +1628,9 @@ public record ExpressRequest(bool Express);
 /// </summary>
 public record OnePrRequest(string Value);
 
+/// <summary>A write to which runners may implement an issue's own work - see <see cref="EfHatchIssue.RunnerTags"/>.</summary>
+public record IssueRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
+
 /// <summary>
 /// An issue's release note. Null, empty or whitespace clears it.
 /// </summary>
