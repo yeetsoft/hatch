@@ -32,6 +32,8 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   untilAt: null,
   goneAfterSeconds: GONE_AFTER,
   exhaustedUntil: null,
+  for: null,
+  canControl: true,
   ...over,
 });
 
@@ -76,6 +78,28 @@ describe('RunnersPage Row', () => {
   it('draws no ticket link for an exhausted row', () => {
     const html = renderRow(runner({ exhaustedUntil: at(3_600_000), claimKey: 'HA-12' }));
     expect(html).not.toContain('href="/issues/');
+  });
+
+  it('draws the controls on a loop row this caller can control', () => {
+    const html = renderRow(runner({ canControl: true }));
+    expect(html).toContain('Pause');
+    expect(html).toContain('Stop after this one');
+  });
+
+  it('draws no controls and an owner sentence on a loop row this caller cannot control', () => {
+    const html = renderRow(runner({ canControl: false, for: 'Some Person' }));
+    expect(html).not.toContain('Pause');
+    expect(html).not.toContain('Stop after this one');
+    expect(html).not.toContain('Bounds');
+    expect(html).toContain('Some Person');
+  });
+
+  it('draws no controls and no owner sentence on a once row', () => {
+    const html = renderRow(runner({ kind: 'once' }));
+    expect(html).not.toContain('Pause');
+    expect(html).not.toContain('Stop after this one');
+    expect(html).not.toContain('Bounds');
+    expect(html).not.toContain('to control');
   });
 });
 

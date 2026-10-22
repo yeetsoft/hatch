@@ -1954,6 +1954,10 @@ export interface Runner {
       expects to reset - a fact it reports about itself, never a person's to
       set. Null on an ordinary runner, or one that has since cleared it. */
   exhaustedUntil: string | null;
+  /** The owner's name, via the server's actor directory - null for a runner belonging to nobody. */
+  for: string | null;
+  /** Whether this caller's PATCH would succeed - judged the same way the server's own gate judges it. */
+  canControl: boolean;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

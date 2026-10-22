@@ -144,9 +144,10 @@ export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripR
  *
  * A `once` runner is one increment that has already read whatever it was going
  * to read; a Pause on it would be a button nothing will ever look at, which is
- * worse than no button.
+ * worse than no button. A row somebody else owns has controls only for its
+ * owner or an admin.
  */
-export const isControllable = (runner: Runner) => runner.kind === 'loop';
+export const isControllable = (runner: Runner) => runner.kind === 'loop' && runner.canControl;
 
 /** The repositories a runner serves, as one phrase - or null when it has
     named none. */

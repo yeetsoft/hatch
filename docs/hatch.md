@@ -7645,6 +7645,14 @@ heartbeat:
   doing nothing does not drift from idle to gone while it does it.
 - **`running`** — carry on, which is what every row starts as.
 
+**Only the row's owner or an admin can say any of the three.** `RunnerDto`
+carries `For` — the owner's name, read off the key that heartbeats the
+row — and `CanControl`, judged the same way the server's own PATCH gate
+judges it, true for everybody while the wall is off. The Runners page draws
+the three controls and the bounds form only where `CanControl` is true; a
+row it cannot control draws a sentence naming `For` instead, except a `once`
+row, which never drew controls at all and says so by kind already.
+
 **And the four bounds** `go-to-work` takes on the command line — `--under`,
 `--max-runs`, `--max-spend` and `--until` — are on the row too, folded into the
 loop before the stop conditions are asked, so a cap lowered from a page stops
