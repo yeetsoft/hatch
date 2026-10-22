@@ -57,6 +57,12 @@ agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
 
+**Tags** seed from the loop's first heartbeat only; after that the row is
+the board's, and editing them here - or a `PATCH` on the row - is what
+moves them from here on. The loop adopts a changed list on its very next
+heartbeat, saying so once - `hatch: the board set --tag ...`, or `--tag
+off` for none.
+
 An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one
 at a time, so the Order control is replaced by that line while it stands.
