@@ -130,7 +130,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "stories at once:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "stories at once:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -280,6 +280,64 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("pre-approval:  preapproved - approved and closed by the loop once green (inherited from HA-12)", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_a_single_own_runner_tag_with_no_sources()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { RunnerTags = ["gpu"], RunnerTagsFrom = [] });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket's implementation", h.Said);
+        Assert.DoesNotContain("from the project", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_where_each_runner_tag_came_from_in_the_order_the_server_gave()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with
+            {
+                RunnerTags = ["gpu", "linux", "macos"],
+                RunnerTagsFrom =
+                [
+                    new RunnerTagSourceDto(RunnerTagSourceKinds.Project, "AER", ["linux"]),
+                    new RunnerTagSourceDto(RunnerTagSourceKinds.Issue, "HA-12", ["gpu"]),
+                ],
+            });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("runner tags:  gpu, linux and macos - only a runner advertising all of them is handed this ticket's implementation (linux from the project; gpu from HA-12)", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_a_runner_tag_held_only_by_inheritance()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with
+            {
+                RunnerTags = ["gpu"],
+                RunnerTagsFrom = [new RunnerTagSourceDto(RunnerTagSourceKinds.Issue, "HA-12", ["gpu"])],
+            });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket's implementation (gpu from HA-12)", h.Said);
     }
 
     [Fact]

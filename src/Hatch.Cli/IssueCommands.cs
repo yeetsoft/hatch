@@ -129,6 +129,17 @@ public sealed class IssueCommands(Cli cli)
         else if (issue.PreApproval == PreApprovalLevels.PreApprovedName)
             cli.Say.Line($"pre-approval:  preapproved - approved and closed by the loop once green{preApprovalFrom}");
 
+        // Said only where the ticket requires a tag, and naming where each tag
+        // beyond its own came from, the way the levels above name an ancestor.
+        if (issue.RunnerTags.Count > 0)
+        {
+            var needs = issue.RunnerTags.Count == 1 ? "it" : "all of them";
+            var sources = issue.RunnerTagsFrom.Count > 0
+                ? $" ({string.Join("; ", issue.RunnerTagsFrom.Select(f => $"{Listed(f.Tags)} from {(f.Kind == RunnerTagSourceKinds.Project ? "the project" : f.Key)}"))})"
+                : "";
+            cli.Say.Line($"runner tags:  {Listed(issue.RunnerTags)} - only a runner advertising {needs} is handed this ticket's implementation{sources}");
+        }
+
         // Said only where it is on, or where a story has been told one way or
         // the other; a project that never turned it on has nothing to report.
         if (issue.OnePr || issue.OnePrOwn is not null) cli.Say.Line(OnePrCommand.Draw(issue));
@@ -178,6 +189,11 @@ public sealed class IssueCommands(Cli cli)
         PrintComments(cli.Say, comments);
         return 0;
     }
+
+    private static string Listed(IReadOnlyList<string> items) =>
+        items.Count == 1
+            ? items[0]
+            : $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}";
 
     private static void PrintComments(Terminal say, IReadOnlyList<CommentDto> comments)
     {
