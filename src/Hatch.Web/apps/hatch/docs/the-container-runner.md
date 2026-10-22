@@ -77,7 +77,7 @@ the command line is not passed through to the loop. To hand it bounds such as
 ## Its credential
 
 `HATCH_AGENT` picks the agent the container's loop spawns: `claude` (the
-default), `codex` or `grok`. Anything else exits 1, naming the three.
+default), `codex`, `grok` or `ollama`. Anything else exits 1, naming the four.
 
 Its credential comes from the gear's **Settings** page of your Hatch, and from
 nowhere else; there is nothing to log in to inside the container, and nothing
@@ -90,6 +90,9 @@ mounts `~/.claude`. Which field depends on the agent:
   not travel to a container, since it is a file and not one value.
 - **Grok Build API key.** An API key. `grok login` is for interactive machines
   and does not travel to a container either.
+- **Ollama needs no credential.** It needs only `HATCH_OLLAMA_HOST` set to a
+  server the container can reach: see
+  [Reaching an Ollama outside the container](#reaching-an-ollama-outside-the-container).
 
 At start the entrypoint runs `hatch runner-credential <agent>` (an internal
 command, not one for you to type), which prints one `NAME=value` line for the
@@ -255,7 +258,7 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_GIT_TOKEN` | An HTTPS token, answered to git through `GIT_ASKPASS` | Empty |
 | `HATCH_GH_TOKEN` | The token `gh` reads, as `GH_TOKEN`, to check builds and merge | Empty |
 | `HATCH_RUNNER_NAME` | What **Agents → Runners** calls it | `hatch-runner` |
-| `HATCH_AGENT` | `claude`, `codex` or `grok` | `claude` |
+| `HATCH_AGENT` | `claude`, `codex`, `grok` or `ollama` | `claude` |
 | `HATCH_OLLAMA_HOST` | Where the Ollama server is, for an `ollama` agent (see *Reaching an Ollama outside the container*) | Empty; required under `ollama` |
 | `HATCH_OLLAMA_TIERS` | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent | Empty: the CLI's own default model |
 | `HATCH_TAGS` | The tags it advertises, comma-separated | Empty |

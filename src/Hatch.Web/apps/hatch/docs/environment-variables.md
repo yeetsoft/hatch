@@ -76,7 +76,7 @@ saying so; those are read from the environment alone.
 | `HATCH_ROOT` | the entrypoint | `/checkout`, from the image | If it holds a `.git`, it is added to git's `safe.directory`. If not, and `HATCH_WORKSPACE` is set, `HATCH_ROOT` is unset and the loop clones into the workspace. If neither, the entrypoint exits 1. |
 | `HATCH_WORKSPACE` | the entrypoint | `/workspace`, from the image | The fallback above. |
 | `HATCH_GIT_TOKEN` | the entrypoint | empty | When set, the entrypoint exports `GIT_ASKPASS`. |
-| `HATCH_AGENT` | the entrypoint | `claude` | Exits 1 for anything but `claude`, `codex` or `grok`. |
+| `HATCH_AGENT` | the entrypoint | `claude` | Exits 1 for anything but `claude`, `codex`, `grok` or `ollama`. |
 | `HATCH_GIT_NAME` | the entrypoint, in its refusal only | | It reads `GIT_AUTHOR_NAME`, which `compose.yaml` fills from this; its message names this variable. |
 | `HATCH_GIT_EMAIL` | the entrypoint, in its refusal only | | The same, for `GIT_AUTHOR_EMAIL`. |
 | `HATCH_GH_TOKEN` | the entrypoint, in its message only | | It checks whether `gh` is signed in, and names this variable when it is not. `gh` reads `GH_TOKEN`. |
