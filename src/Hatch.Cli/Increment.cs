@@ -975,7 +975,7 @@ public sealed class Increment(
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
         var render = adapter.CreateReader(root, facts, model);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? [],
-            SessionId: facts.SessionId, RunnerName: runnerName);
+            SessionId: facts.SessionId, RunnerName: runnerName, Settings: settings);
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a
         // --quiet session's own transcript-reading hook - this is the one place

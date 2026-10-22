@@ -29,11 +29,17 @@ namespace Hatch.Cli;
 /// process as <c>HATCH_RUNNER</c> so the session's own <c>hatch</c> calls name
 /// themselves as it. Null or empty exports nothing.
 /// </param>
+/// <param name="Settings">
+/// The settings this runner resolved for itself, carried in so
+/// <see cref="Reach.ToHatch"/> can export <c>HATCH_BASE</c>/<c>HATCH_KEY</c>
+/// to the spawned process the same way <see cref="RunnerName"/> carries
+/// <c>HATCH_RUNNER</c>. Null exports nothing.
+/// </param>
 public sealed record SessionRequest(
     string Root, string Model, string Effort, string Prompt, bool Quiet,
     IReadOnlyList<string>? AddDirs = null, string? HookSettings = null,
     IReadOnlyList<string>? DeniedTools = null, string? SessionId = null,
-    string? RunnerName = null)
+    string? RunnerName = null, Settings? Settings = null)
 {
     public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
     public IReadOnlyList<string> DeniedTools { get; init; } = DeniedTools ?? [];
