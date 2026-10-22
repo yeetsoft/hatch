@@ -41,8 +41,8 @@ control on this page.
 
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Bounds** form - **Under**,
-**Max runs**, **Max spend**, **Until** (an hour, not just a day), with
-**Save bounds** and **Revert**. A press only records what the board wants:
+**Max runs**, **Max spend**, **Until** (an hour, not just a day), **Tags**,
+with **Save bounds** and **Revert**. A press only records what the board wants:
 the runner reads it between increments, at its next heartbeat, never in the
 middle of one. Nothing on the server starts or stops a process, which is why
 the same buttons work for a runner in a container or on a laptop behind a
