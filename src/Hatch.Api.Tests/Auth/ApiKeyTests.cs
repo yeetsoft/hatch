@@ -88,6 +88,36 @@ public class ApiKeyTests
     }
 
     [Fact]
+    public async Task AKeyVerifiesWithItsOwner()
+    {
+        var (service, db, _) = NewService();
+        var person = new EfPerson { Name = "Ada", Role = PersonRole.Admin, CreatedAt = Now, UpdatedAt = Now };
+        db.People.Add(person);
+        await db.SaveChangesAsync();
+        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], person.Id, default);
+        // The service shares this context, so without the clear EF's
+        // relationship fix-up would fill Owner whether or not the query asked.
+        db.ChangeTracker.Clear();
+
+        var verified = await service.VerifyApiKeyAsync(created!.Secret, default);
+
+        Assert.Equal(PersonRole.Admin, verified?.Owner?.Role);
+    }
+
+    [Fact]
+    public async Task AKeyWithNoOwner_VerifiesWithNone()
+    {
+        var (service, db, _) = NewService();
+        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
+        db.ChangeTracker.Clear();
+
+        var verified = await service.VerifyApiKeyAsync(created!.Secret, default);
+
+        Assert.NotNull(verified);
+        Assert.Null(verified.Owner);
+    }
+
+    [Fact]
     public async Task ARevokedKey_StopsVerifying()
     {
         var (service, _, _) = NewService();

@@ -84,6 +84,12 @@ public class EfApiKey
     /// </summary>
     public Guid? OwnerPersonId { get; set; }
 
+    /// <summary>
+    /// The person <see cref="OwnerPersonId"/> names. A key returned by
+    /// <c>AuthService.VerifyApiKeyAsync</c> arrives with this loaded, null when
+    /// it has no owner; <c>RunnersController.GetRunners</c> reads
+    /// <c>Owner.Role</c> to tell an admin's key from a user's.
+    /// </summary>
     public EfPerson? Owner { get; set; }
 
     /// <summary>

@@ -337,7 +337,11 @@ public class AuthService(
         if (string.IsNullOrEmpty(secret)) return null;
 
         var hash = AuthTokens.Hash(secret);
-        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Hash == hash, ct);
+        // The owner comes along for the same reason it does in VerifyAsync: a LEFT
+        // JOIN on a primary key is one round trip, and downstream callers (the
+        // runners route reading Owner.Role) need no second query. Still tracked,
+        // since TouchKeyAsync saves LastUsedAt on this same instance.
+        var key = await db.ApiKeys.Include(k => k.Owner).FirstOrDefaultAsync(k => k.Hash == hash, ct);
 
         if (key is null || !AuthTokens.Matches(key.Hash, hash)) return null;
 
