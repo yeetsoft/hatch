@@ -8,10 +8,14 @@ public sealed class IssueCommands(Cli cli)
 {
     public static readonly string[] ShowUsage =
     [
-        "usage: hatch show AER-12",
+        "usage: hatch show AER-12 [--brief]",
         "",
         "  The brief, its edges and where it is, plus every comment on it. The",
         "  description is markdown and goes to the terminal as it was written.",
+        "",
+        "  --brief prints the header alone - everything above the blank line",
+        "  that precedes the description - and stops there, with no fetch of",
+        "  the comments. It may come before or after the key.",
         "",
         "  An expedited or emergency ticket says so: somebody marked it \"this one",
         "  first\", and the board and the dispatcher both reach for it before",
@@ -90,9 +94,17 @@ public sealed class IssueCommands(Cli cli)
     public async Task<int> ShowAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, ShowUsage);
-        if (args.Length != 1) return Usage.Refuse(cli.Say, "show takes one issue key", ShowUsage);
 
-        var key = args[0];
+        string? key = null;
+        var brief = false;
+        foreach (var arg in args)
+        {
+            if (arg == "--brief") brief = true;
+            else if (key is null && !arg.StartsWith('-')) key = arg;
+            else return Usage.Refuse(cli.Say, "show takes one issue key, and optionally --brief", ShowUsage);
+        }
+        if (key is null) return Usage.Refuse(cli.Say, "show takes one issue key, and optionally --brief", ShowUsage);
+
         var issue = await cli.Board.IssueAsync(key, ct);
         if (issue is null)
         {
@@ -101,7 +113,6 @@ public sealed class IssueCommands(Cli cli)
         }
 
         var statuses = await cli.Board.StatusesAsync(ct);
-        var comments = await cli.Board.CommentsAsync(key, ct);
 
         var column = statuses.FirstOrDefault(s => s.Id == issue.StatusId)?.Name
                      ?? issue.StatusId.ToString();
@@ -162,6 +173,10 @@ public sealed class IssueCommands(Cli cli)
                 : "";
             cli.Say.Line($"landed:   {landing.Trunk} at {landing.Sha[..7]} ({landing.Canonical}){seen}");
         }
+        if (brief) return 0;
+
+        var comments = await cli.Board.CommentsAsync(key, ct);
+
         cli.Say.Line("");
         cli.Say.Lines(issue.Description.ReplaceLineEndings("\n").Split('\n'));
         cli.Say.Line("");

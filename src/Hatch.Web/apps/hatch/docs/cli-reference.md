@@ -170,6 +170,7 @@ nothing in it prints one sentence saying so. It writes nothing.
 
 ```
 hatch show AER-12
+hatch show AER-12 --brief
 ```
 
 The brief, its edges and where it is, followed by every comment on it. The
@@ -178,7 +179,10 @@ that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
 ancestor. A ticket that requires a runner tag says so too, naming the project or
 the ancestor issue each tag beyond its own came from. None of those can be set from here: the key is a key, and each is a
-person's write. Reads only.
+person's write. Reads only. `--brief`, which may come before or after the key,
+prints the header alone - everything above the blank line that precedes the
+description - and leaves out the description and every comment, with no
+request made for the comments at all.
 
 ### comments
 
