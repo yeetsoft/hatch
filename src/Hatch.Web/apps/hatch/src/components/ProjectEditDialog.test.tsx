@@ -33,6 +33,9 @@ function project(overrides: Partial<Project>): Project {
     repoSourced: false,
     repoSourcedBy: null,
     repoSourcedAt: null,
+    reflectionCadenceDays: null,
+    reflectionLastPeriodStart: null,
+    reflectionNextDueAt: null,
     runnerTags: [],
     ...overrides,
   };
@@ -65,13 +68,13 @@ describe('ProjectEditDialog', () => {
   it('summarizes playbooks as written on the board when repoSourced is off', () => {
     const html = render(project({ repoSourced: false }));
 
-    expect(html).toContain('playbooks written on the board.');
+    expect(html).toContain('playbooks written on the board,');
   });
 
   it('summarizes playbooks as sourced from the repository when repoSourced is on', () => {
     const html = render(project({ repoSourced: true }));
 
-    expect(html).toContain('playbooks sourced from the repository.');
+    expect(html).toContain('playbooks sourced from the repository,');
   });
 
   it('summarizes runner tags as "Any runner." when the list is empty', () => {
@@ -91,5 +94,42 @@ describe('ProjectEditDialog', () => {
 
     expect(html).toContain('macos\nxcode');
     expect(html).not.toContain('Any runner.');
+  });
+
+  it('shows an owner the cadence box holding the days, and when the next reflection is due', () => {
+    const nextDueAt = '2026-03-09T00:00:00Z';
+    const html = render(
+      project({ canAdminister: true, reflectionCadenceDays: 5, reflectionLastPeriodStart: '2026-03-04T00:00:00Z', reflectionNextDueAt: nextDueAt }),
+    );
+
+    expect(html).toContain('Reflects every');
+    expect(html).toContain('value="5"');
+    expect(html).toContain(`Next due ${new Date(nextDueAt).toLocaleDateString()}`);
+  });
+
+  it('shows an owner a blank cadence box, with no due hint, where the cadence is off', () => {
+    const html = render(project({ canAdminister: true, reflectionCadenceDays: null }));
+
+    expect(html).toContain('Reflects every');
+    expect(html).not.toContain('Next due');
+  });
+
+  it('does not show a person who cannot administer the cadence box', () => {
+    const html = render(project({ canAdminister: false, reflectionCadenceDays: 5, reflectionNextDueAt: '2026-03-09T00:00:00Z' }));
+
+    expect(html).not.toContain('Reflects every');
+  });
+
+  it('summarizes the cadence as never reflecting where it is off', () => {
+    const html = render(project({ reflectionCadenceDays: null }));
+
+    expect(html).toContain('playbooks written on the board, never reflects.');
+  });
+
+  it('summarizes the cadence and the next due date where one is set', () => {
+    const nextDueAt = '2026-03-09T00:00:00Z';
+    const html = render(project({ reflectionCadenceDays: 5, reflectionNextDueAt: nextDueAt }));
+
+    expect(html).toContain(`reflects every 5 day(s), next due ${new Date(nextDueAt).toLocaleDateString()}.`);
   });
 });

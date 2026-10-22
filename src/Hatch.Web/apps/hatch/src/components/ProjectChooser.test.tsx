@@ -29,6 +29,9 @@ function project(overrides: Partial<Project>): Project {
     repoSourced: false,
     repoSourcedBy: null,
     repoSourcedAt: null,
+    reflectionCadenceDays: null,
+    reflectionLastPeriodStart: null,
+    reflectionNextDueAt: null,
     ...overrides,
   };
 }

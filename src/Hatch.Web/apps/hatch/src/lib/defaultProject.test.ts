@@ -50,6 +50,9 @@ const project = (over: Partial<Project>): Project => ({
   repoSourced: false,
   repoSourcedBy: null,
   repoSourcedAt: null,
+  reflectionCadenceDays: null,
+  reflectionLastPeriodStart: null,
+  reflectionNextDueAt: null,
   ...over,
 });
 

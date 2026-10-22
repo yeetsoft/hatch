@@ -26,6 +26,9 @@ const projectOf = (key: string, name: string): Project => ({
   repoSourced: false,
   repoSourcedBy: null,
   repoSourcedAt: null,
+  reflectionCadenceDays: null,
+  reflectionLastPeriodStart: null,
+  reflectionNextDueAt: null,
 });
 
 const ONE = [projectOf('AER', 'Aero')];
