@@ -15,9 +15,28 @@ public class MeControllerTests
     [Fact]
     public async Task WithNobodyAtAll_ThereIsNothingToDraw()
     {
-        var result = await NewController(local: null).GetMe(default);
+        var result = await NewController(local: null, enabled: true).GetMe(default);
 
         Assert.IsType<NoContentResult>(result.Result);
+    }
+
+    /// <summary>
+    /// A cluster install's wall is up, so there is still no way for this to
+    /// come up outside local development - but with the wall off, nobody is
+    /// nobody specific: a browser that has not signed in anywhere, and still
+    /// able to, since the sign-in page redeems an invite on its own.
+    /// </summary>
+    [Fact]
+    public async Task AnUnidentifiedBrowser_IsToldItIsNobodyAndCanSignIn()
+    {
+        var me = Value(await NewController(local: null).GetMe(default));
+
+        Assert.Equal("none", me.Kind);
+        Assert.Equal("", me.Name);
+        Assert.Null(me.Role);
+        Assert.True(me.Configured);
+        Assert.False(me.CanSignOut);
+        Assert.True(me.CanSignIn);
     }
 
     [Theory]
@@ -120,12 +139,13 @@ public class MeControllerTests
 
     private static MeController NewController(
         Actor? local, string? configuredName = null, string? settingName = null,
-        EfPerson? person = null, EfApiKey? key = null, bool googleConfigured = false) =>
+        EfPerson? person = null, EfApiKey? key = null, bool googleConfigured = false, bool enabled = false) =>
         new(
             new StubLocalCaller(local, person, key),
             new StubSiteSettings(localPersonName: settingName),
             Options.Create(new AuthOptions
             {
+                Enabled = enabled,
                 LocalPerson = { Name = configuredName ?? "" },
                 Google = { ClientId = googleConfigured ? "id" : "", ClientSecret = googleConfigured ? "secret" : "" },
             }));
