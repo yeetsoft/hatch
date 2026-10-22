@@ -134,6 +134,79 @@ public sealed class HatchClientTests
         Assert.Contains("403 - the key is good and this route is not one it may take", thrown.Message);
     }
 
+    /// <summary>
+    /// A role-gate code the scope hint does not cover prints as itself, so a
+    /// person short of the role the route asks for is told that, not sent
+    /// looking at a key that was never the problem.
+    /// </summary>
+    [Fact]
+    public async Task A_403_role_gate_code_the_hint_does_not_cover_prints_the_code()
+    {
+        using var wire = new Wire();
+        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"not_admin\"}");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+
+        Assert.Equal("hatch: 403 - not_admin", thrown.Message);
+    }
+
+    /// <summary>
+    /// The two codes that really are a scope refusal still get the fixed
+    /// sentence, in place of the code rather than beside it.
+    /// </summary>
+    [Fact]
+    public async Task A_403_scope_mismatch_keeps_the_fixed_scope_sentence()
+    {
+        using var wire = new Wire();
+        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"scope_mismatch\"}");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+
+        Assert.Equal("hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).", thrown.Message);
+    }
+
+    /// <summary>
+    /// A plain-sentence refusal - a protected-column move, an owner-only
+    /// setting - prints the sentence the API gave, unchanged.
+    /// </summary>
+    [Fact]
+    public async Task A_403_plain_sentence_prints_the_sentence()
+    {
+        using var wire = new Wire();
+        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden,
+            "only an owner or approver of AER may move work into \"approved\"");
+        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+
+        Assert.Equal(
+            "hatch: 403 - only an owner or approver of AER may move work into \"approved\"",
+            thrown.Message);
+    }
+
+    /// <summary>
+    /// An empty body against a Hatch with its wall off still prints a fixed
+    /// sentence, and the wording does not blame a key that was never sent.
+    /// </summary>
+    [Fact]
+    public async Task A_403_with_an_empty_body_and_no_key_sent_does_not_blame_a_key()
+    {
+        using var wire = new Wire();
+        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden);
+        using var client = new HatchClient(Settings(""), "test:/checkout", wire);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+
+        Assert.Contains("403 -", thrown.Message);
+        Assert.DoesNotContain("the key is good", thrown.Message);
+    }
+
     // ---- HA-116: a minute of Hatch not answering costs nothing ----
 
     /// <summary>A read may always ask again - nothing is lost by asking twice.</summary>
