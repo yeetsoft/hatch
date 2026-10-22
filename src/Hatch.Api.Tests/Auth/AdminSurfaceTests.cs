@@ -539,6 +539,12 @@ public class AdminSurfaceTests
         // StatusesController.PutMergesPullRequest.
         "StatusesController.PutMergesPullRequest",
 
+        // A column's own runner tags - the operator's to set, same as
+        // Protected and MergesPullRequest, since a column has no owner to
+        // check instead. Reading it is open, the same as the flags above -
+        // only the write is here. See StatusesController.PutRunnerTags.
+        "StatusesController.PutRunnerTags",
+
         // The ordered list of remotes a project is bound to, cut the same
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
@@ -689,6 +695,10 @@ public class AdminSurfaceTests
 
         // What the loop does once it's there - HA-289's epic.
         "StatusesController.PutMergesPullRequest",
+
+        // A column's own runner tags - the operator's to set, a column
+        // having no owner to check instead.
+        "StatusesController.PutRunnerTags",
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
         "ProjectsController.DeleteLogo",

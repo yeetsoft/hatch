@@ -109,6 +109,7 @@ breaks its format rule or a list over the count limit.
 | PUT | `/statuses/{id}/implementation` | **person** | Ticks/unticks the one column where code is written |
 | PUT | `/statuses/{id}/protected` | **person** | Ticks/unticks who may move work into this column |
 | PUT | `/statuses/{id}/merges-pull-request` | **person** | Ticks/unticks whether the loop merges the pull request once a card stands here, current and green |
+| PUT | `/statuses/{id}/runner-tags` | **person** | Replaces the whole list of runner tags a column requires |
 
 [The board and its columns](the-board-and-its-columns) says what each flag
 means; this page says which route sets it.
@@ -753,7 +754,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **35** person-only paths on this page,
+on this page with both) - there are **36** person-only paths on this page,
 across both halves together:
 
 ```
@@ -773,6 +774,7 @@ PUT    /statuses/{id}/agent-files
 PUT    /statuses/{id}/implementation
 PUT    /statuses/{id}/protected
 PUT    /statuses/{id}/merges-pull-request
+PUT    /statuses/{id}/runner-tags
 PUT    /wip
 PATCH  /issues/{key}/wip
 PUT    /issues/{key}/assignee
