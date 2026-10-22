@@ -1163,6 +1163,94 @@ public class RunnersControllerTests
         Assert.True(open.CanControl);
     }
 
+    // ---- Who sees which runner ----
+
+    /// <summary>Three rows: Alice's, Bob's, and nobody's - ending with the caller's own <c>Principal</c> left at null, the last beat's.</summary>
+    private static async Task SeedThreeAsync(Harness h)
+    {
+        var alice = h.Actors.AddPerson("Alice");
+        var bob = h.Actors.AddPerson("Bob");
+
+        await h.LoopBeatAsync("here:/checkouts/alice", alice);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.LoopBeatAsync("here:/checkouts/bob", bob);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+    }
+
+    [Fact]
+    public async Task WithTheWallOff_EveryRunnerIsVisible()
+    {
+        var h = await NewAsync(program: true, keyOwner: PersonRole.User);
+        await SeedThreeAsync(h);
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(["here:/checkouts/nobody", "here:/checkouts/bob", "here:/checkouts/alice"], rows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task APersonCalling_SeesEveryRunner()
+    {
+        var h = await NewAsync(wall: true);
+        await SeedThreeAsync(h);
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(["here:/checkouts/nobody", "here:/checkouts/bob", "here:/checkouts/alice"], rows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task AnAdminsKey_SeesEveryRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.Admin);
+        await SeedThreeAsync(h);
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(["here:/checkouts/nobody", "here:/checkouts/bob", "here:/checkouts/alice"], rows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task AUsersKey_SeesOnlyItsOwnersRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        await SeedThreeAsync(h);
+
+        h.Actors.AddPerson("Owner", h.PersonId);
+        await h.LoopBeatAsync("here:/checkouts/owner", new Actor(ActorKind.Person, h.PersonId, "Owner"));
+        h.Actors.Principal = new Actor(ActorKind.Person, h.PersonId, "Owner");
+
+        var rows = await h.ListAsync();
+
+        var owned = Assert.Single(rows);
+        Assert.Equal("here:/checkouts/owner", owned.Name);
+        Assert.Equal("Owner", owned.For);
+    }
+
+    [Fact]
+    public async Task AUsersKey_WithNoPrincipal_SeesOnlyTheOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, program: true);
+        await SeedThreeAsync(h);
+        h.Actors.Principal = null;
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(["here:/checkouts/nobody"], rows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task NoIdentityAtAll_SeesOnlyTheOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, nobody: true);
+        await SeedThreeAsync(h);
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(["here:/checkouts/nobody"], rows.Select(r => r.Name));
+    }
+
     // ---- The edge that is cut ----
 
     [Fact]
@@ -1320,7 +1408,8 @@ public class RunnersControllerTests
     }
 
     private static async Task<Harness> NewAsync(
-        bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null)
+        bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
+        PersonRole? keyOwner = null, bool nobody = false)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -1335,7 +1424,9 @@ public class RunnersControllerTests
         var runners = new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }), Options.Create(new AuthOptions { Enabled = wall }));
 
         var id = personId ?? Guid.NewGuid();
-        var caller = program
+        var caller = nobody
+            ? new StubCaller()
+            : program
             ? new StubCaller
             {
                 Key = new EfApiKey
@@ -1345,6 +1436,8 @@ public class RunnersControllerTests
                     Prefix = "hatch_ak_x",
                     Scopes = [ApiKeyScopes.Hatch],
                     CreatedAt = Now,
+                    OwnerPersonId = keyOwner is null ? null : id,
+                    Owner = keyOwner is null ? null : new EfPerson { Id = id, Name = "Owner", Role = keyOwner.Value, CreatedAt = Now, UpdatedAt = Now },
                 },
             }
             : new StubCaller { Person = new EfPerson { Id = id, Name = "Nathan", Role = role, CreatedAt = Now, UpdatedAt = Now } };
