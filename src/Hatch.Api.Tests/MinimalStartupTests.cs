@@ -1,5 +1,7 @@
 using Hatch.Api.Tests.Hatch;
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
+using Quartz;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
 namespace Hatch.Api.Tests;
@@ -99,6 +101,29 @@ public class MinimalStartupTests
     }
 
     /// <summary>
+    /// ReflectionCadence's trigger starts now, so its first firing lands inside
+    /// the few hundred milliseconds between /health/ready answering and this
+    /// host being disposed. Disposed mid-firing, Quartz fails to build the job
+    /// from a service provider that is already gone and says so at Error -
+    /// the test's own teardown, not a fault in startup. So the host is not
+    /// stopped until that one firing has run its course; the next is fifteen
+    /// minutes away. Bounded at ten seconds and then let go, so a firing that
+    /// never comes is not this case's failure to report.
+    /// </summary>
+    private static async Task SettleFirstFiringAsync(IScheduler scheduler)
+    {
+        var trigger = new TriggerKey("ReflectionCadence_Trigger", JobGroup);
+        var until = DateTimeOffset.UtcNow.AddSeconds(10);
+
+        while (DateTimeOffset.UtcNow < until)
+        {
+            var fired = (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
+            if (fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0) return;
+            await Task.Delay(50);
+        }
+    }
+
+    /// <summary>
     /// What both cases share: the host builds and starts, /health/ready answers
     /// 200, and the store holds no trigger for any house job - every phase of
     /// it, including making the scratch databases, bounded against one
@@ -139,6 +164,8 @@ public class MinimalStartupTests
 
             var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+
+            await deadline.BoundAsync("letting the reflection job's first firing finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally
         {
