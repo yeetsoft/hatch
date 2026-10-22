@@ -21,10 +21,12 @@ The rest of this page is those two sentences, in order.
   or 7 (`pwsh`). Where the two shells differ, the line is shown for each.
   Backing up needs 7: see
   [restoring](backup-restore-and-replication#restoring).
-- **git**, and the **`claude` CLI, logged in**. Neither is needed to run the
-  board; both are needed by the runner, which branches, commits and pushes from
-  a checkout and spends each increment inside a `claude` session. The Runner
-  page inside Hatch links all three.
+- **git**, and a **coding agent's CLI, logged in** (`claude` by default;
+  [which agent it spawns](the-runner#which-agent-it-spawns) lists how to
+  install and sign in to each). Neither is needed to run the board; both are
+  needed by the runner, which branches, commits and pushes from a checkout and
+  spends each increment inside an agent session. The Runner page inside Hatch
+  links all three.
 - **`gh`, signed in — optional** ([cli.github.com](https://cli.github.com/);
   `gh auth login`, or `HATCH_GH_TOKEN` for the container runner). It turns on
   build checks, noticing merged pull requests, and merging approved pull

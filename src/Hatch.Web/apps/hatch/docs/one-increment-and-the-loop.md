@@ -47,7 +47,8 @@ hatch work --workspace /clones           clone what the board binds, into /clone
 - `--quiet` prints nothing until the increment is finished.
 - `--model` and `--effort` beat the playbook for this run only. They are one
   opinion about one ticket, which is why the loop has neither.
-- `--agent` beats `HATCH_AGENT` for this run: `claude`, `codex` or `grok`.
+- `--agent` beats `HATCH_AGENT` for this run: `claude`, `codex`, `grok` or
+  `ollama`.
 - `--no-keys` reads no keys from this terminal; [what it prints](#what-it-prints) has the keys.
 - `--repo` and `--workspace` each replace their setting (`HATCH_REPOS`,
   `HATCH_WORKSPACE`) for the run rather than adding to it. `--workspace off`
@@ -90,7 +91,9 @@ output prints nothing until the run ends, and four minutes of blank terminal is
 indistinguishable from a hang.
 
 The session opens and closes with its own id, `hatch: session <id>` followed
-by `hatch:   join it with  claude --resume <id>`, so either end of a run
+by `hatch:   join it with  <resume command>`, the agent's own (`claude --resume
+<id>`, `codex exec resume <id>`, `grok -r <id>`, and for `ollama` `codex exec resume
+--oss --local-provider ollama <id>`), so either end of a run
 carries the command to reattach to it. It closes with one more line, `hatch:
 done` or `hatch: ended with an error`, the minutes, the turns and the cost:
 `hatch: done in 4m12s, 9 turns, $0.86`. `--quiet` holds every line back until
@@ -235,8 +238,8 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 
 ### One pass, in order
 
-1. **Usage probe.** Where the agent CLI can report its own usage (only
-   `claude` can), the loop asks it, at most every two minutes and after an
+1. **Usage probe.** For an agent that has a usage probe (Claude), the
+   loop asks the CLI for its own usage, at most every two minutes and after an
    increment, so the bars are the account's and not the last session's.
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
@@ -295,7 +298,9 @@ below, and a session stopped by a hard limit published what it left.
 
 Running out of usage commits and pushes whatever the session left onto the
 issue's own branch, and the runner writes one comment: that it ran out, when
-it expects to resume, and the `claude --resume` command for that session. No
+it expects to resume, and the agent's resume command for that session (`claude --resume <id>`,
+`codex exec resume <id>`, `grok -r <id>`, or `codex exec resume --oss
+--local-provider ollama <id>`). No
 question is asked, and nothing blocks the next dispatch — the loop itself
 stops taking tickets until the account resets, obeying every bound
 meanwhile, and waiting out a limit still fetches its own checkout's trunk

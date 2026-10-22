@@ -120,7 +120,8 @@ long it took, how many turns, and a command to resume it.
 ## The battery
 
 In the nav bar, with no page of its own: your own Claude usage, as your own
-runners last reported it - not a reading of the board's work, and drawn only
+runners last reported it (a reading of a Claude account, so absent for a
+runner under another agent) - not a reading of the board's work, and drawn only
 once one of your runners has reported a reading. The fill is how much of the
 current session window has been spent; the ring around it is how much of
 that window is left before it resets, drawn as a dashed track while the reset
