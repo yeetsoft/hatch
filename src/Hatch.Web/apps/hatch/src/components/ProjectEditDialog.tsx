@@ -49,6 +49,7 @@ import { PriorityControl } from './PriorityControl';
 import { ProjectIconPicker } from './ProjectIconPicker';
 import { ProjectKeyField } from './ProjectKeyField';
 import { ProjectLogoField, type LogoPending } from './ProjectLogoField';
+import { RunnerTagsField } from './RunnerTagsField';
 
 /**
  * The edit modal: name, key (with its speed bump) and the repositories list,
@@ -426,18 +427,12 @@ export function ProjectEditDialog({
                 set by {project.repoSourcedBy} on {project.repoSourcedAt ? new Date(project.repoSourcedAt).toLocaleDateString() : ''}
               </p>
             )}
-            <Field
+            <RunnerTagsField
               label="Runner tags"
               hint="One tag per line. Only a runner advertising every one of these is handed this project's implementation work. Blank means any runner."
-              as="div"
-            >
-              <textarea
-                rows={2}
-                className="hatch-grows"
-                value={draft.runnerTags}
-                onChange={(e) => setDraft((d) => d && { ...d, runnerTags: e.target.value })}
-              />
-            </Field>
+              value={draft.runnerTags}
+              onChange={(next) => setDraft((d) => d && { ...d, runnerTags: next })}
+            />
           </>
         ) : (
           <>
