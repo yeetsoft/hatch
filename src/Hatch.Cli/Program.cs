@@ -393,6 +393,7 @@ internal partial class Program
         "  hatch pr AER-12              where it is being reviewed",
         "  hatch pr AER-12 https://...  ...or say where, having opened one",
         "  hatch pr AER-12 --clear      ...or take it off the one it has",
+        "  hatch landed AER-12 [<sha>] [--repo <path>]  on a project that lands on the trunk, the sha it reached",
         "  hatch verdict AER-12 pass|fail [\"findings\"]  a check session's own verdict",
         "  hatch depends AER-12         what it waits on, and what waits on it",
         "  hatch depends AER-12 AER-11  AER-12 waits on AER-11",
