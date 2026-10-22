@@ -89,7 +89,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// released must read as free rather than gone in exactly the seconds
     /// that matters.
     /// </remarks>
-    public RunnerDto Project(EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null) => new(
+    public RunnerDto Project(
+        EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null,
+        string? forName = null, bool canControl = true) => new(
         runner.Name,
         runner.Kind,
         runner.FirstSeenAt,
@@ -111,7 +113,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         runner.Agent,
         runner.ExhaustedUntil,
         drives,
-        runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? []);
+        runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? [],
+        forName,
+        canControl);
 
     /// <summary>
     /// What the loop reads back off its own heartbeat: the row's operator half,
