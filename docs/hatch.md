@@ -93,8 +93,8 @@ the next heading of the same level and stop.
     become a prompt, model and effort?
 - [The unattended loop](#the-unattended-loop) - How does `go-to-work` run
   increments back to back, and what does it do when nothing is left?
-  - [Agents](#agents) - How does the loop reach `claude`, `codex` and
-    `grok` through one adapter?
+  - [Agents](#agents) - How does the loop reach `claude`, `codex`, `grok`
+    or `ollama` through one adapter?
   - [What makes an issue actionable](#what-makes-an-issue-actionable) - Which
     conditions must an issue meet before the loop picks it up?
   - [One loop at a time](#one-loop-at-a-time) - How many loops may serve a
@@ -119,7 +119,7 @@ the next heading of the same level and stop.
   project is nearest the line?
 - [The importer](#the-importer) - How does a markdown plan become an epic
   with stories and tasks?
-- [The operator and Claude contract](#the-operator-and-claude-contract) -
+- [The operator and agent contract](#the-operator-and-agent-contract) -
   What may an agent do to a ticket, and what only a person?
 - [Deferred on purpose](#deferred-on-purpose) - What is deliberately not
   built yet?
@@ -146,7 +146,7 @@ Four properties carry the design:
 - **Behind the wall, and admin-gated on top of it.** The bundle 404s and the
   API 403s for anyone who is not the operator — the same posture the admin app
   takes, through the same gate.
-- **Claude is a first-class caller.** An `Authorization: Bearer hatch_ak_…` key
+- **An agent is a first-class caller.** An `Authorization: Bearer hatch_ak_…` key
   reaches `/api/hatch/*` and nothing else, decided by the same gate that
   decides everything else. A ticket link is a complete instruction, and the
   ticket is where the answer goes back.
@@ -154,8 +154,10 @@ Four properties carry the design:
   is next, which column it is headed for, whether it may go there, what it is
   told when it gets there, and what a subtree adds up to. A client that
   re-derived any of those would drift the first time a column was renamed.
+- **One adapter seam for every agent.** The loop reaches `claude`, `codex`,
+  `grok` or `ollama` through one adapter — see [Agents](#agents).
 
-The [workflow contract](#the-operator-and-claude-contract) — what an agent may
+The [workflow contract](#the-operator-and-agent-contract) — what an agent may
 do to a ticket, and what only a person may — is the last section, and is
 mirrored in [`CLAUDE.md`](../CLAUDE.md) because that is where an agent reads it.
 
@@ -163,7 +165,7 @@ mirrored in [`CLAUDE.md`](../CLAUDE.md) because that is where an agent reads it.
 
 1. **A board the operator lives on** — every issue from every project on one
    kanban board, drag to change status, drag to reorder, always visible.
-2. **Claude as a first-class user** — paste an issue link into a session and it
+2. **An agent as a first-class user** — paste an issue link into a session and it
    reads the ticket and gets to work; a planning session writes the plan back
    onto the ticket and files the children.
 3. **Audit from day one** — every mutation leaves an append-only event row, so
@@ -1281,7 +1283,7 @@ renumbering is one cheap `UPDATE`.
 
 The client says *before this card* or *after this card*; **the server picks the
 number**. This is the first instance of the rule that also governs the
-dispatcher and the rollup: keep every client dumb, including Claude. A browser
+dispatcher and the rollup: keep every client dumb, including an agent. A browser
 and a shell script that each computed a rank would eventually disagree, and the
 disagreement would show up as cards in the wrong order with no failing request
 anywhere.
@@ -2737,7 +2739,7 @@ part of a secret it is safe to show; without it, a key list is a list of names
 somebody typed that you cannot check against the value in a config file.
 
 Revocation is a **column, not a `DELETE`**, unlike a grant: the audit trail
-names this key by a name that has to keep resolving, and "who was Claude in
+names this key by a name that has to keep resolving, and "who held this key in
 March" is a question a deleted row cannot answer. `LastUsedAt` is written at
 most once per `Auth:LastSeenThrottleSeconds`, the same throttle a grant's
 last-seen takes and for the same reason.
@@ -3077,7 +3079,9 @@ reported `unchanged` rather than moved a second time.
 ## The battery
 
 The bar carries one element the board does not: how much Claude *I* have
-left, and how long until it comes back. It is read from every page without
+left, and how long until it comes back — a reading of a Claude account
+specifically, drawn only for a runner whose agent is `claude`, and absent
+for `codex`, `grok` and `ollama`. It is read from every page without
 opening another app, and it is drawn from `GET /api/hatch/utilization`.
 
 **Absent is a supported state, and it is the default.** A person no runner has
@@ -5306,7 +5310,7 @@ Playbooks page because that is where the fix is.
 
    **People only**, and the asymmetry is the point: an issue assigned to an API
    key is picked up exactly as it always was, because assigning a ticket to
-   Claude and having Claude stop working on it would read backwards. An
+   an agent and having that agent stop working on it would read backwards. An
    assignee whose person has been deleted, or whose key has been revoked, is
    nobody at all — the [liveness rule](#assignee) reaches the dispatcher the
    same as every other reader, so there is no such thing as a ticket held off
@@ -6420,27 +6424,33 @@ One pass, from the board to the release:
 
    Three things are done at the spawn: two so that a message to the agent is
    heard, and one limiting what it can reach for:
-   - **The hooks.** The runner writes a settings file into a directory of its
-     own under the system's temporary directory — outside every checkout, so
-     `git status` shows only what the session changed — and hands it to the
-     session with `--settings`. It declares a `PostToolUse` hook (every tool) and
-     a `Stop` hook, each ten seconds long, each running `hatch inbox <key>`. The
-     per-step one asks Hatch at most once every fifteen seconds, by the
-     modification time of a stamp file beside the settings; the stop one always
-     asks, and a message it finds keeps the session going until it has been read.
-     What comes back is printed as the hook's JSON, and `inbox` marks it read.
-     Any failure — Hatch down, slow past five seconds, a Hatch without the route
-     — prints nothing and exits zero, and the message stays unread for a later
-     step. The directory is deleted when the session ends. An attached (`-i`)
-     session gets no hooks: somebody is at the keyboard.
+   - **The hooks, where the agent has one.** Claude takes a settings file: the
+     runner writes it into a directory of its own under the system's temporary
+     directory — outside every checkout, so `git status` shows only what the
+     session changed — and hands it to the session with `--settings`. It
+     declares a `PostToolUse` hook (every tool) and a `Stop` hook, each ten
+     seconds long, each running `hatch inbox <key>`. The per-step one asks
+     Hatch at most once every fifteen seconds, by the modification time of a
+     stamp file beside the settings; the stop one always asks, and a message
+     it finds keeps the session going until it has been read. What comes back
+     is printed as the hook's JSON, and `inbox` marks it read. Any failure —
+     Hatch down, slow past five seconds, a Hatch without the route — prints
+     nothing and exits zero, and the message stays unread for a later step.
+     The directory is deleted when the session ends. An attached (`-i`)
+     session gets no hooks: somebody is at the keyboard. `codex` and `ollama`
+     declare none: hooks do not fire under `codex exec` without a flag the
+     adapter refuses to send, and `ollama` inherits that untouched. `grok` has
+     none either, since its hooks load only from fixed, trust-gated paths. See
+     [Agents](#agents).
    - **The marking.** The dispatch carries the messages nothing has read
      (`WorkDto.Messages`); the prompt prints them under *Said to you since the
      last session*, and the runner marks exactly those ids read immediately
      before it spawns. `work --dry-run` prints the heading and marks nothing.
-   - **The denials.** The spawn carries one `--disallowedTools <rule>` per
-     entry in the matched playbook's `DeniedTools` — for every
-     playbook-started session, headless, attached, conflict and build alike.
-     See [Playbook](#playbook) above.
+   - **The denials.** The spawn carries the matched playbook's `DeniedTools`,
+     one rule per entry — for every playbook-started session, headless,
+     attached, conflict and build alike — and each adapter translates the
+     rules into its own agent's spelling; `--disallowedTools <rule>` is
+     Claude's. See [Agents](#agents) and [Playbook](#playbook) above.
    For a [check](#check) dispatch the runner, once the session has ended, looks
    at the tree in every checkout it entered and only then applies the verdict.
    For a conflict dispatch the runner then **checks the branch again**, before
@@ -7059,7 +7069,7 @@ the same money, and fails the same way — all night. Every other way an increme
 can go badly costs one increment.
 
 So a stall is written on the ticket: a comment naming the session that ran and
-the transition it was trying to make — with the `claude --resume` command, since
+the transition it was trying to make — with the agent's resume command, since
 resuming the conversation is most of why a stall is worth recording rather than
 merely counting — and, if nothing is already open there, **a mark**:
 `StalledAt` and `StalledWhy`, set by `PUT /issues/{key}/stall`.
@@ -7109,7 +7119,7 @@ dispatch — because nothing here is wrong with the ticket. The terminal says th
 runner is out of Claude usage and the reset time it read, and after [the tree is
 pushed](#leaving-the-tree), the ticket gets one comment: that the runner ran out
 of usage, when it expects to resume, the branch and sha that were pushed (or
-that there was nothing to push), and the `claude --resume` command. The night's
+that there was nothing to push), and the agent's resume command. The night's
 tally counts it as **interrupted**, a third list beside *moved* and *stalled* —
 not a failure, and not one of the three in a row that end a night, the same
 treatment a lost lease gets and for the same reason: this is the loop working
@@ -7166,7 +7176,7 @@ here is wrong with the ticket, and the ticket is left exactly where the
 session left it, free for the next pass. What *is* written is the one comment
 that section already describes: that this runner was preempted, which
 emergency issue took it, the branch and
-sha that were pushed (or why not, per checkout), and the `claude --resume`
+sha that were pushed (or why not, per checkout), and the agent's resume
 command — so this is not a case where nothing happens, only a case where
 nothing is asked of a person. The night's tally counts it as **preempted**, a
 list of its own beside *moved*, *stalled* and *interrupted* — not a failure,
@@ -7419,7 +7429,7 @@ hatch go-to-work
 ```
 
 `config --origin` is the non-interactive third mode of `hatch config`: it writes
-the origin alone and leaves the key and the claude path exactly as they were, so
+the origin alone and leaves the key and the agent paths exactly as they were, so
 it is safe to paste on a machine that is already configured. The page fills in
 this Hatch's own origin, because the address bar is the one thing about an
 install nobody can get wrong.
@@ -7612,7 +7622,7 @@ backstop; the first choice already tries to dodge it by reading
 `GET /api/hatch/runners/names`, which answers the live names alone - `where`,
 owner and claim stay behind the listing's scope.
 `Agent` works the same way - the id of the agent that spawned the process
-(`claude`, `codex` or `grok` today, per `Settings.KnownAgentIds`), absent from a runner that has
+(`claude`, `codex`, `grok` or `ollama` today, per `Settings.KnownAgentIds`), absent from a runner that has
 not reported one - but carries no uniqueness check, since two runners sharing
 an agent id is not a conflict.
 
@@ -7950,7 +7960,7 @@ document is a deliberate manual act** — verify the epic against the file it ca
 from, then `git rm` it — because an importer that deleted its input would be one
 bad parse away from losing the only copy of a plan.
 
-## The operator and Claude contract
+## The operator and agent contract
 
 This is the part [`CLAUDE.md`](../CLAUDE.md) mirrors, because that is where an
 agent reads it. The rules are here so that they have somewhere to be argued
@@ -8014,7 +8024,7 @@ both, and if it is what refuses, it is the thing to change.
 
 `hatch work` reads `work/next`, then spawns a headless session with the
 playbook's prompt, model and effort. It prints the session id first and last
-with the `claude --resume` command beside it, and streams what the run is doing
+with the agent's resume command beside it, and streams what the run is doing
 as it happens — every tool call, a thinking-token pulse, and a heartbeat naming
 what it is still waiting on. That last part is not a nicety: the CLI's default
 output prints nothing until the run ends, so a four-minute increment was four
