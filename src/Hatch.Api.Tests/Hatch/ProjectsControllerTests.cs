@@ -1160,7 +1160,7 @@ public class ProjectsControllerTests
         var h = await NewAsync();
         var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
         await h.Projects.PutRunnerTags(created.Id, new ProjectRunnerTagsWriteRequest(["gpu", "windows"]), default);
-        // The same tags, spaced the way WriteRunnerTags never writes them: a rewrite
+        // The same tags, spaced the way RunnerTagColumn.Write never writes them: a rewrite
         // would replace this string, a no-op leaves it.
         const string Sentinel = "[\"gpu\", \"windows\"]";
         (await h.Db.Projects.FindAsync(created.Id))!.RunnerTags = Sentinel;

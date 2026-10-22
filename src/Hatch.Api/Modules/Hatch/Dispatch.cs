@@ -358,7 +358,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // ring. A live claim is movable whoever holds it, so the token
             // still passes through.
             var whole = scope is not null || mine || repos.IsDeclared
-                || (tags.Judged && candidates.Any(i => EfHatchProject.ReadRunnerTags(i.Project!.RunnerTags).Count > 0))
+                || (tags.Judged && candidates.Any(i => RunnerTagColumn.Read(i.Project!.RunnerTags).Count > 0))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
@@ -615,7 +615,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     {
         if (!tags.Judged) return null;
 
-        var required = EfHatchProject.ReadRunnerTags(issue.Project!.RunnerTags);
+        var required = RunnerTagColumn.Read(issue.Project!.RunnerTags);
         if (required.Count == 0 || required.All(tags.Has.Contains)) return null;
 
         return $"{IssueKey.Format(issue.Project.Key, issue.Number)} is implemented only by a runner advertising {Listed(required)}" +

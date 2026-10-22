@@ -79,6 +79,11 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             .HasForeignKey(i => i.ParentId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Mirrors EfHatchProject.RunnerTags' own default below, for the same
+        // reason: EnsureCreated must leave the same empty-array default a
+        // migrated row carries.
+        issue.Property(i => i.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
+
         // Comments and events, on the other hand, have no meaning without their
         // issue - and this is the accepted MVP gap written down in the plan: a
         // deleted issue takes its audit trail with it.
