@@ -7688,7 +7688,10 @@ repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
 under the same lock every streamed and printed line already goes through, so a
 clock tick can never land mid-line; what it draws is a pure function of a
 snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
-a running increment and the idle loop between them both write to.
+a running increment and the idle loop between them both write to. Each redraw
+reaches the terminal as one whole frame — the erase, the line being printed and
+every footer row in a single write — and a clock tick that would draw the rows
+already on screen writes nothing.
 
 While an increment runs, its first row names the issue — key, title, the move
 or conflict or build it is for, and its address — and the second says whether

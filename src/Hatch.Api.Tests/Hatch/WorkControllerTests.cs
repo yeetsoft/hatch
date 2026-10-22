@@ -12005,7 +12005,7 @@ public class WorkControllerTests
         public async Task RequireTagsAsync(params string[] tags)
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
-            project.RunnerTags = EfHatchProject.WriteRunnerTags(tags);
+            project.RunnerTags = RunnerTagColumn.Write(tags);
             await Db.SaveChangesAsync();
         }
     }
