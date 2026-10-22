@@ -362,6 +362,8 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <paramref name="OpenQuestions"/> is.
 /// </param>
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -391,12 +393,16 @@ public record IssueCardDto(
     bool? OnePrOwn = null,
     string? OnePrFrom = null,
     DateTimeOffset? ClosedAt = null,
-    IReadOnlyList<string> RunnerTagsOwn = null!)
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
     // see RunnerDto.Tags for the same shape.
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
 }
 
 /// <summary>
@@ -561,6 +567,8 @@ public record IssueClaimDto(
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -610,12 +618,16 @@ public record IssueDto(
     DateTimeOffset? PullRequestReadAt = null,
     DateTimeOffset? ClosedAt = null,
     string? ReleaseNote = null,
-    IReadOnlyList<string> RunnerTagsOwn = null!)
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
     // see RunnerDto.Tags for the same shape.
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
 }
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
