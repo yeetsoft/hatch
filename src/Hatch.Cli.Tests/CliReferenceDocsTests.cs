@@ -20,6 +20,7 @@ public sealed class CliReferenceDocsTests
         ["next"] = BoardCommands.NextUsage,
         ["queue"] = BoardCommands.QueueUsage,
         ["changelog"] = ChangelogCommand.ChangelogUsage,
+        ["runners"] = RunnersCommand.RunnersUsage,
         ["show"] = IssueCommands.ShowUsage,
         ["comments"] = IssueCommands.CommentsUsage,
         ["start"] = IssueCommands.StartUsage,
