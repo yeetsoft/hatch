@@ -80,4 +80,38 @@ describe('ColumnHead', () => {
 
     expect(html).not.toContain('hatch-column-horizon');
   });
+
+  it('draws the runner tags small under the name when the column requires them', () => {
+    const html = render({
+      status: status({ runnerTags: ['breakdown', 'macos'] }),
+      count: 3,
+      asking: 0,
+      doneHorizonHours: null,
+    });
+
+    expect(html).toContain('hatch-column-title');
+    expect(html).toContain('hatch-column-tags');
+    expect(html).toContain('breakdown, macos');
+    expect(html).toContain('hatch-column-name');
+  });
+
+  it('draws neither the tags span nor its wrapper when the column requires none', () => {
+    const html = render({ status: status({ runnerTags: [] }), count: 3, asking: 0, doneHorizonHours: null });
+
+    expect(html).not.toContain('hatch-column-tags');
+    expect(html).not.toContain('hatch-column-title');
+  });
+
+  it('still draws the lock and the asking badge on a tagged protected column', () => {
+    const html = render({
+      status: status({ runnerTags: ['breakdown'], isProtected: true }),
+      count: 3,
+      asking: 2,
+      doneHorizonHours: null,
+    });
+
+    expect(html).toContain('hatch-column-lock');
+    expect(html).toContain('hatch-column-asking');
+    expect(html).toContain('?2');
+  });
 });
