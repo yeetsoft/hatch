@@ -16,6 +16,12 @@ export interface MeView {
 export function describeMe(me: Me | null): MeView | null {
   if (me === null) return null;
 
+  // Not signed in: a name would be a guess and there is nothing to sign out
+  // of, so the only thing to offer is the way in, whatever canSignIn says.
+  if (me.kind === 'none') {
+    return { name: '', showHint: false, showSignOut: false, showSignIn: true, isAdmin: false };
+  }
+
   return {
     name: me.name,
     showHint: me.kind === 'local' && !me.configured,

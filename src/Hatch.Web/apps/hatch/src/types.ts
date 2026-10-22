@@ -1598,9 +1598,11 @@ export interface ExhaustedRunner {
     Answered in both modes; 204 (read as null) only for a key or runner, which
     is nobody the bar should draw. */
 export interface Me {
-  /** `local` when the wall is off, `person` when a grant holds a person. */
-  kind: 'local' | 'person';
-  /** What events written from this browser will say. */
+  /** `local` when the wall is off, `person` when a grant holds a person, `none`
+      when the wall is off and nobody local answered either - a browser that has
+      not signed in. */
+  kind: 'local' | 'person' | 'none';
+  /** What events written from this browser will say. Empty for `none`. */
   name: string;
   /** Null for `local`, which has no role to gate on. */
   role: 'user' | 'admin' | null;

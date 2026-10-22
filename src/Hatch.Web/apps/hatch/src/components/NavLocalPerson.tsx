@@ -18,8 +18,9 @@ export const UNNAMED_HINT = 'Hatch does not know your name.';
  * Who Hatch thinks is at this browser, behind the gear - in both modes.
  *
  * The local person with the hint to name themselves when the wall is off; the
- * signed-in person with a Sign out when it is up. Draws nothing for a caller
- * that is nobody. What it says comes from `useMe`, read once by the provider
+ * signed-in person with a Sign out when it is up. A browser that has not
+ * signed in gets just the Sign in link, with no name. Draws nothing for a
+ * caller that is nobody at all (a key or runner). What it says comes from `useMe`, read once by the provider
  * above the routes.
  */
 export function NavLocalPerson() {
@@ -41,7 +42,7 @@ export function NavLocalPerson() {
       className={`hatch-local-person${view.showHint ? ' hatch-local-person-unnamed' : ''}`}
       title={view.showHint ? UNNAMED_HINT : undefined}
     >
-      <span className="hatch-local-person-name">{view.name}</span>
+      {view.name ? <span className="hatch-local-person-name">{view.name}</span> : null}
       {/* The hint is drawn as well as being the tooltip: an operator who has
           just started Hatch for the first time is exactly the person who will
           not think to hover over their own name. */}
