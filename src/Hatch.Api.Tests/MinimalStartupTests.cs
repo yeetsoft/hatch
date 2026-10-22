@@ -1,5 +1,7 @@
 using Hatch.Api.Tests.Hatch;
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
+using Quartz;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
 namespace Hatch.Api.Tests;
@@ -28,8 +30,18 @@ namespace Hatch.Api.Tests;
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class MinimalStartupTests
 {
-    /// <summary>Everything the four house jobs and BackfillChannelHistory are registered under - criterion 6 is that no trigger for it exists.</summary>
+    /// <summary>
+    /// Everything the four house jobs, BackfillChannelHistory and
+    /// ReflectionCadence are registered under - criterion 6 is that no
+    /// <em>house</em> job holds a trigger here. ReflectionCadence is not one
+    /// (<see cref="Hatch.Api.Modules.Hatch.ReflectionCadenceJob.ServesTheHouse"/>
+    /// is false), so it is scheduled either way and is the one trigger this
+    /// group is left holding.
+    /// </summary>
     private const string JobGroup = "Hatch.Api";
+
+    /// <summary>The only trigger a house-less install still carries - see <see cref="JobGroup"/>.</summary>
+    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger"];
 
     /// <summary>
     /// The whole assembly runs in about twenty seconds today and each of these
@@ -89,6 +101,41 @@ public class MinimalStartupTests
     }
 
     /// <summary>
+    /// ReflectionCadence's trigger starts now, so its first firing lands inside
+    /// the few hundred milliseconds between /health/ready answering and this
+    /// host being disposed. Disposed mid-firing, Quartz fails to build the job
+    /// from a service provider that is already gone and says so at Error -
+    /// the test's own teardown, not a fault in startup. So the host is not
+    /// stopped until that one firing has run its course; the next is fifteen
+    /// minutes away. Bounded at ten seconds and then let go, so a firing that
+    /// never comes is not this case's failure to report.
+    ///
+    /// <para>"Fired" and "executing" are not the same instant: Quartz records
+    /// the previous fire time first, then builds the job, and only lists it
+    /// among the currently executing jobs once it is running. A single sample
+    /// of "fired and nothing executing" can land in that gap - and did, in CI,
+    /// with the host disposed underneath the job's construction. So it takes
+    /// several samples in a row, spanning far longer than the gap, before the
+    /// firing counts as over.</para>
+    /// </summary>
+    private static async Task SettleFirstFiringAsync(IScheduler scheduler)
+    {
+        const int IdleSamples = 10;
+
+        var trigger = new TriggerKey("ReflectionCadence_Trigger", JobGroup);
+        var until = DateTimeOffset.UtcNow.AddSeconds(10);
+        var idle = 0;
+
+        while (DateTimeOffset.UtcNow < until)
+        {
+            var fired = (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
+            idle = fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0 ? idle + 1 : 0;
+            if (idle >= IdleSamples) return;
+            await Task.Delay(50);
+        }
+    }
+
+    /// <summary>
     /// What both cases share: the host builds and starts, /health/ready answers
     /// 200, and the store holds no trigger for any house job - every phase of
     /// it, including making the scratch databases, bounded against one
@@ -129,6 +176,8 @@ public class MinimalStartupTests
 
             var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+
+            await deadline.BoundAsync("letting the reflection job's first firing finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally
         {
@@ -141,7 +190,7 @@ public class MinimalStartupTests
         // server right alongside the one that says so.
         try
         {
-            Assert.Empty(await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
+            Assert.Equal(ExpectedTriggers, await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
 
             if (migrated)
             {

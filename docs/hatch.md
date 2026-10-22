@@ -434,7 +434,11 @@ it files - `Dispatch.MatchReflection` ranked the same way `Dispatch.Match` is,
 with no from/to to pin since filing is not a transition - naming the Playbooks
 page (*"`<KEY>` has no reflection playbook row - add one on the Playbooks page
 first"*). This route writes only `ReflectionCadenceDays`; `ReflectionLastPeriodStart`
-is written only by the reflection job, never here. `ReflectionNextDueAt` - the
+is written only by the reflection job, never here. That job,
+`ReflectionCadenceJob` (`Modules/Hatch/`), polls every fifteen minutes and is
+idempotent by construction: it advances `ReflectionLastPeriodStart` to the
+due instant it just filed for, never to the instant it ran, so a firing that
+finds nothing newly due writes nothing twice. `ReflectionNextDueAt` - the
 start of the last period it reflected on plus the cadence, or now where it
 never has - is computed on every read, never stored. `ProjectPatchRequest`
 carries no field for any of the three, so this route is the only way to change
