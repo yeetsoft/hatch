@@ -36,4 +36,27 @@ describe('RunnerTagsField', () => {
 
     expect(html).toMatch(/<textarea[^>]*disabled=""/);
   });
+
+  it('renders an error as role="alert" instead of the hint', () => {
+    const html = renderToStaticMarkup(
+      <RunnerTagsField
+        label="Runner tags"
+        hint="One tag per line."
+        error="a tag has no space or comma inside"
+        value=""
+        onChange={() => {}}
+      />,
+    );
+
+    expect(html).toContain('<span class="hatch-field__error" role="alert">a tag has no space or comma inside</span>');
+    expect(html).not.toContain('hatch-field__hint');
+  });
+
+  it('renders no error span when error is absent', () => {
+    const html = renderToStaticMarkup(
+      <RunnerTagsField label="Runner tags" hint="One tag per line." value="" onChange={() => {}} />,
+    );
+
+    expect(html).not.toContain('hatch-field__error');
+  });
 });
