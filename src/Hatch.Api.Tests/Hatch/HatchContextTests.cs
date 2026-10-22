@@ -246,6 +246,16 @@ public class HatchContextTests
     }
 
     [Fact]
+    public void AProjectsReflectNowIssueId_SetsNull()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.SetNull,
+            ForeignKeyOn(db, typeof(EfHatchProject), nameof(EfHatchProject.ReflectNowIssueId)).DeleteBehavior);
+    }
+
+    [Fact]
     public void AnEventsPayload_IsJsonb()
     {
         using var db = NewContext();

@@ -239,6 +239,11 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // No navigation property either direction - the same one-sided
             // shape EfHatchProjectLogo's FK below uses.
             e.HasOne<EfHatchStatus>().WithMany().HasForeignKey(p => p.AutoHealBugStatusId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(p => p.ReflectNowIssue)
+                .WithMany()
+                .HasForeignKey(p => p.ReflectNowIssueId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // Cascade with the project: a project can only be deleted empty of
