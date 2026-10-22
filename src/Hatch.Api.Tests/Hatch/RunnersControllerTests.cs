@@ -228,16 +228,27 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ALaterHeartbeat_OverwritesTheTagsAPriorOneReported()
+    public async Task ALaterHeartbeat_NeverOverwritesTagsOnceTheRowHasAny()
     {
         var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
-        Assert.Equal(["gpu"], (await h.OneAsync()).Tags);
+        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: []));
-        Assert.Empty((await h.OneAsync()).Tags);
+        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task AFirstHeartbeatWithNoTags_LeavesTheRowOpenForALaterOneToSeedThem()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
+
+        Assert.Equal(["gpu"], (await h.OneAsync()).Tags);
     }
 
     [Fact]
@@ -288,6 +299,53 @@ public class RunnersControllerTests
         await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
 
         Assert.Equal(["fast"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task APatchNamingTags_StoresThemTrimmedAndLowercased()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: ["GPU ", " linux"]));
+
+        Assert.Equal(["gpu", "linux"], (await h.OneAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task APatchTagThatBreaksTheRule_IsRefused()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Tags: ["a b"]), default);
+
+        Assert.Contains("a tag has no space or comma inside", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APatchWithNineTags_IsRefused()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var nine = Enumerable.Range(1, 9).Select(i => $"tag{i}").ToArray();
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Tags: nine), default);
+
+        Assert.Contains("a runner carries at most 8 tags", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APatchClearingTags_StoresEmptyAndAFollowingHeartbeatDoesNotReseedIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: []));
+        Assert.Equal("", (await h.RowAsync()).Tags);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
+        Assert.Equal("", (await h.RowAsync()).Tags);
     }
 
     // ---- Out of Claude usage ----
