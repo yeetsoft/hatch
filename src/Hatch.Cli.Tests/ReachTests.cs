@@ -177,4 +177,39 @@ public sealed class ReachTests
 
         Assert.Equal("inherited", environment["HATCH_RUNNER"]);
         Assert.Equal(2, environment.Count);
-    }}
+    }
+
+    [Fact]
+    public void ToHatch_sets_HATCH_BASE_and_HATCH_KEY()
+    {
+        var environment = Env("/usr/bin");
+
+        Reach.ToHatch(environment, new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" });
+
+        Assert.Equal("https://example.hatch", environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", environment["HATCH_KEY"]);
+    }
+
+    [Fact]
+    public void ToHatch_with_an_empty_key_exports_HATCH_BASE_alone()
+    {
+        var environment = Env("/usr/bin");
+
+        Reach.ToHatch(environment, new Settings { Base = "https://example.hatch", Key = "" });
+
+        Assert.Equal("https://example.hatch", environment["HATCH_BASE"]);
+        Assert.False(environment.ContainsKey("HATCH_KEY"));
+    }
+
+    [Fact]
+    public void ToHatch_with_no_settings_leaves_the_environment_alone()
+    {
+        var environment = Env("/usr/bin");
+        environment["HATCH_BASE"] = "inherited";
+        var before = new Dictionary<string, string?>(environment);
+
+        Reach.ToHatch(environment, null);
+
+        Assert.Equal(before, environment);
+    }
+}

@@ -180,6 +180,7 @@ public static class IssueProjection
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
+            var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -243,7 +244,9 @@ public static class IssueProjection
                 issue.PullRequestReadAt,
                 issue.ClosedAt,
                 issue.ReleaseNote,
-                RunnerTagColumn.Read(issue.RunnerTags));
+                RunnerTagColumn.Read(issue.RunnerTags),
+                effectiveRunnerTags,
+                effectiveRunnerTagsFrom);
         });
     }
 
