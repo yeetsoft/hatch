@@ -1148,6 +1148,18 @@ change writes `runner_tags_changed` with `{ from, to }`, both sides a real
 array. `PATCH /issues/{key}`, create and the bulk endpoint carry no field
 for it, so this route is the only way in or out.
 
+**The tags a runner is actually held to are a union, not an override, and
+are read live at every request the same way `EffectivePreApproval` is.**
+`PriorityTree.EffectiveRunnerTags` walks the project's own list, then every
+ancestor's own, root-most to nearest, then the issue's own, deduplicating
+against what came before so a tag named twice counts once. A card or an
+issue carries all three: `runnerTagsOwn` is the issue's own row, exactly
+what `PUT .../runner-tags` last wrote and nothing else; `runnerTags` is the
+union just described; `runnerTagsFrom` names where each tag in `runnerTags`
+beyond the issue's own comes from, one entry per non-empty contributor in
+the same root-most-first order - the issue's own row is never named there,
+even when it carries tags.
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
