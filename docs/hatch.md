@@ -5570,6 +5570,29 @@ it — and it keeps `Read`, plain `Bash` and the `hatch` verbs, so it still read
 the repository and its files and moves its own ticket. Only a [check
 playbook](#check), paired with denied tools, takes the write tools away.
 
+**The reflection row reads back what earlier reflections predicted.**
+`RewordReflectionPlaybook` (20261021180000) rewrites the row's `DefaultPrompt`
+alone, only where it still reads the stock text byte for byte, as
+`RewordImplementationPlaybook` does: `Prompt` and `UpdatedAt` are left
+untouched, so an operator's own wording survives. The report it asks for has
+eight sections, in order: Window; What ran and what it cost; Where the time
+went; Findings; Recommendations; Hypotheses read; Hypotheses filed; What
+reflection could not see. A hypothesis is an issue filed under the reflection
+with a `readyAt` on its read-after date and a `## Hypothesis` block of four
+lines: the metric, the baseline (its window and value), the change (what moves,
+and the key of the issue carrying it) and the read-after date. A later
+reflection finds earlier ones with `GET /api/hatch/issues?type=reflection&projectId=`
+and then each reflection's children by `parentKey`, and reads those whose block
+date has passed, skipping any already commented confirmed or refuted. It
+measures an after window as long as the baseline, ending on the read-after
+date, and gives each a verdict: *confirmed*, *refuted*, or *unreadable* — the
+metric is no longer produced, or the window is too thin to say. The verdict is
+commented on the hypothesis issue, which is what lets the next reflection skip
+it. A refuted hypothesis whose change landed as code gets an issue under the
+reflection to revert or amend it; a confirmed one is reported and left for a
+person to close. `Hypotheses read` is never left out: with no earlier
+reflection, or none due, it reads `None` and says why.
+
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
 where specifying a draft happens now, but it writes no prompt, no model and no
