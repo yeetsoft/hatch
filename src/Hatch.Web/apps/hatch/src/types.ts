@@ -260,6 +260,15 @@ export interface IssueCard {
       effective level is this issue's own, or none. See
       IssueCardDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** The runner tags effective for this issue, walked live to the nearest
+      ancestor (or project) that carries any. See IssueCardDto.RunnerTags. */
+  runnerTags: string[];
+  /** The runner tags this issue's own row carries, regardless of what it
+      inherits. See IssueCardDto.RunnerTagsOwn. */
+  runnerTagsOwn: string[];
+  /** Where each effective runner tag came from - the project or an ancestor
+      issue. See IssueCardDto.RunnerTagsFrom. */
+  runnerTagsFrom: RunnerTagSource[];
   /** When an increment last left this ticket where it found it, or null.
       See IssueCardDto.StalledAt. */
   stalledAt: string | null;
@@ -574,6 +583,16 @@ export interface Issue {
       effective level is this issue's own, or none. See
       IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** The runner tags effective for this issue, walked live to the nearest
+      ancestor (or project) that carries any. See IssueCard.runnerTags and
+      IssueDto.RunnerTags. */
+  runnerTags: string[];
+  /** The runner tags this issue's own row carries, regardless of what it
+      inherits. See IssueCard.runnerTagsOwn and IssueDto.RunnerTagsOwn. */
+  runnerTagsOwn: string[];
+  /** Where each effective runner tag came from - the project or an ancestor
+      issue. See IssueCard.runnerTagsFrom and IssueDto.RunnerTagsFrom. */
+  runnerTagsFrom: RunnerTagSource[];
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
@@ -886,6 +905,19 @@ export interface ProjectReflectionWriteRequest {
 
 /** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
 export interface ProjectRunnerTagsWriteRequest {
+  tags: string[];
+}
+
+/** Mirrors RunnerTagSourceDto. kind: 'project' means key is the project's
+    key; kind: 'issue' means key is the ancestor issue's. */
+export interface RunnerTagSource {
+  kind: 'project' | 'issue';
+  key: string;
+  tags: string[];
+}
+
+/** Mirrors IssueRunnerTagsWriteRequest. */
+export interface IssueRunnerTagsWriteRequest {
   tags: string[];
 }
 

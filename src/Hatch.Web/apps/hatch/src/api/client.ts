@@ -28,6 +28,7 @@ import type {
   IssuePatchRequest,
   IssuePlaybookRequest,
   IssueRollup,
+  IssueRunnerTagsWriteRequest,
   IssueSearch,
   Me,
   AuthMe,
@@ -340,6 +341,9 @@ export const setPreApproval = (key: string, level: 'none' | 'express' | 'preappr
     method: 'PUT',
     ...asJson({ level }),
   });
+
+export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteRequest) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/runner-tags`, { method: 'PUT', ...asJson(request) });
 
 /** Mark a ticket stalled, with why - and, through the same panel, read back
     off. On `setPriority`'s shape: the state is sent, not toggled, and the
