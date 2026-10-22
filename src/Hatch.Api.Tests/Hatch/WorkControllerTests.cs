@@ -4245,6 +4245,22 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_NamesTheTagsAColumnRequiresDirectly()
+    {
+        var h = await NewAsync();
+        await h.TagColumnAsync(h.Todo, "macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.Todo);
+
+        var none = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(
+            $"{Key(issue)} in todo is worked only by a runner advertising macos and xcode - this runner advertises none",
+            none.Blocked);
+        Assert.Equal(BlockedKinds.Other, none.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
+    }
+
+    [Fact]
     public async Task Queue_ATagRequiringProjectsStoryInTodo_IsClearForATaglessCaller()
     {
         var h = await NewAsync();
@@ -12091,6 +12107,14 @@ public class WorkControllerTests
         public async Task TagAsync(EfHatchIssue issue, params string[] tags)
         {
             issue.RunnerTags = RunnerTagColumn.Write(tags);
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A column's own required tags, written straight to its row - see <see cref="RequireTagsAsync"/> for the project's.</summary>
+        public async Task TagColumnAsync(int statusId, params string[] tags)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.RunnerTags = RunnerTagColumn.Write(tags);
             await Db.SaveChangesAsync();
         }
     }

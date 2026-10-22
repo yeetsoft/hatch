@@ -123,6 +123,17 @@ There are nine, and a column carries whichever of them it needs.
   it. Only a person may tick it, never a key. It needs **Protected** ticked
   first, and a Deferred or Done column is refused.
 
+**Runner tags** — a field, not a tenth flag: a list of [runner
+tags](the-runner#what-a-runner-advertises) the column requires, the same way a
+project or an issue can. They union with the project's, the issue's ancestors'
+and the issue's own, the same union that already gates the move into the
+column where code gets written and the review self-move on a conflict or a
+failing build — see the dispatcher's tag fold (`docs/hatch.md`, "The
+dispatcher") for the exact rule. A column with none set changes nothing; one
+with tags of its own gates every move out of it for a runner that does not
+advertise them all, and names the column by name in the sentence it folds
+with.
+
 ## Example: an Approved column
 
 Add an eighth column, between In Review and Done, and call it `Approved` —
