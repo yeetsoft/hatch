@@ -35,8 +35,8 @@ import {
   type ThemeChoice,
 } from '../theme/themeStore';
 
-/* The canonical file is hatch-logo.png at the repository root; see TopBar.tsx. */
-import logo from '../assets/hatch-logo.png';
+/* The mark's geometry, the same two paths <HatchMark> draws; see TopBar.tsx. */
+import { HATCH_MARK_BODY, HATCH_MARK_CAP, HATCH_MARK_VIEWBOX } from '../brand/hatchMark';
 
 import '../tokens.css';
 import './topbar.css';
@@ -95,18 +95,31 @@ let menuSeq = 0;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/** HatchMark.tsx's artwork, restated in DOM calls - the same two paths from
+    brand/hatchMark.ts, in currentColor, so the mark takes the bar's own ink.
+    Decoration: aria-hidden, and the name beside it is the link's accessible
+    name. */
+function hatchMark(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', HATCH_MARK_VIEWBOX);
+  svg.setAttribute('width', '28');
+  svg.setAttribute('height', '28');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  for (const d of [HATCH_MARK_CAP, HATCH_MARK_BODY]) {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
 /** The brand link in TopBar.tsx. An <a>, so middle-click and "copy link address" work. */
 function brand(href: string, name: string): HTMLAnchorElement {
   const link = document.createElement('a');
   link.className = 'hatch-topbar__brand';
   link.href = href;
-
-  /* Decoration: the name beside it is the link's accessible name. */
-  const img = document.createElement('img');
-  img.src = logo;
-  img.alt = '';
-  img.width = 28;
-  img.height = 28;
 
   /* A <span>, not an <h1>: the bar is a wordmark saying where you are, and the
      page's own heading keeps the rank. */
@@ -114,7 +127,7 @@ function brand(href: string, name: string): HTMLAnchorElement {
   text.className = 'hatch-topbar__name';
   text.textContent = name;
 
-  link.append(img, text);
+  link.append(hatchMark(), text);
   return link;
 }
 

@@ -22,6 +22,18 @@ export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
 export { TopBar } from './components/TopBar';
 export type { TopBarProps } from './components/TopBar';
+export { HatchMark } from './components/HatchMark';
+export type { HatchMarkProps } from './components/HatchMark';
+export {
+  HATCH_MARK_VIEWBOX,
+  HATCH_MARK_CAP,
+  HATCH_MARK_BODY,
+  HATCH_MARK_GRADIENT,
+  HATCH_ICON_GRADIENT,
+  hatchMarkSvg,
+  hatchIconSvg,
+} from './brand/hatchMark';
+export type { HatchMarkSvgOptions, HatchIconSvgOptions } from './brand/hatchMark';
 export { Menu, useMenuOpen } from './components/Menu';
 export type { MenuProps, MenuItemProps, MenuBarProps, MenuTriggerProps, MenuTone, MenuAlign } from './components/Menu';
 
