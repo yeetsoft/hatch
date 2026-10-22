@@ -643,6 +643,54 @@ public class RunnersControllerTests
         Assert.Equal(["second:/tree", "first:/tree"], (await h.ListAsync()).Select(r => r.Name));
     }
 
+    // ---- Names ----
+
+    [Fact]
+    public async Task Names_AreMostRecentlyHeardFromFirst()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync("first:/tree", new RunnerHeartbeatRequest());
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.BeatAsync("second:/tree", new RunnerHeartbeatRequest());
+
+        Assert.Equal(["second:/tree", "first:/tree"], await h.NamesAsync());
+    }
+
+    [Fact]
+    public async Task Names_LeaveOutARunnerOlderThanTheDropHorizon()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync("old:/tree", new RunnerHeartbeatRequest());
+
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest());
+
+        Assert.Equal(["new:/tree"], await h.NamesAsync());
+
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
+        Assert.Empty(await h.NamesAsync());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Names_AreTheSameListWhoeverAsksAndWithTheWallOnOrOff(bool wall)
+    {
+        var h = await NewAsync(wall: wall);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.LoopBeatAsync("here:/checkouts/two", null);
+
+        // The caller now is nobody, who may not control the owned runner;
+        // its name is still in the list.
+        Assert.Equal(["here:/checkouts/two", Runner], await h.NamesAsync());
+
+        h.Actors.Principal = alice;
+        Assert.Equal(["here:/checkouts/two", Runner], await h.NamesAsync());
+    }
+
     // ---- Driving a project ----
 
     [Fact]
@@ -1137,6 +1185,7 @@ public class RunnersControllerTests
         // write is a person's, because it is the budget.
         Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.Heartbeat))!.AcceptScope);
         Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunners))!.AcceptScope);
+        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunnerNames))!.AcceptScope);
 
         var patch = Scope(nameof(RunnersController.PatchRunner));
         Assert.NotNull(patch);
@@ -1221,6 +1270,8 @@ public class RunnersControllerTests
             Value(await Runners.PatchRunner(name, request, default));
 
         public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default));
+
+        public async Task<IReadOnlyList<string>> NamesAsync() => Value(await Runners.GetRunnerNames(default));
 
         public async Task<RunnerDto> OneAsync() => Assert.Single(await ListAsync());
 
