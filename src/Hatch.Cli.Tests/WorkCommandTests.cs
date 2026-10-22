@@ -1115,6 +1115,163 @@ public sealed class WorkCommandTests
         Assert.DoesNotContain(h.Say.Complained, l => l.Contains("changed under us", StringComparison.Ordinal));
     }
 
+    // ---- the workspace lock ----
+
+    private static Runtime Locked(Harness h, string workspace, bool defaulted) =>
+        h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted) };
+
+    private static void OneTicket(Harness h)
+    {
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+    }
+
+    [Fact]
+    public async Task A_configured_workspace_held_elsewhere_refuses_the_increment()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "chosen-workspace");
+        using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(1, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains(workspace, StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("elsewhere-checkout", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_defaulted_workspace_held_elsewhere_is_served_around()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var workspace = Path.Combine(h.Temp, "default-workspace");
+        using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(0, await new WorkCommand(Locked(h, workspace, defaulted: true)).RunAsync(["AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("this run will not clone", StringComparison.Ordinal));
+
+        // Both reads of the ticket, the one that claims and the one that follows it.
+        var reads = h.Wire.To("GET", "/api/hatch/work/AER-1");
+        Assert.NotEmpty(reads);
+        Assert.All(reads, r => Assert.DoesNotContain("clones=true", r.Query));
+    }
+
+    [Fact]
+    public async Task A_stale_workspace_lock_is_cleared_and_the_increment_runs()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var workspace = Path.Combine(h.Temp, "clones");
+        Directory.CreateDirectory(workspace);
+
+        // A pid no process can have: the lock a crashed run left behind.
+        var stale = WorkspaceLock.PathFor(workspace, h.Temp);
+        Directory.CreateDirectory(stale);
+        File.WriteAllText(Path.Combine(stale, "pid"), int.MaxValue.ToString());
+
+        Assert.Equal(0, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["AER-1"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_finished_increment_releases_the_workspace_lock()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var workspace = Path.Combine(h.Temp, "clones");
+
+        Assert.Equal(0, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["AER-1"], default));
+
+        using var again = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public async Task A_failed_clone_releases_the_workspace_lock()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "clones");
+        h.Clone.Error = "fatal: repository not found";
+
+        var repo = Fixtures.Repository(
+            "https://example.test/owner/gone.git", canonical: "example.test/owner/gone", primary: true, matchedRemote: null);
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+
+        Assert.Equal(2, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["AER-1"], default));
+
+        using var again = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public async Task A_refused_run_leaves_the_holders_lock_alone()
+    {
+        using var h = new Harness();
+        var workspace = Path.Combine(h.Temp, "chosen-workspace");
+        var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(1, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["AER-1"], default));
+
+        Assert.True(Directory.Exists(WorkspaceLock.PathFor(workspace, h.Temp)), "a run that never held the lock removed it");
+
+        held.Dispose();
+        using var again = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public async Task A_dry_run_takes_no_workspace_lock()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+        var workspace = Path.Combine(h.Temp, "chosen-workspace");
+        var lockPath = WorkspaceLock.PathFor(workspace, h.Temp);
+
+        // Held elsewhere, and still a dry run goes through: it asks for nothing.
+        using (var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _))
+        {
+            Assert.NotNull(held);
+            var before = File.ReadAllText(Path.Combine(lockPath, "pid"));
+
+            Assert.Equal(0, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["--dry-run"], default));
+
+            Assert.DoesNotContain(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
+            Assert.True(Directory.Exists(lockPath));
+            Assert.Equal(before, File.ReadAllText(Path.Combine(lockPath, "pid")));
+        }
+
+        // Not held: it leaves nothing behind either.
+        Assert.False(Directory.Exists(lockPath));
+        Assert.Equal(0, await new WorkCommand(Locked(h, workspace, defaulted: false)).RunAsync(["--dry-run"], default));
+        Assert.False(Directory.Exists(lockPath));
+    }
+
+    [Fact]
+    public async Task No_workspace_takes_no_lock()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(Directory.GetDirectories(h.Temp, "hatch-workspace-*"));
+    }
+
     // ---- HA-245: a branch on origin nobody can find a pull request for ----
 
     /// <summary>The wiring one named increment needs: a dispatch in progress, a post-run read in review, and the branch and pull request the guard is judged by.</summary>

@@ -98,7 +98,7 @@ the next heading of the same level and stop.
   - [What makes an issue actionable](#what-makes-an-issue-actionable) - Which
     conditions must an issue meet before the loop picks it up?
   - [One loop at a time](#one-loop-at-a-time) - How many loops may serve a
-    checkout, and which checkouts?
+    checkout or a workspace, and which checkouts?
   - [What a runner does, in order](#what-a-runner-does-in-order) - What does
     a runner do in a pass, step by step?
   - [The workspace, between increments](#the-workspace-between-increments) -
@@ -6277,16 +6277,21 @@ refusing. A run that stands in, or names, a checkout that is one of its clones
 simply does not clone, and says nothing; a checkout that contains the
 workspace, or a workspace that cannot be written, turns cloning off for that
 run and says why. A second loop that finds the default workspace's lock held
-serves its own checkouts and does not clone, where a workspace somebody named
-is still refused. `--workspace off`, `HATCH_WORKSPACE=off` or `hatch config
+says so (`this run will not clone`), drops the workspace's clones from what it
+serves, serves its own checkouts, and is not refused; a workspace somebody
+named is refused, naming the pid and the checkout and `hatch config --here
+--workspace <dir>`. `--workspace off`, `HATCH_WORKSPACE=off` or `hatch config
 --workspace off` turns it off outright for a runner that must never clone.
 
 What says "one loop" is a directory under `TMPDIR`, holding the pid of the run
-that took it, taken on every served checkout in order at startup — and, where
-a workspace is set, on the workspace directory itself first, so a clone that
-appears at three in the morning is already under a lock and a second loop
-naming the same workspace is refused, by name, before it can clone into
-anything the first is using. A refusal on any one releases every lock already
+that took it: a `LoopLock` per served checkout, taken in order at startup,
+plus, where a workspace is set, a `WorkspaceLock` (`hatch-workspace-<fingerprint>`,
+the pid and the standing checkout inside). `go-to-work` takes the workspace
+lock first and keeps it for the night, and `work` takes it for the increment —
+first because giving way prunes clones from the served list before the
+per-checkout locks are taken. A clone that appears at three in the morning is
+already under a lock, and a second loop naming the same workspace is refused,
+by name, before it can clone into anything the first is using. A refusal on any one releases every lock already
 taken and says which checkout and which loop holds it. A directory because
 creating one is atomic on every
 filesystem this could land on and a file written with a redirect is not;

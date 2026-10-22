@@ -166,6 +166,13 @@ picks up nothing, losing the connection to origin — belongs to running the
 loop, not to the board: see [When it will not
 run](the-runner#when-it-will-not-run).
 
+## Two loops on one machine
+
+- **`the workspace <dir> is already served`.** Another loop holds that
+  workspace: [When it will not run](the-runner#when-it-will-not-run).
+- **`this run will not clone`.** Not a fault, the default workspace is
+  another loop's: [When it will not run](the-runner#when-it-will-not-run).
+
 ## The Runner page offers no downloads
 
 - **This build published no runner binaries.** An image built before the

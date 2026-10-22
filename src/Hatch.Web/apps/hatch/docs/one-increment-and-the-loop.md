@@ -428,6 +428,12 @@ letter case) still take the same lock. A lock left by a process that is no
 longer running is cleared automatically, with one line on the terminal saying
 so, rather than refusing a loop nothing is actually holding the checkout for.
 
+There is a second lock, on the workspace, named `hatch-workspace-<fingerprint>`
+for the workspace's canonical path and holding the pid and the standing
+checkout. `go-to-work` takes it for the night and `work` takes it for the
+increment — not `work --dry-run`, and not the read commands. It is released on
+every exit, the restart included, and a stale one is cleared the same way.
+
 A loop with none of its own checkouts of what a board binds can still serve
 it. **Cloning is on by default**: an unset `HATCH_WORKSPACE` is a per-user
 directory, and only `--workspace off` (or `HATCH_WORKSPACE=off`) never
