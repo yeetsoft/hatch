@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activityParts,
   activityWords,
   boundsChanged,
   boundsOf,
@@ -120,6 +121,17 @@ describe('runnerActivity', () => {
   it('names the weekday for a reset tomorrow', () => {
     const words = activityWords(runner({ exhaustedUntil: at(26 * 3_600_000) }), NOW);
     expect(words).toMatch(/^Out of usage until [A-Za-z]+ at \d{1,2}:\d{2}(am|pm)$/);
+  });
+});
+
+describe('activityParts', () => {
+  it('gives a working row the key apart from the words, which say Working alone', () => {
+    expect(activityParts(runner({ claimKey: 'AER-12' }), NOW)).toEqual({ words: 'Working', claimKey: 'AER-12' });
+  });
+
+  it('gives any other row the full words and no key', () => {
+    expect(activityParts(runner(), NOW)).toEqual({ words: 'Idle', claimKey: null });
+    expect(activityParts(runner({ state: 'paused' }), NOW)).toEqual({ words: 'Paused', claimKey: null });
   });
 });
 
