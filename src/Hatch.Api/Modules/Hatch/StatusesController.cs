@@ -33,12 +33,12 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         var statuses = await db.Statuses.AsNoTracking()
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Id)
-            .Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-                s.AgentFiles, s.IsImplementation, s.IsProtected, s.MergesPullRequest))
             .ToListAsync(ct);
 
-        return statuses;
+        return statuses.Select(s => new StatusDto(
+                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
+                s.AgentFiles, s.IsImplementation, s.IsProtected, s.MergesPullRequest, RunnerTagColumn.Read(s.RunnerTags)))
+            .ToList();
     }
 
     [HttpPost]
@@ -69,7 +69,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
             new StatusDto(
                 status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
                 status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-                status.IsProtected, status.MergesPullRequest));
+                status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags)));
     }
 
     [HttpPatch("{id:int}")]
@@ -126,7 +126,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -149,7 +149,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -172,7 +172,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -207,7 +207,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -242,7 +242,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest);
+            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -284,7 +284,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-            status.IsProtected, status.MergesPullRequest);
+            status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>
@@ -319,7 +319,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         return new StatusDto(
             status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
             status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-            status.IsProtected, status.MergesPullRequest);
+            status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
     }
 
     /// <summary>

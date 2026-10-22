@@ -84,6 +84,22 @@ public class BoardControllerTests
         Assert.Null(offBoard.DoneHorizonHours);
     }
 
+    [Fact]
+    public async Task AColumnsRunnerTags_ReadBackEmptyByDefaultAndWrittenOnceSet()
+    {
+        var h = await NewAsync();
+
+        var board = Value(await h.Board.GetBoard(default));
+        Assert.Empty(board.Statuses.Single(s => s.Id == h.InProgress).RunnerTags);
+
+        var status = await h.Db.Statuses.SingleAsync(s => s.Id == h.InProgress);
+        status.RunnerTags = RunnerTagColumn.Write(["macos", "xcode"]);
+        await h.Db.SaveChangesAsync();
+
+        var reread = Value(await h.Board.GetBoard(default));
+        Assert.Equal(["macos", "xcode"], reread.Statuses.Single(s => s.Id == h.InProgress).RunnerTags);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
