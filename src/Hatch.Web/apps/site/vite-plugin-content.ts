@@ -30,7 +30,7 @@ interface DocsModule {
  * `apps/hatch/src/lib/docs.ts`'s own pages, read once through `runnerImport`,
  * the same call `docsHtml()` already makes.
  */
-export function contentHtml(cloneUrl: string | undefined): Plugin {
+export function contentHtml({ cloneUrl, canonical }: { cloneUrl: string | undefined; canonical: string | undefined }): Plugin {
   const pages = new Map<string, string>()
   let contentPages: ContentPage[] = []
 
@@ -75,6 +75,7 @@ export function contentHtml(cloneUrl: string | undefined): Plugin {
             description: page.summary,
             up: '../../../',
             mermaid: rendered.mermaidCount > 0,
+            canonical: canonical === undefined ? undefined : `${canonical}${page.slug}/`,
             main: `      <h1>${escapeHtml(page.title)}</h1>
       <article class="hatch-docs-body">
 ${rendered.html}
