@@ -186,14 +186,14 @@ advertises linux"* (*"... advertises none"* for a runner with no tags at all).
 The board shows each runner by name, under **Agents → Runners** (*Watching the
 loop*). The name is `HATCH_RUNNER` if that is set; otherwise the name recorded
 for this checkout; otherwise a cast-list character, picked once from the host
-and the path, skipping names already recorded here or live elsewhere, and
-kept from then on. An explicit `HATCH_RUNNER` over 240 characters is clipped
+and the path, skipping names already recorded here or live on the board (read
+from `GET /api/hatch/runners/names`, names alone), and kept from then on. An explicit `HATCH_RUNNER` over 240 characters is clipped
 from the front, since the server refuses one any longer and the end of a name
 is the part that still identifies the checkout.
 
 `hatch config --runner <name>` refuses a name that is empty, too long, not
-plain ASCII, or already a live runner's elsewhere, and writes nothing. It also
-needs a checkout: a name belongs to a checkout, not to a person.
+plain ASCII, or already a live runner's - apart from this checkout's own
+current name - and writes nothing. It also needs a checkout: a name belongs to a checkout, not to a person.
 
 ## Where the key never goes
 
@@ -201,7 +201,7 @@ The key stays out of the artifact: never a tracked file, a commit, a plan, an
 issue or a paste. `scripts/.env` is git-ignored for that reason, and the
 `hatch_ak_` prefix exists so that one which does leak is recognisable on
 sight. The per-user file sits outside every repository. The
-[CLAUDE.md block](the-claudemd-block) tells an agent the same.
+[agent block](the-claudemd-block) tells an agent the same.
 
 ## Reading the board, spending nothing
 

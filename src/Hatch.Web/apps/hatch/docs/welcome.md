@@ -38,5 +38,5 @@ address — there isn't one the repository can know.
 - **Deploying and operating** — [Deployment overview](deployment-overview)
   covers running this somewhere more than one person reaches, and [the
   wall](the-wall-off-on-and-required) covers signing in.
-- **Reference** — [The CLAUDE.md block](the-claudemd-block) is the block to
-  paste into a repository's own `CLAUDE.md` so an agent can reach the board.
+- **Reference** — [The agent block](the-claudemd-block) is the block to
+  paste into a repository's own `CLAUDE.md` or `AGENTS.md` so an agent can reach the board.

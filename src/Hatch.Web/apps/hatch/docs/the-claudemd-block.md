@@ -1,17 +1,23 @@
 ---
-title: The CLAUDE.md block
+title: The agent block
 section: Reference
 order: 50
-summary: The block to paste into a repository's CLAUDE.md so its agents know how to reach the board.
+summary: The block to paste into a repository's `CLAUDE.md` or `AGENTS.md` so its agents know how to reach the board.
 ---
 
 ## What it is and where it goes
 
-The runner spawns a `claude` session per increment, inside your checkout. What
-that session knows about the board is whatever your repository's `CLAUDE.md`
-says — so this is the block to paste into it. It is the workflow contract:
-which calls to make, what an agent may do to a ticket, what only you may do,
-and when to stop and ask rather than guess.
+The runner spawns an agent session per increment, inside your checkout —
+`claude`, `codex`, `grok` or `ollama`, whichever `HATCH_AGENT` names. What that
+session knows about the board is whatever your repository's instructions file
+says: Claude Code reads `CLAUDE.md`, and Codex and Grok Build read `AGENTS.md`.
+Paste the same block into whichever file your agent reads. It is the workflow
+contract: which calls to make, what an agent may do to a ticket, what only you
+may do, and when to stop and ask rather than guess.
+
+If you use more than one agent, keep the block in `AGENTS.md` and have
+`CLAUDE.md` import it with a line containing `@AGENTS.md` (Claude Code's import
+syntax), rather than two copies that drift.
 
 Paste it as its own section. The commands in it are the runner's own, so they
 work from any directory once `hatch config` has run; nothing in it names a path
@@ -24,8 +30,8 @@ that exists in only one checkout would be true of exactly one installation, and
 the block is for every one of them.
 
 This page is the block's home. Copy it from here; the repository's own
-`CLAUDE.md` is the copy that gets read, and this is the copy that is kept
-current.
+`CLAUDE.md` or `AGENTS.md` is the copy that gets read, and this is the copy
+that is kept current.
 
 ## The block
 
@@ -35,7 +41,7 @@ under.
 
 <!-- claude-contract:start -->
 ````markdown
-## The operator and Claude contract
+## The operator and agent contract
 
 These rules come in two halves, because this file is loaded on every increment
 and most increments only write code. This half carries what every session
@@ -89,7 +95,7 @@ its wall on and nothing to look at yet.
 
 `hatch work` reads `work/next`, then spawns a headless session with the
 playbook's prompt, model and effort. It prints the session id first and last
-with the `claude --resume` command beside it, and streams what the run is doing
+with the agent's resume command beside it, and streams what the run is doing
 as it happens — every tool call, a thinking-token pulse, and a heartbeat naming
 what it is still waiting on. That last part is not a nicety: the CLI's default
 output prints nothing until the run ends, so a four-minute increment was four
