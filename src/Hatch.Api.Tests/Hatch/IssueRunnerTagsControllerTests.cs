@@ -2,6 +2,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -39,6 +40,149 @@ public class IssueRunnerTagsControllerTests
         Assert.Equal(new[] { "gpu" }, (await h.HitAsync(issue.Key)).RunnerTagsOwn);
     }
 
+    // ---- Who may set it ----
+
+    [Fact]
+    public async Task AKeyWithNoPerson_MaySetIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var set = await h.SetAsync(issue.Key, ["gpu"]);
+
+        Assert.Equal(new[] { "gpu" }, set.RunnerTagsOwn);
+    }
+
+    [Fact]
+    public async Task APersonWhoOwnsNothing_MaySetIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        h.Caller.Person = new EfPerson { Name = "nobody in particular", CreatedAt = Now, UpdatedAt = Now };
+
+        var set = await h.SetAsync(issue.Key, ["gpu"]);
+
+        Assert.Equal(new[] { "gpu" }, set.RunnerTagsOwn);
+    }
+
+    // ---- Normalising ----
+
+    [Fact]
+    public async Task TagsAreTrimmedLoweredAndDeduplicated_InTheOrderSent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+
+        var set = await h.SetAsync(issue.Key, ["GPU", " gpu", "Mac"]);
+
+        Assert.Equal(new[] { "gpu", "mac" }, set.RunnerTagsOwn);
+        Assert.Equal(new[] { "gpu", "mac" }, (await h.ReadAsync(issue.Key)).RunnerTagsOwn);
+        Assert.Equal(new[] { "gpu", "mac" }, (await h.CardAsync(issue.Key)).RunnerTagsOwn);
+    }
+
+    // ---- The no-op rule ----
+
+    [Fact]
+    public async Task TheSameListSentAgain_WritesNoEventAndLeavesUpdatedAtWhereItWas()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        await h.SetAsync(issue.Key, ["GPU", "Mac"]);
+        var was = (await h.ReadAsync(issue.Key)).UpdatedAt;
+
+        h.Time.Advance(TimeSpan.FromHours(1));
+        await h.SetAsync(issue.Key, [" GPU ", " mac "]);
+
+        Assert.Single(await h.EventsAsync(issue.Key));
+        Assert.Equal(was, (await h.ReadAsync(issue.Key)).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AChangedList_WritesExactlyOneEvent_WithFromAndToAsArrays()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        await h.SetAsync(issue.Key, ["gpu"]);
+
+        await h.SetAsync(issue.Key, ["gpu", "mac"]);
+
+        var events = await h.EventsAsync(issue.Key);
+        Assert.Equal(2, events.Count);
+        var last = events[1];
+        Assert.Equal(new[] { "gpu" }, last.Payload!.Value.GetProperty("from").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { "gpu", "mac" }, last.Payload!.Value.GetProperty("to").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public async Task AnEmptyList_ClearsItAndWritesToAsAnEmptyArray()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        await h.SetAsync(issue.Key, ["gpu"]);
+
+        var set = await h.SetAsync(issue.Key, []);
+
+        Assert.Empty(set.RunnerTagsOwn);
+        var last = (await h.EventsAsync(issue.Key))[1];
+        Assert.Empty(last.Payload!.Value.GetProperty("to").EnumerateArray());
+    }
+
+    // ---- Refusals ----
+
+    [Fact]
+    public async Task NineTags_Is400_CarryingTheCountSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+
+        var refused = await h.Controller.PutIssueRunnerTags(
+            issue.Key, new IssueRunnerTagsWriteRequest(["a", "b", "c", "d", "e", "f", "g", "h", "i"]), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Equal(RunnerTags.Normalise(["a", "b", "c", "d", "e", "f", "g", "h", "i"], out _), bad.Value);
+        Assert.Empty((await h.ReadAsync(issue.Key)).RunnerTagsOwn);
+    }
+
+    [Fact]
+    public async Task ATagWithASpace_Is400_CarryingTheSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+
+        var refused = await h.Controller.PutIssueRunnerTags(
+            issue.Key, new IssueRunnerTagsWriteRequest(["two words"]), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Equal(RunnerTags.Normalise(["two words"], out _), bad.Value);
+        Assert.Empty((await h.ReadAsync(issue.Key)).RunnerTagsOwn);
+    }
+
+    [Fact]
+    public async Task AnUnknownKey_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var refused = await h.Controller.PutIssueRunnerTags("AER-404", new IssueRunnerTagsWriteRequest(["gpu"]), default);
+
+        Assert.IsType<NotFoundResult>(refused.Result);
+    }
+
+    // ---- What does not reach it ----
+
+    [Fact]
+    public async Task PatchingTheTitle_LeavesTheColumnAlone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        await h.SetAsync(issue.Key, ["gpu"]);
+
+        await h.Issues.PatchIssue(issue.Key, new IssuePatchRequest("a new title", null, null, null, null, null, null, null, null, null), default);
+
+        Assert.Equal(new[] { "gpu" }, (await h.ReadAsync(issue.Key)).RunnerTagsOwn);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
@@ -46,12 +190,19 @@ public class IssueRunnerTagsControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
+        public required IssueRunnerTagsController Controller { get; init; }
         public required IssuesController Issues { get; init; }
         public required SearchController Search { get; init; }
+        public required IssueThreadController Thread { get; init; }
+        public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
 
         public async Task<IssueDto> FileAsync(string type, string title) =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, null, null, null), default));
+
+        public async Task<IssueDto> SetAsync(string key, IReadOnlyList<string> tags) =>
+            Value(await Controller.PutIssueRunnerTags(key, new IssueRunnerTagsWriteRequest(tags), default));
 
         public async Task<IssueDto> ReadAsync(string key) => Value(await Issues.GetIssue(key, default));
 
@@ -64,7 +215,14 @@ public class IssueRunnerTagsControllerTests
             Value(await Search.GetSearch(null, null, null, null, null, null, null, null, 50, 0, default))
                 .Hits.Single(h => h.Card.Key == key).Card;
 
-        /// <summary>Straight onto the row - nothing writes the column yet, so the test does.</summary>
+        /// <summary>The tag's own events, oldest first.</summary>
+        public async Task<IReadOnlyList<IssueEventDto>> EventsAsync(string key) =>
+            Value(await Thread.GetEvents(key, default))
+                .Where(e => e.Kind == EfHatchIssueEvent.RunnerTagsChanged)
+                .Reverse()
+                .ToList();
+
+        /// <summary>Straight onto the row - a seed for the read tests above, not a route under test.</summary>
         public async Task SetColumnAsync(string key, IReadOnlyList<string> tags)
         {
             IssueKey.TryParse(key, out var projectKey, out var number);
@@ -92,8 +250,12 @@ public class IssueRunnerTagsControllerTests
         return new Harness
         {
             Db = db,
+            Caller = caller,
+            Controller = new IssueRunnerTagsController(db, actors, TestClaims.With(), caller, time),
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Search = new SearchController(db, actors, TestClaims.With(), time),
+            Thread = new IssueThreadController(db, caller, time),
+            Time = time,
             ProjectId = project.Id,
         };
     }

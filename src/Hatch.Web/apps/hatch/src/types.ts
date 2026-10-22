@@ -698,6 +698,7 @@ export type IssueEventKind =
   | 'express_changed'
   | 'pre_approval_changed'
   | 'one_pr_changed'
+  | 'runner_tags_changed'
   | 'release_note_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
