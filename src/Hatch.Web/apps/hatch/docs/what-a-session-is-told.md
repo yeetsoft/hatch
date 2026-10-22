@@ -247,8 +247,8 @@ other denied tool it refuses outright, having no finer control. It carries no
 hooks. Grok likewise carries no hooks, since the CLI loads them only from
 fixed, trust-gated paths the runner cannot safely redirect.
 
-Beyond the prompt, what the session knows is the repository's own `CLAUDE.md`
-([the CLAUDE.md block](the-claudemd-block)).
+Beyond the prompt, what the session knows is the repository's own `CLAUDE.md` or
+`AGENTS.md` ([the agent block](the-claudemd-block)).
 
 ## The work-log block
 
