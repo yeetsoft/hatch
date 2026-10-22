@@ -24,6 +24,12 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
     modulePreload: { polyfill: false },
+    // The mark is under Vite's 4KB inlining threshold now that it is an SVG,
+    // and inlined it would be a data: URL pasted into every page's icon link
+    // and header rather than one hashed file the browser caches once across
+    // the site (pages.test.ts holds that). `undefined` leaves every other
+    // asset to the default.
+    assetsInlineLimit: (file) => (file.endsWith('hatch-logo.svg') ? false : undefined),
     rolldownOptions: {
       input: {
         index: resolve(__dirname, 'index.html'),

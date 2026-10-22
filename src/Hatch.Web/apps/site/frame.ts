@@ -26,7 +26,7 @@ export interface Frame {
 export function renderFrame({ title, description, main, up, mermaid, search, canonical }: Frame): string {
   const safeTitle = escapeHtml(title)
   const safeDescription = escapeHtml(description)
-  const icon = `${up}packages/ui/src/assets/hatch-logo.png`
+  const icon = `${up}packages/ui/src/assets/hatch-logo.svg`
   const diagramsScript = mermaid ? '\n    <script type="module" src="/src/docsDiagrams.ts"></script>' : ''
   const searchScript = search ? '\n    <script type="module" src="/src/docsSearchField.ts"></script>' : ''
   const canonicalTags =
@@ -43,7 +43,7 @@ export function renderFrame({ title, description, main, up, mermaid, search, can
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeDescription}" />
     <meta property="og:type" content="website" />${canonicalTags}
-    <link rel="icon" type="image/png" href="${icon}" />
+    <link rel="icon" type="image/svg+xml" href="${icon}" />
     <link rel="stylesheet" href="/src/site.css" />
     <script type="module" src="/src/theme.ts"></script>${diagramsScript}${searchScript}
   </head>

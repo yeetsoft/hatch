@@ -70,7 +70,7 @@ describe.each(['index.html', '404.html', 'docs/index.html', 'docs/getting-starte
     const icon = tagsOf(html, 'link').find((t) => attr(t, 'rel') === 'icon')
     const mark = tagsOf(html, 'img').find((t) => / class="[^"]*\bsite-mark\b/.test(t))
     const href = icon === undefined ? undefined : attr(icon, 'href')
-    expect(href).toMatch(/^\/assets\/.*hatch-logo.*\.png$/)
+    expect(href).toMatch(/^\/assets\/.*hatch-logo.*\.svg$/)
     expect(mark === undefined ? undefined : attr(mark, 'src')).toBe(href)
     expect(existsSync(join(site.dir, (href ?? '').replace(/^\//, '')))).toBe(true)
   })

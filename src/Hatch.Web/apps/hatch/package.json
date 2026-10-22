@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "icons": "node scripts/generate-icons.mjs",
+    "icons": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/generate-icons.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run"
