@@ -63,7 +63,7 @@ public sealed record ConfigCommand(
         "  --runner sets the name this checkout calls itself on the board - a",
         "  character from the cast list by default, chosen once and kept from then",
         "  on. Refused, with nothing written, if it is empty, too long, not plain",
-        "  ASCII, or already the name of a live runner elsewhere. Needs a checkout:",
+        "  ASCII, or already the name of a live runner. Needs a checkout:",
         "  a runner's name is a fact about one of them, not a setting that follows",
         "  the person.",
         "",
@@ -120,15 +120,16 @@ public sealed record ConfigCommand(
         };
 
     /// <summary>
-    /// Every runner live on the board, so a typed name already spoken for is
-    /// refused rather than silently colliding. Replaced by a test, which has no
-    /// origin to reach.
+    /// The name of every runner live on the board, so a typed name already
+    /// spoken for is refused rather than silently colliding. Names alone: the
+    /// names route answers any key, where the full listing answers only the
+    /// scope it was given. Replaced by a test, which has no origin to reach.
     /// </summary>
-    public Func<Settings, CancellationToken, Task<IReadOnlyList<RunnerDto>>> LiveRunners { get; init; } =
+    public Func<Settings, CancellationToken, Task<IReadOnlyList<string>>> LiveRunners { get; init; } =
         async (settings, ct) =>
         {
             using var client = new HatchClient(settings, "hatch-config");
-            return await new Board(client).RunnersAsync(ct);
+            return await new Board(client).RunnerNamesAsync(ct);
         };
 
     /// <summary>
@@ -316,7 +317,7 @@ public sealed record ConfigCommand(
         // this checkout's chosen or recorded name (or HATCH_RUNNER's override),
         // so Enter alone changes nothing and writes nothing new.
         string? chosenRunner = null;
-        if (Root is { Length: > 0 } root)
+        if (Root is { Length: > 0 })
         {
             In.Prompt($"What should the board call this runner? [{RunnerName}]: ");
             var typedRunner = In.Line();
@@ -330,9 +331,9 @@ public sealed record ConfigCommand(
                     return 1;
                 }
 
-                if (await HeldElsewhereAsync(candidate, origin, key, root, ct) is { } holder)
+                if (await IsLiveAsync(candidate, origin, key, ct))
                 {
-                    Say.Complain($"hatch: {candidate} is already the runner on {holder} - pick another name");
+                    Say.Complain($"hatch: {candidate} is already a live runner on this board - pick another name");
                     return 1;
                 }
 
@@ -507,7 +508,7 @@ public sealed record ConfigCommand(
     /// </summary>
     /// <remarks>
     /// A purely local filesystem fact once it is chosen, like <see cref="Repo"/> -
-    /// but choosing it needs the board, to skip a name already live elsewhere,
+    /// but choosing it needs the board, to skip a name already live,
     /// so this is async where <see cref="Repo"/> is not.
     /// </remarks>
     private async Task<int> RunnerAsync(string[] args, CancellationToken ct)
@@ -532,9 +533,9 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
 
-        if (await HeldElsewhereAsync(candidate, origin, key, root, ct) is { } holder)
+        if (await IsLiveAsync(candidate, origin, key, ct))
         {
-            Say.Complain($"hatch: {candidate} is already the runner on {holder} - pick another name");
+            Say.Complain($"hatch: {candidate} is already a live runner on this board - pick another name");
             return 1;
         }
 
@@ -559,27 +560,24 @@ public sealed record ConfigCommand(
     };
 
     /// <summary>
-    /// The <c>where</c> of the live runner already holding this name elsewhere,
-    /// or null - this checkout's own row does not count, and neither does a
-    /// board that cannot be reached, the same read <see cref="Checkout.RunnerAsync"/>
-    /// makes of one.
+    /// Whether the board already has a live runner by this name. This checkout's
+    /// own current name never counts - it is already that runner, and the
+    /// server's 409 stays the backstop - and neither does a board that cannot
+    /// be reached, the same read <see cref="Checkout.RunnerAsync"/> makes of one.
     /// </summary>
-    private async Task<string?> HeldElsewhereAsync(string name, string origin, string key, string root, CancellationToken ct)
+    private async Task<bool> IsLiveAsync(string name, string origin, string key, CancellationToken ct)
     {
-        if (origin.Length == 0) return null;
+        if (origin.Length == 0) return false;
+        if (string.Equals(name, RunnerName, StringComparison.OrdinalIgnoreCase)) return false;
 
         try
         {
-            var where = Checkout.Where(Checkout.Host(), root);
             var live = await LiveRunners(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
-            return live.FirstOrDefault(r =>
-                    string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(r.Where, where, StringComparison.Ordinal))
-                ?.Where;
+            return live.Contains(name, StringComparer.OrdinalIgnoreCase);
         }
         catch (HatchException)
         {
-            return null;
+            return false;
         }
     }
 
