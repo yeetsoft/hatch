@@ -3380,6 +3380,17 @@ public static class RunnerStates
 /// Empty for a runner carrying none, rather than null, so a client built
 /// against the current shape reads "no tags" without a null to guard.
 /// </param>
+/// <param name="For">
+/// Who this runner's <c>PATCH</c> belongs to - the same name
+/// <see cref="RunnerInstructionDto.For"/> carries back to the runner itself -
+/// or null for a runner that belongs to nobody.
+/// </param>
+/// <param name="CanControl">
+/// Whether the caller reading this row may <c>PATCH</c> it: the wall off, the
+/// runner belonging to nobody, the caller being <see cref="For"/>, or the
+/// caller being an admin. True whenever the wall is off, so a client never
+/// has to know the wall exists to draw its own controls.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3402,7 +3413,9 @@ public record RunnerDto(
     string? Agent,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<string>? Drives = null,
-    IReadOnlyList<string> Tags = null!)
+    IReadOnlyList<string> Tags = null!,
+    string? For = null,
+    bool CanControl = true)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

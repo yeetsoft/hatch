@@ -639,7 +639,9 @@ different question from one handed to a container on the same laptop.
 a key or a keyless runner, which is not somebody at a keyboard.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
-ever used - it edits, it never creates. `POST /runners/{name}` 409s when two
+ever used - it edits, it never creates. With the wall up, it also 403s a
+caller who is neither the runner's own owner nor an admin, naming the owner
+and the runner in the sentence. `POST /runners/{name}` 409s when two
 live runners would otherwise share one name. `credentials/{agent}` 404s an
 agent it does not know and 403s wherever the wall is up; a credential that is
 unset or blank answers `204` rather than either refusal.
