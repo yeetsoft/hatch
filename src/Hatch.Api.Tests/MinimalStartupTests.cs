@@ -109,16 +109,28 @@ public class MinimalStartupTests
     /// stopped until that one firing has run its course; the next is fifteen
     /// minutes away. Bounded at ten seconds and then let go, so a firing that
     /// never comes is not this case's failure to report.
+    ///
+    /// <para>"Fired" and "executing" are not the same instant: Quartz records
+    /// the previous fire time first, then builds the job, and only lists it
+    /// among the currently executing jobs once it is running. A single sample
+    /// of "fired and nothing executing" can land in that gap - and did, in CI,
+    /// with the host disposed underneath the job's construction. So it takes
+    /// several samples in a row, spanning far longer than the gap, before the
+    /// firing counts as over.</para>
     /// </summary>
     private static async Task SettleFirstFiringAsync(IScheduler scheduler)
     {
+        const int IdleSamples = 10;
+
         var trigger = new TriggerKey("ReflectionCadence_Trigger", JobGroup);
         var until = DateTimeOffset.UtcNow.AddSeconds(10);
+        var idle = 0;
 
         while (DateTimeOffset.UtcNow < until)
         {
             var fired = (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
-            if (fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0) return;
+            idle = fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0 ? idle + 1 : 0;
+            if (idle >= IdleSamples) return;
             await Task.Delay(50);
         }
     }
