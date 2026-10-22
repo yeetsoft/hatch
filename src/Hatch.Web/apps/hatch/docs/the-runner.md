@@ -182,9 +182,15 @@ require. A project that requires `gpu` is only worked by a runner that carries
 project's, never away from it - a runner must carry the whole union. A column
 may require tags of its own too, union'd in the same way, and gating every
 move out of it rather than only the move into the column where code gets
-written. The runner says its tags in every heartbeat and the heartbeat
-replaces the row whole, so removing a tag from the config takes it off the
-board on the next beat. The board reads them again on every dispatch.
+written. **The tags seed the row once.** The first heartbeat to name any
+writes them onto the row, which is what makes them show on the page
+immediately; every heartbeat after that leaves them alone, whether or not it
+names any of its own. The consequence is worth knowing: once a runner's row
+carries tags, **the row is where they live**, and `hatch config --tag` typed
+at a checkout that already has one changes the board no more than
+`--max-runs` does from the command line - only a `PATCH` on the row itself
+moves them from here on. The board reads them
+again on every dispatch.
 
 A runner carries at most 8 tags. Each is at most 32 characters, with no space
 or comma inside, and is trimmed and lowercased. A tag that breaks the rule

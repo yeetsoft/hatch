@@ -604,7 +604,7 @@ state rather than a stall.
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend and until |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, and tags |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -677,15 +677,17 @@ a key or a keyless runner, which is not somebody at a keyboard.
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a
 caller who is neither the runner's own owner nor an admin, naming the owner
-and the runner in the sentence. `POST /runners/{name}` 409s when two
-live runners would otherwise share one name. `POST /runners/{name}/order`
-400s a kind that is not `work` or `pass`, and `work` with no key or one that
-is not an issue key; 404s a `work` key naming an issue that does not exist;
-409s a `once` runner, a `stopping` runner, and a runner that already holds an
-order, naming the kind and key held and saying to withdraw it first.
-`credentials/{agent}` 404s an
-agent it does not know and 403s wherever the wall is up; a credential that is
-unset or blank answers `204` rather than either refusal.
+and the runner in the sentence. A tag that breaks the rule - more than 8, one
+over 32 characters, or one with a space or comma inside - 400s with the
+rule's own sentence, the same refusal a heartbeat's own tags answer to.
+`POST /runners/{name}` 409s when two live runners would otherwise share one
+name. `POST /runners/{name}/order` 400s a kind that is not `work` or `pass`,
+and `work` with no key or one that is not an issue key; 404s a `work` key
+naming an issue that does not exist; 409s a `once` runner, a `stopping`
+runner, and a runner that already holds an order, naming the kind and key
+held and saying to withdraw it first. `credentials/{agent}` 404s an agent it
+does not know and 403s wherever the wall is up; a credential that is unset or
+blank answers `204` rather than either refusal.
 
 ### What a night left behind
 

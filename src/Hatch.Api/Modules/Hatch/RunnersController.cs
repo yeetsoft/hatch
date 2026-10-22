@@ -329,6 +329,7 @@ public class RunnersController(
 
         if (Number(request.MaxRuns, out var maxRuns) is { } runsError) return BadRequest(runsError);
         if (Money(request.MaxSpend, out var maxSpend) is { } spendError) return BadRequest(spendError);
+        if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
         DateTimeOffset? untilAt = null;
         if (request.UntilAt is { } until && until.Trim().Length > 0)
@@ -348,6 +349,10 @@ public class RunnersController(
         if (request.MaxRuns is not null) row.MaxRuns = maxRuns;
         if (request.MaxSpend is not null) row.MaxSpend = maxSpend;
         if (request.UntilAt is not null) row.UntilAt = untilAt;
+
+        // "" clears the board, never null - the whole of how PATCH's clear is
+        // told apart from a row no heartbeat has seeded yet, with no migration.
+        if (request.Tags is not null) row.Tags = normalisedTags.Count > 0 ? string.Join('\n', normalisedTags) : "";
 
         await db.SaveChangesAsync(ct);
 
@@ -617,7 +622,13 @@ public class RunnersController(
         if (request.Standing is not null) row.Standing = request.Standing;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
         if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
-        if (request.Tags is not null) row.Tags = tags;
+
+        // Tags are seeded once, not a fact-vs-absent field like the rest of
+        // this block: a row with any Tags already written - including the
+        // empty string PATCH stores to clear the board - is never touched by
+        // a later heartbeat again. Only a row still null, from a beat before
+        // this one shipped, takes a heartbeat's tags at all.
+        if (request.Tags is not null && row.Tags is null) row.Tags = tags;
 
         // A tri-state of its own: absent leaves the row's own record alone (an
         // older CLI, or hatch work's single beat, neither of which knows

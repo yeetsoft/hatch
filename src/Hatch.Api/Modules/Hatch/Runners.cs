@@ -128,7 +128,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// </summary>
     public static RunnerInstructionDto Instruct(
         EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null, RunnerOrderDto? order = null) =>
-        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives, order);
+        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
+            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is
