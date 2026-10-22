@@ -2885,6 +2885,27 @@ public static class RunnerKinds
 }
 
 /// <summary>
+/// What a person may order a runner to do on its next loop heartbeat, from
+/// the Runners page - the Runners page's own control, beside the three
+/// <see cref="RunnerStates"/>. An order is a one-shot instruction, read and
+/// cleared the moment the next <c>loop</c> beat answers it, rather than a
+/// standing state like <see cref="RunnerStates"/>.
+/// </summary>
+public static class RunnerOrderKinds
+{
+    /// <summary>Work a named ticket next, however the loop would otherwise have picked.</summary>
+    public const string Work = "work";
+
+    /// <summary>Skip the next pick and ask again, leaving the loop's own choice for the one after.</summary>
+    public const string Pass = "pass";
+
+    public static readonly string[] All = [Work, Pass];
+
+    /// <summary>Room for either kind, with headroom for one nobody has invented yet.</summary>
+    public const int MaxLength = 8;
+}
+
+/// <summary>
 /// What a runner found when it merged an issue's branch against the trunk of
 /// one repository - the four things it can say. Spelled on the contract because
 /// both sides act on them: the runner writes one, and the board and the
@@ -3346,6 +3367,25 @@ public static class RunnerStates
 }
 
 /// <summary>
+/// What a person is ordering a runner to do, from the Runners page's own
+/// <c>POST .../order</c>.
+/// </summary>
+/// <param name="Kind">One of <see cref="RunnerOrderKinds"/>.</param>
+/// <param name="Key">The ticket to work, for <see cref="RunnerOrderKinds.Work"/> - absent for <see cref="RunnerOrderKinds.Pass"/>.</param>
+public record RunnerOrderRequest(string Kind, string? Key = null);
+
+/// <summary>
+/// An order, as it rides a runner's row - both on <see cref="RunnerDto"/>, for
+/// the page that placed it, and on <see cref="RunnerInstructionDto"/>, for the
+/// loop that reads it back off its own heartbeat and acts on it once.
+/// </summary>
+/// <param name="Kind">One of <see cref="RunnerOrderKinds"/>.</param>
+/// <param name="Key">The ticket to work, for <see cref="RunnerOrderKinds.Work"/> - null for <see cref="RunnerOrderKinds.Pass"/>.</param>
+/// <param name="By">Who placed the order.</param>
+/// <param name="At">When it was placed - null on the heartbeat answer, which a loop acts on once and need not date.</param>
+public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffset? At = null);
+
+/// <summary>
 /// One runner as the board draws it: who it is, what it is doing, when it was
 /// last heard from, and what it has been asked to do next.
 /// </summary>
@@ -3421,6 +3461,7 @@ public static class RunnerStates
 /// caller being an admin. True whenever the wall is off, so a client never
 /// has to know the wall exists to draw its own controls.
 /// </param>
+/// <param name="Order">The standing order this runner's next loop heartbeat will read and clear, or null for none.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3445,7 +3486,8 @@ public record RunnerDto(
     IReadOnlyList<string>? Drives = null,
     IReadOnlyList<string> Tags = null!,
     string? For = null,
-    bool CanControl = true)
+    bool CanControl = true,
+    RunnerOrderDto? Order = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -3576,6 +3618,11 @@ public record RunnerUsageWindowDto(
 /// The project keys this row is the elected driver for - <see cref="RunnerDto.Drives"/>,
 /// answered back on the same heartbeat that asked.
 /// </param>
+/// <param name="Order">
+/// The order this heartbeat picked up and is clearing by answering it - null
+/// where there was none, or where this beat was not a <c>loop</c> beat (see
+/// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -3583,7 +3630,8 @@ public record RunnerInstructionDto(
     decimal? MaxSpend,
     DateTimeOffset? UntilAt,
     string? For = null,
-    IReadOnlyList<string>? Drives = null);
+    IReadOnlyList<string>? Drives = null,
+    RunnerOrderDto? Order = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

@@ -444,6 +444,8 @@ public class AdminSurfaceTests
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.PatchRunner",
+        "RunnersController.PostRunnerOrder",
+        "RunnersController.DeleteRunnerOrder",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
@@ -667,6 +669,8 @@ public class AdminSurfaceTests
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
         "RunnersController.PatchRunner",
+        "RunnersController.PostRunnerOrder",
+        "RunnersController.DeleteRunnerOrder",
 
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.

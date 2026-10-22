@@ -605,6 +605,8 @@ state rather than a stall.
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend and until |
+| POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
+| DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
 | GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
 | GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name |
@@ -623,8 +625,19 @@ heartbeat and *set* only by the person's own `PATCH` - a restart sending its
 original `--max-runs` again never undoes an operator's midnight edit, and an
 agent that could raise them through its own heartbeat could raise its own
 budget, which is the failure the bounds exist to prevent. There is no
-`DELETE`: a row ages out of `GET /runners` on its own once nothing has heard
-from it in a while.
+`DELETE` on the row itself: it ages out of `GET /runners` on its own once
+nothing has heard from it in a while.
+
+`/runners/{name}/order` is a standing order a person places from the Runners
+page - work a named ticket next, or pass on the loop's own pick - read and
+cleared the moment this runner's next `loop` heartbeat answers it, never
+accumulating past one. `POST` places it (`RunnerOrderRequest { kind, key? }`,
+`key` required for `work` and absent for `pass`); `DELETE` withdraws it
+unread, 204 either way. Ordering `work` also writes an `ordered` event
+(`{ runner, by }`) on the ticket named. A `once` heartbeat (`hatch work`,
+sharing a loop's own name) leaves an order exactly as it found it - the
+instruction is for the loop's own next pass, not for a single increment that
+will never read it back.
 
 `GET /runners` answers with the rows the caller may see:
 
@@ -665,7 +678,12 @@ a key or a keyless runner, which is not somebody at a keyboard.
 ever used - it edits, it never creates. With the wall up, it also 403s a
 caller who is neither the runner's own owner nor an admin, naming the owner
 and the runner in the sentence. `POST /runners/{name}` 409s when two
-live runners would otherwise share one name. `credentials/{agent}` 404s an
+live runners would otherwise share one name. `POST /runners/{name}/order`
+400s a kind that is not `work` or `pass`, and `work` with no key or one that
+is not an issue key; 404s a `work` key naming an issue that does not exist;
+409s a `once` runner, a `stopping` runner, and a runner that already holds an
+order, naming the kind and key held and saying to withdraw it first.
+`credentials/{agent}` 404s an
 agent it does not know and 403s wherever the wall is up; a credential that is
 unset or blank answers `204` rather than either refusal.
 
@@ -776,7 +794,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **36** person-only paths on this page,
+on this page with both) - there are **38** person-only paths on this page,
 across both halves together:
 
 ```
@@ -808,6 +826,8 @@ PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
 POST   /images
 PATCH  /runners/{name}
+POST   /runners/{name}/order
+DELETE /runners/{name}/order
 GET    /runner
 GET    /runner/download/{rid}
 GET    /settings
@@ -818,8 +838,9 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-six belong to a project, a column, the WIP section, a ticket's own
-fields, or image upload; the other nine are a runner's own record, the
+Twenty-seven belong to a project, a column, the WIP section, a ticket's own
+fields, or image upload; the other eleven are a runner's own record (now
+three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 and the three playbook writes.
 

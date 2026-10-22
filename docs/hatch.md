@@ -2526,6 +2526,8 @@ had already gone quiet past its terms and is taking it over — payload
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none), `claim_cleared`,
+`ordered` (a person ordered this runner, from the Runners page, to work this
+ticket — payload `{ runner, by }`),
 `verdict_recorded` (a [check](#check) session recorded its verdict - payload
 `{ verdict, playbookId }`, written on every call, a replace under the same claim
 included), `verdict_held` (the apply found a second consecutive fail and moved

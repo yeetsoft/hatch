@@ -1952,6 +1952,13 @@ public class EfHatchIssueEvent
     public const string ClaimReleased = "claim_released";
 
     /// <summary>
+    /// A person ordered a runner to work this ticket from the Runners page -
+    /// see <see cref="EfHatchRunner.OrderKind"/>. The payload is
+    /// <c>{ runner, by }</c>.
+    /// </summary>
+    public const string Ordered = "ordered";
+
+    /// <summary>
     /// A runner's verdict on whether the issue's branch merges with the trunk
     /// changed - see <see cref="EfHatchMergeCheck"/>. The payload carries the
     /// canonical remote, because an issue may hold one verdict per repository,
@@ -2841,4 +2848,26 @@ public class EfHatchRunner
     /// is ordinary: a key that belongs to nobody.
     /// </summary>
     public Guid? ForPersonId { get; set; }
+
+    /// <summary>
+    /// <see cref="RunnerOrderKinds.Work"/> or <see cref="RunnerOrderKinds.Pass"/> -
+    /// what a person ordered this runner to do on its next loop heartbeat, or
+    /// null for no standing order. Read and cleared together with
+    /// <see cref="OrderKey"/>, <see cref="OrderedBy"/> and <see cref="OrderedAt"/>
+    /// the moment a <c>loop</c> beat answers it - an order is a one-shot
+    /// instruction, not a standing state like <see cref="State"/>.
+    /// </summary>
+    [MaxLength(RunnerOrderKinds.MaxLength)]
+    public string? OrderKind { get; set; }
+
+    /// <summary>The issue a <see cref="RunnerOrderKinds.Work"/> order names, upper-cased - null for <see cref="RunnerOrderKinds.Pass"/>.</summary>
+    [MaxLength(MaxUnderLength)]
+    public string? OrderKey { get; set; }
+
+    /// <summary>Who placed the order - the caller's own actor name, so the heartbeat answer can say who asked.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? OrderedBy { get; set; }
+
+    /// <summary>When the order was placed.</summary>
+    public DateTimeOffset? OrderedAt { get; set; }
 }
