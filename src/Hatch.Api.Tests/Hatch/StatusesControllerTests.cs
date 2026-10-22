@@ -4,6 +4,7 @@ using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -241,6 +242,110 @@ public class StatusesControllerTests
         Assert.Equal(["macos", "xcode"], Assert.Single(statuses).RunnerTags);
     }
 
+    [Fact]
+    public async Task AKey_Is403OnPutRunnerTagsAndWritesNothing()
+    {
+        var h = await NewAsync(program: true);
+        var status = await h.SeedAsync();
+
+        var result = await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["gpu"]), default);
+
+        var refusal = (ObjectResult)result.Result!;
+        Assert.Equal(403, refusal.StatusCode);
+        Assert.Contains("operator's to set", refusal.Value?.ToString());
+        Assert.Equal("[]", (await h.RowAsync(status.Id)).RunnerTags);
+    }
+
+    [Fact]
+    public async Task APersonSettingRunnerTags_StoresCaseFoldedAndDeduplicated()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+
+        var written = Value(await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["GPU", "gpu", "Windows"]), default));
+
+        Assert.Equal(["gpu", "windows"], written.RunnerTags);
+    }
+
+    [Fact]
+    public async Task ATagBreakingTheRule_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+
+        var result = await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["needs gpu"]), default);
+
+        Assert.Contains("no space or comma", BadRequestMessage(result.Result!));
+        Assert.Equal("[]", (await h.RowAsync(status.Id)).RunnerTags);
+    }
+
+    [Fact]
+    public async Task TooManyRunnerTags_IsRefused400AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        var tags = Enumerable.Range(1, RunnerTags.MaxCount + 1).Select(i => $"tag{i}").ToArray();
+
+        var result = await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(tags), default);
+
+        Assert.Contains("at most 8", BadRequestMessage(result.Result!));
+        Assert.Equal("[]", (await h.RowAsync(status.Id)).RunnerTags);
+    }
+
+    [Fact]
+    public async Task ANullRunnerTagsBody_IsRefused400()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+
+        var result = await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(null!), default);
+
+        Assert.Contains("tags is required", BadRequestMessage(result.Result!));
+        Assert.Equal("[]", (await h.RowAsync(status.Id)).RunnerTags);
+    }
+
+    [Fact]
+    public async Task ResendingTheSameRunnerTags_WritesNothing()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["gpu", "windows"]), default);
+        // The same tags, spaced the way RunnerTagColumn.Write never writes them: a rewrite
+        // would replace this string, a no-op leaves it.
+        const string Sentinel = "[\"gpu\", \"windows\"]";
+        var row = await h.Db.Statuses.FindAsync(status.Id);
+        row!.RunnerTags = Sentinel;
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["gpu", "windows"]), default));
+
+        Assert.Equal(Sentinel, (await h.RowAsync(status.Id)).RunnerTags);
+        Assert.Equal(["gpu", "windows"], result.RunnerTags);
+    }
+
+    [Fact]
+    public async Task APutOfAnEmptyList_ClearsTheStoredTags()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest(["gpu"]), default);
+
+        var written = Value(await h.Statuses.PutRunnerTags(status.Id, new StatusRunnerTagsWriteRequest([]), default));
+
+        Assert.Empty(written.RunnerTags);
+        Assert.Equal("[]", (await h.RowAsync(status.Id)).RunnerTags);
+    }
+
+    [Fact]
+    public async Task AnUnknownColumnId_Is404OnPutRunnerTags()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Statuses.PutRunnerTags(-1, new StatusRunnerTagsWriteRequest(["gpu"]), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -329,7 +434,7 @@ public class StatusesControllerTests
         return new Harness
         {
             Db = db,
-            Statuses = new StatusesController(db, caller, time),
+            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
             Time = time,
         };
     }

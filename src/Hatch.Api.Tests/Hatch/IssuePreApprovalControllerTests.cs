@@ -6,6 +6,7 @@ using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -584,7 +585,7 @@ public class IssuePreApprovalControllerTests
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Thread = new IssueThreadController(db, caller, time),
-            Statuses = new StatusesController(db, caller, time),
+            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
             Time = time,
             ProjectId = hatch.Id,
             InboxId = inbox.Id,
