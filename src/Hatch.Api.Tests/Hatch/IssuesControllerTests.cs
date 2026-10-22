@@ -111,6 +111,17 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AnIssueFiledByNobody_IsCreatedByTheOperator()
+    {
+        var h = await NewAsync();
+        h.Caller.Person = null;
+
+        var issue = await h.CreateAsync("task", "filed by nobody");
+
+        Assert.Equal("operator", issue.CreatedBy);
+    }
+
+    [Fact]
     public async Task NothingTicked_BothCallersLandLeftmost()
     {
         var h = await NewAsync();

@@ -185,6 +185,58 @@ public class CallerIdentityTests
         Assert.False(await identity.IsProgramAsync(default));
     }
 
+    /// <summary>A sign-in authority is configured: an unidentified caller is a stranger, not whoever started the app.</summary>
+    [Fact]
+    public async Task WithASignInConfigured_ACallerWithNothingAtAll_IsNobody()
+    {
+        var options = new AuthOptions { Enabled = false, LocalPerson = { Name = "Ada" } };
+        options.Google.ClientId = "client";
+        options.Google.ClientSecret = "secret";
+        var identity = NewIdentity(NewContext(), new StubAuthService(), options);
+
+        Assert.Null(await identity.LocalAsync(default));
+        Assert.Equal(CallerIdentity.Unattributed, await identity.ActorNameAsync(default));
+    }
+
+    /// <summary>A person is enrolled, though no authority is configured: same answer.</summary>
+    [Fact]
+    public async Task WithAPersonEnrolled_ACallerWithNothingAtAll_IsNobody()
+    {
+        var identity = NewIdentity(
+            NewContext(),
+            new StubAuthService { AnyPerson = true },
+            new AuthOptions { Enabled = false, LocalPerson = { Name = "Ada" } });
+
+        Assert.Null(await identity.LocalAsync(default));
+        Assert.Equal(CallerIdentity.Unattributed, await identity.ActorNameAsync(default));
+    }
+
+    /// <summary>The runner names itself, so enrolling people takes nothing from it.</summary>
+    [Fact]
+    public async Task WithAPersonEnrolled_TheRunnerHeaderStillNamesAProgram()
+    {
+        var context = NewContext();
+        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
+        var auth = new StubAuthService { AnyPerson = true };
+
+        var identity = NewIdentity(context, auth);
+
+        Assert.Equal("host:/src", await identity.ActorNameAsync(default));
+        Assert.True(await identity.IsProgramAsync(default));
+        Assert.Equal(0, auth.AnyPersonAsked);
+    }
+
+    /// <summary>With the wall up neither local branch is reached, so the People table is never asked.</summary>
+    [Fact]
+    public async Task WithTheWallUp_NobodyIsAskedWhetherAnyPersonIsEnrolled()
+    {
+        var auth = new StubAuthService();
+        var identity = NewIdentity(NewContext(), auth, new AuthOptions { Enabled = true });
+
+        Assert.Null(await identity.LocalAsync(default));
+        Assert.Equal(0, auth.AnyPersonAsked);
+    }
+
     /// <summary>The setting beats the value the app was started with, which is what makes AERIE-936 a page rather than a restart.</summary>
     [Fact]
     public async Task TheSiteSetting_OutranksTheConfiguredName()

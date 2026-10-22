@@ -138,6 +138,9 @@ public interface IAuthService
 
     /// <summary>Whether this install has any way in at all - what the migrate Job checks before minting a bootstrap invite.</summary>
     Task<bool> HasAnyAccessAsync(CancellationToken ct);
+
+    /// <summary>Whether any person is enrolled - with a sign-in authority, one of the two things that stop an unidentified caller being named as the local person.</summary>
+    Task<bool> HasAnyPersonAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -469,6 +472,8 @@ public class AuthService(
         return await db.AuthGrants.AnyAsync(ct)
             || await db.AuthInvites.AnyAsync(i => i.RedeemedAt == null && i.ExpiresAt > now, ct);
     }
+
+    public async Task<bool> HasAnyPersonAsync(CancellationToken ct) => await db.People.AnyAsync(ct);
 
     /// <summary>
     /// The throttled half of VerifyAsync. Skipping the write when nothing

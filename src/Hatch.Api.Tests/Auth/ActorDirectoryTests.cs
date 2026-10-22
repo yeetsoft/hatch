@@ -93,7 +93,9 @@ public class ActorDirectoryTests
         var directory = NewDirectory(db);
 
         Assert.Equal(["Alan"], (await directory.LiveAsync(default)).Select(a => a.Name));
+        Assert.DoesNotContain(await directory.LiveAsync(default), a => a.Id == LocalCaller.PersonId);
         Assert.Null(await directory.MeAsync(default));
+        Assert.Null(await directory.PrincipalAsync(default));
     }
 
     // ---- PrincipalAsync: whose work the caller is doing ----
