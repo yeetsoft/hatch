@@ -139,10 +139,17 @@ public record ProjectRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
 /// and ignored by the reader, the same stranded-flag tolerance as
 /// <paramref name="IsWip"/>. See <see cref="EfHatchStatus.IsImplementation"/>.
 /// </param>
+/// <param name="RunnerTags">Which runners may implement work standing in this column, normalised - see <see cref="EfHatchStatus.RunnerTags"/>.</param>
 public record StatusDto(
     int Id, string Name, int SortOrder, bool IsTerminal, bool IsDeferred, bool IsWip, string Color,
     bool ExpressSkips = false, bool ParentPulls = false, bool AgentFiles = false, bool IsImplementation = false,
-    bool IsProtected = false, bool MergesPullRequest = false);
+    bool IsProtected = false, bool MergesPullRequest = false, IReadOnlyList<string> RunnerTags = null!)
+{
+    // A default parameter value must be a compile-time constant, so the
+    // empty-rather-than-null default lives here instead of on the parameter -
+    // see ProjectDto.RunnerTags for the same shape.
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+}
 
 /// <summary>
 /// A new column. The optional fields each have a server-side default -

@@ -558,6 +558,20 @@ public class EfHatchStatus
     public bool MergesPullRequest { get; set; }
 
     /// <summary>
+    /// Which runners may implement work standing in this column, as a jsonb
+    /// array in the order they were written - normalised, case folded and
+    /// deduplicated by <see cref="Hatch.Contracts.RunnerTags"/> before a tag
+    /// ever reaches this column, the same way <see cref="EfHatchProject.RunnerTags"/>
+    /// and <see cref="EfHatchIssue.RunnerTags"/> do. Empty, not null, so a
+    /// column nobody has tagged reads back "[]" the same way <c>EnsureCreated</c>
+    /// and every migrated row do. This is the column's *own* list, written
+    /// only by the runner-tags route on the status (a later task of this
+    /// ticket's parent), once that task lands - never a value inherited from
+    /// a project or an issue.
+    /// </summary>
+    public string RunnerTags { get; set; } = "[]";
+
+    /// <summary>
     /// The column's colour, as <c>#rrggbb</c>. A row rather than a lookup in
     /// the frontend for the same reason the name is a row: the operator invents
     /// columns, and a palette keyed on the four names shipped here would leave

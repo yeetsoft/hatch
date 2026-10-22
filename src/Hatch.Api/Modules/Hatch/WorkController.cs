@@ -1344,5 +1344,6 @@ public class WorkController(
     // ---- Loading ----
 
     private static StatusDto ToStatusDto(EfHatchStatus s) =>
-        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls);
+        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
+            RunnerTags: RunnerTagColumn.Read(s.RunnerTags));
 }

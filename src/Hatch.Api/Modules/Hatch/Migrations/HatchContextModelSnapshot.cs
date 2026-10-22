@@ -1065,6 +1065,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("ParentPulls")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("RunnerTags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
