@@ -86,6 +86,7 @@ const statuses: Status[] = [
     isImplementation: false,
     isProtected: false,
     mergesPullRequest: false,
+    runnerTags: [],
     color: '#888888',
   },
   {
@@ -101,6 +102,7 @@ const statuses: Status[] = [
     isImplementation: false,
     isProtected: false,
     mergesPullRequest: false,
+    runnerTags: [],
     color: '#888888',
   },
 ];

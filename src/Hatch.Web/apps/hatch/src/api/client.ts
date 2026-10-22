@@ -64,6 +64,7 @@ import type {
   Status,
   StatusCreateRequest,
   StatusPatchRequest,
+  StatusRunnerTagsWriteRequest,
   Timeline,
   TrunkBuildBugRequest,
   Utilization,
@@ -221,6 +222,11 @@ export const setProtected = (id: number, on: boolean) =>
     StatusesController.PutMergesPullRequest. */
 export const setMergesPullRequest = (id: number, on: boolean) =>
   fetchJson<Status>(`/api/hatch/statuses/${id}/merges-pull-request`, { method: 'PUT', ...asJson({ on }) });
+
+/** Replaces the runner tags a column requires; `[]` clears them. A person, not
+    a key, writes it - see StatusesController.PutRunnerTags. */
+export const setStatusRunnerTags = (id: number, request: StatusRunnerTagsWriteRequest) =>
+  fetchJson<Status>(`/api/hatch/statuses/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 
 // ---- Issues ----
 

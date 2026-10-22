@@ -51,6 +51,7 @@ const status = (id: number, over: Partial<Status> = {}): Status => ({
   isImplementation: false,
   isProtected: false,
   mergesPullRequest: false,
+  runnerTags: [],
   color: '#336699',
   ...over,
 });

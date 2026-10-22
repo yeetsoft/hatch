@@ -15,6 +15,7 @@ const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Stat
   isImplementation: false,
   isProtected: false,
   mergesPullRequest: false,
+  runnerTags: [],
   color: '#6b7280',
   ...opts,
 });

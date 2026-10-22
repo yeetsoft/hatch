@@ -15,6 +15,7 @@ const status = (id: number, name: string, sortOrder: number, isTerminal = false)
   isImplementation: false,
   isProtected: false,
   mergesPullRequest: false,
+  runnerTags: [],
   color: '#6b7280',
 });
 

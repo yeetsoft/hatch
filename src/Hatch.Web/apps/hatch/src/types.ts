@@ -135,6 +135,10 @@ export interface Status {
   /** Whether the runner merges an issue's pull request once it stands here,
       current and green, with no session (HA-289). Requires isProtected. */
   mergesPullRequest: boolean;
+  /** The runner tags this column requires: only a runner advertising every one
+      of them (and every tag the project and ticket add) is handed a session out
+      of it. Empty means the column adds nothing. See StatusDto.RunnerTags. */
+  runnerTags: string[];
   /** `#rrggbb`, lower case. What the column, the drag feedback and the issue
       page's status pill are all painted from - see lib/color.ts. */
   color: string;
@@ -918,6 +922,11 @@ export interface RunnerTagSource {
 
 /** Mirrors IssueRunnerTagsWriteRequest. */
 export interface IssueRunnerTagsWriteRequest {
+  tags: string[];
+}
+
+/** A write to the runner tags a column requires. See StatusRunnerTagsWriteRequest (Hatch.Contracts). */
+export interface StatusRunnerTagsWriteRequest {
   tags: string[];
 }
 
