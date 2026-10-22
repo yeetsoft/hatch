@@ -130,8 +130,109 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "stories at once:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "stories at once:", "runner:" })
             Assert.DoesNotContain(absent, h.Said);
+    }
+
+    // ---- show: the runner line ----
+
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-10-22T12:00:00Z");
+
+    private static IssueDto Held(string? chatter) =>
+        AnIssue(parent: "AER-1") with
+        {
+            Claim = new IssueClaimDto("Rall-runner", "Dennis Duffy", Now - TimeSpan.FromMinutes(2), Now - TimeSpan.FromSeconds(10), chatter, null, 90),
+        };
+
+    [Fact]
+    public async Task Show_prints_a_runner_line_while_a_claim_is_held()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("runner:   Rall-runner on Dennis Duffy, since 2m ago, heard 10s ago - reading the board", h.Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Show_prints_no_runner_line_for_an_unheld_ticket()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("runner:", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_drops_the_dash_when_the_claim_has_no_chatter()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held(null));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("runner:   Rall-runner on Dennis Duffy, since 2m ago, heard 10s ago", h.Said, StringComparison.Ordinal);
+        Assert.DoesNotContain(" - ", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_the_runners_state_on_the_runner_line()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        var held = Held("reading the board");
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", held with { Claim = held.Claim! with { HeartbeatAt = Now - TimeSpan.FromMinutes(4) } });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("heard 4m ago", h.Said);
+        Assert.DoesNotContain("gone", h.Said);
+    }
+
+    [Fact]
+    public async Task Brief_keeps_the_runner_line()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
+
+        Assert.Equal(
+            """
+            AER-12  [task]  A ticket
+            status:   In Progress
+            runner:   Rall-runner on Dennis Duffy, since 2m ago, heard 10s ago - reading the board
+            parent:   AER-1
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+    }
+
+    [Fact]
+    public async Task Show_makes_no_request_beyond_the_ones_it_always_made()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/runners");
+        Assert.Equal(
+            new[] { "/api/hatch/issues/AER-12", "/api/hatch/statuses", "/api/hatch/issues/AER-12/comments" },
+            h.Wire.Calls.Select(c => c.Path));
     }
 
     [Fact]
