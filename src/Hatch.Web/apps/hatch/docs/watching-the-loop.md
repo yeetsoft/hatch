@@ -13,7 +13,10 @@ waiting on you for.
 
 **Agents → Runners** lists every runner that has spoken to this Hatch lately:
 a row appears within a minute of it starting and drops off two hours after it
-stops. Each row has:
+stops. This page lists every runner, because a person is looking; a key
+reading the same list gets its owner's runners, an admin's key gets every one,
+and a key with no owner gets only the runners that belong to nobody. Each row
+has:
 
 - **Runner** - its name, whether it is a `loop` or `one increment`, where it
   runs, the agent it runs, and what it drives. Where it runs reads

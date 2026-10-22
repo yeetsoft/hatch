@@ -112,6 +112,11 @@ hatch_ak_…`.
   settings, playbook source and members; Hatch's own settings; a runner's
   record; image upload; marking the overnight view seen.
   [`api-reference`](api-reference) has the route-by-route version.
+- **Which runners a key sees.** A key reads the runners of its owner, an
+  admin's key reads every runner, and a key with no owner reads only the
+  runners that belong to nobody. A person at a browser, and a Hatch with its
+  wall off, read every runner; `/runners/names` is the same list whoever asks.
+  See [`api-reference`](api-reference).
 - **Whose name an event carries.** The signed-in person's, if there is one;
   else the key's **Name**; else, with the wall off, the local name. A key's
   request carries no person, so on a walled Hatch an event it causes is
