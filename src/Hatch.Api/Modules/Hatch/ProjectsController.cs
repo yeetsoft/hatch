@@ -26,7 +26,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/projects")]
 public class ProjectsController(
     HatchContext db, TimeProvider time, ICallerIdentity caller,
-    IActorDirectory actors, IProjectAccess access, ILogger<ProjectsController> logger) : ControllerBase
+    IActorDirectory actors, IProjectAccess access, ILogger<ProjectsController> logger,
+    RankService ranks, IssueClaims claims) : ControllerBase
 {
     /// <summary>A project may bind at most this many remotes - generous for anything a repository page has to draw in one row.</summary>
     public const int MaxRepositories = 20;
@@ -663,6 +664,60 @@ public class ProjectsController(
         var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>
+    /// Files one reflection on the spot - the route behind the reflect-now
+    /// control. Only an owner may call this. Pressed again while the last one
+    /// filed is still open, this answers that same issue and files nothing;
+    /// <see cref="EfHatchProject.ReflectNowIssueId"/> is the only thing this
+    /// checks, never a broader "any open reflection" search, so a reflection
+    /// <see cref="ReflectionCadenceJob"/> filed (which never sets that field)
+    /// is never mistaken for one a press already owns. This route never
+    /// writes <see cref="EfHatchProject.ReflectionLastPeriodStart"/> - only
+    /// the reflection job does - so a press neither postpones nor claims the
+    /// next scheduled reflection.
+    /// </summary>
+    [HttpPost("{id:int}/reflect")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<IssueDto>> PostReflect(int id, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may file a reflection on it") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (project.ReflectNowIssueId is { } openId)
+        {
+            var open = await db.Issues.Include(i => i.Status).FirstOrDefaultAsync(i => i.Id == openId, ct);
+            if (open is not null && !open.Status!.IsTerminal)
+                return await IssueProjection.ToDtoAsync(db, actors, open, claims, time.GetUtcNow(), ct);
+        }
+
+        var playbooks = await db.Playbooks.Where(p => p.ProjectId == null || p.ProjectId == id).ToListAsync(ct);
+        var row = Dispatch.MatchReflection(playbooks, id);
+        if (row is null)
+            return BadRequest($"{project.Key} has no reflection playbook row - add one on the Playbooks page first");
+
+        var days = project.ReflectionCadenceDays ?? 30;
+        var (title, description, _) = ReflectionCadence.Describe(project.Key, days, time.GetUtcNow());
+
+        var issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)) { ControllerContext = ControllerContext };
+        var created = await issues.CreateIssueAsync(
+            new IssueCreateRequest(id, "reflection", title, description, null, null, null),
+            PriorityLevels.Normal, ct,
+            statusId: row.FromStatusId);
+
+        if (created.Result is not CreatedAtActionResult { Value: IssueDto dto }) return created.Result!;
+
+        IssueKey.TryParse(dto.Key, out var dtoProjectKey, out var number);
+        project.ReflectNowIssueId = await db.Issues.WithKey(dtoProjectKey, number).Select(i => i.Id).SingleAsync(ct);
+        await db.SaveChangesAsync(ct);
+
+        return dto;
     }
 
     /// <summary>
