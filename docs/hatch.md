@@ -413,7 +413,9 @@ or out.
 The dispatcher reads the list on every move a session is spawned for out of the
 implementation column, and on the review self-move while it is conflict or build
 work, folding a caller whose runner does not advertise every tag it holds - see
-[the dispatcher's ninth refusal](#the-dispatcher).
+[the dispatcher's ninth refusal](#the-dispatcher). The project's list is the
+floor: an issue's own tags and each of its ancestors' add to it, and never
+subtract from it.
 The project dialog carries it the same way: where `canAdminister` is false it
 reads the list out as a sentence after the landing one - *"Any runner."*
 where it is empty, *"Runners tagged macos and xcode."* where it is not - and
@@ -4135,16 +4137,17 @@ missing configuration:
    worked from the caller's standing checkout exactly as before; one bound to
    remotes none of which match is refused unless the caller says it will clone
    what it lacks.
-9. The project requires [runner tags](#project) the caller's runner does not
-   fully advertise — on every move a session is spawned for out of the
-   implementation column (the leaf implementation and the parent verification
-   alike), and on the review self-move while it is conflict or build work.
-   Never a hop, never the move into the implementation column, and never a
-   review row the verdict below already folds. A caller that sends no `?tag=`
-   has advertised none; a superset of what the project requires qualifies.
-   *"AER-12 is implemented only by a runner advertising macos and xcode - this
-   runner advertises linux"* (*"... advertises none"* when the caller sent no
-   tags), kind `other`. Waits on nobody.
+9. The union of the project's, its ancestors' and its own tags requires
+   [runner tags](#project) the caller's runner does not fully advertise — on
+   every move a session is spawned for out of the implementation column (the
+   leaf implementation and the parent verification alike), and on the review
+   self-move while it is conflict or build work. Never a hop, never the move
+   into the implementation column, and never a review row the verdict below
+   already folds. A caller that sends no `?tag=` has advertised none; a
+   superset of the union qualifies. *"AER-12 is implemented only by a runner
+   advertising macos and xcode - this runner advertises linux"* (*"...
+   advertises none"* when the caller sent no tags), kind `other`. Waits on
+   nobody.
 10. Something it [depends on](#dependency) is unfinished, and the move is into
     the column where the code gets written, or a parent pull (hop kind 4) out of
     a `ParentPulls` column. Only those moves: a pull request that already exists
@@ -6000,11 +6003,12 @@ which one it failed is what `work/queue` reports:
    the first two are checked here, on every move a session is spawned for (not
    a hop, unless it lands in the column where the code gets written), and the
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
-12. **The project requires no runner tag the caller's runner lacks.** A caller
-    that sends no `?tag=` has advertised none, so it fails a project that
-    requires any; a runner advertising a superset of what the project requires
-    qualifies. Checked on every move a session is spawned for out of the
-    implementation column (the leaf implementation and the parent verification
+12. **The union of the project's, its ancestors' and its own tags requires no
+    runner tag the caller's runner lacks.** A caller that sends no `?tag=` has
+    advertised none, so it fails a union that requires any; a runner
+    advertising a superset of the union qualifies. Checked on every move a
+    session is spawned for out of the implementation column (the leaf
+    implementation and the parent verification
     alike), and on the review self-move while it is conflict or build work —
     never a hop, never the move into the implementation column, and never a
     review row the verdict below already folds. Kind `other`, and it waits on
