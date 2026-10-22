@@ -130,6 +130,8 @@ export const putProjectLanding = (id: number, request: ProjectLandingWriteReques
   fetchJson<Project>(`/api/hatch/projects/${id}/landing`, { method: 'PUT', ...asJson(request) });
 export const putProjectPlaybooksSource = (id: number, request: ProjectRepoSourcedWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/playbooks-source`, { method: 'PUT', ...asJson(request) });
+export const putProjectReflection = (id: number, cadenceDays: number | null) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/reflection`, { method: 'PUT', ...asJson({ cadenceDays }) });
 export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember = (id: number, personId: string, role: string) =>

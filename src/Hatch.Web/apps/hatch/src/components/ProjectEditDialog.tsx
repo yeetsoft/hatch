@@ -12,6 +12,7 @@ import {
   putProjectLogo,
   putProjectMember,
   putProjectPlaybooksSource,
+  putProjectReflection,
   putProjectRepositories,
   putProjectRunnerTags,
 } from '../api/client';
@@ -22,6 +23,7 @@ import {
   projectDraftDiff,
   projectDraftKeyObjection,
   projectLandingDiff,
+  projectReflectionDiff,
   projectRepoSourcedDiff,
   projectRunnerTagsDiff,
   type ProjectDraft,
@@ -132,6 +134,7 @@ export function ProjectEditDialog({
     const diff = projectDraftDiff(draft!);
     const landingDiff = projectLandingDiff(draft!);
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
+    const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
@@ -139,6 +142,7 @@ export function ProjectEditDialog({
       diff.repositories === null &&
       landingDiff === null &&
       repoSourcedDiff === null &&
+      reflectionDiff === null &&
       runnerTagsDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
@@ -154,6 +158,7 @@ export function ProjectEditDialog({
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
+      if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
@@ -388,6 +393,21 @@ export function ProjectEditDialog({
               </Field>
             </fieldset>
             <label>
+              Reflects every{' '}
+              <input
+                inputMode="numeric"
+                value={draft.reflectionCadenceDays}
+                onChange={(e) => setDraft((d) => d && { ...d, reflectionCadenceDays: e.target.value })}
+              />{' '}
+              day(s)
+            </label>
+            {project.reflectionCadenceDays !== null && (
+              <p className="hatch-section-hint text-muted">
+                Next due {project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : ''}. Blank
+                turns it off.
+              </p>
+            )}
+            <label>
               <input
                 type="checkbox"
                 checked={draft.repoSourced}
@@ -425,7 +445,11 @@ export function ProjectEditDialog({
               draft.autoHealBugEnabled
                 ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
                 : 'off'
-            }, playbooks ${draft.repoSourced ? 'sourced from the repository' : 'written on the board'}.`}</p>
+            }, playbooks ${draft.repoSourced ? 'sourced from the repository' : 'written on the board'}, ${
+              project.reflectionCadenceDays === null
+                ? 'never reflects'
+                : `reflects every ${project.reflectionCadenceDays} day(s), next due ${project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : 'unknown'}`
+            }.`}</p>
             <p>{runnerTagsSentence(project.runnerTags ?? [])}</p>
           </>
         )}
