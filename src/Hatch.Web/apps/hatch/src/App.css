@@ -1724,6 +1724,19 @@ button.hatch-chip {
   gap: var(--sp-2);
 }
 
+/* A runner row's controls, which run to five or six items once the Order
+   control is drawn: they wrap inside the cell rather than push the table wider
+   than the card. */
+.hatch-reorder--wrap {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hatch-reorder--wrap input {
+  min-width: 7rem;
+  flex: 1 1 7rem;
+}
+
 .hatch-form-actions {
   justify-content: flex-end;
 }

@@ -395,6 +395,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   exhaustedUntil: null,
   for: null,
   canControl: true,
+  order: null,
   ...over,
 });
 
