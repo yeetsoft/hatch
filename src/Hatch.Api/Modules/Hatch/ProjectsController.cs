@@ -686,10 +686,10 @@ public class ProjectsController(
         var tagError = RunnerTags.Normalise(request.Tags, out var normalized);
         if (tagError is not null) return BadRequest(tagError);
 
-        var current = EfHatchProject.ReadRunnerTags(project.RunnerTags);
+        var current = RunnerTagColumn.Read(project.RunnerTags);
         if (!current.SequenceEqual(normalized))
         {
-            project.RunnerTags = EfHatchProject.WriteRunnerTags(normalized);
+            project.RunnerTags = RunnerTagColumn.Write(normalized);
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Project {ProjectKey} runner tags set to {RunnerTags} by {Actor}", project.Key, string.Join(",", normalized), await caller.ActorNameAsync(ct));
         }
@@ -769,7 +769,7 @@ public class ProjectsController(
             PriorityLevels.Name(project.AutoHealBugPriority), PreApprovalLevels.Name(project.AutoHealBugPreApproval),
             project.AutoHealBugEnabled, project.AutoHealBugStatusId,
             project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt,
-            EfHatchProject.ReadRunnerTags(project.RunnerTags),
+            RunnerTagColumn.Read(project.RunnerTags),
             project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
             ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now));
 

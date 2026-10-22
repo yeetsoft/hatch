@@ -434,7 +434,11 @@ it files - `Dispatch.MatchReflection` ranked the same way `Dispatch.Match` is,
 with no from/to to pin since filing is not a transition - naming the Playbooks
 page (*"`<KEY>` has no reflection playbook row - add one on the Playbooks page
 first"*). This route writes only `ReflectionCadenceDays`; `ReflectionLastPeriodStart`
-is written only by the reflection job, never here. `ReflectionNextDueAt` - the
+is written only by the reflection job, never here. That job,
+`ReflectionCadenceJob` (`Modules/Hatch/`), polls every fifteen minutes and is
+idempotent by construction: it advances `ReflectionLastPeriodStart` to the
+due instant it just filed for, never to the instant it ran, so a firing that
+finds nothing newly due writes nothing twice. `ReflectionNextDueAt` - the
 start of the last period it reflected on plus the cadence, or now where it
 never has - is computed on every read, never stored. `ProjectPatchRequest`
 carries no field for any of the three, so this route is the only way to change
@@ -7688,7 +7692,10 @@ repair. `Terminal` draws it (`LiveTerminal` in `src/Hatch.Cli/Terminal.cs`),
 under the same lock every streamed and printed line already goes through, so a
 clock tick can never land mid-line; what it draws is a pure function of a
 snapshot and the clock (`Readout.Draw`), fed by `ReadoutState` — the one object
-a running increment and the idle loop between them both write to.
+a running increment and the idle loop between them both write to. Each redraw
+reaches the terminal as one whole frame — the erase, the line being printed and
+every footer row in a single write — and a clock tick that would draw the rows
+already on screen writes nothing.
 
 While an increment runs, its first row names the issue — key, title, the move
 or conflict or build it is for, and its address — and the second says whether
@@ -7707,6 +7714,12 @@ terminal's own width, read fresh on each draw, so a resize clips rather than
 scrambles it. On exit for any reason the runner can catch — the night ending,
 Ctrl-C, a restart onto a newer build — the footer is erased and the closing
 tally prints below the last banner, as it always has.
+
+**The agent's standard error prints through the runner.** A headless session's
+standard error, and the `/usage` probe's, is read by the runner beside the
+standard output and printed above the readout like any other line, exactly as
+the agent wrote it, so it can never land under the footer; `work -i` keeps the
+terminal as the attached session's own stdio and is not redirected.
 
 **The usage bars read the account, not Hatch's battery** — asked and answered
 on HA-120: every session's `stream-json` carries a `rate_limit_event` naming

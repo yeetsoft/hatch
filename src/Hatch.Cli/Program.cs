@@ -177,9 +177,17 @@ try
 
         if (drawsReadout)
         {
+            // A buffer larger than any frame, flushed once per frame, so the
+            // terminal is handed a whole redraw at a time; Console.Out would
+            // hand it over 256 characters at a time.
+            var frames = new StreamWriter(Console.OpenStandardOutput(), Console.OutputEncoding, bufferSize: 1 << 16)
+            {
+                AutoFlush = false,
+            };
+
             say = live = new LiveTerminal(
                 readoutState, TimeProvider.System, color: Environment.GetEnvironmentVariable("NO_COLOR") is null,
-                controls: controls);
+                controls: controls, stdout: frames);
 
             if (controls.KeysOn) keys = new KeyReader(controls, say, cancelling);
             else if (!noKeys) say.Line("hatch: keys are off — use Ctrl-C or --stop-file to stop this runner");

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Hatch.Cli.Tests;
@@ -51,6 +52,59 @@ public sealed class AgentSessionRunnerTests
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("", result.Output.Trim());
         Assert.Single(adapter.Released);
+    }
+
+    /// <summary>Redirects stdin and stdout but not stderr, so the runner is what has to.</summary>
+    private static FakeAdapter UsageOnStderr() => new()
+    {
+        PromptOnStdin = false,
+        Spawn = _ =>
+        {
+            var start = new ProcessStartInfo
+            {
+                FileName = "git",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+            };
+            start.ArgumentList.Add("--no-such-option");
+            return start;
+        },
+    };
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_childs_standard_error_arrives_line_by_line_through_the_callback(bool streamed)
+    {
+        var errors = new ConcurrentQueue<string>();
+        var lines = new ConcurrentQueue<string>();
+
+        var result = await new AgentSessionRunner(UsageOnStderr(), errors.Enqueue)
+            .RunAsync(Request(), streamed ? lines.Enqueue : null, default);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, line => line.Contains("usage", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("unknown option", StringComparison.OrdinalIgnoreCase));
+        Assert.All(errors, line => Assert.DoesNotContain('\n', line));
+        Assert.Equal("", result.Output);
+        Assert.Empty(lines);
+    }
+
+    [Fact]
+    public async Task A_childs_standard_error_is_dropped_without_a_callback_and_stdout_is_untouched()
+    {
+        var adapter = Echo(promptOnStdin: true);
+        var lines = new ConcurrentQueue<string>();
+
+        var result = await new AgentSessionRunner(adapter).RunAsync(Request(), lines.Enqueue, default);
+        var quiet = await new AgentSessionRunner(UsageOnStderr()).RunAsync(Request(), null, default);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hello", lines);
+        Assert.NotEqual(0, quiet.ExitCode);
+        Assert.Equal("", quiet.Output);
     }
 
     [Fact]
