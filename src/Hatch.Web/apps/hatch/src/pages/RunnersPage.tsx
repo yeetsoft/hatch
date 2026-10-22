@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
 import { patchRunner } from '../api/client';
 import { MomentField } from '../components/MomentField';
@@ -6,7 +7,7 @@ import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
   ACTIVITY_TONES,
-  activityWords,
+  activityParts,
   boundsChanged,
   boundsOf,
   boundsProblem,
@@ -99,7 +100,7 @@ export function RunnersPage() {
   );
 }
 
-function Row({
+export function Row({
   runner,
   now,
   onPatch,
@@ -111,6 +112,7 @@ function Row({
   const [open, setOpen] = useState(false);
   const activity = runnerActivity(runner, now);
   const controllable = isControllable(runner);
+  const { words, claimKey } = activityParts(runner, now);
 
   return (
     <>
@@ -127,7 +129,12 @@ function Row({
           <Text tone="muted">{drivesLabel(runner)}</Text>
         </td>
         <td>
-          <Badge tone={ACTIVITY_TONES[activity]}>{activityWords(runner, now)}</Badge>
+          <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
+          {claimKey && (
+            <Link className="hatch-card-key" to={`/issues/${claimKey}`}>
+              {claimKey}
+            </Link>
+          )}
         </td>
         <td>{runner.line ?? <Text tone="muted">nothing yet</Text>}</td>
         <td>{agoPhrase(runner.lastSeenAt, now)}</td>
@@ -169,10 +176,17 @@ function Row({
 /** The bounds at a glance: only the ones that are set, because four "no cap"s
     on every row would be four things to read past to find the one that is
     holding. */
-function BoundsSummary({ runner }: { runner: Runner }) {
-  const said = [
+export function BoundsSummary({ runner }: { runner: Runner }) {
+  const said: ReactNode[] = [
     mineLabel(runner),
-    runner.under && `under ${runner.under}`,
+    runner.under && (
+      <>
+        under{' '}
+        <Link className="hatch-card-key" to={`/issues/${runner.under}`}>
+          {runner.under}
+        </Link>
+      </>
+    ),
     repositoriesLabel(runner),
     tagsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
@@ -180,7 +194,18 @@ function BoundsSummary({ runner }: { runner: Runner }) {
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
   ].filter(Boolean);
 
-  return said.length === 0 ? <Text tone="muted">no bounds</Text> : <>{said.join(', ')}</>;
+  return said.length === 0 ? (
+    <Text tone="muted">no bounds</Text>
+  ) : (
+    <>
+      {said.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && ', '}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 /**

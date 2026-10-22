@@ -16,7 +16,7 @@ public static class ReflectionCadence
     /// off.
     /// </summary>
     public static DateTimeOffset? NextDue(int? cadenceDays, DateTimeOffset? lastPeriodStart, DateTimeOffset now) =>
-        cadenceDays is not { } days ? null : (lastPeriodStart ?? now).AddDays(days);
+        cadenceDays is not { } days ? null : lastPeriodStart is { } start ? start.AddDays(days) : now;
 
     /// <summary>Whether reflection is due now - false where <see cref="NextDue"/> is null.</summary>
     public static bool IsDue(int? cadenceDays, DateTimeOffset? lastPeriodStart, DateTimeOffset now) =>
