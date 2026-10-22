@@ -7708,6 +7708,12 @@ scrambles it. On exit for any reason the runner can catch — the night ending,
 Ctrl-C, a restart onto a newer build — the footer is erased and the closing
 tally prints below the last banner, as it always has.
 
+**The agent's standard error prints through the runner.** A headless session's
+standard error, and the `/usage` probe's, is read by the runner beside the
+standard output and printed above the readout like any other line, exactly as
+the agent wrote it, so it can never land under the footer; `work -i` keeps the
+terminal as the attached session's own stdio and is not redirected.
+
 **The usage bars read the account, not Hatch's battery** — asked and answered
 on HA-120: every session's `stream-json` carries a `rate_limit_event` naming
 `unifiedWindows.five_hour` (labelled `Session`) and `seven_day` (`Weekly`),
