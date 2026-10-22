@@ -7709,6 +7709,19 @@ heartbeat:
   doing nothing does not drift from idle to gone while it does it.
 - **`running`** — carry on, which is what every row starts as.
 
+**And one thing a person can order.** `work KEY` claims that ticket next, past
+`--under` and `--mine` but not past the dispatcher's own folds — another
+runner's claim, a person's assignee or a missing tag turns it away with the
+fold's own sentence. `pass` is one ordinary pass: the queue read and its first
+clear row taken, as it would have been. Either is read once and gone — the
+beat that reads it clears it — and runs whether the loop is paused or running,
+after which a paused loop reads paused again on its next beat. It counts as an
+increment, toward `--max-runs`, `--max-spend` and the three-failures stop, and
+is never run past a stop that has already been reached. A fold, or a loop out
+of usage, spends the order with a sentence on the row (`AER-2 - <the fold>`,
+`order spent - out of Claude usage until …`) and runs nothing. `--once` never
+reads one.
+
 **Only the row's owner or an admin can say any of the three.** `RunnerDto`
 carries `For` — the owner's name, read off the key that heartbeats the
 row — and `CanControl`, judged the same way the server's own PATCH gate

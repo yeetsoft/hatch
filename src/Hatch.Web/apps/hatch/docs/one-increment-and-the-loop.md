@@ -245,7 +245,9 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
    (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
-   This is the one moment no claim is held.
+   This is the one moment no claim is held. A one-off order from the page
+   (work a named ticket, or take one ordinary pass) is read here too, and runs
+   as the next increment even while paused, counting like any other.
 3. **Age restart.** Under Hatch's own supervisor a loop that has run long
    enough asks to come back as a newer build ([Restarts](#restarts)).
 4. **Pause.** Paused from the board or from the keyboard, it keeps

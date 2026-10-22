@@ -2896,7 +2896,7 @@ public static class RunnerOrderKinds
     /// <summary>Work a named ticket next, however the loop would otherwise have picked.</summary>
     public const string Work = "work";
 
-    /// <summary>Skip the next pick and ask again, leaving the loop's own choice for the one after.</summary>
+    /// <summary>Take one ordinary pass now, paused or running.</summary>
     public const string Pass = "pass";
 
     public static readonly string[] All = [Work, Pass];
