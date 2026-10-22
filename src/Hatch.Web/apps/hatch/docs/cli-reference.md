@@ -176,7 +176,8 @@ The brief, its edges and where it is, followed by every comment on it. The
 description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
-ancestor. None of those can be set from here: the key is a key, and each is a
+ancestor. A ticket that requires a runner tag says so too, naming the project or
+the ancestor issue each tag beyond its own came from. None of those can be set from here: the key is a key, and each is a
 person's write. Reads only.
 
 ### comments
