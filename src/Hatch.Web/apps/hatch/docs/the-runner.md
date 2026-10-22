@@ -305,6 +305,14 @@ reference](cli-reference) has each one in full.
   progress, or a conflicted file. Clear it by hand; the loop will not guess.
 - **`hatch: a go-to-work is already running in <path>, pid <n>`.** One loop
   per checkout. Join that one, stop it, or use another checkout.
+- **`hatch: the workspace <dir> is already served by pid <n>, from
+  <checkout>.`** Two loops would reset the same clones. Give this checkout a
+  workspace of its own with `hatch config --here --workspace <dir>`, or stop
+  the other loop. `go-to-work` holds the workspace for the night and `work`
+  for the one increment.
+- **`hatch: another run holds the default workspace <dir> - ...; this run will
+  not clone`.** Nothing is wrong: another loop holds the default workspace, so
+  this run serves its own checkouts and the other loop does the cloning.
 - **It picked up nothing.** `hatch queue` says why, per card: no playbook
   leads out of that column for that type, an open question, a person's name
   on it, a ready date not yet arrived, another runner's claim, or a project

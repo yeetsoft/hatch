@@ -179,9 +179,22 @@ public sealed class WorkCommand(Runtime runtime)
             return 1;
         }
 
-        return dry
-            ? await DryRunAsync(key, under, mine, model, effort, agentId, ct)
-            : await SpendAsync(key, under, mine, model, effort, attach, quiet, ct);
+        // A dry run claims nothing and resets nothing, so it takes no lock. A
+        // real run resets the clones under the workspace, and two runs doing
+        // that to the same clones would trample each other - so the lock is
+        // taken here, before SpendAsync, whose first act is the heartbeat, and
+        // let go on every way out.
+        if (dry) return await DryRunAsync(key, under, mine, model, effort, agentId, ct);
+
+        if (!WorkspaceLock.Serve(runtime, out var served, out var held, out var refusal))
+        {
+            runtime.Say.Complain(refusal);
+            return 1;
+        }
+
+        runtime = served;
+        try { return await SpendAsync(key, under, mine, model, effort, attach, quiet, ct); }
+        finally { held?.Dispose(); }
     }
 
     /// <summary>

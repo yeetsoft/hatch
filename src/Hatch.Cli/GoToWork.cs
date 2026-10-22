@@ -729,41 +729,22 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         // One lock per checkout this runner serves - a second loop naming any
         // one of them is refused, by the first loop still holding it. And, where
-        // a workspace is set, one more on the workspace directory itself, taken
-        // here rather than left implicit in the per-checkout locks below: a
-        // clone that appears at three in the morning has no lock of its own yet,
-        // so what stops two loops from cloning into the same fresh path at once
-        // is the workspace's own lock, held for the whole night.
-        var locks = new List<LoopLock>();
-        if (runtime.Settings.Workspace is { } lockedWorkspace)
+        // a workspace is set, one WorkspaceLock on the workspace directory for
+        // the whole night, taken here rather than left implicit in the
+        // per-checkout locks below: a clone that appears at three in the morning
+        // has no lock of its own yet, so what stops two loops from cloning into
+        // the same fresh path at once is the workspace's own lock. Its holder
+        // file names the standing checkout, so a refusal can say from where.
+        // Taken before the per-checkout locks because giving way prunes clones
+        // out of the checkouts, and those locks belong on the pruned list.
+        var locks = new List<IDisposable>();
+        if (!WorkspaceLock.Serve(runtime, out runtime, out var workspaceHeld, out var workspaceRefusal))
         {
-            var held = LoopLock.Take(lockedWorkspace, runtime.TempDirectory, out var refusal);
-            if (held is not null)
-            {
-                locks.Add(held);
-            }
-            else if (runtime.Settings.WorkspaceDefaulted)
-            {
-                // Two loops that never named a workspace share the default one,
-                // and refusing the second would turn away a loop that only wants
-                // to serve its own checkout. It serves what it has and does not
-                // clone - the first loop owns the directory clones land in, and
-                // what is already cloned there is that loop's to serve and lock.
-                runtime.Say.Line(
-                    "hatch: another go-to-work holds the default workspace, so this one serves its own checkouts and will not clone");
-                runtime = runtime with
-                {
-                    Checkouts = runtime.Checkouts
-                        .Where(c => c.Standing || !Checkouts.IsUnder(lockedWorkspace, c.Path)).ToList(),
-                    Settings = runtime.Settings.WithWorkspace(null, defaulted: true),
-                };
-            }
-            else
-            {
-                runtime.Say.Complain(refusal);
-                return 1;
-            }
+            runtime.Say.Complain(workspaceRefusal);
+            return 1;
         }
+
+        if (workspaceHeld is not null) locks.Add(workspaceHeld);
 
         foreach (var checkout in runtime.Checkouts)
         {
