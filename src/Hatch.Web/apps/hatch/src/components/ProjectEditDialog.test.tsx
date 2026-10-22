@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { ProjectEditDialog } from './ProjectEditDialog';
 import type { Project } from '../types';
 
@@ -42,7 +43,11 @@ function project(overrides: Partial<Project>): Project {
 }
 
 function render(p: Project) {
-  return renderToStaticMarkup(<ProjectEditDialog project={p} onClose={() => undefined} onSaved={() => undefined} />);
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <ProjectEditDialog project={p} onClose={() => undefined} onSaved={() => undefined} />
+    </MemoryRouter>,
+  );
 }
 
 describe('ProjectEditDialog', () => {
@@ -118,6 +123,18 @@ describe('ProjectEditDialog', () => {
     const html = render(project({ canAdminister: false, reflectionCadenceDays: 5, reflectionNextDueAt: '2026-03-09T00:00:00Z' }));
 
     expect(html).not.toContain('Reflects every');
+  });
+
+  it('shows an owner a Reflect now button beside the cadence box', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('Reflect now');
+  });
+
+  it('does not show a person who cannot administer the Reflect now button', () => {
+    const html = render(project({ canAdminister: false }));
+
+    expect(html).not.toContain('Reflect now');
   });
 
   it('summarizes the cadence as never reflecting where it is off', () => {
