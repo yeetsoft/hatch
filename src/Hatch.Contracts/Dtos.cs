@@ -273,6 +273,14 @@ public record MergesPullRequestRequest(bool On);
 public record AssigneeDto(string Kind, Guid Id, string Name);
 
 /// <summary>
+/// One contributor to an issue's effective runner tags - the project's own,
+/// or one ancestor's own - see <see cref="RunnerTagSourceKinds"/>.
+/// </summary>
+/// <param name="Kind"><c>project</c> or <c>issue</c> - see <see cref="RunnerTagSourceKinds"/>.</param>
+/// <param name="Key">The project's key, or the ancestor's issue key.</param>
+public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags);
+
+/// <summary>
 /// A card. What the board draws, and nothing more - descriptions and comments
 /// are a detail-page request, because the board holds every issue in the house
 /// and shipping every description with it would make the first paint the
@@ -1978,6 +1986,16 @@ public static class BlockedKinds
 
     /// <summary>Every other fold.</summary>
     public const string Other = "other";
+}
+
+/// <summary>The two kinds of <see cref="RunnerTagSourceDto"/> - see it for what each carries.</summary>
+public static class RunnerTagSourceKinds
+{
+    /// <summary>The issue's own project.</summary>
+    public const string Project = "project";
+
+    /// <summary>An ancestor issue, or the issue itself.</summary>
+    public const string Issue = "issue";
 }
 
 /// <summary>

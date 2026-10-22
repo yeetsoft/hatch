@@ -426,6 +426,148 @@ public class DispatchTests
         Assert.Contains("is implemented only by a runner advertising", RowFor(judged, p).Blocked);
     }
 
+    // ---- Tags: the union an ancestor and the issue's own add to the project's ----
+
+    [Fact]
+    public async Task ScanAsync_AStoryUnderATaggedEpicInAProjectRequiringNothing_FoldsOnTheAncestorsTagAndIsClearWhenDeclared()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress, parentId: epic.Id);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        var folded = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+        Assert.Equal(
+            $"{key} is implemented only by a runner advertising gpu - this runner advertises none",
+            RowFor(folded, issue).Blocked);
+
+        var clear = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
+        Assert.Null(RowFor(clear, issue).Blocked);
+    }
+
+    [Theory]
+    [InlineData(new object[] { new[] { "gpu", "macos" } })]
+    [InlineData(new object[] { new[] { "linux", "macos" } })]
+    [InlineData(new object[] { new[] { "linux", "gpu" } })]
+    public async Task ScanAsync_ATaskUnderATaggedEpicInAProjectRequiringATag_FoldsListingProjectThenAncestorThenOwn(
+        string[] has)
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("linux");
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("task", "in progress", h.InProgress, parentId: epic.Id);
+        await h.TagAsync(issue, "macos");
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
+
+        Assert.StartsWith($"{key} is implemented only by a runner advertising linux, gpu and macos", RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ATaskUnderATaggedEpicInAProjectRequiringATag_IsClearWithAllThreeDeclared()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("linux");
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("task", "in progress", h.InProgress, parentId: epic.Id);
+        await h.TagAsync(issue, "macos");
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of(["linux", "gpu", "macos", "extra"]));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheMoveIntoImplementation_IsNotTagGatedByAnAncestorsTagEither()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.InProgress);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHopInATagRequiringAncestor_IsNotFoldedByTheTagSentenceForATaglessCaller()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.InProgress);
+        await h.TagAsync(epic, "gpu");
+        var issue = await h.FileAsync("story", "carried across", h.Todo, parentId: epic.Id);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+
+        var row = RowFor(scan, issue);
+        Assert.True(row.Hop);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ATagFoldedRowWithTheTagOnAnAncestor_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress, parentId: epic.Id);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Unjudged);
+        var judged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Of([]));
+
+        foreach (var scan in new[] { unjudged, judged })
+            foreach (var issue in new[] { p, c, x })
+                Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(judged, p).Blocked);
+        Assert.Contains("is implemented only by a runner advertising", RowFor(judged, p).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_NoDeclarationOrAnUnjudgedOne_FoldsNothingOnAnAncestorsTagEither()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        await h.TagAsync(epic, "gpu");
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress, parentId: epic.Id);
+
+        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+
+        Assert.Null(RowFor(none, issue).Blocked);
+        Assert.Null(RowFor(unjudged, issue).Blocked);
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
@@ -592,6 +734,26 @@ public class DispatchTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             project.RunnerTags = RunnerTagColumn.Write(tags);
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>An issue's own required tags, written straight to its row - see <see cref="RequireTagsAsync"/> for the project's.</summary>
+        public async Task TagAsync(EfHatchIssue issue, params string[] tags)
+        {
+            issue.RunnerTags = RunnerTagColumn.Write(tags);
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task ExpressAsync(EfHatchIssue issue)
+        {
+            issue.PreApproval = PreApprovalLevels.Express;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task TickExpressSkipsAsync(int statusId)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.ExpressSkips = true;
             await Db.SaveChangesAsync();
         }
 
