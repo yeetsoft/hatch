@@ -450,7 +450,19 @@ landing sentence ends instead *"reflects every 5 day(s), next due ..."* or
 *"never reflects"*.
 `ReflectNowIssueId` (`long?`, a foreign key to the issue it names, `SetNull`
 on delete) is the reflection a reflect-now press last filed - HA-931; the
-job above never sets it.
+job above never sets it. The press itself is `POST /projects/{id}/reflect`
+(`ProjectsController.PostReflect`), guarded the same way `PutReflection` is -
+`403` naming the project's key to anyone but an owner. It files through the
+same `Dispatch.MatchReflection` playbook match and the same title/description
+shape (`ReflectionCadence.Describe`) the job uses, over a window of
+`ReflectionCadenceDays` or 30 days ending now, through
+`IssuesController.CreateIssueAsync` so the pressing owner, not "the board",
+is the recorded actor. Where `ReflectNowIssueId` already names a
+non-terminal issue, a press answers that issue again and files nothing -
+checked on that field alone, never a broader search, so a reflection the job
+filed (which never sets the field) is never mistaken for one a press already
+owns. It never writes `ReflectionLastPeriodStart` either; a press neither
+postpones nor claims the job's next scheduled reflection.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
