@@ -2,7 +2,7 @@
 
 A kanban board built to be worked by agents as much as by people: issues with
 keys like `AER-12`, operator-editable columns, comments, an audit trail, and an
-API a Claude session can reach directly. You hatch a plan here, and epics hatch
+API an agent session can reach directly. You hatch a plan here, and epics hatch
 into stories into shipped work. The design is in [docs/hatch.md](docs/hatch.md);
 the one rule every change in this repo has to hold is in
 [docs/ethos.md](docs/ethos.md).
@@ -27,8 +27,9 @@ Change the port with `HATCH_PORT`:
 HATCH_PORT=9090 docker compose up -d
 ```
 
-Someone who is not a developer can be set up by Claude from the one line on the
-Quick start of this repository's website, linked from the repository page.
+Someone who is not a developer can be set up by their coding agent from the one
+line on the Quick start of this repository's website, linked from the
+repository page.
 
 Hatch has a sign-in wall, off by default, with Google as the way in. To put it
 up, follow *Putting a front door on it* in
@@ -51,6 +52,11 @@ http://localhost:8080/apps/hatch/docs/, with the pages' source in
 hatch config --origin http://localhost:8080   # writes to a per-user file, once
 hatch go-to-work                               # the loop: next issue, one increment, repeat
 ```
+
+The agent is `claude` unless `HATCH_AGENT` says `codex`, `grok` or `ollama` (set
+by bare `hatch config`, `scripts/.env` or the environment), and the CLI it
+names must be installed and logged in — see
+[The runner](src/Hatch.Web/apps/hatch/docs/the-runner.md).
 
 `hatch` is the CLI in [`src/Hatch.Cli`](src/Hatch.Cli), published as one
 binary for macOS, Windows and Linux. Once the board is up, download it from
@@ -141,6 +147,6 @@ Always `make`, never a bare `dotnet` — the npm step needs the shell profile.
 Never commit a Hatch API key (`hatch_ak_…`) to this repository; see
 [CLAUDE.md](CLAUDE.md) for where it lives instead.
 
-For working *on the loop itself* from inside a Claude session — how a ticket is
+For working *on the loop itself* from inside an agent session — how a ticket is
 read, claimed, implemented and handed back — see [CLAUDE.md](CLAUDE.md) and
 [docs/hatch.md](docs/hatch.md).
