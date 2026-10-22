@@ -45,6 +45,8 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   untilAt: null,
   goneAfterSeconds: GONE_AFTER,
   exhaustedUntil: null,
+  for: null,
+  canControl: true,
   ...over,
 });
 
@@ -189,6 +191,14 @@ describe('isControllable', () => {
   it('is a loop only, because nothing would ever read an instruction off a single increment', () => {
     expect(isControllable(runner())).toBe(true);
     expect(isControllable(runner({ kind: 'once' }))).toBe(false);
+  });
+
+  it('is false for a loop this caller cannot control', () => {
+    expect(isControllable(runner({ canControl: false }))).toBe(false);
+  });
+
+  it('is false for a once runner even where canControl is true', () => {
+    expect(isControllable(runner({ kind: 'once', canControl: true }))).toBe(false);
   });
 });
 

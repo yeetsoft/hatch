@@ -43,8 +43,10 @@ the runner reads it between increments, at its next heartbeat, never in the
 middle of one. Nothing on the server starts or stops a process, which is why
 the same buttons work for a runner in a container or on a laptop behind a
 router: the loop does the reading, and the loop is what exits. Only a person
-can press them. A key may read the runners and heartbeat as one, but never set
-a bound or a control, since an agent that could raise its own **Max spend**
+can press them. A row that belongs to somebody can be pressed by its owner or
+an admin only; to everyone else it says whose it is. A key may read the
+runners and heartbeat as one, but never set a bound or a control, since an
+agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
 
