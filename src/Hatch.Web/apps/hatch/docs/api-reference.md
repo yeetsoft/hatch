@@ -189,8 +189,11 @@ full, the bulk endpoint's own filters, and the `/plan` reads' arithmetic -
 none of that is re-derived here.
 
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
-`Description`, `ParentKey`, `ReadyAt`, `DueAt`, and `OnePr` - `OnePr` only on
-a `story`, refused on anything else, `inherit`/`on`/`off`. `IssuePatchRequest`
+`Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority` and
+`PreApproval` - `OnePr` only on a `story`, refused on anything else,
+`inherit`/`on`/`off`; `Priority` and `PreApproval` take the level names the two
+`PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
+born at a level in the one save, with no second event. `IssuePatchRequest`
 is `Title?`, `Description?`, `Type?`, `StatusId?`, `ParentKey?`, `ReadyAt?`,
 `DueAt?`, `PullRequestUrl?`, `ProjectId?`, `MoveDescendants?`, `WipOverride` -
 `""` clears `ParentKey`, `ReadyAt`, `DueAt` or `PullRequestUrl` (no issue key,
@@ -215,7 +218,13 @@ request URL. A column change that would overflow the WIP section 409s with a
 `{error, load, limit}` body unless `wipOverride: true` - and `wipOverride`,
 and a cross-project `ProjectId` on a patch, are person-only even on this
 key-open controller: a program sending either is 403'd before the issue is
-even loaded. A project move 409s if any issue in the moving set - the root,
+even loaded. Create has person-only fields of its own the same way: a program
+that names `priority` or `preApproval`, even as `normal` or `none`, is 403'd
+before the project is looked up or a number is minted. A person who names
+`preapproved` must be an owner or approver of the project, and one who names
+`express` must be allowed to move work into the board's send-back column - the
+two questions `PUT /issues/{key}/pre-approval` asks - and a refusal files
+nothing. An unknown level name 400s, naming the levels. A project move 409s if any issue in the moving set - the root,
 or the whole subtree unless `moveDescendants: false` - holds a live claim.
 The move route additionally 409s if `FromStatusId` does not match where the
 card actually is, and 409s, as a plain string rather than the WIP body, if

@@ -53,8 +53,14 @@ public class IssuePreApprovalController(
     public Task<ActionResult<IssueDto>> PutIssuePreApproval(string key, PreApprovalRequest request, CancellationToken ct) =>
         PreApprovalLevels.TryParse(request.Level, out var level)
             ? SetAsync(key, level, ct)
-            : Task.FromResult<ActionResult<IssueDto>>(
-                BadRequest($"\"{request.Level}\" is not a pre-approval level - none, express or preapproved"));
+            : Task.FromResult<ActionResult<IssueDto>>(BadRequest(UnknownLevel(request.Level)));
+
+    /// <summary>
+    /// The 400's sentence, shared with <c>POST /issues</c> so a level named at
+    /// filing is refused in the words <c>PUT .../pre-approval</c> uses.
+    /// </summary>
+    internal static string UnknownLevel(string? name) =>
+        $"\"{name}\" is not a pre-approval level - none, express or preapproved";
 
     /// <summary>
     /// Mark it, or unmark it. The legacy two-level alias for
@@ -106,25 +112,8 @@ public class IssuePreApprovalController(
 
         if (level != issue.PreApproval)
         {
-            if (level == PreApprovalLevels.PreApproved || issue.PreApproval == PreApprovalLevels.PreApproved)
-            {
-                if (!await access.CanApproveAsync(issue.Project!.Id, ct))
-                    return new ObjectResult($"only an owner or approver of {issue.Project.Key} may set pre-approval - it is the approve press given in advance")
-                    {
-                        StatusCode = StatusCodes.Status403Forbidden,
-                    };
-            }
-            else
-            {
-                var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
-                var sendBack = Columns.SendBack(statuses);
-
-                if (sendBack is not null && !await access.CanMoveIntoAsync(issue.Project!.Id, sendBack, ct))
-                    return new ObjectResult($"only an owner or approver of {issue.Project.Key} may move work into \"{sendBack.Name}\"")
-                    {
-                        StatusCode = StatusCodes.Status403Forbidden,
-                    };
-            }
+            if (await LevelRefusalAsync(db, access, issue.Project!, issue.PreApproval, level, ct) is { } forbidden)
+                return forbidden;
 
             var now = time.GetUtcNow();
 
@@ -146,6 +135,43 @@ public class IssuePreApprovalController(
         }
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
+    }
+
+    /// <summary>
+    /// The gate on changing the level from <paramref name="from"/> to
+    /// <paramref name="to"/>, shared by <see cref="SetAsync"/> and by filing an
+    /// issue at a level, so the two cannot come to disagree about who may set
+    /// what. Null when the change is allowed - including when there is none.
+    /// </summary>
+    /// <remarks>
+    /// Exactly one of two gates applies; see <see cref="SetAsync"/> for why.
+    /// </remarks>
+    internal static async Task<ObjectResult?> LevelRefusalAsync(
+        HatchContext db, IProjectAccess access, EfHatchProject project, int from, int to, CancellationToken ct)
+    {
+        if (from == to) return null;
+
+        if (to == PreApprovalLevels.PreApproved || from == PreApprovalLevels.PreApproved)
+        {
+            if (!await access.CanApproveAsync(project.Id, ct))
+                return new ObjectResult($"only an owner or approver of {project.Key} may set pre-approval - it is the approve press given in advance")
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                };
+
+            return null;
+        }
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        var sendBack = Columns.SendBack(statuses);
+
+        if (sendBack is not null && !await access.CanMoveIntoAsync(project.Id, sendBack, ct))
+            return new ObjectResult($"only an owner or approver of {project.Key} may move work into \"{sendBack.Name}\"")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+
+        return null;
     }
 
     /// <summary>

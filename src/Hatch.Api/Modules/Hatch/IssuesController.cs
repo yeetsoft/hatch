@@ -233,8 +233,35 @@ public class IssuesController(
     /// dialog.
     /// </summary>
     [HttpPost]
-    public Task<ActionResult<IssueDto>> CreateIssue(IssueCreateRequest request, CancellationToken ct) =>
-        CreateIssueAsync(request, PriorityLevels.Normal, ct);
+    public async Task<ActionResult<IssueDto>> CreateIssue(IssueCreateRequest request, CancellationToken ct)
+    {
+        // The gate lives here and not in CreateIssueAsync, which the trunk's
+        // failing-build bug also calls with levels it chose itself and no
+        // person at the wheel.
+        if (await CreateLevelRefusal(request, ct) is { } notAPerson) return notAPerson;
+
+        var priority = PriorityLevels.Normal;
+        if (request.Priority is { } priorityName && !PriorityLevels.TryParse(priorityName, out priority))
+            return BadRequest(IssueExpediteController.UnknownPriority(priorityName));
+
+        var preApproval = PreApprovalLevels.None;
+        if (request.PreApproval is { } levelName && !PreApprovalLevels.TryParse(levelName, out preApproval))
+            return BadRequest(IssuePreApprovalController.UnknownLevel(levelName));
+
+        // Only a level above none is a question: there is nothing to lower
+        // from at birth. A priority-only filing skips the lookup and keeps
+        // CreateIssueAsync's own 404.
+        if (preApproval != PreApprovalLevels.None)
+        {
+            var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId, ct);
+            if (project is null) return NotFound();
+
+            if (await IssuePreApprovalController.LevelRefusalAsync(db, access, project, PreApprovalLevels.None, preApproval, ct) is { } forbidden)
+                return forbidden;
+        }
+
+        return await CreateIssueAsync(request, priority, ct, preApproval);
+    }
 
     /// <summary>
     /// The whole of <see cref="CreateIssue"/>, plus the two things a key must
@@ -1135,6 +1162,22 @@ public class IssuesController(
     private async Task<ObjectResult?> ProjectMoveRefusal(int? projectId, CancellationToken ct) =>
         projectId is not null && await caller.IsProgramAsync(ct)
             ? new ObjectResult("moving an issue to another project is a person's call, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
+
+    /// <summary>
+    /// A person, not a key. Choosing the level an issue is born at is the
+    /// operator's call, the same way setting it later is - see
+    /// <see cref="OverrideRefusal"/>. Fires on the raw presence of
+    /// <c>priority</c> or <c>preApproval</c>, even as <c>normal</c> or
+    /// <c>none</c>, before either is parsed or the project is looked up, so an
+    /// agent learns nothing from the answer.
+    /// </summary>
+    private async Task<ObjectResult?> CreateLevelRefusal(IssueCreateRequest request, CancellationToken ct) =>
+        (request.Priority is not null || request.PreApproval is not null) && await caller.IsProgramAsync(ct)
+            ? new ObjectResult("choosing an issue's priority or pre-approval level is a person's call, not an agent's")
             {
                 StatusCode = StatusCodes.Status403Forbidden,
             }
