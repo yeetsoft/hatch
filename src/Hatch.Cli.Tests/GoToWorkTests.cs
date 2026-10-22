@@ -2036,16 +2036,24 @@ public sealed class GoToWorkTests
         h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "default-workspace");
-        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
         Assert.NotNull(held);
 
         var runtime = h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted: true) };
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
-        Assert.Contains(h.Say.Said, l => l.Contains("holds the default workspace", StringComparison.Ordinal));
+        Assert.Contains(
+            h.Say.Complained,
+            l => l.Contains("this run will not clone", StringComparison.Ordinal)
+                 && l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal)
+                 && l.Contains("elsewhere-checkout", StringComparison.Ordinal));
         Assert.DoesNotContain(h.Say.Complained, l => l.Contains("already running", StringComparison.Ordinal));
         Assert.DoesNotContain("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
+
+        // The heartbeat says the same: a run that gave way declares no clones.
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0];
+        Assert.False(beat.Read<RunnerHeartbeatRequest>().Clones);
     }
 
     [Fact]
@@ -2054,14 +2062,17 @@ public sealed class GoToWorkTests
         using var h = new Harness();
 
         var workspace = Path.Combine(h.Temp, "chosen-workspace");
-        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
         Assert.NotNull(held);
 
         var runtime = h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted: false) };
 
         Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
-        Assert.Contains(h.Say.Complained, l => l.Contains("already running in", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(workspace, StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("elsewhere-checkout", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
         Assert.Empty(h.Wire.Calls);
     }
 
@@ -2271,13 +2282,15 @@ public sealed class GoToWorkTests
         Directory.CreateDirectory(workspace);
         var runtime = WithWorkspace(h, workspace);
 
-        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
         Assert.NotNull(held);
 
         Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
-        Assert.Contains(h.Say.Complained, l => l.Contains("already running in", StringComparison.Ordinal));
         Assert.Contains(h.Say.Complained, l => l.Contains(workspace, StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("elsewhere-checkout", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
         Assert.Empty(h.Wire.Calls);
 
         // The standing checkout's own lock was released on the way out, same as
@@ -2285,6 +2298,91 @@ public sealed class GoToWorkTests
         using var retaken = LoopLock.Take(h.Root, h.Temp, out var refusal);
         Assert.NotNull(retaken);
         Assert.Equal("", refusal);
+    }
+
+    [Fact]
+    public async Task A_workspace_lock_whose_owner_is_gone_is_cleared_and_the_run_clones()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var workspace = Path.Combine(h.Temp, "clones");
+        Directory.CreateDirectory(workspace);
+
+        // A pid no process can have: the lock a crashed loop left behind.
+        var stale = WorkspaceLock.PathFor(workspace, h.Temp);
+        Directory.CreateDirectory(stale);
+        File.WriteAllText(Path.Combine(stale, "pid"), int.MaxValue.ToString());
+
+        Assert.Equal(0, await new GoToWorkCommand(WithWorkspace(h, workspace)).RunAsync(["--once"], default));
+
+        Assert.Contains("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
+        using var retaken = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(retaken);
+    }
+
+    [Fact]
+    public async Task Two_loops_on_two_workspaces_do_not_meet()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var first = Path.Combine(h.Temp, "clones-a");
+        var second = Path.Combine(h.Temp, "clones-b");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+
+        using var held = WorkspaceLock.Take(first, "elsewhere-checkout", h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(0, await new GoToWorkCommand(WithWorkspace(h, second)).RunAsync(["--once"], default));
+
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains(first, StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains(second, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task One_loop_on_one_workspace_takes_the_lock_for_the_night_and_releases_it()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var workspace = Path.Combine(h.Temp, "clones");
+        Directory.CreateDirectory(workspace);
+
+        Assert.Equal(0, await new GoToWorkCommand(WithWorkspace(h, workspace)).RunAsync(["--once"], default));
+
+        Assert.Contains("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
+        using var retaken = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(retaken);
+    }
+
+    [Fact]
+    public async Task A_loop_that_restarts_into_its_new_source_releases_the_workspace_lock()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var workspace = Path.Combine(h.Temp, "clones");
+        Directory.CreateDirectory(workspace);
+
+        var resets = 0;
+        h.Workspace.Watching = () =>
+        {
+            if (++resets == 2) h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+        };
+
+        var runtime = h.Supervised with { Settings = h.Supervised.Settings with { Workspace = workspace } };
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        // The exit that hands the night to the next incarnation is a way out
+        // like any other: the lock is gone before the process is.
+        using var retaken = WorkspaceLock.Take(workspace, h.Root, h.Temp, out _);
+        Assert.NotNull(retaken);
     }
 
     [Fact]
