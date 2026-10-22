@@ -145,6 +145,12 @@ public static class Checkout
     /// own <c>409</c> is: the local record is the backstop for a fresh choice,
     /// and the server's refusal on the first heartbeat is the one a bad guess
     /// cannot get past.</para>
+    ///
+    /// <para>There is no own-<see cref="Where"/> exclusion here: every live name
+    /// the board answers is taken, this checkout's own included. That is fine -
+    /// a checkout whose record file was deleted while its own runner is still
+    /// live chooses a fresh name rather than re-taking the live one, and the
+    /// old row ages out on its own once that runner stops heartbeating.</para>
     /// </remarks>
     public static async Task<string> RunnerAsync(
         string? configured, string host, string root, Board? board, CancellationToken ct, string? runnersPath = null)
@@ -162,9 +168,7 @@ public static class Checkout
         {
             try
             {
-                var where = Where(host, root);
-                foreach (var runner in await board.RunnersAsync(ct))
-                    if (!string.Equals(runner.Where, where, StringComparison.Ordinal)) taken.Add(runner.Name);
+                foreach (var name in await board.RunnerNamesAsync(ct)) taken.Add(name);
             }
             catch (HatchException)
             {
