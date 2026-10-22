@@ -44,6 +44,29 @@ public class ReflectionCadenceJobTests
     }
 
     [Fact]
+    public async Task RunAsync_NeverReflected_FilesOneReflectionThenNoneOnTheNextFiring()
+    {
+        var (db, from, _) = await NewDbAsync();
+        var project = await AddProjectAsync(db, "AER", cadenceDays: 7, lastPeriodStart: null);
+        db.Playbooks.Add(ReflectionPlaybook(from, from));
+        await db.SaveChangesAsync();
+
+        var job = NewJob(db, Now);
+        await job.RunAsync(CancellationToken.None);
+
+        var issues = await db.Issues.Where(i => i.ProjectId == project.Id).ToListAsync();
+        var issue = Assert.Single(issues);
+        Assert.Contains(Now.ToString("yyyy-MM-dd"), issue.Title);
+
+        var reread = await db.Projects.SingleAsync(p => p.Id == project.Id);
+        Assert.Equal(Now, reread.ReflectionLastPeriodStart);
+
+        await job.RunAsync(CancellationToken.None);
+
+        Assert.Single(await db.Issues.Where(i => i.ProjectId == project.Id).ToListAsync());
+    }
+
+    [Fact]
     public async Task RunAsync_CalledTwiceWithTheSameClock_FilesOnlyTheOneIssue()
     {
         var (db, from, _) = await NewDbAsync();
