@@ -132,6 +132,13 @@ required anywhere, so most tickets say nothing about tags at all; a runner
 that advertises none of what is required is skipped, the same way a
 dependency or a hold would be.
 
+The field sits on the issue page, in the Details card's edit view, right
+after Pre-approval, and opening it takes nothing beyond being able to open
+the ticket at all — the same as its title and description. Every tag it
+inherits is read out underneath, one sentence per source in the order the
+union itself is built: the project first, then each ancestor in turn, naming
+where each one came from.
+
 ## Held
 
 A person's own mark, set from the ticket's **Hold for me** button and read
