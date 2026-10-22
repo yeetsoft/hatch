@@ -1976,7 +1976,9 @@ export interface Runner {
   under: string | null;
   /** The checkouts this runner is serving, canonical, from its own heartbeat. */
   repositories: string[];
-  /** The tags this runner carries, canonical, from its own heartbeat. */
+  /** The tags this runner carries - from its own heartbeat until anybody
+      writes to it, after which the row is the board's and only a PATCH
+      moves it. */
   tags: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
@@ -2018,6 +2020,10 @@ export interface RunnerPatchRequest {
   /** An instant (`2026-09-12T17:00:00Z`). Never a bare date: "stop by the 12th"
       would be a midnight in a timezone nobody named. */
   untilAt?: string;
+  /** Absent leaves the row's tags alone, an empty list clears the board, a
+      list sets it - the one write that reaches a row after its first beat
+      has seeded it. */
+  tags?: string[];
 }
 
 // ---- People ----
