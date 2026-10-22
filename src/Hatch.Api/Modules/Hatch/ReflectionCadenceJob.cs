@@ -57,9 +57,7 @@ public class ReflectionCadenceJob(HatchContext db, RankService ranks, TimeProvid
             }
 
             var windowEnd = ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now)!.Value;
-            var windowStart = windowEnd.AddDays(-project.ReflectionCadenceDays!.Value);
-            var title = $"Reflection: {windowStart:yyyy-MM-dd} to {windowEnd:yyyy-MM-dd}";
-            var description = $"The reflection for {project.Key} covering {windowStart:yyyy-MM-dd} to {windowEnd:yyyy-MM-dd}.";
+            var (title, description, _) = ReflectionCadence.Describe(project.Key, project.ReflectionCadenceDays!.Value, windowEnd);
 
             var filed = false;
             for (var attempt = 1; !filed; attempt++)
