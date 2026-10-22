@@ -11,6 +11,18 @@ public static class Format
             ? $"{seconds / 3600}h{seconds % 3600 / 60:00}m{seconds % 60:00}s"
             : $"{seconds / 60}m{seconds % 60:00}s";
 
+    /// <summary>How long ago, in the coarsest unit that is not zero - "10s ago", "2m ago", "3h ago", "1d ago".</summary>
+    public static string Ago(TimeSpan elapsed)
+    {
+        var seconds = (long)Math.Max(0, elapsed.TotalSeconds);
+        if (seconds < 60) return $"{seconds}s ago";
+        var minutes = seconds / 60;
+        if (minutes < 60) return $"{minutes}m ago";
+        var hours = minutes / 60;
+        if (hours < 24) return $"{hours}h ago";
+        return $"{hours / 24}d ago";
+    }
+
     /// <summary>Dollars, the way a bill is written.</summary>
     public static string Money(decimal usd) => usd.ToString("0.00", CultureInfo.InvariantCulture);
 
