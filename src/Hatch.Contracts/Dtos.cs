@@ -362,6 +362,8 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <paramref name="OpenQuestions"/> is.
 /// </param>
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -391,12 +393,16 @@ public record IssueCardDto(
     bool? OnePrOwn = null,
     string? OnePrFrom = null,
     DateTimeOffset? ClosedAt = null,
-    IReadOnlyList<string> RunnerTagsOwn = null!)
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
     // see RunnerDto.Tags for the same shape.
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
 }
 
 /// <summary>
@@ -561,6 +567,8 @@ public record IssueClaimDto(
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
+/// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
+/// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -610,12 +618,16 @@ public record IssueDto(
     DateTimeOffset? PullRequestReadAt = null,
     DateTimeOffset? ClosedAt = null,
     string? ReleaseNote = null,
-    IReadOnlyList<string> RunnerTagsOwn = null!)
+    IReadOnlyList<string> RunnerTagsOwn = null!,
+    IReadOnlyList<string> RunnerTags = null!,
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
     // see RunnerDto.Tags for the same shape.
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
+    public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
+    public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
 }
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
@@ -3368,6 +3380,17 @@ public static class RunnerStates
 /// Empty for a runner carrying none, rather than null, so a client built
 /// against the current shape reads "no tags" without a null to guard.
 /// </param>
+/// <param name="For">
+/// Who this runner's <c>PATCH</c> belongs to - the same name
+/// <see cref="RunnerInstructionDto.For"/> carries back to the runner itself -
+/// or null for a runner that belongs to nobody.
+/// </param>
+/// <param name="CanControl">
+/// Whether the caller reading this row may <c>PATCH</c> it: the wall off, the
+/// runner belonging to nobody, the caller being <see cref="For"/>, or the
+/// caller being an admin. True whenever the wall is off, so a client never
+/// has to know the wall exists to draw its own controls.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3390,7 +3413,9 @@ public record RunnerDto(
     string? Agent,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<string>? Drives = null,
-    IReadOnlyList<string> Tags = null!)
+    IReadOnlyList<string> Tags = null!,
+    string? For = null,
+    bool CanControl = true)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

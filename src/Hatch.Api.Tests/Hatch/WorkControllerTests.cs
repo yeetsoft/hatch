@@ -4414,6 +4414,71 @@ public class WorkControllerTests
         Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
+    // ---- Runner tags, the union and where it comes from (HA-1367) ----
+
+    [Fact]
+    public async Task Work_AStoryUnderATaggedEpic_UnionsTheEpicsTagAndNamesItAsTheSource()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.InProgress);
+        await h.TagAsync(epic, "gpu");
+        var story = await h.FileAsync("story", "s", h.InProgress, parentId: epic.Id);
+
+        var issue = Value(await h.Work.GetWork(Key(story), null, default)).Issue;
+
+        Assert.Equal(["gpu"], issue.RunnerTags);
+        Assert.Empty(issue.RunnerTagsOwn);
+        var source = Assert.Single(issue.RunnerTagsFrom);
+        Assert.Equal(RunnerTagSourceKinds.Issue, source.Kind);
+        Assert.Equal(Key(epic), source.Key);
+        Assert.Equal(["gpu"], source.Tags);
+    }
+
+    [Fact]
+    public async Task Work_AStoryReparentedOntoAnUntaggedIssue_LosesTheTagWithNoWriteToItsOwnColumn_AndRegainsItReparentedBack()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.InProgress);
+        await h.TagAsync(epic, "gpu");
+        var story = await h.FileAsync("story", "s", h.InProgress, parentId: epic.Id);
+        var fresh = await h.FileAsync("epic", "untagged", h.InProgress);
+
+        story.ParentId = fresh.Id;
+        await h.Db.SaveChangesAsync();
+
+        var reparented = Value(await h.Work.GetWork(Key(story), null, default)).Issue;
+        Assert.Empty(reparented.RunnerTags);
+        Assert.Equal("[]", story.RunnerTags);
+
+        story.ParentId = epic.Id;
+        await h.Db.SaveChangesAsync();
+
+        var back = Value(await h.Work.GetWork(Key(story), null, default)).Issue;
+        Assert.Equal(["gpu"], back.RunnerTags);
+    }
+
+    [Fact]
+    public async Task Work_AProjectsTagAndAnAncestorsTag_UnionInOrderAheadOfTheTasksOwn_WithTheTasksOwnRowNeverNamed()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("linux");
+        var epic = await h.FileAsync("epic", "e", h.InProgress);
+        await h.TagAsync(epic, "gpu");
+        var task = await h.FileAsync("task", "t", h.InProgress, parentId: epic.Id);
+        await h.TagAsync(task, "macos");
+
+        var issue = Value(await h.Work.GetWork(Key(task), null, default)).Issue;
+
+        Assert.Equal(["linux", "gpu", "macos"], issue.RunnerTags);
+        Assert.Equal(2, issue.RunnerTagsFrom.Count);
+        Assert.Equal(RunnerTagSourceKinds.Project, issue.RunnerTagsFrom[0].Kind);
+        Assert.Equal("AER", issue.RunnerTagsFrom[0].Key);
+        Assert.Equal(["linux"], issue.RunnerTagsFrom[0].Tags);
+        Assert.Equal(RunnerTagSourceKinds.Issue, issue.RunnerTagsFrom[1].Kind);
+        Assert.Equal(Key(epic), issue.RunnerTagsFrom[1].Key);
+        Assert.Equal(["gpu"], issue.RunnerTagsFrom[1].Tags);
+    }
+
     // ---- Express, the hop ----
     //
     // An express issue standing in a column marked ExpressSkips is carried on
@@ -12006,6 +12071,13 @@ public class WorkControllerTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             project.RunnerTags = RunnerTagColumn.Write(tags);
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>An issue's own required tags, written straight to its row - see <see cref="RequireTagsAsync"/> for the project's.</summary>
+        public async Task TagAsync(EfHatchIssue issue, params string[] tags)
+        {
+            issue.RunnerTags = RunnerTagColumn.Write(tags);
             await Db.SaveChangesAsync();
         }
     }
