@@ -154,12 +154,14 @@ to sign-in instead.
     - `only an owner or approver of <KEY> may set pre-approval - it is the approve press given in advance`
     - `setting an issue's pre-approval level is a person's call, not an agent's`
     - `moving work into a protected column is an owner's or approver's call, not an agent's`
-- **What the CLI prints for a `403`** is one fixed line, whatever the cause:
-  `hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).`
-  It drops the answer's body, so it can misdescribe the cause: the route may
-  be one a key takes, and the refusal a project's rule about who may make
-  that change. The real reason is in the API's own answer, which `hatch api …`
-  shows, and in the sentences above.
+- **What the CLI prints for a `403`** is the API's own reason: a role-gate
+  code prints as itself (`hatch: 403 - not_admin`), and a plain-sentence
+  refusal prints that sentence (`hatch: 403 - only an owner or approver of
+  AER may move work into "approved"`). The one exception is `key_not_accepted`
+  and `scope_mismatch`, where the fixed sentence `hatch: 403 - the key is
+  good and this route is not one it may take (CLAUDE.md).` replaces the code
+  outright, since those two really are a scope refusal. An empty body still
+  gets a fixed sentence, worded by whether a key was sent at all.
 
 ## Whose tickets `--mine` reaches
 

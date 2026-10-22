@@ -221,8 +221,8 @@ which are one request, and gives the three layers the settings come from: an
 exported `HATCH_BASE` or `HATCH_KEY`, then `scripts/.env` in the checkout, then
 the per-user file `hatch config` writes. The key lives outside the artifact, so
 it is never a tracked file or a value in a commit. It also tells a session how
-to read a refusal: a `403` means the key works and the route is not one a key
-may take, so ask the operator; a `401` is either a key that was sent and refused
+to read a refusal: a `403` names its own cause, printed from the API's own
+answer, so ask the operator; a `401` is either a key that was sent and refused
 or no key against a Hatch that wants one. [CLI reference](cli-reference) has
 every command, [Environment variables](environment-variables) has the settings,
 and [People, roles and keys](people-roles-and-keys) has what a key may reach.
