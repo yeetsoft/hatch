@@ -52,8 +52,8 @@ saying so; those are read from the environment alone.
 | `HATCH_ROOT` | the image; `compose.yaml`; then `hatch` and the entrypoint | `/checkout` | Where the checkout is mounted. The entrypoint unsets it when nothing is there and a workspace is. |
 | `HATCH_WORKSPACE` | the image; `compose.yaml`; then `hatch` and the entrypoint | `/workspace` | Where the container clones what the board binds that it has no checkout of. |
 | **The `hatch` binary** | | | |
-| `HATCH_BASE` | `hatch` | none; `hatch` refuses to run without it | The origin of your Hatch, as `<your-hatch-origin>`. A trailing `/` is trimmed. Settings file: yes. |
-| `HATCH_KEY` | `hatch` | empty | **A secret.** The API key, shaped `hatch_ak_...`. Optional against a Hatch with its wall off. Settings file: yes. |
+| `HATCH_BASE` | `hatch` | none; `hatch` refuses to run without it | The origin of your Hatch, as `<your-hatch-origin>`. A trailing `/` is trimmed. Settings file: yes, exported into every spawned session. |
+| `HATCH_KEY` | `hatch` | empty | **A secret.** The API key, shaped `hatch_ak_...`. Optional against a Hatch with its wall off. Settings file: yes, exported into every spawned session. |
 | `HATCH_AGENT` | `hatch`; the container's entrypoint | `claude`; blank also means `claude` | Which agent a session spawns: `claude`, `codex`, `grok` or `ollama`. An unknown id is refused. Settings file: yes. |
 | `HATCH_CLAUDE_BIN` | `hatch` | unset: found on `PATH` | The `claude` CLI, if it is not on `PATH`. Settings file: yes. |
 | `HATCH_CODEX_BIN` | `hatch` | unset: found on `PATH` | The `codex` CLI, if it is not on `PATH`. Settings file: yes. |

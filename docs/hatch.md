@@ -6387,6 +6387,10 @@ One pass, from the board to the release:
    that does not answer, spawns anyway and says so rather than refusing a
    session over a question it could not even ask.
 
+   The session's environment is set first from this runner's own `HATCH_BASE`,
+   `HATCH_KEY` and `HATCH_RUNNER`, plus `PATH` - see
+   [How the session runs](../src/Hatch.Web/apps/hatch/docs/what-a-session-is-told.md#how-the-session-runs).
+
    Three things are done at the spawn: two so that a message to the agent is
    heard, and one limiting what it can reach for:
    - **The hooks.** The runner writes a settings file into a directory of its

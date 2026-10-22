@@ -233,8 +233,10 @@ The prompt is one half of it; the other is how the agent CLI is started. For
 - Each repository other than the primary is added to the session as a
   directory, so it can read and edit the sibling checkouts.
 - Each tool the playbook denies is passed as a denied tool, one per entry.
-- `hatch` is first on its `PATH` and is the same binary that spawned it, already
-  pointed at the same board and named as the runner that dispatched it.
+- `hatch` is first on its `PATH`, is the same binary that spawned it, and
+  inherits `HATCH_BASE`, `HATCH_KEY` and `HATCH_RUNNER` from it - already
+  pointed at the same board, with the key it holds, and named as the runner
+  that dispatched it.
 
 The playbook's **budget** is never in the prompt. A session that crosses it is
 told once, mid-run, to wrap up.

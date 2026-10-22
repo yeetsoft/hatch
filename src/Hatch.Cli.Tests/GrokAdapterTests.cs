@@ -398,4 +398,19 @@ public sealed class GrokAdapterTests : IDisposable
         Assert.Equal("test:/checkout", adapter.BuildHeadless(request).Environment["HATCH_RUNNER"]);
 
         adapter.Release(request);
+    }
+
+    [Fact]
+    public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true,
+            Settings: new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" });
+        var adapter = Adapter();
+
+        Assert.Equal("https://example.hatch", adapter.BuildHeadless(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", adapter.BuildHeadless(request).Environment["HATCH_KEY"]);
+        Assert.Equal("https://example.hatch", adapter.BuildAttached(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", adapter.BuildAttached(request).Environment["HATCH_KEY"]);
+
+        adapter.Release(request);
     }}

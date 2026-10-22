@@ -116,6 +116,18 @@ public sealed class ClaudeAdapterTests : IDisposable
     }
 
     [Fact]
+    public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true,
+            Settings: new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" });
+
+        Assert.Equal("https://example.hatch", Adapter().BuildHeadless(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", Adapter().BuildHeadless(request).Environment["HATCH_KEY"]);
+        Assert.Equal("https://example.hatch", Adapter().BuildAttached(request).Environment["HATCH_BASE"]);
+        Assert.Equal("hatch_ak_test", Adapter().BuildAttached(request).Environment["HATCH_KEY"]);
+    }
+
+    [Fact]
     public void A_session_with_no_runner_name_leaves_HATCH_RUNNER_as_it_inherited_it()
     {
         var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "");

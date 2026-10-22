@@ -198,6 +198,7 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
         // runner that dispatched it, not the person the checkout belongs to.
         Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
         Reach.AsRunner(start.Environment, request.RunnerName);
+        Reach.ToHatch(start.Environment, request.Settings);
 
         start.ArgumentList.Add("--model");
         start.ArgumentList.Add(request.Model);
