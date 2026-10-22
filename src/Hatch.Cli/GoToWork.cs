@@ -988,6 +988,36 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             if (tally.ShouldStop()) return false;
 
+            // A person's order, acted on once: the beat that read it has
+            // already cleared it on the board, so a loop that was paused reads
+            // paused again on the next one. After the stop conditions, so an
+            // order cannot spend an increment past a cap that has been
+            // reached - and before the paused branch, which is the point of
+            // it. The pass it runs is counted and judged below exactly as an
+            // ordinary pass is.
+            if (told?.Order is { } ordering)
+            {
+                idle.Clear();
+                busy.Clear();
+                var orderedAt = runtime.Clock.GetUtcNow();
+                tally.ClampExhausted(orderedAt);
+
+                if (tally.ExhaustedUntil is { } limit && orderedAt < limit)
+                {
+                    // A spawn would only fail, and the order is spent already.
+                    line.Line = $"order spent - out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(limit, tally.ExhaustedKnown, runtime.Clock)}";
+                    runtime.Say.Line($"hatch: {line.Line}");
+                    continue;
+                }
+
+                var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, interval, once, restart, line, ct,
+                    orderedKey: ordering.Kind == RunnerOrderKinds.Work ? ordering.Key : null);
+                if (ordered == Pass.Worked) workedSinceProbe = true;
+                if (ordered == Pass.Fatal) return false;
+                if (ordered == Pass.Restarting) return true;
+                continue;
+            }
+
             // The backstop, read here because here is where no claim is held. An
             // idle loop never resets - by design, since a fetch every interval
             // all night against a remote with nothing to say is a fetch for
@@ -1302,7 +1332,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     private async Task<Pass> PassAsync(
         string? under, bool quiet, bool mine, Tally tally,
-        SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct)
+        SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct,
+        string? orderedKey = null)
     {
         // Hoisted so the catch below - which has to cover picking, claiming,
         // preparing the tree, the session, judging it and tidying up, in one
@@ -1330,7 +1361,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         try
         {
-            var picked = await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
+            // A person's order names the ticket, so the walk over the queue -
+            // and the --under and --mine it applies - is not made at all.
+            var picked = orderedKey is { Length: > 0 } ordered
+                ? await runtime.Picker().NamedAsync(ordered, ct, runtime.Heartbeat)
+                : await runtime.Picker().PickAsync(under, runtime.OffsetMinutes, ct, runtime.Heartbeat, mine);
             var now = runtime.Clock.GetUtcNow();
 
             // A clone this walk could not make - recorded exactly as a failed spawn
@@ -1343,6 +1378,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
             switch (picked.Outcome)
             {
                 case Pick.Idle:
+                    // An ordered ticket turned away: the order is already
+                    // spent server-side, and the sentence is the whole answer.
+                    if (picked.Declined is { } declined)
+                    {
+                        idle.Clear();
+                        busy.Clear();
+                        line.Line = declined;
+                        runtime.Say.Line($"hatch: {declined}");
+                        runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+                        return Pass.Waited;
+                    }
+
                     busy.Clear();
                     line.Line = "nothing on the board is an agent's to move";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));

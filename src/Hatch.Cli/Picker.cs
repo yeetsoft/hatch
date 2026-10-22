@@ -69,6 +69,11 @@ public sealed record HoppedIssue(string Key, string From, string To, string Reas
 /// reports, so the tally's three-in-a-row rule sees it too.
 /// </param>
 /// <param name="Refusal">The sentence the board refused with - set only when <see cref="Outcome"/> is <see cref="Pick.Refused"/>.</param>
+/// <param name="Declined">
+/// The sentence an ordered ticket was turned away with - set only when
+/// <see cref="Outcome"/> is <see cref="Pick.Idle"/> after <see cref="Picker.NamedAsync"/>,
+/// with no claim held.
+/// </param>
 public sealed record Picked(
     Pick Outcome,
     WorkDto? Work,
@@ -80,7 +85,8 @@ public sealed record Picked(
     IReadOnlyList<IncrementReport>? CloneFailures = null,
     string? Refusal = null,
     HoppedIssue? Hopped = null,
-    IReadOnlyList<string>? Skipped = null);
+    IReadOnlyList<string>? Skipped = null,
+    string? Declined = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -341,6 +347,118 @@ public sealed class Picker(
 
         return new Picked(Pick.Busy, null, null, queue, busy, Checkouts: checkouts,
             CloneFailures: cloneFailures.Count > 0 ? cloneFailures : null, Skipped: skipped.Count > 0 ? skipped : null);
+    }
+
+    /// <summary>
+    /// The one ticket a person ordered this runner to work, claimed the way
+    /// <see cref="PickAsync"/> claims one it chose - or turned away with a
+    /// sentence, which is <see cref="Pick.Idle"/> carrying
+    /// <see cref="Picked.Declined"/> and no claim.
+    /// </summary>
+    /// <remarks>
+    /// Neither <c>--under</c> nor <c>--mine</c> is consulted: an order is a
+    /// person naming a ticket, which is what lets it step past both. It does
+    /// not step past the dispatcher's own folds - another runner's claim, a
+    /// person's assignee, a missing tag all come back as the named read's
+    /// <c>Blocked</c> sentence, and that sentence is what the row says.
+    /// </remarks>
+    public async Task<Picked> NamedAsync(string key, CancellationToken ct, TimeSpan? heartbeat = null)
+    {
+        WorkDto? work;
+        try
+        {
+            work = await board.WorkAsync(checkouts, key, null, ct, _clones);
+        }
+        catch (HatchException e)
+        {
+            say.Complain(e.Message);
+            return new Picked(Pick.Unreadable, null, null, [], [], Checkouts: checkouts);
+        }
+
+        if (work is null) return Declined($"{key} - there is nothing to do here");
+        if (work.Blocked is { Length: > 0 } blocked) return Declined($"{key} - {blocked}");
+
+        // A hop spawns nothing, so it takes no claim - and the server
+        // re-judges it as the write is made, which is where a 409 comes back
+        // as a sentence to walk on with.
+        if (work.Hop)
+        {
+            string? walkOn;
+            try
+            {
+                (_, walkOn) = await board.HopAsync(checkouts, key, ct, _clones);
+            }
+            catch (HatchException e)
+            {
+                say.Complain(e.Message);
+                return new Picked(Pick.Unreadable, null, null, [], [], Checkouts: checkouts);
+            }
+
+            if (walkOn is not null) return Declined($"{key} - {walkOn}");
+
+            return new Picked(Pick.Hopped, null, null, [], [], Checkouts: checkouts,
+                Hopped: new HoppedIssue(key, work.FromStatus.Name, work.ToStatus?.Name ?? "?", HopReason(work.HopKind, work.HopUnder)));
+        }
+
+        // Before any claim, for the reason the queue's walk does it: a claim
+        // taken only to be let go folds the row for every other runner.
+        var model = work.Playbook?.Model;
+        string? why = WrongAgent(model, agent, _families);
+        if (why is null && adapter is not null && !adapter.CanDeny(work.Playbook?.DeniedTools ?? [], out var denied)) why = denied;
+        if (why is null && adapter is not null && !adapter.CanServe(model, out var unserved)) why = unserved;
+        if (why is not null) return Declined($"{key} - {why}");
+
+        var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat, playbookId: work.Playbook?.Id);
+        if (claim is null) return Declined($"{key} - {refused?.Sentence ?? "the claim was refused"}");
+
+        try
+        {
+            var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
+            checkouts = resolved.Checkouts;
+
+            if (resolved.Failed is { } failure)
+            {
+                await claim.ReleaseAsync();
+
+                try
+                {
+                    await board.CommentAsync(
+                        key, $"hatch could not clone {failure.Remote} into {failure.Path}:\n\n    {failure.Error}", ct);
+                }
+                catch (Exception e) when (e is HatchException or OperationCanceledException)
+                {
+                    say.Complain($"hatch: {key} - could not tell the board that {failure.Remote} could not be cloned - {e.Message}");
+                }
+
+                var report = new IncrementReport
+                {
+                    Key = key,
+                    From = work.FromStatus.Name,
+                    To = work.ToStatus?.Name ?? "?",
+                    Ended = work.FromStatus.Name,
+                    ExitCode = 1,
+                    Flag = $"could not clone {failure.Remote}: {failure.Error}",
+                };
+
+                return Declined($"{key} - could not clone {failure.Remote}: {failure.Error}") with { CloneFailures = [report] };
+            }
+
+            if (resolved.Chosen is null)
+            {
+                await claim.ReleaseAsync();
+                return Declined($"{key} - it left the dispatcher's path between two reads");
+            }
+
+            return new Picked(Pick.Claimed, work, claim, [], [], resolved.Chosen, checkouts);
+        }
+        catch (Exception e)
+        {
+            await claim.ReleaseAsync();
+            throw e is OperationCanceledException ? e : new PickFailedException(key, e);
+        }
+
+        Picked Declined(string sentence) =>
+            new(Pick.Idle, null, null, [], [], Checkouts: checkouts, Declined: sentence);
     }
 
     /// <summary>

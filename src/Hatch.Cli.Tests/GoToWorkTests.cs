@@ -1345,6 +1345,173 @@ public sealed class GoToWorkTests
         await running;
     }
 
+    // ---- HA-1359: an order, read once from the heartbeat and acted on between increments ----
+
+    private const string Beat = "/api/hatch/runners/test%3A%2Fcheckout";
+
+    /// <summary>
+    /// The board answering a heartbeat with an order, <paramref name="times"/> beats in a row, and then
+    /// with the same state and no order - which is what the real server does, since it clears an order
+    /// in the beat that reads it. Registered in that order because the wire matches rules first-added-first.
+    /// </summary>
+    private static void Ordering(Harness h, string state, RunnerOrderDto order, int? maxRuns = null, int times = 1)
+    {
+        for (var i = 0; i < times; i++)
+            h.Wire.Once("POST", Beat, HttpStatusCode.OK,
+                System.Text.Json.JsonSerializer.Serialize(
+                    new RunnerInstructionDto(state, null, maxRuns, null, null, Order: order), Fixtures.Json));
+
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, null, maxRuns, null, null));
+    }
+
+    private static string[] Claims(Harness h) =>
+        h.Wire.Calls
+            .Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal))
+            .Select(c => c.Path)
+            .ToArray();
+
+    [Fact]
+    public async Task A_paused_loop_given_a_work_order_works_that_ticket_once_and_reads_paused_again()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-2");
+        Ordering(h, "paused", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Wire.Count("DELETE", "/api/hatch/issues/AER-2/claim") == 1, "the ordered ticket's claim let go");
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
+            "the paused line, on the beat after the order");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Sessions.Spawned);
+
+        // The queue is never walked for a named ticket.
+        Assert.Empty(h.Wire.To("GET", Queue));
+    }
+
+    [Fact]
+    public async Task A_running_loop_takes_the_ordered_ticket_ahead_of_the_queues_first_clear_row()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), maxRuns: 2);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        // The ordered increment is the first of the two the cap allows, and
+        // the queue's own pick is the second.
+        Assert.Equal(new[] { "/api/hatch/issues/AER-2/claim", "/api/hatch/issues/AER-1/claim" }, Claims(h));
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+    }
+
+    [Fact]
+    public async Task A_pass_order_on_a_paused_loop_runs_one_ordinary_pass_and_pauses_again()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        Ordering(h, "paused", new RunnerOrderDto(RunnerOrderKinds.Pass, null, "Nathan"));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Wire.Count("DELETE", "/api/hatch/issues/AER-1/claim") == 1, "the ordinary pass's claim let go");
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
+            "the paused line, on the beat after the pass");
+
+        cts.Cancel();
+        await running;
+
+        // One ordinary pass: the queue read once, the row it offered claimed once.
+        Assert.Equal(1, h.Wire.Count("GET", Queue));
+        Assert.Equal(new[] { "/api/hatch/issues/AER-1/claim" }, Claims(h));
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_work_order_the_dispatcher_folds_is_spent_with_the_folds_own_sentence_and_runs_nothing()
+    {
+        using var h = new Harness();
+        var fold = Held("other:/tree").Trim('"');
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", blocked: fold));
+        Ordering(h, "paused", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(() => h.Wire.Count("POST", Beat) >= 2, "the beat after the order");
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains($"AER-2 - {fold}", StringComparison.Ordinal));
+        Assert.Equal($"AER-2 - {fold}", h.Wire.To("POST", Beat)[1].Read<RunnerHeartbeatRequest>().Line);
+    }
+
+    [Fact]
+    public async Task An_ordered_increment_counts_toward_the_three_failures_stop_like_any_other()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        h.Wire.Json("POST", "/api/hatch/issues/AER-2/comments", Fixtures.Comment());
+        h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), times: 3);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+        Assert.Equal(3, h.Wire.To("DELETE", "/api/hatch/issues/AER-2/claim").Count);
+
+        // The stop is asked before the queue's own pick, so the board's first row was never taken.
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    [Fact]
+    public async Task Once_never_reads_an_order()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Equal(new[] { "/api/hatch/issues/AER-1/claim" }, Claims(h));
+    }
+
+    [Fact]
+    public async Task A_loop_out_of_usage_spends_an_order_with_a_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-2");
+        Carrying(h, new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddDays(1) });
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("order spent - out of Claude usage until", StringComparison.Ordinal)),
+            "the sentence the order was spent with");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
     [Fact]
     public async Task A_skipped_increment_is_followed_immediately_by_the_next_queued_ticket()
     {
