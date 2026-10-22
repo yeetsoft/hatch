@@ -28,8 +28,18 @@ namespace Hatch.Api.Tests;
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class MinimalStartupTests
 {
-    /// <summary>Everything the four house jobs and BackfillChannelHistory are registered under - criterion 6 is that no trigger for it exists.</summary>
+    /// <summary>
+    /// Everything the four house jobs, BackfillChannelHistory and
+    /// ReflectionCadence are registered under - criterion 6 is that no
+    /// <em>house</em> job holds a trigger here. ReflectionCadence is not one
+    /// (<see cref="Hatch.Api.Modules.Hatch.ReflectionCadenceJob.ServesTheHouse"/>
+    /// is false), so it is scheduled either way and is the one trigger this
+    /// group is left holding.
+    /// </summary>
     private const string JobGroup = "Hatch.Api";
+
+    /// <summary>The only trigger a house-less install still carries - see <see cref="JobGroup"/>.</summary>
+    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger"];
 
     /// <summary>
     /// The whole assembly runs in about twenty seconds today and each of these
@@ -141,7 +151,7 @@ public class MinimalStartupTests
         // server right alongside the one that says so.
         try
         {
-            Assert.Empty(await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
+            Assert.Equal(ExpectedTriggers, await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
 
             if (migrated)
             {
