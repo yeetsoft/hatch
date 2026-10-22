@@ -151,8 +151,11 @@ api` for the board, `docker compose logs db` for the database.
 
 - **A `401`.** The wall is on and no key was sent, or a key was sent and
   refused. Run `hatch config`.
-- **A `403`.** The key is good, and a route or a rule behind it refuses — a
-  key is never an administrator. `hatch api` shows the real answer.
+- **A `403`.** A route or a rule behind it refuses — a key is never an
+  administrator. `hatch` prints the API's own reason: a role-gate code, or a
+  plain sentence naming the rule. Only `key_not_accepted` and
+  `scope_mismatch` print as "the key is good and this route is not one it
+  may take" - those two really are about a scope.
 
 [401 and 403](people-roles-and-keys#401-and-403) has the full list, from the
 other side.
