@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { NewIssueDialog } from './NewIssueDialog';
+import { NewIssueDialog, omitDefault } from './NewIssueDialog';
 import { REMEMBERED_PROJECT_STORAGE_KEY } from '../lib/defaultProject';
 import { IssueConfirmationsContext, type IssueConfirmations } from '../lib/useIssueConfirmations';
-import type { Project } from '../types';
+import type { AssigneeDirectory, Project } from '../types';
+
+const directory = (kind: 'person' | 'key' = 'person'): AssigneeDirectory => ({
+  me: { kind, id: 'ada', name: 'Ada' },
+  assignees: [],
+});
 
 // The Description field's MarkdownEditor reads `window.matchMedia` on render
 // and there is no jsdom here (see vitest config, and lib/clientLogger.ts) -
@@ -113,6 +118,7 @@ describe('NewIssueDialog', () => {
         projects: [PROJECT, OTHER],
         candidates: [],
         defaultProjectKey: 'AER',
+        directory: null,
         onClose: noop,
         onCreated: noop,
       }),
@@ -132,6 +138,7 @@ describe('NewIssueDialog', () => {
         projects: [PROJECT, OTHER],
         candidates: [],
         defaultProjectKey: '',
+        directory: null,
         onClose: noop,
         onCreated: noop,
       }),
@@ -149,6 +156,7 @@ describe('NewIssueDialog', () => {
         projects: [PROJECT, OTHER],
         candidates: [],
         defaultProjectKey: '',
+        directory: null,
         onClose: noop,
         onCreated: noop,
       }),
@@ -161,7 +169,15 @@ describe('NewIssueDialog', () => {
     stubStorage();
 
     const html = renderToStaticMarkup(
-      dialog({ open: true, projects: [PROJECT], candidates: [], defaultProjectKey: '', onClose: noop, onCreated: noop }),
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
     );
 
     expect(html).not.toContain('hatch-one-pr-steps');
@@ -172,11 +188,65 @@ describe('NewIssueDialog', () => {
     stubStorage();
 
     const html = renderToStaticMarkup(
-      dialog({ open: true, projects: [], candidates: [], defaultProjectKey: '', onClose: noop, onCreated: noop }),
+      dialog({ open: true, projects: [], candidates: [], defaultProjectKey: '', directory: null, onClose: noop, onCreated: noop }),
     );
 
     expect(html).toContain('No projects yet. Make one on the Projects page first.');
     expect(html).not.toContain('File it');
     expect(html).not.toContain('hatch-key-preview');
+  });
+
+  it('draws Priority and Pre-approval as pressable pills for a person', () => {
+    stubStorage();
+
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: directory(),
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain('Priority');
+    expect(html).toContain('Pre-approval');
+    expect(html).toContain('hatch-priority-pill-press');
+    expect(html).toContain('hatch-preapproval-pill-press');
+  });
+
+  it('draws Priority and Pre-approval as words, with no pressable pill, for a key', () => {
+    stubStorage();
+
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: directory('key'),
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain('hatch-priority-said');
+    expect(html).toContain('hatch-preapproval-said');
+    expect(html).not.toContain('hatch-priority-pill-press');
+    expect(html).not.toContain('hatch-preapproval-pill-press');
+  });
+});
+
+describe('omitDefault', () => {
+  it('leaves out a level left at its default', () => {
+    expect(omitDefault('normal', 'normal')).toBeUndefined();
+    expect(omitDefault('none', 'none')).toBeUndefined();
+  });
+
+  it('passes through a level that differs from its default', () => {
+    expect(omitDefault('emergency', 'normal')).toBe('emergency');
+    expect(omitDefault('preapproved', 'none')).toBe('preapproved');
   });
 });
