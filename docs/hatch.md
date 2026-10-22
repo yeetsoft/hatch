@@ -7608,7 +7608,9 @@ actually running from — drawn on the Runners page under the name. A heartbeat
 whose name is already the *live* runner at a different `where` is refused with
 `409`: two live runners never share one row, and a gone row can still be taken
 over, which is how a checkout that moved keeps its name. That refusal is the
-backstop; the first choice already tries to dodge it by reading the board.
+backstop; the first choice already tries to dodge it by reading
+`GET /api/hatch/runners/names`, which answers the live names alone - `where`,
+owner and claim stay behind the listing's scope.
 `Agent` works the same way - the id of the agent that spawned the process
 (`claude`, `codex` or `grok` today, per `Settings.KnownAgentIds`), absent from a runner that has
 not reported one - but carries no uniqueness check, since two runners sharing

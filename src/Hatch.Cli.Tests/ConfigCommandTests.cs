@@ -20,7 +20,7 @@ public sealed class ConfigCommandTests : IDisposable
         Func<Settings, string, CancellationToken, Task<string?>>? probe = null,
         string? root = null,
         string runnerName = "test:/checkout",
-        Func<Settings, CancellationToken, Task<IReadOnlyList<RunnerDto>>>? liveRunners = null,
+        Func<Settings, CancellationToken, Task<IReadOnlyList<string>>>? liveRunners = null,
         Func<string, bool>? checkoutIgnoresEnv = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
@@ -28,7 +28,7 @@ public sealed class ConfigCommandTests : IDisposable
             ConfigPath = ConfigPath,
             RunnersPath = RunnersPath,
             Probe = probe ?? ((_, _, _) => Task.FromResult<string?>("To Do, In Progress, Done")),
-            LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>([])),
+            LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<string>>([])),
             CheckoutIgnoresEnv = checkoutIgnoresEnv ?? (_ => true),
         };
 
@@ -371,23 +371,18 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task A_name_held_by_a_live_runner_elsewhere_is_refused_with_nothing_written()
+    public async Task A_name_held_by_a_live_runner_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
         var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "Liz Lemon");
 
         var code = await Command(
                 input, root: root, runnerName: "Jeff Winger",
-                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>(
-                [
-                    new RunnerDto(
-                        "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                        "running", null, null, null, null, 90, [], null, null, null, "elsewhere:/some/tree", null),
-                ]))
+                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
             .RunAsync([], default);
 
         Assert.Equal(1, code);
-        Assert.Contains("Liz Lemon is already the runner on elsewhere:/some/tree", Complained);
+        Assert.Contains("Liz Lemon is already a live runner on this board", Complained);
         Assert.False(File.Exists(ConfigPath));
         Assert.Empty(RunnerNames.Record.Read(RunnersPath));
     }
@@ -414,7 +409,7 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Runner_flag_held_elsewhere_is_refused_with_nothing_written()
+    public async Task Runner_flag_held_by_a_live_runner_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
 
@@ -422,17 +417,29 @@ public sealed class ConfigCommandTests : IDisposable
                 new Replies(),
                 environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
                 root: root,
-                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<RunnerDto>>(
-                [
-                    new RunnerDto(
-                        "Liz Lemon", "loop", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-                        "running", null, null, null, null, 90, [], null, null, null, "elsewhere:/some/tree", null),
-                ]))
+                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
             .RunAsync(["--runner", "Liz Lemon"], default);
 
         Assert.Equal(1, code);
-        Assert.Contains("Liz Lemon is already the runner on elsewhere:/some/tree", Complained);
+        Assert.Contains("Liz Lemon is already a live runner on this board", Complained);
         Assert.Empty(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    [Fact]
+    public async Task Runner_flag_with_this_checkouts_own_name_is_not_refused()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+
+        var code = await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
+                root: root,
+                runnerName: "Liz Lemon",
+                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
+            .RunAsync(["--runner", "Liz Lemon"], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
     }
 
     // ---- --origin ----
