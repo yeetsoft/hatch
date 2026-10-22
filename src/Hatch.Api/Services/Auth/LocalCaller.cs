@@ -120,6 +120,19 @@ public static class LocalCaller
         PersonName.TryNormalize(fromConfig, out _, out _);
 
     /// <summary>
+    /// Whether the local person may answer for a caller who presented nothing:
+    /// only on an install that cannot sign anybody in.
+    /// </summary>
+    /// <remarks>
+    /// The name is the install's, not the caller's. Once a sign-in authority is
+    /// configured or a person is enrolled, an unidentified request is a
+    /// stranger rather than whoever started the app, and naming it as the local
+    /// person would attribute its writes to somebody who did not make them.
+    /// </remarks>
+    public static bool PersonSpeaks(bool signInConfigured, bool anyPersonEnrolled) =>
+        !signInConfigured && !anyPersonEnrolled;
+
+    /// <summary>
     /// What a runner called itself, or null when it said nothing usable.
     /// </summary>
     /// <remarks>

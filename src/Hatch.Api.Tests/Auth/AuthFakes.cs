@@ -149,6 +149,18 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     }
 
     public Task<bool> HasAnyAccessAsync(CancellationToken ct) => throw new NotSupportedException();
+
+    /// <summary>What <see cref="HasAnyPersonAsync"/> answers.</summary>
+    public bool AnyPerson { get; set; }
+
+    /// <summary>How many times <see cref="HasAnyPersonAsync"/> was asked, so a test can prove the read was never made.</summary>
+    public int AnyPersonAsked { get; private set; }
+
+    public Task<bool> HasAnyPersonAsync(CancellationToken ct)
+    {
+        AnyPersonAsked++;
+        return Task.FromResult(AnyPerson);
+    }
 }
 
 /// <summary>

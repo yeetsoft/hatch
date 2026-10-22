@@ -72,6 +72,17 @@ public class LocalCallerTests
         Assert.True(LocalCaller.IsNamed(LocalCaller.DefaultName, null));
     }
 
+    /// <summary>The local person speaks only for an install that cannot sign anybody in.</summary>
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public void PersonSpeaks_OnlyWhenNothingCanSignAnybodyIn(bool signInConfigured, bool anyPersonEnrolled, bool expected)
+    {
+        Assert.Equal(expected, LocalCaller.PersonSpeaks(signInConfigured, anyPersonEnrolled));
+    }
+
     [Fact]
     public void ARunnersId_IsTheSameEveryTimeAndDifferentPerName()
     {

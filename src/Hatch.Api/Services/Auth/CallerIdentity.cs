@@ -72,7 +72,8 @@ public interface ICallerIdentity
     /// now the residual one: with the wall off, <see cref="LocalAsync"/> knows
     /// who is at the machine, so <c>operator</c> is left for the caller that
     /// has no request behind it at all - a hosted service, a Quartz job - which
-    /// is the one case where nobody genuinely is.
+    /// is the one case where nobody genuinely is. It is also what an
+    /// unidentified request gets once the install can sign anybody in.
     /// </summary>
     Task<string> ActorNameAsync(CancellationToken ct);
 
@@ -80,7 +81,9 @@ public interface ICallerIdentity
     /// Who this request is, when nothing authenticated it and nothing was
     /// going to - the local person at the machine, or the runner that named
     /// itself in <see cref="LocalCaller.RunnerHeader"/>. Null whenever the wall
-    /// is up, and null whenever a grant or a key already answered.
+    /// is up, and null whenever a grant or a key already answered. The local
+    /// person is off once the install can sign anybody in (a sign-in authority
+    /// configured, or a person enrolled): the runner's name still answers.
     ///
     /// A third lane rather than a synthetic <see cref="EfApiKey"/>, and the
     /// reason is worth stating: <see cref="RoleGate"/> branches on the key
@@ -210,7 +213,11 @@ public class CallerIdentity(
     /// The third lane, memoized like the other two.
     /// </summary>
     /// <remarks>
-    /// <para>Four conditions, all of them necessary. The wall has to be off -
+    /// <para>Four conditions, all of them necessary for a runner, and a fifth
+    /// for the local person: the install must be one that cannot sign anybody
+    /// in - no sign-in authority configured and no person enrolled
+    /// (<see cref="LocalCaller.PersonSpeaks"/>). Past that point an
+    /// unidentified caller is a stranger and gets no name at all. The wall has to be off -
     /// this is local mode's identity and nothing else, and reading the header
     /// where the wall is up would be a way in. There has to be a request, or
     /// there is nobody to be. And both other lanes have to have answered
@@ -240,6 +247,11 @@ public class CallerIdentity(
 
         if (LocalCaller.RunnerName(context.Request.Headers[LocalCaller.RunnerHeader]) is { } runner)
             return local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor(runner), runner);
+
+        // The name is the install's, not the caller's: once the install can sign
+        // anybody in, a caller who presented nothing is nobody in particular.
+        if (!LocalCaller.PersonSpeaks(options.Google.Configured, await auth.HasAnyPersonAsync(ct)))
+            return local = null;
 
         var configured = (await settings.GetAsync(ct)).LocalPersonName;
         var name = LocalCaller.PersonNameOf(configured, options.LocalPerson.Name);
