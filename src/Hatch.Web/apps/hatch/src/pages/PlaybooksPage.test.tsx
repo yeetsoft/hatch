@@ -59,6 +59,9 @@ const TABLE_PROJECT: Project = {
   repoSourced: false,
   repoSourcedBy: null,
   repoSourcedAt: null,
+  reflectionCadenceDays: null,
+  reflectionLastPeriodStart: null,
+  reflectionNextDueAt: null,
 };
 
 const REPO_PROJECT: Project = { ...TABLE_PROJECT, repoSourced: true };

@@ -438,7 +438,12 @@ is written only by the reflection job, never here. `ReflectionNextDueAt` - the
 start of the last period it reflected on plus the cadence, or now where it
 never has - is computed on every read, never stored. `ProjectPatchRequest`
 carries no field for any of the three, so this route is the only way to change
-the cadence.
+the cadence. The project dialog carries it the same way as the runner tags: an
+owner sees a *Reflects every ... day(s)* number box after the auto-heal controls
+(`ProjectEditDialog.tsx`), blank meaning off, with a muted line under it naming
+the next due instant where a cadence is set; where `canAdminister` is false the
+landing sentence ends instead *"reflects every 5 day(s), next due ..."* or
+*"never reflects"*.
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a

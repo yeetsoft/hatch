@@ -67,6 +67,13 @@ export interface Project {
       lower-cased, deduplicated; empty means any runner. Absent from a
       project that predates it. See ProjectDto.RunnerTags. */
   runnerTags?: string[];
+  /** Days between the reflections this project files by itself, or null for
+      never. See ProjectDto.ReflectionCadenceDays. */
+  reflectionCadenceDays: number | null;
+  /** Where the last reflection's period began, or null before the first. */
+  reflectionLastPeriodStart: string | null;
+  /** When the next reflection falls due, or null while the cadence is off. */
+  reflectionNextDueAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -869,6 +876,11 @@ export interface ProjectLandingWriteRequest {
 
 export interface ProjectRepoSourcedWriteRequest {
   repoSourced: boolean;
+}
+
+/** A write to a project's reflection cadence; null is off. See ProjectReflectionWriteRequest (Hatch.Contracts). */
+export interface ProjectReflectionWriteRequest {
+  cadenceDays: number | null;
 }
 
 /** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */

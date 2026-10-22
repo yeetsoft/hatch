@@ -26,6 +26,9 @@ const BASE: Project = {
   repoSourced: false,
   repoSourcedBy: null,
   repoSourcedAt: null,
+  reflectionCadenceDays: null,
+  reflectionLastPeriodStart: null,
+  reflectionNextDueAt: null,
 };
 
 const noop = () => undefined;
