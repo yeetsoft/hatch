@@ -1,3 +1,5 @@
+using Hatch.Api.Jobs;
+
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
@@ -66,6 +68,12 @@ public static class HatchModule
         // through ISiteSettingsService, which is a singleton with its own
         // cache.
         services.AddSingleton<IAgentCredential, SiteSettingAgentCredential>();
+
+        // Scoped, the same reason as RankService and Dispatch above it: it
+        // holds a scoped HatchContext. Registered here rather than in
+        // Program.cs's four house jobs, because this one reads Hatch's own
+        // context and is a module's own, not the house's.
+        services.AddScoped<IAppJob, ReflectionCadenceJob>();
 
         return services;
     }
