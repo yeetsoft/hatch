@@ -17,6 +17,10 @@ public sealed class IssueCommands(Cli cli)
         "  that precedes the description - and stops there, with no fetch of",
         "  the comments. It may come before or after the key.",
         "",
+        "  A ticket a live runner holds says so: who holds it, since when, how",
+        "  recently it was heard from, and what it is doing, drawn from the",
+        "  ticket itself - absent once the lease has lapsed.",
+        "",
         "  An expedited or emergency ticket says so: somebody marked it \"this one",
         "  first\", and the board and the dispatcher both reach for it before",
         "  anything else, emergency before expedited before the rest. A low",
@@ -119,6 +123,7 @@ public sealed class IssueCommands(Cli cli)
 
         cli.Say.Line($"{issue.Key}  [{issue.Type}]  {issue.Title}");
         cli.Say.Line($"status:   {column}");
+        if (issue.Claim is { } claim) cli.Say.Line(RunnerLine(claim, cli.Clock.GetUtcNow()));
 
         // Said only where it is set, the way the parent, the dates and the
         // edges below are. Nearly every ticket is normal, and a line saying so
@@ -209,6 +214,19 @@ public sealed class IssueCommands(Cli cli)
         items.Count == 1
             ? items[0]
             : $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}";
+
+    /// <summary>
+    /// The holder in the words the claim trail already uses
+    /// (<c>IssueClaimController.Holder</c>), since when and how recently heard
+    /// from both as <see cref="Format.Ago"/> against one <paramref name="now"/>.
+    /// No liveness word here: the server already dropped an expired claim from
+    /// the wire, so this line only reports what it has.
+    /// </summary>
+    private static string RunnerLine(IssueClaimDto claim, DateTimeOffset now)
+    {
+        var chatter = !string.IsNullOrWhiteSpace(claim.Chatter) ? $" - {claim.Chatter.Trim()}" : "";
+        return $"runner:   {claim.ClaimedBy} on {claim.Runner}, since {Format.Ago(now - claim.ClaimedAt)}, heard {Format.Ago(now - claim.HeartbeatAt)}{chatter}";
+    }
 
     private static void PrintComments(Terminal say, IReadOnlyList<CommentDto> comments)
     {
