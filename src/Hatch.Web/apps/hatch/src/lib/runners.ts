@@ -76,6 +76,15 @@ export function activityWords(runner: Runner, now: Date): string {
   }
 }
 
+/** `activityWords` split into the badge's words and the key beside it, for a
+    reader that draws the key as a link rather than as part of the sentence -
+    only a working row carries one, the same split `runnerStrip` already
+    makes. */
+export function activityParts(runner: Runner, now: Date): { words: string; claimKey: string | null } {
+  const activity = runnerActivity(runner, now);
+  return activity === 'working' ? { words: 'Working', claimKey: runner.claimKey } : { words: activityWords(runner, now), claimKey: null };
+}
+
 /** What each activity is worth saying loudly. Working is the one worth a colour
     - it is the row that is spending money right now - and gone is the one worth
     a warning. */
@@ -114,16 +123,16 @@ export interface RunnerStripRow {
 export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripRow[] {
   return runners.map((runner) => {
     const activity = runnerActivity(runner, now);
-    const working = activity === 'working';
+    const { words, claimKey } = activityParts(runner, now);
 
     return {
       name: runner.name,
       where: runner.where,
       activity,
-      words: working ? 'Working' : activityWords(runner, now),
+      words,
       tone: ACTIVITY_TONES[activity],
-      claimKey: working ? runner.claimKey : null,
-      line: working ? runner.line : null,
+      claimKey,
+      line: activity === 'working' ? runner.line : null,
       ago: agoPhrase(runner.lastSeenAt, now),
       gone: activity === 'gone',
     };
