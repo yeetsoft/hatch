@@ -107,7 +107,7 @@
   transition: background-color var(--transition), opacity var(--transition);
 }
 
-.hatch-topbar__brand img {
+.hatch-topbar__brand svg {
   flex: none;
 }
 

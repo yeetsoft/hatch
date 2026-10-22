@@ -340,11 +340,16 @@ heading**: the app name is a wordmark in a `<span>`, so the `<h1>` stays with th
 page's own heading, which is what `<PageHeader>` owns. An app that needs more in
 the bar passes `leading`/`trailing`. Nothing app-specific compiles into it, and
 extending it by forking it is the failure this package exists to prevent. Its
-left corner is the Hatch logo and the app name, one link to the app's own home
-(`homeHref`). The logo is bundled from `packages/ui/src/assets` rather than
-served from a public path, because the package must not know where an app is
-mounted. It is painted from the chrome tokens, not from `--primary`: the bar's
-own ground diverges from the accent fill the buttons use.
+left corner is the Hatch mark and the app name, one link to the app's own home
+(`homeHref`). The mark is `<HatchMark>`, an inline SVG in `currentColor` drawn
+from `packages/ui/src/brand/hatchMark.ts` rather than an image served from a
+public path, because the package must not know where an app is mounted, and
+because the mark then takes the bar's own ink in both themes with no second
+file. That one file is the geometry's only source: `npm run icons` in
+`apps/hatch` generates `hatch-logo.svg` at the repository root, the favicons
+and the PWA icon set from it, and `brandAssets.test.ts` refuses a drift
+between them. The bar is painted from the chrome tokens, not from
+`--primary`: its own ground diverges from the accent fill the buttons use.
 
 `width` picks how far it runs: `measure` caps it at `--measure` and centres it,
 which every app but hatch leaves at its default. The hatch app passes `full`,

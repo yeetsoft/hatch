@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Menu } from './Menu';
 import { GearIcon } from './GearIcon';
-/* The canonical file is hatch-logo.png at the repository root; this is a copy
-   the bundler can reach, and it is bundled rather than served from a public
-   path because this package must not know where an app is mounted. */
-import logo from '../assets/hatch-logo.png';
+/* Inline, in currentColor, rather than an <img> from a public path: this
+   package must not know where an app is mounted, and the mark takes the bar's
+   own ink (--on-chrome) in both themes with no second file. The geometry is
+   ../brand/hatchMark.ts's, which also generates hatch-logo.svg at the
+   repository root and every favicon and icon. */
+import { HatchMark } from './HatchMark';
 import './TopBar.css';
 
 export interface TopBarProps {
@@ -83,10 +85,10 @@ export function TopBar({
         className={`hatch-topbar__inner${width === 'full' ? ' hatch-topbar__inner--full' : ''}`}
       >
         <div className="hatch-topbar__side">
-          {/* An <a>, so middle-click and "copy link address" work. The logo is
+          {/* An <a>, so middle-click and "copy link address" work. The mark is
               decoration: the name beside it is the link's accessible name. */}
           <a className="hatch-topbar__brand" href={homeHref}>
-            <img src={logo} alt="" width={28} height={28} />
+            <HatchMark size={28} />
             <span className="hatch-topbar__name">{appName}</span>
           </a>
           {leading}
