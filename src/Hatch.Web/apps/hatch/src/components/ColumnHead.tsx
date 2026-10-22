@@ -35,7 +35,16 @@ export function ColumnHead({
   return (
     <>
       <StatusDot status={status} />
-      <span className="hatch-column-name">{status.name}</span>
+      {status.runnerTags.length > 0 ? (
+        <span className="hatch-column-title">
+          <span className="hatch-column-name">{status.name}</span>
+          <span className="hatch-column-tags" title="Runner tags this column requires">
+            {status.runnerTags.join(', ')}
+          </span>
+        </span>
+      ) : (
+        <span className="hatch-column-name">{status.name}</span>
+      )}
       <span className="hatch-column-count">{count}</span>
       {status.isTerminal && doneHorizonHours !== null && (
         <Link
