@@ -593,6 +593,7 @@ state rather than a stall.
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/runners` | key | Every runner heard from lately, most recent first |
+| GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend and until |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |

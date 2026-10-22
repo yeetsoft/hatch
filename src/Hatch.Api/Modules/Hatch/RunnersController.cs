@@ -87,6 +87,31 @@ public class RunnersController(
     }
 
     /// <summary>
+    /// The name of every runner heard from lately, most recently heard from
+    /// first, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Open to every key the <c>hatch</c> scope admits, and the same list
+    /// whoever asks: a name is already public - every <c>claim_taken</c> event
+    /// carries it - while where a runner is, whom it is for, what it holds and
+    /// what its line says are what stays inside <see cref="GetRunners"/>'s
+    /// scope. So there is deliberately nothing here to scope, and nothing of
+    /// the caller is read.
+    /// </remarks>
+    [HttpGet("names")]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    public async Task<ActionResult<IReadOnlyList<string>>> GetRunnerNames(CancellationToken ct)
+    {
+        var dropBefore = runners.DropBefore(time.GetUtcNow());
+
+        return await db.Runners.AsNoTracking()
+            .Where(r => r.LastSeenAt >= dropBefore)
+            .OrderByDescending(r => r.LastSeenAt)
+            .Select(r => r.Name)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
     /// Still here - and what should I do next. The only call a runner makes
     /// about itself, and the whole of the round trip: it says what it is, and
     /// reads back what the board would like.
