@@ -1874,6 +1874,12 @@ public class EfHatchIssueEvent
     public const string OnePrChanged = "one_pr_changed";
 
     /// <summary>
+    /// An issue's own runner tags changed - see <see cref="EfHatchIssue.RunnerTags"/>.
+    /// The payload is <c>{ from, to }</c>, both sides a real array.
+    /// </summary>
+    public const string RunnerTagsChanged = "runner_tags_changed";
+
+    /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
     /// The payload is <c>{ from, to }</c>, either side null.
     /// </summary>
