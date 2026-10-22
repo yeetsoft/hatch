@@ -41,6 +41,18 @@ describe('describeMe', () => {
     expect(view).toEqual({ name: 'Ada', showHint: false, showSignOut: true, showSignIn: false, isAdmin: false });
   });
 
+  it('offers only sign-in to a browser that is nobody', () => {
+    const view = describeMe(me({ kind: 'none', name: '', configured: true, canSignIn: true }));
+
+    expect(view).toEqual({ name: '', showHint: false, showSignOut: false, showSignIn: true, isAdmin: false });
+  });
+
+  it('offers a browser that is nobody sign-in even when the API did not say so', () => {
+    const view = describeMe(me({ kind: 'none', name: '', configured: true, canSignIn: false }));
+
+    expect(view?.showSignIn).toBe(true);
+  });
+
   it('knows an admin', () => {
     const view = describeMe(me({ kind: 'person', role: 'admin', configured: true, canSignOut: true }));
 
