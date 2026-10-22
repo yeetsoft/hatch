@@ -132,6 +132,11 @@ export const putProjectPlaybooksSource = (id: number, request: ProjectRepoSource
   fetchJson<Project>(`/api/hatch/projects/${id}/playbooks-source`, { method: 'PUT', ...asJson(request) });
 export const putProjectReflection = (id: number, cadenceDays: number | null) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/reflection`, { method: 'PUT', ...asJson({ cadenceDays }) });
+/** Files the reflection the dialog's *Reflect now* button asks for, or
+    answers the one already filed - see ProjectsController.PostReflect.
+    Owner-only, same gate as putProjectLanding. */
+export const fileProjectReflection = (id: number) =>
+  fetchJson<Issue>(`/api/hatch/projects/${id}/reflect`, { method: 'POST' });
 export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember = (id: number, personId: string, role: string) =>

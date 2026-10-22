@@ -1,9 +1,11 @@
 import { useId, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Field, Modal, ProjectMark, safeColor } from '@hatch/ui';
 import {
   claimProject,
   deleteProjectLogo,
   deleteProjectMember,
+  fileProjectReflection,
   getAssignees,
   getPeople,
   getStatuses,
@@ -18,6 +20,7 @@ import {
 } from '../api/client';
 import { message } from '../lib/errors';
 import { boardColumns } from '../lib/columns';
+import { fileReflection } from '../lib/projectReflect';
 import {
   openProjectDraft,
   projectDraftDiff,
@@ -79,8 +82,11 @@ export function ProjectEditDialog({
   const [logoPending, setLogoPending] = useState<LogoPending>(null);
   const [saving, setSaving] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [reflecting, setReflecting] = useState(false);
+  const [reflectError, setReflectError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const landingName = useId();
+  const navigate = useNavigate();
 
   const { data: people } = useLoaded(getPeople);
   const { data: directory } = useLoaded(getAssignees);
@@ -101,6 +107,7 @@ export function ProjectEditDialog({
     setBaseBranch('');
     setLogoPending(null);
     setError(null);
+    setReflectError(null);
   }
 
   if (!project || !draft || !membersDraft) return <Modal open={false} onClose={onClose} title="" />;
@@ -186,6 +193,21 @@ export function ProjectEditDialog({
       setError(message(err));
     } finally {
       setClaiming(false);
+    }
+  }
+
+  async function reflectNow() {
+    setReflecting(true);
+    try {
+      const result = await fileReflection(project!.id, fileProjectReflection);
+      if (result.ok) {
+        onClose();
+        navigate(`/issues/${result.issue.key}`);
+      } else {
+        setReflectError(result.error);
+      }
+    } finally {
+      setReflecting(false);
     }
   }
 
@@ -393,15 +415,21 @@ export function ProjectEditDialog({
                 </select>
               </Field>
             </fieldset>
-            <label>
-              Reflects every{' '}
-              <input
-                inputMode="numeric"
-                value={draft.reflectionCadenceDays}
-                onChange={(e) => setDraft((d) => d && { ...d, reflectionCadenceDays: e.target.value })}
-              />{' '}
-              day(s)
-            </label>
+            <div className="hatch-inline-form">
+              <label>
+                Reflects every{' '}
+                <input
+                  inputMode="numeric"
+                  value={draft.reflectionCadenceDays}
+                  onChange={(e) => setDraft((d) => d && { ...d, reflectionCadenceDays: e.target.value })}
+                />{' '}
+                day(s)
+              </label>
+              <Button loading={reflecting} onClick={() => void reflectNow()}>
+                Reflect now
+              </Button>
+            </div>
+            {reflectError && <p className="text-danger">{reflectError}</p>}
             {project.reflectionCadenceDays !== null && (
               <p className="hatch-section-hint text-muted">
                 Next due {project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : ''}. Blank
