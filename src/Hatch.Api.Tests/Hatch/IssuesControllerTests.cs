@@ -816,6 +816,227 @@ public class IssuesControllerTests
         Assert.Single(await h.EventsAsync("AER-1"));
     }
 
+    // ---- Filing at a level ----
+
+    private static Task<ActionResult<IssueDto>> FileAt(Harness h, string? priority = null, string? preApproval = null) =>
+        h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "the thing", null, null, null, null, Priority: priority, PreApproval: preApproval),
+            default);
+
+    private static async Task<int> NextNumberAsync(Harness h) =>
+        (await h.Db.Projects.AsNoTracking().FirstAsync(p => p.Id == h.ProjectId)).NextIssueNumber;
+
+    /// <summary>
+    /// A board whose send-back column is the inbox and is protected, so that
+    /// filing express has a question to ask: todo is ticked as the
+    /// implementation column and the inbox is the column that feeds it.
+    /// </summary>
+    private static async Task GateSendBackAsync(Harness h)
+    {
+        var todo = await h.Db.Statuses.FirstAsync(s => s.Id == h.Todo);
+        var inbox = await h.Db.Statuses.FirstAsync(s => s.Id == h.Inbox);
+        todo.IsImplementation = true;
+        inbox.IsProtected = true;
+        await h.Db.SaveChangesAsync();
+
+        var statuses = await h.Db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        Assert.Equal(h.Inbox, Columns.SendBack(statuses)?.Id);
+    }
+
+    [Theory]
+    [InlineData("expedited", null)]
+    [InlineData("normal", null)]
+    [InlineData(null, "preapproved")]
+    [InlineData(null, "none")]
+    [InlineData("normal", "none")]
+    public async Task AKeyFilingAtALevel_Is403AndMintsNothing(string? priority, string? preApproval)
+    {
+        var h = await NewAsync();
+        h.Caller.Key = AProgram();
+        var before = await NextNumberAsync(h);
+
+        var result = await FileAt(h, priority, preApproval);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("choosing an issue's priority or pre-approval level is a person's call, not an agent's", obj.Value);
+        Assert.Empty(h.Db.Issues);
+        Assert.Equal(before, await NextNumberAsync(h));
+    }
+
+    [Fact]
+    public async Task AKeyFilingAtALevelOnAProjectThatDoesNotExist_Is403Not404()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(99999, "story", "the thing", null, null, null, null, PreApproval: "express"), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task AKeyFilingWithNeitherLevel_StillFilesAsBefore()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = AProgram();
+
+        var issue = Created(await FileAt(h));
+
+        Assert.Equal(PriorityLevels.NormalName, issue.Priority);
+        Assert.Equal(PreApprovalLevels.NoneName, issue.PreApproval);
+        Assert.Single(await h.EventsAsync(issue.Key));
+    }
+
+    [Theory]
+    [InlineData("urgent", null, "\"urgent\" is not a priority - paused, economy, low, normal, expedited or emergency")]
+    [InlineData(null, "yes", "\"yes\" is not a pre-approval level - none, express or preapproved")]
+    [InlineData("", null, "\"\" is not a priority - paused, economy, low, normal, expedited or emergency")]
+    public async Task AnUnknownLevelName_Is400NamingTheLevelsAndMintsNothing(string? priority, string? preApproval, string expected)
+    {
+        var h = await NewAsync();
+        var before = await NextNumberAsync(h);
+
+        var result = await FileAt(h, priority, preApproval);
+
+        var obj = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(expected, obj.Value);
+        Assert.Empty(h.Db.Issues);
+        Assert.Equal(before, await NextNumberAsync(h));
+    }
+
+    [Fact]
+    public async Task APersonFilingAtAPriority_IsBornThereWithOneEvent()
+    {
+        var h = await NewAsync();
+
+        var issue = Created(await FileAt(h, priority: "emergency"));
+
+        Assert.Equal(PriorityLevels.EmergencyName, issue.Priority);
+        Assert.Equal(PreApprovalLevels.NoneName, issue.PreApproval);
+        var events = await h.EventsAsync(issue.Key);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(events).Kind);
+    }
+
+    [Fact]
+    public async Task APersonFilingWithNeitherLevel_IsNormalAndNoneWithOneEvent()
+    {
+        var h = await NewAsync();
+
+        var issue = Created(await FileAt(h));
+
+        Assert.Equal(PriorityLevels.NormalName, issue.Priority);
+        Assert.Equal(PreApprovalLevels.NoneName, issue.PreApproval);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync(issue.Key)).Kind);
+    }
+
+    [Fact]
+    public async Task ANonApproverFilingPreapproved_Is403AndMintsNothing()
+    {
+        var h = await NewAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+        var before = await NextNumberAsync(h);
+
+        var result = await FileAt(h, preApproval: "preapproved");
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(
+            "only an owner or approver of AER may set pre-approval - it is the approve press given in advance",
+            obj.Value);
+        Assert.Empty(h.Db.Issues);
+        Assert.Equal(before, await NextNumberAsync(h));
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApproverFilingPreapproved_IsBornThereWithOneEvent(string role)
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, role);
+        h.Actors.Me = ada;
+
+        var issue = Created(await FileAt(h, preApproval: "preapproved"));
+
+        Assert.Equal(PreApprovalLevels.PreApprovedName, issue.PreApproval);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync(issue.Key)).Kind);
+    }
+
+    [Fact]
+    public async Task ANonMemberFilingExpressWhereTheBoardHasNoSendBackColumn_IsBornExpress()
+    {
+        var h = await NewAsync();
+        var statuses = await h.Db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        Assert.Null(Columns.SendBack(statuses));
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var issue = Created(await FileAt(h, preApproval: "express"));
+
+        Assert.Equal(PreApprovalLevels.ExpressName, issue.PreApproval);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync(issue.Key)).Kind);
+    }
+
+    [Fact]
+    public async Task ANonMemberFilingExpressIntoAGatedSendBackColumn_Is403AndMintsNothing()
+    {
+        var h = await NewAsync();
+        await GateSendBackAsync(h);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+        var before = await NextNumberAsync(h);
+
+        var result = await FileAt(h, preApproval: "express");
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("only an owner or approver of AER may move work into \"inbox\"", obj.Value);
+        Assert.Empty(h.Db.Issues);
+        Assert.Equal(before, await NextNumberAsync(h));
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApproverFilingExpressIntoAGatedSendBackColumn_IsBornExpress(string role)
+    {
+        var h = await NewAsync();
+        await GateSendBackAsync(h);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, role);
+        h.Actors.Me = ada;
+
+        var issue = Created(await FileAt(h, preApproval: "express"));
+
+        Assert.Equal(PreApprovalLevels.ExpressName, issue.PreApproval);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync(issue.Key)).Kind);
+    }
+
+    [Fact]
+    public async Task APersonFilingAtAPriorityAndNoneInAGatedBoard_AsksNoPreApprovalQuestion()
+    {
+        var h = await NewAsync();
+        await GateSendBackAsync(h);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var issue = Created(await FileAt(h, priority: "low", preApproval: "none"));
+
+        Assert.Equal(PriorityLevels.LowName, issue.Priority);
+        Assert.Equal(PreApprovalLevels.NoneName, issue.PreApproval);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectFilingAtAPreApproval_Is404()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(99999, "story", "the thing", null, null, null, null, PreApproval: "express"), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
     [Fact]
     public async Task AMovingSetHoldingALiveClaim_Is409NamingItAndWritesNothing()
     {
