@@ -239,6 +239,62 @@ public sealed class GoToWorkTests
             Assert.DoesNotContain("tag=", call.Query);
         }
     }
+
+    /// <summary>
+    /// One pass of a loop that is not <c>--once</c>, answered with <paramref name="told"/>
+    /// - the only shape in which a heartbeat answer is applied back. MaxRuns
+    /// echoes the flag so the answer ends the loop and says no <c>--max-runs</c>.
+    /// </summary>
+    private static async Task<Harness> OnePassTold(string[] started, IReadOnlyList<string>? told)
+    {
+        var h = new Harness(tags: started);
+        OneTicket(h);
+        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+            new RunnerInstructionDto("running", null, 1, null, null, Tags: told));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_s_tags_replace_the_loops_own_and_the_next_read_carries_them()
+    {
+        using var h = await OnePassTold([], ["gpu"]);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("tag=gpu", c.Query));
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --tag gpu");
+        Assert.Equal(new[] { "gpu" }, h.Runtime.Board.Tags);
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_tags_clears_the_next_read()
+    {
+        using var h = await OnePassTold(["gpu"], []);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.DoesNotContain("tag=", c.Query));
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --tag off");
+        Assert.Empty(h.Runtime.Board.Tags);
+    }
+
+    [Fact]
+    public async Task An_older_hatch_that_answers_no_tags_leaves_them_alone()
+    {
+        using var h = await OnePassTold(["linux"], null);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("tag=linux", c.Query));
+        Assert.Equal(new[] { "linux" }, h.Runtime.Board.Tags);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_whose_tags_match_the_loops_says_nothing()
+    {
+        using var h = await OnePassTold(["gpu"], ["gpu"]);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("tag=gpu", c.Query));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task The_heartbeat_carries_standing_false_when_no_checkout_is_standing()
     {

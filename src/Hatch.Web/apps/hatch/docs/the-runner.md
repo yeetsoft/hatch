@@ -190,7 +190,8 @@ carries tags, **the row is where they live**, and `hatch config --tag` typed
 at a checkout that already has one changes the board no more than
 `--max-runs` does from the command line - only a `PATCH` on the row itself
 moves them from here on. The board reads them
-again on every dispatch.
+again on every dispatch, and a running loop adopts the row's tags on its next
+heartbeat and says so once (`hatch: the board set --tag ...`).
 
 A runner carries at most 8 tags. Each is at most 32 characters, with no space
 or comma inside, and is trimmed and lowercased. A tag that breaks the rule

@@ -42,7 +42,7 @@ saying so; those are read from the environment alone.
 | **The runner service in the stack, from your shell or `.env`** | | | |
 | `HATCH_CHECKOUT` | `compose.yaml`, for `runner` | `.`: the directory `compose.yaml` was reached from | The repository mounted at `/checkout`. Right by default only inside Hatch's own checkout. |
 | `HATCH_RUNNER_NAME` | `compose.yaml`, for `runner` (becomes `HATCH_RUNNER`) | `hatch-runner` | What **Agents → Runners** calls the container. |
-| `HATCH_TAGS` | `compose.yaml`, for `runner`; then `hatch` | empty: the container advertises no tags | The tags this container advertises, comma-separated ([the runner](the-runner#what-a-runner-advertises)). |
+| `HATCH_TAGS` | `compose.yaml`, for `runner`; then `hatch` | empty: the container advertises no tags | The tags this container advertises, comma-separated ([the runner](the-runner#what-a-runner-advertises)). Seeds the runner's row once; after that the board's list wins. |
 | `HATCH_GIT_NAME` | `compose.yaml`, for `runner` (becomes `GIT_AUTHOR_NAME`) | empty; the container refuses to start without it | The name on the commits it makes. |
 | `HATCH_GIT_EMAIL` | `compose.yaml`, for `runner` (becomes `GIT_AUTHOR_EMAIL`) | empty; the container refuses to start without it | The email on the commits it makes. |
 | `HATCH_GIT_TOKEN` | `compose.yaml`, for `runner`; then the entrypoint | empty | **A secret.** An HTTPS token, answered to `git` through `GIT_ASKPASS`. |
@@ -63,7 +63,7 @@ saying so; those are read from the environment alone.
 | `HATCH_BASE_BRANCH` | `hatch` | unset: the branch origin calls its default | The trunk `go-to-work` resets to between increments. It has no `hatch config` flag. Settings file: yes. |
 | `HATCH_RUNNER` | `hatch` | unset: a cast-list name, chosen once per checkout | What the board calls this runner ([the runner](the-runner#the-runners-name)). Settings file: yes. |
 | `HATCH_REPOS` | `hatch` | empty | The checkouts a loop with no checkout of its own serves, joined on the platform's path separator (`:` on Unix, `;` on Windows). Blanks are dropped. Settings file: yes. |
-| `HATCH_TAGS` | `hatch` | empty | The tags this runner advertises, comma-separated; trimmed, lowercased. A tag that breaks the rule ([the runner](the-runner#what-a-runner-advertises)) refuses every command. Settings file: yes. |
+| `HATCH_TAGS` | `hatch` | empty | The tags this runner advertises, comma-separated; trimmed, lowercased. A tag that breaks the rule ([the runner](the-runner#what-a-runner-advertises)) refuses every command. Seeds the runner's row once; after that the board's list wins. Settings file: yes. |
 | `HATCH_WORKSPACE` | `hatch` | unset: a per-user `hatch/workspace` under the OS application-data directory, created only when a clone needs it | A directory the runner owns entirely, where it clones what the board binds that it has no checkout of. `off`, in any case, means never clone. Settings file: yes. |
 | `HATCH_HEARTBEAT` | `hatch` | `20` | Seconds of silence before the readout says what it is waiting on. `0` turns the pulse off; a value that is not a whole number, or is negative, falls back to `20`. Settings file: **no**. |
 | `HATCH_RETRY_SECONDS` | `hatch` | `90` | Seconds a call keeps retrying Hatch. `0` means exactly one attempt; a value that is not a whole number, or is negative, falls back to `90`. Settings file: **no**. |
