@@ -41,8 +41,8 @@ control on this page.
 
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Bounds** form - **Under**,
-**Max runs**, **Max spend**, **Until** (an hour, not just a day), with
-**Save bounds** and **Revert** - and an Order control: a box for a ticket
+**Max runs**, **Max spend**, **Until** (an hour, not just a day), **Tags**,
+with **Save bounds** and **Revert** - and an Order control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at
 its next heartbeat, paused or running, then returns to what its state says.
 A press only records what the board wants:

@@ -274,17 +274,24 @@ describe('MAX_SPEND_HINT', () => {
 
 describe('the bounds form', () => {
   it('shows an unbounded runner as empty boxes rather than as zeroes', () => {
-    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '' });
+    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '' });
   });
 
   it('round-trips what the row holds', () => {
-    const bounded = runner({ under: 'AER-930', maxRuns: 12, maxSpend: 40, untilAt: '2026-09-09T06:00:00Z' });
+    const bounded = runner({
+      under: 'AER-930',
+      maxRuns: 12,
+      maxSpend: 40,
+      untilAt: '2026-09-09T06:00:00Z',
+      tags: ['gpu', 'fast'],
+    });
 
     expect(boundsOf(bounded)).toEqual({
       under: 'AER-930',
       maxRuns: '12',
       maxSpend: '40',
       untilAt: '2026-09-09T06:00:00Z',
+      tags: 'gpu\nfast',
     });
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
@@ -295,22 +302,30 @@ describe('the bounds form', () => {
     expect(boundsChanged({ ...boundsOf(bounded), maxRuns: '' }, bounded)).toBe(true);
   });
 
+  it('notices tags changing, order-sensitively rather than as trimmed text', () => {
+    const bounded = runner({ tags: ['gpu', 'fast'] });
+
+    expect(boundsChanged({ ...boundsOf(bounded), tags: 'gpu\nfast\n' }, bounded)).toBe(false);
+    expect(boundsChanged({ ...boundsOf(bounded), tags: 'fast\ngpu' }, bounded)).toBe(true);
+  });
+
   it('sends every field, so a cleared box clears the cap', () => {
     // The tri-state, from the other end: a field left out of the request means
     // "leave it alone", so an emptied box that was not sent would silently keep
     // the cap it was clearing.
-    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '' })).toEqual({
+    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '', tags: 'gpu\n\nfast ' })).toEqual({
       under: 'AER-930',
       maxRuns: '',
       maxSpend: '40',
       untilAt: '',
+      tags: ['gpu', 'fast'],
     });
   });
 
   it('says an until needs an hour before the server has to', () => {
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09' })).toContain('an hour');
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z' })).toBeNull();
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '' })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09', tags: '' })).toContain('an hour');
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z', tags: '' })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '' })).toBeNull();
   });
 });
 
