@@ -63,6 +63,13 @@ export interface Project {
   repoSourcedBy: string | null;
   /** When repoSourced was last set, or null until the first write. */
   repoSourcedAt: string | null;
+  /** Whether this project binds the tracker's own repository; at most one
+      project does. See ProjectDto.BindsTracker. */
+  bindsTracker: boolean;
+  /** Who last changed bindsTracker on this project, or null until the first write. */
+  bindsTrackerBy: string | null;
+  /** When bindsTracker was last changed on this project, or null until the first write. */
+  bindsTrackerAt: string | null;
   /** Which runners may implement this project's work, normalised - trimmed,
       lower-cased, deduplicated; empty means any runner. Absent from a
       project that predates it. See ProjectDto.RunnerTags. */
@@ -901,6 +908,18 @@ export interface ProjectLandingWriteRequest {
 
 export interface ProjectRepoSourcedWriteRequest {
   repoSourced: boolean;
+}
+
+/** A write to whether a project binds the tracker's own repository. See ProjectBindsTrackerWriteRequest (Hatch.Contracts). */
+export interface ProjectBindsTrackerWriteRequest {
+  bindsTracker: boolean;
+}
+
+/** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and
+    the key of the project the flag was taken from, or null if from none. */
+export interface ProjectBindsTrackerResponse {
+  project: Project;
+  clearedKey: string | null;
 }
 
 /** A write to a project's reflection cadence; null is off. See ProjectReflectionWriteRequest (Hatch.Contracts). */

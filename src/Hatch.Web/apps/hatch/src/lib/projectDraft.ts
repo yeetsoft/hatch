@@ -10,6 +10,7 @@ import type { Priority } from '../components/PriorityControl';
 import type { PreApproval } from '../components/PreApprovalControl';
 import type {
   Project,
+  ProjectBindsTrackerWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
   ProjectReflectionWriteRequest,
@@ -33,6 +34,7 @@ export interface ProjectDraft {
     autoHealBugPreApproval: PreApproval;
     autoHealBugStatusId: number | null;
     repoSourced: boolean;
+    bindsTracker: boolean;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
   };
@@ -49,6 +51,7 @@ export interface ProjectDraft {
   autoHealBugPreApproval: PreApproval;
   autoHealBugStatusId: number | null;
   repoSourced: boolean;
+  bindsTracker: boolean;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
   reflectionCadenceDays: string;
@@ -82,6 +85,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       autoHealBugPreApproval: project.autoHealBugPreApproval,
       autoHealBugStatusId: project.autoHealBugStatusId,
       repoSourced: project.repoSourced,
+      bindsTracker: project.bindsTracker,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
     },
@@ -98,6 +102,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     autoHealBugPreApproval: project.autoHealBugPreApproval,
     autoHealBugStatusId: project.autoHealBugStatusId,
     repoSourced: project.repoSourced,
+    bindsTracker: project.bindsTracker,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
   };
@@ -146,6 +151,12 @@ export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequ
     playbooks from its repository, never folded into projectLandingDiff. */
 export function projectRepoSourcedDiff(draft: ProjectDraft): ProjectRepoSourcedWriteRequest | null {
   return draft.repoSourced !== draft.known.repoSourced ? { repoSourced: draft.repoSourced } : null;
+}
+
+/** Its own route and its own request shape, like projectRepoSourcedDiff -
+    whether the project binds the tracker's own repository. */
+export function projectBindsTrackerDiff(draft: ProjectDraft): ProjectBindsTrackerWriteRequest | null {
+  return draft.bindsTracker !== draft.known.bindsTracker ? { bindsTracker: draft.bindsTracker } : null;
 }
 
 /** Its own route and its own request shape, like projectRepoSourcedDiff - an

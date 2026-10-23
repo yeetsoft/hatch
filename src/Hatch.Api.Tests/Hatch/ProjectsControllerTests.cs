@@ -971,6 +971,163 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.RepoSourcedAt);
     }
 
+    // ---- Binds tracker ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutBindsTracker()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutBindsTracker(h.ProjectId, new ProjectBindsTrackerWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutBindsTrackerNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = await NewBoundProjectAsync(h, "TST");
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.BindsTracker);
+    }
+
+    [Fact]
+    public async Task TurningOnWithNoRepositoryBound_IsRefusedNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        Assert.Contains("400", Reason(result.Result));
+        Assert.Contains("TST binds no repository", Reason(result.Result));
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.BindsTracker);
+    }
+
+    [Fact]
+    public async Task TurningOn_SucceedsRecordingWhoAndWhen_AndClearsNothingWhenNoProjectHadIt()
+    {
+        var h = await NewAsync();
+        var created = await NewBoundProjectAsync(h, "TST");
+
+        var written = Value(await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default));
+
+        Assert.True(written.Project.BindsTracker);
+        Assert.Equal(h.Nathan.Name, written.Project.BindsTrackerBy);
+        Assert.Equal(Now, written.Project.BindsTrackerAt);
+        Assert.Null(written.ClearedKey);
+    }
+
+    [Fact]
+    public async Task ASecondProjectTurningOn_TakesTheFlagFromTheFirst_AndNamesItsKey()
+    {
+        var h = await NewAsync();
+        var first = await NewBoundProjectAsync(h, "ONE");
+        var second = await NewBoundProjectAsync(h, "TWO");
+        await h.Projects.PutBindsTracker(first.Id, new ProjectBindsTrackerWriteRequest(true), default);
+        h.Time.Advance(TimeSpan.FromHours(1));
+
+        var written = Value(await h.Projects.PutBindsTracker(second.Id, new ProjectBindsTrackerWriteRequest(true), default));
+
+        Assert.True(written.Project.BindsTracker);
+        Assert.Equal("ONE", written.ClearedKey);
+        var rows = await h.Db.Projects.ToListAsync();
+        Assert.Equal(["TWO"], rows.Where(p => p.BindsTracker).Select(p => p.Key));
+        var cleared = rows.Single(p => p.Key == "ONE");
+        Assert.Equal(h.Nathan.Name, cleared.BindsTrackerBy);
+        Assert.Equal(Now.AddHours(1), cleared.BindsTrackerAt);
+    }
+
+    [Fact]
+    public async Task TurningOff_ClearsOnlyThatProject()
+    {
+        var h = await NewAsync();
+        var first = await NewBoundProjectAsync(h, "ONE");
+        var second = await NewBoundProjectAsync(h, "TWO");
+        await h.Projects.PutBindsTracker(first.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        var written = Value(await h.Projects.PutBindsTracker(first.Id, new ProjectBindsTrackerWriteRequest(false), default));
+
+        Assert.False(written.Project.BindsTracker);
+        Assert.Null(written.ClearedKey);
+        Assert.Empty(await h.Db.Projects.Where(p => p.BindsTracker).ToListAsync());
+        Assert.Null((await h.Db.Projects.FindAsync(second.Id))!.BindsTrackerBy);
+    }
+
+    [Fact]
+    public async Task TurningOffAProjectThatDoesNotHaveIt_LeavesTheHolderAlone()
+    {
+        var h = await NewAsync();
+        var first = await NewBoundProjectAsync(h, "ONE");
+        var second = await NewBoundProjectAsync(h, "TWO");
+        await h.Projects.PutBindsTracker(first.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        var written = Value(await h.Projects.PutBindsTracker(second.Id, new ProjectBindsTrackerWriteRequest(false), default));
+
+        Assert.Null(written.ClearedKey);
+        Assert.Null(written.Project.BindsTrackerAt);
+        Assert.True((await h.Db.Projects.FindAsync(first.Id))!.BindsTracker);
+    }
+
+    [Fact]
+    public async Task TurningOnAProjectThatAlreadyHasIt_ChangesNothing()
+    {
+        var h = await NewAsync();
+        var created = await NewBoundProjectAsync(h, "TST");
+        await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default);
+        h.Time.Advance(TimeSpan.FromHours(1));
+
+        var written = Value(await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default));
+
+        Assert.True(written.Project.BindsTracker);
+        Assert.Null(written.ClearedKey);
+        Assert.Equal(Now, written.Project.BindsTrackerAt);
+    }
+
+    [Fact]
+    public async Task GetProjects_CarriesTheFlagOnEveryProject_AndExactlyOneReadsTrue()
+    {
+        var h = await NewAsync();
+        var first = await NewBoundProjectAsync(h, "ONE");
+        await NewBoundProjectAsync(h, "TWO");
+        await h.Projects.PutBindsTracker(first.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        var read = Value(await h.Projects.GetProjects(default));
+
+        Assert.Equal(3, read.Count);
+        Assert.Equal(["ONE"], read.Where(p => p.BindsTracker).Select(p => p.Key));
+        Assert.Equal(h.Nathan.Name, read.Single(p => p.Key == "ONE").BindsTrackerBy);
+    }
+
+    [Fact]
+    public async Task APatchProject_LeavesTheFlagUntouched()
+    {
+        var h = await NewAsync();
+        var created = await NewBoundProjectAsync(h, "TST");
+        await h.Projects.PutBindsTracker(created.Id, new ProjectBindsTrackerWriteRequest(true), default);
+
+        var patched = Value(await h.Projects.PatchProject(created.Id, new ProjectPatchRequest("Renamed"), default));
+
+        Assert.Equal("Renamed", patched.Name);
+        Assert.True(patched.BindsTracker);
+    }
+
+    private static async Task<ProjectDto> NewBoundProjectAsync(Harness h, string key)
+    {
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest(key, key), default));
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest($"https://example.com/owner/{key.ToLowerInvariant()}.git", null)], default);
+        return created;
+    }
+
     // ---- Reflection ----
 
     [Fact]

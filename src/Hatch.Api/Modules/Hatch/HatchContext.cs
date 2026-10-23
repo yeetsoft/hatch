@@ -234,6 +234,12 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(p => p.Landing).HasDefaultValue(global::Hatch.Contracts.Landings.PullRequest);
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
             e.Property(p => p.OnePullRequest).HasDefaultValue(false);
+
+            // At most one project binds the tracker's own repository. The
+            // controller clears the old holder first; this is what makes a race
+            // between two writers fail instead of leaving two.
+            e.Property(p => p.BindsTracker).HasDefaultValue(false);
+            e.HasIndex(p => p.BindsTracker).IsUnique().HasFilter("\"BindsTracker\" = true");
             e.Property(p => p.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
 
             e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);

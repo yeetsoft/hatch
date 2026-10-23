@@ -768,6 +768,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("AutoHealBugStatusId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("BindsTracker")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("BindsTrackerAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BindsTrackerBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<bool>("ChecksRequired")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -837,6 +849,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AutoHealBugStatusId");
+
+                    b.HasIndex("BindsTracker")
+                        .IsUnique()
+                        .HasFilter("\"BindsTracker\" = true");
 
                     b.HasIndex("Key")
                         .IsUnique();

@@ -200,6 +200,30 @@ public class EfHatchProject
     public DateTimeOffset? RepoSourcedAt { get; set; }
 
     /// <summary>
+    /// Whether this project binds the tracker's own repository - the project a
+    /// session standing in some other project's repository reads to find the
+    /// tracker's. At most one project on a board has it on, which the filtered
+    /// unique index in <c>HatchContext</c> holds even against a race. Off by
+    /// default. Written only by <see cref="ProjectsController.PutBindsTracker"/>.
+    /// </summary>
+    public bool BindsTracker { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="BindsTracker"/> on this row, turning it on or
+    /// off or having it taken by another project, as a name rather than a
+    /// foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null until
+    /// the first write. Written only by <see cref="ProjectsController.PutBindsTracker"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? BindsTrackerBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="BindsTracker"/> was last changed on this row. Null until
+    /// the first write. Written only by <see cref="ProjectsController.PutBindsTracker"/>.
+    /// </summary>
+    public DateTimeOffset? BindsTrackerAt { get; set; }
+
+    /// <summary>
     /// Which runners may implement this project's work, as a jsonb array in the
     /// order they were written - normalised, case folded and deduplicated by
     /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this

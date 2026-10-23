@@ -50,6 +50,8 @@ import type {
   ProjectLandingWriteRequest,
   ProjectMember,
   ProjectPatchRequest,
+  ProjectBindsTrackerResponse,
+  ProjectBindsTrackerWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
@@ -142,7 +144,11 @@ export const fileProjectReflection = (id: number) =>
   fetchJson<Issue>(`/api/hatch/projects/${id}/reflect`, { method: 'POST' });
 export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
-export const putProjectMember = (id: number, personId: string, role: string) =>
+/** Sets whether a project binds the tracker's own repository, taking the flag
+    from whichever project had it - see ProjectsController.PutBindsTracker. */
+export const putProjectBindsTracker = (id: number, request: ProjectBindsTrackerWriteRequest) =>
+  fetchJson<ProjectBindsTrackerResponse>(`/api/hatch/projects/${id}/binds-tracker`, { method: 'PUT', ...asJson(request) });
+export const putProjectMember =(id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'DELETE' });
