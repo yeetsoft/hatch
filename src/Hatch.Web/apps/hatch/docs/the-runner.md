@@ -329,6 +329,212 @@ get answered in aggregate, which is how a wrong assumption gets in.
 Every command takes `-h` for what it accepts, and [CLI
 reference](cli-reference) has each one in full.
 
+## Two runners on one machine
+
+One machine, two checkouts of the one repository a project binds, two loops -
+`<checkout-a>` and `<checkout-b>` below, standing for whatever two paths you
+actually clone to. Nothing here needs a second machine, a second person, or a
+second Hatch, though the last of those is covered too.
+
+### The layout
+
+Two clones of the same repository, side by side, with one `go-to-work` (or
+`work`) loop standing in each. The two checkouts can serve the same board and
+split its work by tag (*Splitting the work by column*, below), or each point
+at a Hatch of its own.
+
+### What is already per checkout
+
+Two things already belong to one checkout and no other, with nothing to set:
+
+- **The runner's name.** Recorded in the `runners` file beside the per-user
+  config file, keyed on the checkout's canonical path, so `<checkout-a>` and
+  `<checkout-b>` each get a name of their own the first time either speaks to
+  a board - see [the runner's name](#the-runners-name).
+- **The loop lock.** One `go-to-work` or `work` at a time per checkout; a
+  second naming the same checkout is refused, with the pid of the one already
+  holding it ([one loop per served checkout](one-increment-and-the-loop#one-loop-per-served-checkout)).
+
+What is **not** per checkout is everything else. The per-user file - its
+directory is the OS application-data folder, `%APPDATA%\hatch` on Windows and
+`~/.config/hatch` on macOS and Linux; `hatch config --show` prints the exact
+path - holds the origin, the key, the agent, the tags and the workspace for
+every checkout on the machine, until a checkout's own `scripts/.env`
+overrides a line of it. Two checkouts left on the one `hatch config` are the
+same runner wearing two names: same board, same key, same tags, same
+workspace - rarely the point of running two.
+
+### Setting up the second checkout
+
+In `<checkout-b>`:
+
+```
+hatch config --here --tag breakdown
+hatch config --here --workspace <dir>
+```
+
+`<dir>` is a directory of its own, outside both checkouts - a workspace may
+not sit inside a named checkout, nor a named checkout inside it. `--here`
+writes this checkout's `scripts/.env` instead of the per-user file, and only
+the lines the flag given it names: it never copies a per-user value down,
+and it is refused outside a checkout, refused combined with `--show`, and
+refused unless this checkout's git already ignores `scripts/.env`.
+
+For a second Hatch - `<checkout-b>` pointed at a board of its own rather than
+sharing `<checkout-a>`'s - add the origin and the key the same way:
+
+```
+hatch config --here --origin <origin>
+hatch config --here --key <key>
+```
+
+A key on a command line stays in shell history; the bare `hatch config
+--here` prompt asks for each in turn without echoing the key, and Enter on
+any prompt keeps only what this checkout's own file already carries - never a
+value read in from the per-user file or an export, even though the bracket
+shown is whatever is actually active.
+
+**Warn:** `--here --origin` alone leaves the per-user key in force for
+`<checkout-b>` too - a key is still read from the per-user file once the
+checkout's own file carries none of its own - so the second Hatch is sent the
+first one's key until `--here --key` is run as well.
+
+### What --show prints in each checkout
+
+Run from `<checkout-a>`, which carries no overrides of its own:
+
+```
+file:                 <per-user config>/config
+checkout:             <checkout-a>/scripts/.env  (written by --here)
+runner:               <checkout-a>  (<per-user config>/runners)
+HATCH_RETRY_SECONDS:  90  (default)
+HATCH_BASE:        <origin>  (<per-user config>/config)
+HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
+HATCH_CLAUDE_BIN:  <unset>
+HATCH_CODEX_BIN:   <unset>
+HATCH_GROK_BIN:    <unset>
+HATCH_OLLAMA_HOST: <unset>
+HATCH_OLLAMA_TIERS: <unset>
+HATCH_AGENT:       claude  (<per-user config>/config)
+HATCH_BASE_BRANCH: <unset>
+HATCH_RUNNER:      <unset>
+HATCH_REPOS:       <unset>
+HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>
+HATCH_TAGS:        <unset>
+```
+
+Run from `<checkout-b>`, after the previous subsection's two `--here` writes -
+only `HATCH_TAGS` and `HATCH_WORKSPACE` now come from this checkout's own
+file; everything else still folds through to the same per-user file:
+
+```
+file:                 <per-user config>/config
+checkout:             <checkout-b>/scripts/.env  (written by --here)
+runner:               <checkout-b>  (<per-user config>/runners)
+HATCH_RETRY_SECONDS:  90  (default)
+HATCH_BASE:        <origin>  (<per-user config>/config)
+HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
+HATCH_CLAUDE_BIN:  <unset>
+HATCH_CODEX_BIN:   <unset>
+HATCH_GROK_BIN:    <unset>
+HATCH_OLLAMA_HOST: <unset>
+HATCH_OLLAMA_TIERS: <unset>
+HATCH_AGENT:       claude  (<per-user config>/config)
+HATCH_BASE_BRANCH: <unset>
+HATCH_RUNNER:      <unset>
+HATCH_REPOS:       <unset>
+HATCH_WORKSPACE:   <dir>  (<checkout-b>/scripts/.env)
+HATCH_TAGS:        breakdown  (<checkout-b>/scripts/.env)
+```
+
+Each setting line is the name padded out, the value, then two spaces and the
+layer it came from in brackets: `exported`, the checkout's `scripts/.env`
+path, or the per-user file's path. An unset line carries no layer. The key
+prints masked, never in full.
+
+### The workspace lock
+
+Two loops serving the same board but sharing a workspace would reset each
+other's clones, so a workspace is held like a checkout is. Naming one that is
+already held refuses the run outright, before it claims anything:
+
+```
+hatch: the workspace <dir> is already served by pid <n>, from <checkout>.
+hatch: two loops would reset the same clones - give this checkout a workspace of its own with  hatch config --here --workspace <dir>
+```
+
+Leaving the default workspace to the other loop is not a fault - it means
+this run serves only the checkouts it already has, and the other loop does
+whatever cloning either needs:
+
+```
+hatch: another run holds the default workspace <dir> - pid <n>, from <checkout>; this run will not clone
+```
+
+`go-to-work` holds whichever workspace it uses for the night; `work` holds it
+for the one increment. [When it will not run](#when-it-will-not-run) has both
+sentences in the context the renderer prints them in, and [one loop per
+served checkout](one-increment-and-the-loop#one-loop-per-served-checkout) has
+the lock's detail.
+
+### Splitting the work by column
+
+A tagged column gates every session spawned *out of* it for a runner that
+does not advertise the union of the project's, its ancestors', the issue's
+and that column's own tags - never the move into an untagged column ahead of
+it. That cuts the other way too: a *project* tag the light runner lacks
+blocks it from a tagged Breakdown column just as it would from the
+implementation column - a project's own tags cannot be used to keep
+implementation off a runner that only does breakdown.
+
+The working recipe:
+
+1. On the Statuses page - a person only, a key never - give the Breakdown
+   column the runner tag `breakdown`.
+2. Give the implementation column (In Progress, on a stock board) the runner
+   tag `build`.
+3. The light runner in `<checkout-b>` advertises `breakdown` alone; the
+   primary runner in `<checkout-a>` advertises `build` alone.
+
+Tags reserve columns; they do not partition the board. An untagged column (To
+Do, In Review on a stock board) is open to both runners, a hop is never
+gated, and a runner advertising a superset of what a column requires
+qualifies same as one advertising exactly that. **Tags seed a runner's row
+once** - the first heartbeat naming any writes them onto the board, and
+`--here --tag` typed again after that changes nothing until a `PATCH` on the
+row itself moves them (see [what a runner
+advertises](#what-a-runner-advertises)). `hatch queue`, run in either
+checkout, names the missing tag by name when it passes a card over for want
+of one. See also [Runner tags](the-board-and-its-columns) for the column-side
+flag this recipe sets.
+
+### Starting them
+
+One terminal per checkout, each left running its own loop:
+
+```
+hatch go-to-work
+```
+
+with `hatch` on `PATH`; in a checkout of Hatch itself, `scripts/hatch.sh
+go-to-work` on macOS and Linux, `scripts\hatch.ps1 go-to-work` on Windows (or,
+where the execution policy refuses scripts, `powershell -NoProfile
+-ExecutionPolicy Bypass -File .\scripts\hatch.ps1 go-to-work`). Each session a
+loop spawns reaches that loop's own origin and key, from its standing checkout
+or a clone in its own workspace. **Agents → Runners** shows both runners at
+once, each with its tags and where it is working from.
+
+### The one shape this does not cover
+
+A runner against a Hatch with its wall off, standing beside a keyed runner
+against a Hatch with its wall up, on the same machine. A blank key reads as
+unset in every layer there is, so a checkout has no way to say "no key, on
+purpose" over a key the per-user file carries - it will fold through and send
+that key regardless. The fix is the same one *Setting up the second checkout*
+already gives for two Hatches: keep the key out of the per-user file
+entirely, with each keyed checkout carrying its own via `--here --key`. That
+leaves the keyless checkout nothing to inherit, and genuinely keyless.
+
 ## When it will not run
 
 - **`hatch: no claude CLI on PATH.`** The runner looks on `PATH` only — never
