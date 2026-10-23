@@ -83,6 +83,32 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_row_that_denies_git_writes_gets_no_branch_cut_push_or_pull_request()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var work = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]) };
+        var prompt = Prompt.Compose(work, branches: branches);
+
+        Assert.DoesNotContain("cut `aer-12-x`", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Push to it", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("This row's playbook denies git writes", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_row_that_does_not_deny_git_writes_keeps_todays_branch_and_pull_request_text()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var work = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(deniedTools: ["Edit", "Write"]) };
+        var prompt = Prompt.Compose(work, branches: branches);
+
+        Assert.Contains("cut `aer-12-x` from it.", prompt, StringComparison.Ordinal);
+        Assert.Contains("open a pull request on it before this increment ends", prompt, StringComparison.Ordinal);
+        Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_trunk_landing_project_with_no_branch_is_told_to_commit_on_the_trunk()
     {
         var branches = new[]

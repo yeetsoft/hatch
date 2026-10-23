@@ -83,7 +83,8 @@ public static class Prompt
         if (work.LastCheckFindings is { Length: > 0 } findings) lines.AddRange(LastCheck(findings));
 
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
-        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory));
+        var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools);
+        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites));
 
         if (work.Children.Count > 0)
         {
@@ -209,7 +210,7 @@ public static class Prompt
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
-            startsHere: BoundForImplementation(work)));
+            startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites));
         return string.Join('\n', lines);
     }
 
@@ -402,12 +403,23 @@ public static class Prompt
     }
 
     /// <summary>
+    /// Whether this row's playbook denies the one tool a push needs, so the
+    /// branch and pull-request sections stop telling a read-only row to do
+    /// either. Matched on the rule's prefix, since "Bash(git push *)",
+    /// "Bash(git push:*)" and "Bash(git push*)" all appear in the wild for
+    /// the same deny - not on the exact string.
+    /// </summary>
+    private static bool DeniesGitWrites(IReadOnlyList<string>? deniedTools) =>
+        deniedTools is { Count: > 0 } &&
+        deniedTools.Any(r => r.StartsWith("Bash(git push", StringComparison.Ordinal));
+
+    /// <summary>
     /// The git state the session starts in, as the runner left it. Written as
     /// fact rather than instruction wherever it can be, and the one instruction
     /// it does give - that it overrides the playbook - is there because a stock
     /// playbook still tells a session to cut a branch from the trunk.
     /// </summary>
-    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries, string? sharedStory)
+    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries, string? sharedStory, bool deniesGitWrites)
     {
         yield return "## The branch";
         yield return "";
@@ -440,6 +452,11 @@ public static class Prompt
                         yield return "  The copy on this machine was ahead of origin, and is the one you are on.";
                     if (entry.KeptAs.Length > 0)
                         yield return $"  This machine's copy had diverged from origin's. Its commits are kept on `{entry.KeptAs}`; the branch is origin's.";
+                    if (deniesGitWrites)
+                    {
+                        yield return "  This row's playbook denies git writes: it does not cut a branch, push, or open a pull request.";
+                        break;
+                    }
                     yield return "  Continue on it: do not cut a new branch, and push to it, so the pull request follows.";
                     if (entry.TrunkLanding)
                         yield return $"  This project lands on the trunk: finish on this branch, then merge it into `{entry.Trunk}`, push `{entry.Trunk}`, delete the branch on origin, and record the landing.";
@@ -449,6 +466,12 @@ public static class Prompt
                     if (entry.TrunkLanding)
                     {
                         yield return $"- {where}this project lands its work on the trunk. origin has no branch for this issue, and none is wanted: the tree is on `{entry.Trunk}` at origin's tip - commit here, and cut nothing.";
+                        break;
+                    }
+                    if (deniesGitWrites)
+                    {
+                        yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip.";
+                        yield return "  This row's playbook denies git writes: it does not cut a branch, push, or open a pull request.";
                         break;
                     }
                     yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
@@ -461,6 +484,12 @@ public static class Prompt
                     if (entry.TrunkLanding)
                     {
                         yield return $"- {where}this project lands its work on the trunk. origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk, and no branch is wanted: the tree is on `{entry.Trunk}` at origin's tip - commit here, and cut nothing.";
+                        break;
+                    }
+                    if (deniesGitWrites)
+                    {
+                        yield return $"- {where}origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk. The tree is on the trunk at origin's tip.";
+                        yield return "  This row's playbook denies git writes: it does not cut a branch, push, or open a pull request.";
                         break;
                     }
                     yield return $"- {where}origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk. "
@@ -527,7 +556,8 @@ public static class Prompt
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
-        bool asksReleaseNote = false, string? issueType = null, bool startsHere = false) =>
+        bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
+        bool deniesGitWrites = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -560,7 +590,8 @@ public static class Prompt
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
         "",
-        ..(trunkLanding ? Landing(key)
+        ..(deniesGitWrites ? NoPullRequest(key)
+            : trunkLanding ? Landing(key)
             : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
             : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
@@ -805,6 +836,21 @@ public static class Prompt
         "and write the comment with the sha, the way every landed ticket does. The",
         "increment is not finished until the landing is recorded - \"## Where this",
         $"increment ends\" below still names review as where {key} stops.",
+        "",
+    ];
+
+    /// <summary>
+    /// What a session on a row that denies git writes is told in place of the
+    /// pull request section: there is nothing to push, so nothing to open one
+    /// on, and the playbook above already says not to try.
+    /// </summary>
+    private static string[] NoPullRequest(string key) =>
+    [
+        "## No pull request from this row",
+        "",
+        $"This row's playbook denies git writes, so there is nothing for {key} to push and nothing",
+        "to open a pull request on. Judge and file, the way the playbook above says: do not cut a",
+        $"branch, do not push, and do not run `hatch pr {key}`.",
         "",
     ];
 
