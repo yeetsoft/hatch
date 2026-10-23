@@ -34,7 +34,7 @@ public sealed record ConfigCommand(
     public static readonly string[] ConfigUsage =
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...]",
+        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...] [--here]",
         "",
         "  hatch config                    asks for the origin, the key and the runner",
         "                                     name, and writes them",
@@ -86,10 +86,14 @@ public sealed record ConfigCommand(
         "  A tag is a word a project's runner tags ask for - macos, gpu - at most 8",
         "  on a runner, each at most 32 characters, lowercased, with no space or",
         "  comma. A tag that breaks that rule is refused, naming it, with nothing",
-        "  written. Bare --tag clears the tags this runner advertises. Needs no",
-        "  checkout: a tag is a fact about the machine, not about one of them.",
+        "  written. Bare --tag clears the tags this runner advertises.",
         "",
-        "  Written to the per-user file, mode 600 where the platform has modes.",
+        "  --here writes this checkout's scripts/.env instead of the per-user file -",
+        "  combine it with any write above. Refused outside a checkout, with --runner",
+        "  (a runner's name is already this checkout's), and with --show.",
+        "",
+        "  Written to the per-user file, unless --here says to write this checkout's",
+        "  scripts/.env instead - mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
         "  checkout you are standing in, then that file.",
         "",
@@ -740,10 +744,9 @@ public sealed record ConfigCommand(
     /// everything else is carried forward unchanged.
     /// </summary>
     /// <remarks>
-    /// A fact about the machine, not about a checkout: unlike <see cref="RunnerAsync"/>
-    /// this needs no <see cref="Root"/>, and unlike <see cref="OriginAsync"/> it
-    /// needs no origin and makes no call - there is nothing here a board could
-    /// refuse.
+    /// Needs no <see cref="Root"/> of its own - only --here asks for one - and
+    /// unlike <see cref="OriginAsync"/> it needs no origin and makes no call -
+    /// there is nothing here a board could refuse.
     /// </remarks>
     private int Tag(string[] args, bool here)
     {
