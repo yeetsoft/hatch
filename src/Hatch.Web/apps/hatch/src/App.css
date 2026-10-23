@@ -1742,6 +1742,13 @@ button.hatch-chip {
   flex: 1 1 7rem;
 }
 
+/* An input has no .hatch-btn to inherit 44px from, and base.css's coarse rule sets only its font size; the buttons beside it are 44px, so it is too. */
+@media (pointer: coarse) {
+  .hatch-reorder--wrap input {
+    min-height: 44px;
+  }
+}
+
 .hatch-form-actions {
   justify-content: flex-end;
 }

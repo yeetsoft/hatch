@@ -140,10 +140,8 @@ public class RunnersFitTests(ITestOutputHelper output)
             if (!phone)
                 continue;
 
-            // A button is held to 44px both ways; an input is a flex-grown width with a height its own font sets, so one direction is what is asked of it.
-            var reaches = control.Name.StartsWith("input", StringComparison.Ordinal)
-                ? box.Height >= MinimumTarget - Tolerance || box.Width >= MinimumTarget - Tolerance
-                : box.Height >= MinimumTarget - Tolerance && box.Width >= MinimumTarget - Tolerance;
+            // Every control, button or input, is held to 44px both ways: .hatch-btn carries it, and the ticket input is raised to it under a coarse pointer.
+            var reaches = box.Height >= MinimumTarget - Tolerance && box.Width >= MinimumTarget - Tolerance;
             if (!reaches)
                 found.Add($"{where}: {control.Name} ({box}) is under {MinimumTarget}px");
         }
