@@ -6365,6 +6365,9 @@ the next pass takes it with no operator action — and the lock it left behind i
 cleared by the next loop in that checkout, so a `kill -9` needs nobody to tidy
 up after it.
 
+Running two loops on one machine, each in its own checkout, is walked
+through in [Two runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#two-runners-on-one-machine).
+
 ### What a runner does, in order
 
 Before every pass, and after the heartbeat, the loop **polls the branches in
@@ -7791,6 +7794,9 @@ See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
 [when an increment does nothing](#when-an-increment-does-nothing) for what
 sets this in the first place.
+
+Running two loops on one machine, each in its own checkout, is walked
+through in [Two runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#two-runners-on-one-machine).
 
 ### The console
 
