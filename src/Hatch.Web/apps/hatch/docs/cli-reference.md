@@ -61,7 +61,7 @@ ticket's history says who did what without anybody being asked to record it.
 
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
-              | --repo <path>... | --tag <tag>... | --workspace <dir>]
+              | --repo <path>... | --tag <tag>... | --workspace <dir>] [--here]
 ```
 
 Asks for the origin and the key, and writes them to a per-user file where they
@@ -77,21 +77,23 @@ header instead. Never put it in a repository, either way.
 - `--key <key>` writes the key alone, and needs an origin already set. A key on
   a command line stays in shell history; the prompt does not, so prefer the
   prompt on a machine other people can read.
-- `--runner <name>` sets what the board calls this checkout. It is the one
-  `config` flag that needs a checkout, since a runner's name is a fact about
-  one of them.
+- `--runner <name>` sets what the board calls this checkout. It needs a
+  checkout, since a runner's name is a fact about one of them.
 - `--repo <path>` also serves that checkout, for a loop with no checkout of its
   own. It is repeatable, each path must exist and carry a `.git`, and bare
   `--repo` clears them.
 - `--tag <tag>` sets the tags this runner advertises
   ([the runner](the-runner#what-a-runner-advertises)). It is repeatable, bare
   `--tag` clears them, a tag that breaks the rule is refused with the rule's
-  sentence and nothing is written, and it needs no checkout. Once this
-  checkout's runner has a row, `--tag` seeds nothing further: the row's tags are
-  the board's, and the loop follows them
-  ([the runner](the-runner#what-a-runner-advertises)).
+  sentence and nothing is written. Once this checkout's runner has a row,
+  `--tag` seeds nothing further: the row's tags are the board's, and the loop
+  follows them ([the runner](the-runner#what-a-runner-advertises)).
 - `--workspace <dir>` names the directory where the runner clones what the
   board binds and it has no checkout of. `--workspace off` never clones.
+- `--here` writes this checkout's `scripts/.env` instead of the per-user file,
+  for every write above. The checkout's git must already ignore the file.
+  Refused outside a checkout, combined with `--runner` (a runner's name is
+  already the checkout's own), or combined with `--show`.
 
 It touches no ticket and no column, so it writes nothing to the board.
 

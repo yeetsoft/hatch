@@ -95,6 +95,10 @@ Each flag writes one thing and asks nothing:
   `--workspace off` never clones. A workspace may not sit inside a named
   checkout, nor a named checkout inside it: a clone under a tree being reset is
   two owners of one path.
+- `--here` writes this checkout's `scripts/.env` instead of the per-user file,
+  for every write above. The checkout's git must already ignore the file.
+  Refused outside a checkout, combined with `--runner` (a runner's name is
+  already the checkout's own), or combined with `--show`.
 
 An origin or key write is then tried against the board. If that call does not
 go through, the file is still written, so there is something to fix, and the
@@ -110,6 +114,9 @@ Every setting is read from three places, highest first:
 1. an exported variable;
 2. `scripts/.env` in the checkout you are standing in;
 3. the per-user file `hatch config` writes.
+
+`hatch config --here` writes the second layer directly - every other write
+mode writes the third ([`config`](cli-reference#config)).
 
 `hatch config --show` prints where that file is, so no path is written here.
 It is mode 600 wherever the platform has modes; on Windows it inherits the
@@ -202,9 +209,8 @@ HATCH_TAGS=gpu,linux
 hatch config --tag gpu --tag linux
 ```
 
-`--tag` is repeatable, and bare `--tag` clears them. It needs no checkout. An
-empty `HATCH_TAGS` reads as unset, so a runner that sets nothing advertises
-nothing.
+`--tag` is repeatable, and bare `--tag` clears them. An empty `HATCH_TAGS`
+reads as unset, so a runner that sets nothing advertises nothing.
 
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
