@@ -45,6 +45,11 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public const string GearSelector = "header.hatch-topbar button[aria-label=\"Settings and theme\"]";
 
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
+    public const string RunnersCardSelector = ".hatch-card--flush";
+
+    /// <summary>Every control a Runners row draws in its group: the buttons, and the ticket input.</summary>
+    public const string RunnerControlSelector = ".hatch-reorder--wrap button, .hatch-reorder--wrap input";
+
     public const string EmptyBoard = "This board has no columns yet.";
 
     /// <summary>Wider than the phone breakpoint: a phone takes the stacked <c>details</c> branch, a different render.</summary>
@@ -75,6 +80,36 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
             primaryNavDrawn: document.querySelector('.hatch-primary-nav') !== null,
             controls: selectors.map(([name, selector]) => [name, box(selector)]),
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Runs in the page and reads the Runners page as it stands. Each control
+    /// carries its own box and its cell's; the card is reported by its border
+    /// box, and <see cref="MeasureRunnersAsync"/> takes the border off.
+    /// </summary>
+    private const string MeasureRunnersScript = """
+        ([cardSelector, controlSelector]) => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const card = document.querySelector(cardSelector);
+          const table = card === null ? null : card.querySelector('.hatch-table');
+          if (card === null || table === null) return null;
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            card: plain(card.getBoundingClientRect()),
+            table: plain(table.getBoundingClientRect()),
+            controls: [...document.querySelectorAll(controlSelector)].map((element) => ({
+              name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
+              box: plain(element.getBoundingClientRect()),
+              cell: plain(element.closest('td').getBoundingClientRect()),
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth,
+            })),
           };
         }
         """;
@@ -253,6 +288,32 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             read.GetProperty("controls").EnumerateArray().ToDictionary(
                 pair => pair[0].GetString()!,
                 pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));
+    }
+
+    /// <summary>The Runners page's card, table and row controls as the page stands; the card is reported inside its 1px border.</summary>
+    public async Task<RunnersMeasurement> MeasureRunnersAsync(Deadline deadline)
+    {
+        var read = await deadline.BoundAsync("measuring the Runners page", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureRunnersScript, new[] { RunnersCardSelector, RunnerControlSelector }));
+
+        Assert.True(read.ValueKind != JsonValueKind.Null, $"{RunnersCardSelector} with a .hatch-table inside it is not on the page");
+
+        const double border = 1;
+        var card = ReadBox(read.GetProperty("card"));
+
+        return new RunnersMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            new Box(card.X + border, card.Y + border, card.Width - 2 * border, card.Height - 2 * border),
+            ReadBox(read.GetProperty("table")),
+            read.GetProperty("controls").EnumerateArray().Select(c => new ControlMeasurement(
+                c.GetProperty("name").GetString()!,
+                ReadBox(c.GetProperty("box")),
+                ReadBox(c.GetProperty("cell")),
+                c.GetProperty("scrollWidth").GetInt32(),
+                c.GetProperty("clientWidth").GetInt32())).ToList());
     }
 
     private static Box ReadBox(JsonElement box) => new(

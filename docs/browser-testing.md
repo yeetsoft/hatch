@@ -51,6 +51,12 @@ error (`AssertNoPageErrors`).
 The smoke runs in Chromium, headless. The `iPhone 14 Pro` profile runs in
 WebKit.
 
+`RunnersFitTests.cs` measures the Runners page with two stubbed rows and fails,
+naming the control, its box and the box it escaped, when any button or input in
+a row's `.hatch-reorder--wrap` is clipped: outside the card at desktop, outside
+the table or under 44px on the phone profile, outside its own cell, or squeezed
+past its own `scrollWidth`.
+
 ## Render any page with no code written
 
 The screenshot CLI renders one URL to one image. It is `playwright.ps1`, built
