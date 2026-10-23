@@ -1726,10 +1726,15 @@ button.hatch-chip {
 
 /* A runner row's controls, which run to five or six items once the Order
    control is drawn: they wrap inside the cell rather than push the table wider
-   than the card. */
+   than the card. flex-shrink: 0 on the buttons so one is squeezed, wrapping
+   its own label, before the row drops it to the next line - not instead of. */
 .hatch-reorder--wrap {
   flex-wrap: wrap;
   align-items: center;
+}
+
+.hatch-reorder--wrap .hatch-btn {
+  flex-shrink: 0;
 }
 
 .hatch-reorder--wrap input {
@@ -6465,6 +6470,19 @@ button.hatch-option.chosen {
   display: block;
   font-family: var(--mono);
   font-size: var(--t-small);
+  overflow-wrap: anywhere;
+}
+
+/* The last line a runner said. Two lines over the card title's three - this
+   cell is narrower than a card - then clamped; the full line still reaches a
+   reader through the title attribute. A shell command's longest unbroken
+   token is what forces the wrap either way, hence overflow-wrap too. */
+.hatch-runner-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 

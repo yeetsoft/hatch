@@ -19,10 +19,8 @@ and a key with no owner gets only the runners that belong to nobody. `hatch
 runners` is the same read at a terminal, one line per row. Each row
 has:
 
-- **Runner** - its name, whether it is a `loop` or `one increment`, where it
-  runs, the agent it runs, and what it drives. Where it runs reads
-  `<hostname>:<checkout path>`, with the host's short name and the path as it
-  was typed.
+- **Runner** - its name, and `one increment` where it is not a `loop` (a loop
+  says nothing here, since that is the default).
 - **Doing** - `Gone`, `Out of usage until …`, `Paused`, `Stopping`, `Working
   <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
   answering reads `Gone` whatever it was last asked to do. Silence is ninety
@@ -36,13 +34,16 @@ has:
   ticket too.
 
 There is no cost column here - spend lives on the **Leaderboard**. Own-tickets-only
-and the repositories a runner serves show on the row too, but neither is a
-control on this page.
+still shows on the row, inside Bounds: the repositories a runner serves no
+longer do, and show once the row is unfolded instead - neither is a control
+on this page.
 
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
-on a paused one), **Stop after this one**, and a **Bounds** form - **Under**,
-**Max runs**, **Max spend**, **Until** (an hour, not just a day), **Tags**,
-with **Save bounds** and **Revert** - and an Order control: a box for a ticket
+on a paused one), **Stop after this one**, and a **Details** panel - where it
+runs, the agent it runs, what it drives, and the repositories it serves, then
+a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
+not just a day), **Tags**, with **Save bounds** and **Revert** - and an Order
+control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at
 its next heartbeat, paused or running, then returns to what its state says.
 A press only records what the board wants:

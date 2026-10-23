@@ -131,13 +131,9 @@ export function Row({
         <td>
           <strong className="hatch-runner-name">{runner.name}</strong>
           {/* Said out loud rather than left to the absent controls, because a
-              row with no buttons reads as a bug otherwise. */}
-          <Text tone="muted">{runner.kind === 'loop' ? 'loop' : 'one increment'}</Text>
-          {/* The machine and checkout, under the name now that the name is a
-              character and not a path - absent from an older CLI's row. */}
-          {runner.where && <Text tone="muted">{runner.where}</Text>}
-          {runner.agent && <Text tone="muted">{runner.agent}</Text>}
-          <Text tone="muted">{drivesLabel(runner)}</Text>
+              row with no buttons reads as a bug otherwise. Only for a loop's
+              row: a loop is the default, so saying nothing is saying loop. */}
+          {runner.kind !== 'loop' && <Text tone="muted">one increment</Text>}
         </td>
         <td>
           <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
@@ -147,7 +143,15 @@ export function Row({
             </Link>
           )}
         </td>
-        <td>{runner.line ?? <Text tone="muted">nothing yet</Text>}</td>
+        <td>
+          {runner.line ? (
+            <span className="hatch-runner-line" title={runner.line}>
+              {runner.line}
+            </span>
+          ) : (
+            <Text tone="muted">nothing yet</Text>
+          )}
+        </td>
         <td>{agoPhrase(runner.lastSeenAt, now)}</td>
         <td>
           <BoundsSummary runner={runner} />
@@ -168,7 +172,7 @@ export function Row({
               >
                 Stop after this one
               </Button>
-              <Button onClick={() => setOpen(!open)}>{open ? 'Hide bounds' : 'Bounds'}</Button>
+              <Button onClick={() => setOpen(!open)}>{open ? 'Hide details' : 'Details'}</Button>
               {runner.order ? (
                 <>
                   <Text tone="muted">{orderSentence(runner.order, now)}</Text>
@@ -205,10 +209,25 @@ export function Row({
       {open && (
         <tr>
           <td colSpan={6}>
+            <RunnerDetails runner={runner} />
             <BoundsForm runner={runner} onSave={onPatch} />
           </td>
         </tr>
       )}
+    </>
+  );
+}
+
+/** The four facts the row itself no longer carries, unfolded under it: where
+    it runs, the agent it runs, what it drives (always - this is the line
+    that says "driving nothing"), and the repositories it serves. */
+export function RunnerDetails({ runner }: { runner: Runner }) {
+  return (
+    <>
+      {runner.where && <Text tone="muted">{runner.where}</Text>}
+      {runner.agent && <Text tone="muted">{runner.agent}</Text>}
+      <Text tone="muted">{drivesLabel(runner)}</Text>
+      {repositoriesLabel(runner) && <Text tone="muted">{repositoriesLabel(runner)}</Text>}
     </>
   );
 }
@@ -227,7 +246,6 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
         </Link>
       </>
     ),
-    repositoriesLabel(runner),
     tagsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
