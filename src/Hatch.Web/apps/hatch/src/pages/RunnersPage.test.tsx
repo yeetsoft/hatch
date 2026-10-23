@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { BoundsSummary, Row } from './RunnersPage';
+import { BoundsSummary, Row, RunnerDetails } from './RunnersPage';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
@@ -83,6 +83,18 @@ describe('RunnersPage Row', () => {
     expect(html).not.toContain('href="/issues/');
   });
 
+  it('says one increment for a once row, and nothing for a loop row', () => {
+    expect(renderRow(runner())).not.toContain('one increment');
+    expect(renderRow(runner({ kind: 'once' }))).toContain('one increment');
+  });
+
+  it('keeps where, agent and drives off the closed row', () => {
+    const html = renderRow(runner({ name: 'distinct-name', agent: 'claude', drives: ['HA-12'] }));
+    expect(html).not.toContain('here:/checkouts/one');
+    expect(html).not.toContain('claude');
+    expect(html).not.toContain('driving');
+  });
+
   it('draws the controls on a loop row this caller can control', () => {
     const html = renderRow(runner({ canControl: true }));
     expect(html).toContain('Pause');
@@ -93,7 +105,7 @@ describe('RunnersPage Row', () => {
     const html = renderRow(runner({ canControl: false, for: 'Some Person' }));
     expect(html).not.toContain('Pause');
     expect(html).not.toContain('Stop after this one');
-    expect(html).not.toContain('Bounds');
+    expect(html).not.toContain('Details');
     expect(html).toContain('Some Person');
   });
 
@@ -101,7 +113,7 @@ describe('RunnersPage Row', () => {
     const html = renderRow(runner({ kind: 'once' }));
     expect(html).not.toContain('Pause');
     expect(html).not.toContain('Stop after this one');
-    expect(html).not.toContain('Bounds');
+    expect(html).not.toContain('Details');
     expect(html).not.toContain('to control');
   });
 
@@ -177,5 +189,37 @@ describe('RunnersPage BoundsSummary', () => {
     expect(html).toContain('href="/issues/HA-930"');
     expect(html).toContain('5 run(s)');
     expect(html).toContain(', ');
+  });
+});
+
+const renderDetails = (r: Runner) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <RunnerDetails runner={r} />
+    </MemoryRouter>,
+  );
+
+describe('RunnersPage RunnerDetails', () => {
+  it('draws where and agent when set', () => {
+    const html = renderDetails(runner({ where: 'here:/checkouts/one', agent: 'claude' }));
+    expect(html).toContain('here:/checkouts/one');
+    expect(html).toContain('claude');
+  });
+
+  it('says driving nothing when the runner drives nothing', () => {
+    expect(renderDetails(runner({ drives: [] }))).toContain('driving nothing');
+  });
+
+  it('names what it drives when it drives something', () => {
+    expect(renderDetails(runner({ drives: ['x'] }))).toContain('driving x');
+  });
+
+  it('draws nothing from repositoriesLabel when there are none', () => {
+    expect(renderDetails(runner({ repositories: [] }))).not.toContain('clones');
+  });
+
+  it('joins repositories and says clones when it clones what it lacks', () => {
+    const html = renderDetails(runner({ repositories: ['a', 'b'], clones: true }));
+    expect(html).toContain('a, b, clones what it lacks');
   });
 });
