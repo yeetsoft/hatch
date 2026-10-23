@@ -368,7 +368,10 @@ name and an instant, null until the first write, and `RunnerTags` (a JSON array
 of strings, `"[]"` default - which runners may implement the project's work,
 written through its own route, `PUT /projects/{id}/runner-tags`; they are
 matched against a runner's *own* tags, which may be set from the Runners page
-rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)).
+rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)),
+and `BindsTracker` (`bool`, default `false` - whether this project binds the
+tracker's own repository), with `BindsTrackerBy` and `BindsTrackerAt` beside it
+- who set it last and when, a name and an instant, null until the first write.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -426,6 +429,29 @@ reads the list out as a sentence after the landing one - *"Any runner."*
 where it is empty, *"Runners tagged macos and xcode."* where it is not - and
 otherwise shows an owner a *Runner tags* textarea, one tag per line
 (`ProjectEditDialog.tsx`).
+
+`BindsTracker` is written the same way, through its own route, `PUT
+/projects/{id}/binds-tracker` (`ProjectsController.PutBindsTracker`), guarded
+exactly the way `PutPlaybooksSource` is - `[RequireRole(User)]`, `NotAPerson`
+checked again in the action, then an owner check answering `403` naming the
+project's key (*"only an owner of `<KEY>` may change whether it binds the
+tracker"*) to anyone else. Turning it on is refused `400` for a project that
+binds no repository, the same wording `PutPlaybooksSource` uses (*"`<KEY>`
+binds no repository - bind one on the Projects page first"*); otherwise it
+clears the flag from whichever other project held it, in the same save - two
+`SaveChangesAsync` calls inside one relational transaction, since the filtered
+unique index backing the flag is checked row by row - and the response
+(`ProjectBindsTrackerDto`) names the cleared project's key, or `null` where
+none held it. Turning it off clears nothing else, and re-sending the value a
+project already holds writes nothing.
+The project dialog carries it the same way: where `canAdminister` is false it
+reads the flag out as a sentence after the runner-tags one, shown only where
+it is set - *"Binds the tracker's own repository, set by `<name>` on
+`<date>`."* - and otherwise shows an owner a checkbox, *"This project binds
+the tracker's own repository,"* disabled where the project binds no
+repository, with a hint (*"Only one project does: setting this takes it from
+whichever project has it now."*) and, once set, a line naming who set it and
+when (`ProjectEditDialog.tsx`).
 
 `ReflectionCadenceDays` (`int?`, null off - whole days) and
 `ReflectionLastPeriodStart` (`DateTimeOffset?`, null meaning never reflected)
@@ -2984,6 +3010,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired?, onePullRequest? }` — `onePullRequest` is the project's default for [one pull request](#one-pull-request); `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/runner-tags` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ tags }` — the whole list, replaced; trimmed, lower-cased and deduplicated, at most 8 tags of at most 32 characters, none with a space or comma. `403` naming the project's key from anybody but an owner, `400` naming the tag that breaks the rule (or the limit, on a list over 8), `404` on an unknown project. Re-sending the list it already holds writes nothing, and an empty list clears it |
+| `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -5664,7 +5691,11 @@ alone, only where it still reads the stock text byte for byte, as
 untouched, so an operator's own wording survives. The report it asks for has
 eight sections, in order: Window; What ran and what it cost; Where the time
 went; Findings; Recommendations; Hypotheses read; Hypotheses filed; What
-reflection could not see. A hypothesis is an issue filed under the reflection
+reflection could not see. The stock prompt also files an instrumentation gap
+that lies in the tracker itself, rather than in the project reflected on, as
+an issue with no parent in whichever project `GET /api/hatch/projects` flags
+`"bindsTracker": true` (see [Project](#project)), leaving it in the report as
+prose instead where none is flagged. A hypothesis is an issue filed under the reflection
 with a `readyAt` on its read-after date and a `## Hypothesis` block of four
 lines: the metric, the baseline (its window and value), the change (what moves,
 and the key of the issue carrying it) and the read-after date. A later
