@@ -29,6 +29,9 @@ namespace Hatch.Contracts;
 /// <param name="ReflectionCadenceDays">How often this project reflects, in whole days, or null if it never does - see <see cref="EfHatchProject.ReflectionCadenceDays"/>.</param>
 /// <param name="ReflectionLastPeriodStart">The start of the last period this project reflected on, or null if it never has - see <see cref="EfHatchProject.ReflectionLastPeriodStart"/>.</param>
 /// <param name="ReflectionNextDueAt">When this project's next reflection falls due - see <see cref="ReflectionCadence.NextDue"/>. Null where <paramref name="ReflectionCadenceDays"/> is null.</param>
+/// <param name="BindsTracker">Whether this project binds the tracker's own repository - see <see cref="EfHatchProject.BindsTracker"/>. At most one project does. Off by default.</param>
+/// <param name="BindsTrackerBy">Who last changed <paramref name="BindsTracker"/> on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerBy"/>.</param>
+/// <param name="BindsTrackerAt">When <paramref name="BindsTracker"/> was last changed on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -38,7 +41,8 @@ public record ProjectDto(
     bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null,
     bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null,
     IReadOnlyList<string> RunnerTags = null!,
-    int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null)
+    int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null,
+    bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -111,6 +115,14 @@ public record ProjectRepoSourcedWriteRequest(bool RepoSourced);
 
 /// <summary>A write to which runners may implement a project's work - see <see cref="EfHatchProject.RunnerTags"/>.</summary>
 public record ProjectRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
+
+/// <summary>A write to whether a project binds the tracker's own repository - see <see cref="EfHatchProject.BindsTracker"/>.</summary>
+public record ProjectBindsTrackerWriteRequest(bool BindsTracker);
+
+/// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
+/// <param name="Project">The project written.</param>
+/// <param name="ClearedKey">The key of the project the flag was taken from, or null if it was taken from none.</param>
+public record ProjectBindsTrackerDto(ProjectDto Project, string? ClearedKey);
 
 // ---- Statuses ----
 

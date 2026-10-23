@@ -756,6 +756,73 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.BindsTracker"/> is on - this project
+    /// binds the tracker's own repository. At most one project on a board does,
+    /// so turning it on takes the flag from whichever project had it, in the same
+    /// save, and the answer names that project's key. Only an owner of the project
+    /// being written may call this, and turning it on is refused if the project
+    /// binds no repository. Turning it off clears nothing else, and writing the
+    /// value a project already has changes nothing. This route is the only way to
+    /// write the flag; <c>PATCH</c> and <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/binds-tracker")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectBindsTrackerDto>> PutBindsTracker(int id, ProjectBindsTrackerWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether it binds the tracker") { StatusCode = StatusCodes.Status403Forbidden };
+
+        string? clearedKey = null;
+        if (request.BindsTracker != project.BindsTracker)
+        {
+            if (request.BindsTracker && !await db.ProjectRepositories.AnyAsync(r => r.ProjectId == id, ct))
+                return BadRequest($"{project.Key} binds no repository - bind one on the Projects page first");
+
+            var actor = await caller.ActorNameAsync(ct);
+            var now = time.GetUtcNow();
+
+            // The filtered unique index is checked row by row, so the old holder
+            // has to be cleared in a statement of its own before the new one is
+            // set - and the two share a transaction so a failure between them
+            // leaves the board as it was. The in-memory provider has neither.
+            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+
+            if (request.BindsTracker)
+            {
+                foreach (var other in await db.Projects.Where(p => p.Id != id && p.BindsTracker).ToListAsync(ct))
+                {
+                    other.BindsTracker = false;
+                    other.BindsTrackerBy = actor;
+                    other.BindsTrackerAt = now;
+                    clearedKey = other.Key;
+                }
+
+                if (clearedKey is not null) await db.SaveChangesAsync(ct);
+            }
+
+            project.BindsTracker = request.BindsTracker;
+            project.BindsTrackerBy = actor;
+            project.BindsTrackerAt = now;
+
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            logger.LogInformation("Project {ProjectKey} binds tracker set to {BindsTracker} by {Actor}, cleared from {ClearedKey}", project.Key, project.BindsTracker, actor, clearedKey);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return new ProjectBindsTrackerDto(
+            ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow()), clearedKey);
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -826,7 +893,8 @@ public class ProjectsController(
             project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt,
             RunnerTagColumn.Read(project.RunnerTags),
             project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
-            ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now));
+            ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now),
+            project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

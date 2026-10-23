@@ -10,6 +10,7 @@ import {
   getPeople,
   getStatuses,
   patchProject,
+  putProjectBindsTracker,
   putProjectLanding,
   putProjectLogo,
   putProjectMember,
@@ -23,6 +24,7 @@ import { boardColumns } from '../lib/columns';
 import { fileReflection } from '../lib/projectReflect';
 import {
   openProjectDraft,
+  projectBindsTrackerDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
   projectLandingDiff,
@@ -142,6 +144,7 @@ export function ProjectEditDialog({
     const diff = projectDraftDiff(draft!);
     const landingDiff = projectLandingDiff(draft!);
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
+    const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
@@ -150,6 +153,7 @@ export function ProjectEditDialog({
       diff.repositories === null &&
       landingDiff === null &&
       repoSourcedDiff === null &&
+      bindsTrackerDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
       logoPending === null &&
@@ -166,6 +170,7 @@ export function ProjectEditDialog({
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
+      if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
@@ -455,6 +460,23 @@ export function ProjectEditDialog({
                 set by {project.repoSourcedBy} on {project.repoSourcedAt ? new Date(project.repoSourcedAt).toLocaleDateString() : ''}
               </p>
             )}
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.bindsTracker}
+                disabled={list.length === 0}
+                onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
+              />
+              This project binds the tracker's own repository
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Only one project does: setting this takes it from whichever project has it now.
+            </p>
+            {(project.bindsTrackerBy || project.bindsTrackerAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.bindsTrackerBy} on {project.bindsTrackerAt ? new Date(project.bindsTrackerAt).toLocaleDateString() : ''}
+              </p>
+            )}
             <RunnerTagsField
               label="Runner tags"
               hint="One tag per line. Only a runner advertising every one of these is handed this project's implementation work. Blank means any runner."
@@ -474,6 +496,15 @@ export function ProjectEditDialog({
                 : `reflects every ${project.reflectionCadenceDays} day(s), next due ${project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : 'unknown'}`
             }.`}</p>
             <p>{runnerTagsSentence(project.runnerTags ?? [])}</p>
+            {project.bindsTracker && (
+              <p>
+                Binds the tracker's own repository
+                {project.bindsTrackerBy || project.bindsTrackerAt
+                  ? `, set by ${project.bindsTrackerBy ?? 'unknown'} on ${project.bindsTrackerAt ? new Date(project.bindsTrackerAt).toLocaleDateString() : 'an unknown date'}`
+                  : ''}
+                .
+              </p>
+            )}
           </>
         )}
 

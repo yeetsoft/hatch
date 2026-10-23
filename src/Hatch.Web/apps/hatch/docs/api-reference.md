@@ -55,6 +55,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/reflection` | **person** | Sets `reflectionCadenceDays` |
 | POST | `/projects/{id}/reflect` | **person** | Files one reflection on the spot - the reflect-now control |
 | PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
+| PUT | `/projects/{id}/binds-tracker` | **person** | Sets `bindsTracker`, clearing it elsewhere |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -73,7 +74,10 @@ only the reflection job does. `POST .../reflect` takes no body, and answers
 an `IssueDto` - the reflection it just filed, or, pressed again while that
 one is still open, the same issue with nothing filed; it never writes
 `reflectionLastPeriodStart` either, only the job does. The runner-tags PUT body is
-`ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. Answers are a `ProjectDto`
+`ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. The binds-tracker PUT body is
+`ProjectBindsTrackerWriteRequest(BindsTracker)`; at most one project on a board binds the tracker's
+own repository, so turning it on takes it from whichever project had it, and the answer is a
+`ProjectBindsTrackerDto(Project, ClearedKey)` naming that project's key, or null. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -93,7 +97,8 @@ run the reflection a non-null cadence files. `POST .../reflect` 403s if the
 caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
-breaks its format rule or a list over the count limit.
+breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
+an owner, and 400s if the project binds no repository.
 
 ## Columns
 
@@ -810,6 +815,7 @@ DELETE /projects/{id}/members/{personId}
 POST   /projects/{id}/claim
 PUT    /projects/{id}/landing
 PUT    /projects/{id}/playbooks-source
+PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

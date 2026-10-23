@@ -34,6 +34,9 @@ function project(overrides: Partial<Project>): Project {
     repoSourced: false,
     repoSourcedBy: null,
     repoSourcedAt: null,
+    bindsTracker: false,
+    bindsTrackerBy: null,
+    bindsTrackerAt: null,
     reflectionCadenceDays: null,
     reflectionLastPeriodStart: null,
     reflectionNextDueAt: null,
@@ -92,6 +95,37 @@ describe('ProjectEditDialog', () => {
     const html = render(project({ runnerTags: ['macos', 'xcode'] }));
 
     expect(html).toContain('Runners tagged macos and xcode.');
+  });
+
+  it('shows an owner the binds-tracker checkbox, disabled while the project binds no repository', () => {
+    const html = render(project({ canAdminister: true, repositories: [] }));
+
+    expect(html).toContain("This project binds the tracker&#x27;s own repository");
+    expect(html).toMatch(/<input type="checkbox" disabled=""[^>]*\/>This project binds the tracker/);
+  });
+
+  it('shows an owner who set the flag, and when', () => {
+    const html = render(
+      project({ canAdminister: true, bindsTracker: true, bindsTrackerBy: 'Nathan', bindsTrackerAt: '2026-03-09T00:00:00Z' }),
+    );
+
+    expect(html).toContain(`set by Nathan on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows anyone else a sentence, and no control, where the project binds the tracker', () => {
+    const html = render(
+      project({ canAdminister: false, bindsTracker: true, bindsTrackerBy: 'Nathan', bindsTrackerAt: '2026-03-09T00:00:00Z' }),
+    );
+
+    expect(html).toContain('Binds the tracker&#x27;s own repository');
+    expect(html).toContain('set by Nathan');
+    expect(html).not.toContain('This project binds the tracker');
+  });
+
+  it('shows anyone else nothing about the tracker where the project does not bind it', () => {
+    const html = render(project({ canAdminister: false, bindsTracker: false }));
+
+    expect(html).not.toContain('Binds the tracker');
   });
 
   it('shows an owner the runner tags textarea, one tag per line', () => {
