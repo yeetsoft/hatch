@@ -578,8 +578,12 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Show_says_which_of_the_three_layers_each_value_came_from()
     {
-        // A key goes with its origin (HA-1479), so it sits beside HATCH_BASE.
+        // A key goes with its origin (HA-1479), so it sits beside HATCH_BASE -
+        // and a user-file key that goes unread because of it (HA-1481) is
+        // called out rather than left silently dropped.
         var checkoutEnv = WriteCheckoutEnv("HATCH_BASE=https://this-repository", "HATCH_KEY=hatch_ak_from_the_checkout_file");
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_KEY=hatch_ak_from_the_user_file_abc"]);
 
         var code = await Command(
                 new Replies(),
@@ -592,9 +596,13 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Contains($"HATCH_BASE:        https://this-repository  ({checkoutEnv})", Said);
-        Assert.Contains($"HATCH_KEY:         hatch_ak_fro...file  ({checkoutEnv})", Said);
+        Assert.Contains(
+            $"HATCH_KEY:         hatch_ak_fro...file  ({checkoutEnv})" +
+            $"  (ignored: {ConfigPath} holds a key, but HATCH_BASE comes from {checkoutEnv} - set both there, or neither)",
+            Said);
         Assert.Contains("HATCH_CLAUDE_BIN:  /opt/claude  (exported)", Said);
         Assert.Contains("HATCH_BASE_BRANCH: <unset>", Said);
+        Assert.DoesNotContain("hatch_ak_from_the_user_file_abc", Said);
     }
 
     [Fact]
@@ -666,6 +674,30 @@ public sealed class ConfigCommandTests : IDisposable
     {
         Assert.Equal("(set)", ConfigCommand.Mask("short"));
         Assert.Equal("hatch_ak_abc...mnop", ConfigCommand.Mask("hatch_ak_abcdefghijklmnop"));
+    }
+
+    /// <summary>
+    /// The pairing rule (HA-1479) drops this key before `--show` ever masks
+    /// it - so the line says why it is unset rather than reading like nothing
+    /// was ever exported.
+    /// </summary>
+    [Fact]
+    public async Task Show_with_an_exported_key_and_a_file_origin_says_it_is_ignored_and_never_prints_it()
+    {
+        var checkoutEnv = WriteCheckoutEnv("HATCH_BASE=https://this-repository");
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["HATCH_KEY"] = "hatch_ak_exported_but_ignored",
+        };
+
+        var code = await Command(new Replies(), environment: environment, checkoutEnv: checkoutEnv).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(
+            $"{"HATCH_KEY:".PadRight(19)}<unset - calls go out as \"test:/checkout\", which only a wall-off Hatch reads>" +
+            $"  (ignored: exported holds a key, but HATCH_BASE comes from {checkoutEnv} - set both there, or neither)",
+            Said);
+        Assert.DoesNotContain("hatch_ak_exported_but_ignored", Said);
     }
 
     /// <summary>
@@ -895,6 +927,26 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Contains("no origin is set yet", Complained);
         Assert.False(File.Exists(ConfigPath));
+    }
+
+    /// <summary>
+    /// Plain <c>--key</c> writes the per-user file, but the origin here is
+    /// pinned in the checkout's own <c>scripts/.env</c> - a different layer,
+    /// so the pairing rule (HA-1479) will never present this key. Written
+    /// anyway, and still probed with the key typed, as the sentence says.
+    /// </summary>
+    [Fact]
+    public async Task Key_written_to_the_user_file_while_the_origin_sits_in_the_checkout_warns_it_will_not_be_sent()
+    {
+        var checkoutEnv = WriteCheckoutEnv("HATCH_BASE=https://this-repository");
+
+        var code = await Command(new Replies(), checkoutEnv: checkoutEnv).RunAsync(["--key", "hatch_ak_thesecret"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(
+            $"hatch: that key will not be sent - HATCH_BASE comes from {checkoutEnv}. Set both there, or neither.",
+            Complained);
+        Assert.Contains("HATCH_KEY=hatch_ak_thesecret", File.ReadAllLines(ConfigPath));
     }
 
     [Fact]
@@ -1397,6 +1449,34 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.False(File.Exists(ConfigPath));
     }
 
+    /// <summary>
+    /// The stale-fold bug the ticket named: once <c>--here --origin</c> writes
+    /// this checkout's own line, the origin's layer is this checkout's file,
+    /// not the per-user file a key happens to sit in - so the pairing rule
+    /// (HA-1479) drops that key, correctly, and the probe is made with none.
+    /// </summary>
+    [Fact]
+    public async Task Here_origin_over_a_per_user_key_says_no_key_and_probes_with_none()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_KEY=hatch_ak_from_the_user_file"]);
+
+        string? probedKey = null;
+        var code = await Command(
+                new Replies(), root: root, checkoutEnv: checkoutEnv,
+                probe: (settings, _, _) =>
+                {
+                    probedKey = settings.Key;
+                    return Task.FromResult<string?>("To Do");
+                })
+            .RunAsync(["--here", "--origin", "https://hatch.example"], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("", probedKey);
+        Assert.Contains("no key - calls will name themselves", Complained);
+    }
+
     [Fact]
     public async Task Here_key_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
     {
@@ -1862,6 +1942,29 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Contains("profile:          <none>", Said);
+    }
+
+    /// <summary>
+    /// HA-1480's rule, said out loud: a board-bound name folds past the
+    /// per-user file while a profile is active, and the line says so rather
+    /// than reading like the file was simply empty. A machine-bound name
+    /// beside it still reads the per-user file, and carries no such note.
+    /// </summary>
+    [Fact]
+    public async Task Show_under_a_profile_flags_board_bound_lines_but_not_HATCH_CLAUDE_BIN()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_WORKSPACE=/wherever", "HATCH_CLAUDE_BIN=/opt/claude-user"]);
+        var profilePath = Profile("HATCH_BASE=https://from-profile");
+
+        var code = await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains(
+            $"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>" +
+            "  (profile active: the per-user file was not consulted)",
+            Said);
+        Assert.Contains($"HATCH_CLAUDE_BIN:  /opt/claude-user  ({ConfigPath})", Said);
     }
 
     public void Dispose()
