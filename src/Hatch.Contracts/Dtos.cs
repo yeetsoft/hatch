@@ -3577,6 +3577,15 @@ public record RunnerDto(
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
+/// <param name="Revision">
+/// This runner's own build identity - the full sha it was built from, or
+/// "dev" for an unstamped build. Absent (an older CLI) leaves whatever the
+/// row already holds alone, the same tri-state convention as <see
+/// cref="Where"/> and <see cref="Agent"/>: a fact about the running process,
+/// not a bound the server would ever read back.
+/// </param>
+/// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
+/// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3595,7 +3604,10 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
     DateTimeOffset? UsageReadAt = null,
     IReadOnlyList<string>? Tags = null,
-    bool? Fresh = null);
+    bool? Fresh = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

@@ -886,6 +886,28 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task The_heartbeat_carries_this_runners_build_identity()
+    {
+        using var h = new Harness();
+        var builtAt = DateTimeOffset.Parse("2026-01-02T03:04:05Z");
+        var runtime = h.Runtime with
+        {
+            CliRevision = new FakeCliRevision("b465267d5809bc0c672d250a1e7cc81b8714ed92", 4127, builtAt),
+        };
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.Revision);
+        Assert.Equal(4127, beat.Sequence);
+        Assert.Equal(builtAt, beat.BuiltAt);
+    }
+
+    [Fact]
     public async Task A_jammed_board_counts_the_reasons_and_names_the_questions_waiting()
     {
         using var h = new Harness();
