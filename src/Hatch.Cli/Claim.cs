@@ -16,13 +16,32 @@ namespace Hatch.Cli;
 public sealed class Chatter
 {
     private string? _line;
+    private long _said;
 
     /// <summary>What the run is inside of right now, or null if it has not said.</summary>
     public string? Line
     {
         get => Volatile.Read(ref _line);
-        set => Volatile.Write(ref _line, value);
+        set
+        {
+            Volatile.Write(ref _line, value);
+            Interlocked.Increment(ref _said);
+        }
     }
+
+    /// <summary>
+    /// How many times <see cref="Line"/> has been set, whatever it was set to.
+    /// </summary>
+    /// <remarks>
+    /// Why the line is not enough on its own: a run printed at a fixed width says
+    /// the same thing every time it makes the same kind of call - a long
+    /// directory prefix clips every <c>Bash</c> line to the same text - and a
+    /// line compared by its text is then silence however often the run speaks.
+    /// The board's quiet window moves only on a word said, so a session making a
+    /// short call every minute was stopped as quiet. The count is what says a
+    /// line was printed again.
+    /// </remarks>
+    public long Said => Interlocked.Read(ref _said);
 }
 
 /// <summary>Why a claim was not taken, and whether the reason was that somebody else holds it.</summary>
@@ -236,6 +255,7 @@ public sealed class Claim : IAsyncDisposable
     private async Task BeatAsync(CancellationToken ct)
     {
         string? sent = null;
+        long saidSent = 0;
         var lastGood = _client.Clock.GetUtcNow();
 
         while (!ct.IsCancellationRequested)
@@ -258,10 +278,18 @@ public sealed class Claim : IAsyncDisposable
             // An empty line is a session that has not said anything yet, not a
             // session that has stopped saying things: the field is cosmetic, and
             // a blank flicker on a card is worse than a line a minute stale.
+            //
+            // A line printed again is carried again even when its text is the
+            // same as the last one's: the board's quiet window moves on a word
+            // said, and a run that keeps making the same call has not stopped
+            // talking. Read before the line, so a line set in between is
+            // carried now or on the next beat and never skipped.
+            var said = Chatter.Said;
             var line = Chatter.Line;
+            var spoke = said != saidSent && !string.IsNullOrEmpty(line);
             if (string.IsNullOrEmpty(line)) line = sent;
 
-            var body = line == sent
+            var body = line == sent && !spoke
                 ? new ClaimHeartbeatRequest(Token, null)
                 : new ClaimHeartbeatRequest(Token, line);
 
@@ -274,6 +302,7 @@ public sealed class Claim : IAsyncDisposable
             if (answer.Ok)
             {
                 sent = line;
+                saidSent = said;
                 lastGood = _client.Clock.GetUtcNow();
 
                 // A 200 instead of the ordinary 204: the board has picked this

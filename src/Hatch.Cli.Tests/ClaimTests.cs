@@ -160,6 +160,51 @@ public sealed class ClaimTests
     }
 
     [Fact]
+    public async Task A_line_printed_again_is_carried_again_though_its_text_is_the_same()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        // A clipped Bash line reads the same on every call of the same kind, and
+        // each call is the run speaking: the board's quiet window moves on a word
+        // said, and a run that keeps making the same call has not gone quiet.
+        const string Clipped = "⏺ Bash  cd \"/a/long/checkout/path\" && scripts/run-ui-tests.sh wait";
+        claim!.Chatter.Line = Clipped;
+        await Harness.Eventually(() => Beats(h).Count(b => b.Chatter == Clipped) >= 1, "the first print");
+
+        claim.Chatter.Line = Clipped;
+        await Harness.Eventually(() => Beats(h).Count(b => b.Chatter == Clipped) >= 2, "the second print");
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_line_cleared_is_not_a_word_said()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        claim!.Chatter.Line = "first";
+        await Harness.Eventually(() => Beats(h).Any(b => b.Chatter == "first"), "the first line");
+
+        claim.Chatter.Line = "";
+        var before = Beats(h).Count;
+        await Harness.Eventually(() => Beats(h).Count >= before + 3, "several more heartbeats");
+
+        await claim.ReleaseAsync();
+
+        Assert.Single(Beats(h).Where(b => b.Chatter is not null));
+    }
+
+    [Fact]
     public async Task A_new_line_is_carried_and_the_token_is_on_every_beat()
     {
         using var h = new Harness();
