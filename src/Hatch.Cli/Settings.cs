@@ -170,6 +170,14 @@ public sealed partial record Settings
     /// </summary>
     public string? KeyNote { get; init; }
 
+    /// <summary>
+    /// One line saying a <c>HATCH_RUNNER</c> was set in the profile or the
+    /// per-user file and so not read - null where none was. A name belongs to
+    /// a checkout, not to a person or a board, so neither layer is ever read
+    /// for it regardless of whether a profile is active.
+    /// </summary>
+    public string? RunnerNote { get; init; }
+
     /// <summary>Where each value came from, so <c>config --show</c> can say.</summary>
     public IReadOnlyDictionary<string, Layer> Sources { get; init; } =
         new Dictionary<string, Layer>(StringComparer.Ordinal);
@@ -193,15 +201,27 @@ public sealed partial record Settings
 
     /// <summary>
     /// Where a runner clones what the board binds when nobody named a place:
-    /// <c>ApplicationData/hatch/workspace</c>, beside <see cref="UserConfigPath"/>.
-    /// Built from the operating system's per-user folder, so it is a convention
-    /// every installation shares and not a path that is true of only one.
+    /// <c>ApplicationData/hatch/workspace</c>, beside <see cref="UserConfigPath"/>,
+    /// or - under <paramref name="profile"/> - <c>ApplicationData/hatch/workspaces/&lt;profile&gt;</c>,
+    /// a plural directory sitting beside the singular one rather than inside
+    /// it: a clone already sits directly inside the no-profile workspace, and a
+    /// profile subdirectory there could collide with a clone's own directory
+    /// name. Built from the operating system's per-user folder, so it is a
+    /// convention every installation shares and not a path that is true of
+    /// only one.
     /// </summary>
-    public static string DefaultWorkspacePath() => Path.Combine(
-        Environment.GetFolderPath(
-            Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
-        "hatch",
-        "workspace");
+    public static string DefaultWorkspacePath(string? profile = null) => string.IsNullOrEmpty(profile)
+        ? Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
+            "hatch",
+            "workspace")
+        : Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
+            "hatch",
+            "workspaces",
+            profile);
 
     /// <summary>Where every profile file lives, named for the person rather than a checkout.</summary>
     public static string ProfilesDirectory() => Path.Combine(ApplicationData, "hatch", "profiles");
@@ -296,7 +316,9 @@ public sealed partial record Settings
         string? profileFile = null)
     {
         var sources = new Dictionary<string, Layer>(StringComparer.Ordinal);
-        var (fold, ignoredKeyLayer) = LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile);
+        var (fold, ignoredKeyLayer, ignoredRunnerLayer) =
+            LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile);
+        var profileName = profileFile is null ? null : Path.GetFileName(profileFile);
 
         string? Read(string name)
         {
@@ -389,34 +411,48 @@ public sealed partial record Settings
             HeartbeatSeconds = pulse,
             RetrySeconds = retrySeconds,
             Repos = repos,
-            Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(),
+            Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(profileName),
             WorkspaceDefaulted = workspace is null,
             Tags = tags,
             Sources = sources,
-            KeyNote = ignoredKeyLayer() is { } ignored
+            KeyNote = ignoredKeyLayer() is { } ignoredKey
                 ? IgnoredKeySentence(
-                    ignored, sources["HATCH_BASE"], checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
+                    ignoredKey, sources["HATCH_BASE"], checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
+                : null,
+            RunnerNote = ignoredRunnerLayer() is { } ignoredRunner
+                ? IgnoredRunnerSentence(ignoredRunner, checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
                 : null,
         };
         return true;
     }
 
+    /// <summary>Where a layer's value would have been read from, for a sentence naming it.</summary>
+    private static string Where(Layer layer, string? checkoutEnvFile, string? profileFile, string userFile) => layer switch
+    {
+        Layer.Environment => "the environment",
+        Layer.Checkout => checkoutEnvFile ?? "the checkout's scripts/.env",
+        Layer.Profile => profileFile ?? "the profile",
+        _ => userFile,
+    };
+
     /// <summary>The one line saying which layer held a key that was not read, and what to do.</summary>
     private static string IgnoredKeySentence(
         Layer ignored, Layer origin, string? checkoutEnvFile, string? profileFile, string userFile)
     {
-        string Where(Layer layer) => layer switch
-        {
-            Layer.Environment => "the environment",
-            Layer.Checkout => checkoutEnvFile ?? "the checkout's scripts/.env",
-            Layer.Profile => profileFile ?? "the profile",
-            _ => userFile,
-        };
-
-        var fix = ignored == Layer.Environment ? "Export both, or neither." : $"Set both in {Where(ignored)}, or neither.";
-        return $"hatch: HATCH_KEY in {Where(ignored)} is ignored - HATCH_BASE comes from {Where(origin)}, " +
+        var fix = ignored == Layer.Environment
+            ? "Export both, or neither."
+            : $"Set both in {Where(ignored, checkoutEnvFile, profileFile, userFile)}, or neither.";
+        return $"hatch: HATCH_KEY in {Where(ignored, checkoutEnvFile, profileFile, userFile)} is ignored - " +
+               $"HATCH_BASE comes from {Where(origin, checkoutEnvFile, profileFile, userFile)}, " +
                $"and a key goes with its origin. {fix}";
     }
+
+    /// <summary>The one line saying which layer held a runner name that was not read, and what to do.</summary>
+    private static string IgnoredRunnerSentence(
+        Layer ignored, string? checkoutEnvFile, string? profileFile, string userFile) =>
+        $"hatch: HATCH_RUNNER in {Where(ignored, checkoutEnvFile, profileFile, userFile)} is ignored - a name " +
+        "belongs to a checkout. Set it with `hatch config --runner <name>`, export it, or put it in this " +
+        "checkout's scripts/.env.";
 
     /// <summary>
     /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
@@ -456,16 +492,26 @@ public sealed partial record Settings
         LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile).Fold;
 
     /// <summary>
-    /// <see cref="Layers"/>, and with it which layer held a <c>HATCH_KEY</c>
-    /// the fold ignored - read from the same files, so nothing is read twice.
+    /// <see cref="Layers"/>, and with it which layer held a <c>HATCH_KEY</c> or
+    /// a <c>HATCH_RUNNER</c> the fold ignored - read from the same files, so
+    /// nothing is read twice.
     /// </summary>
     /// <remarks>
     /// A key goes with its origin: <c>HATCH_KEY</c> answers only from the layer
     /// <c>HATCH_BASE</c> came from, and is unset where that layer carries none.
     /// A key in a lower or higher layer would be presented to a board it was
     /// never issued for.
+    /// <para>A runner name goes with a checkout: <c>HATCH_RUNNER</c> answers
+    /// only from <see cref="Layer.Environment"/> or <see cref="Layer.Checkout"/>,
+    /// never from <see cref="Layer.Profile"/> or <see cref="Layer.User"/> -
+    /// a flat rule, holding whether or not a profile is active, since a name
+    /// a person carries between checkouts would be presented to whichever
+    /// board that checkout happens to serve.</para>
     /// </remarks>
-    public static (Func<string, (string? Value, Layer From)> Fold, Func<Layer?> IgnoredKeyLayer) LayersWithNotes(
+    public static (
+        Func<string, (string? Value, Layer From)> Fold,
+        Func<Layer?> IgnoredKeyLayer,
+        Func<Layer?> IgnoredRunnerLayer) LayersWithNotes(
         string? checkoutEnvFile, IDictionary<string, string?> environment,
         string? userConfigFile = null, string? profileFile = null)
     {
@@ -499,6 +545,14 @@ public sealed partial record Settings
 
         (string? Value, Layer From) Fold(string name)
         {
+            if (name == "HATCH_RUNNER")
+            {
+                foreach (var layer in RunnerOrder)
+                    if (In(layer, name) is { } value) return (value, layer);
+
+                return (null, Layer.Unset);
+            }
+
             if (name != "HATCH_KEY") return Lookup(name);
 
             var origin = Lookup("HATCH_BASE").From;
@@ -518,8 +572,27 @@ public sealed partial record Settings
             return null;
         }
 
-        return (Fold, IgnoredKeyLayer);
+        Layer? IgnoredRunnerLayer()
+        {
+            // Nothing to warn about where the environment or the checkout
+            // already supplies one - that is the deliberate, winning override,
+            // not a silently dropped setting.
+            if (RunnerOrder.Any(layer => In(layer, "HATCH_RUNNER") is not null)) return null;
+
+            foreach (var layer in RunnerIgnoredOrder)
+                if (In(layer, "HATCH_RUNNER") is not null) return layer;
+
+            return null;
+        }
+
+        return (Fold, IgnoredKeyLayer, IgnoredRunnerLayer);
     }
+
+    /// <summary>Where <c>HATCH_RUNNER</c> alone is read from - a name belongs to a checkout, never a profile or the per-user file.</summary>
+    private static readonly Layer[] RunnerOrder = [Layer.Environment, Layer.Checkout];
+
+    /// <summary>The layers <c>HATCH_RUNNER</c> is never read from, walked in <see cref="Order"/>'s own precedence.</summary>
+    private static readonly Layer[] RunnerIgnoredOrder = [Layer.Profile, Layer.User];
 
     private static readonly Layer[] Order = [Layer.Environment, Layer.Checkout, Layer.Profile, Layer.User];
 
