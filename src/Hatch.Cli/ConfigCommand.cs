@@ -465,14 +465,22 @@ public sealed record ConfigCommand(
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
             path: overlayPath, overlay: overlay, mode: "--origin");
 
-        Environment["HATCH_BASE"] = origin;
-
-        Say.Line($"wrote {target}");
+        // Rebuilt after the write and before HATCH_BASE is exported: `fold`
+        // above still reads the file as it stood before Write, and exporting
+        // the origin first would make Environment the origin's own layer,
+        // dropping every file key the pairing rule (HA-1479) would otherwise
+        // honour.
+        var freshFold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
 
         // What a real subsequent load resolves the key to - not just this
         // checkout's own line, so a key already set at the user layer is not
         // reported missing just because --here carries nothing of its own.
-        var keyForProbe = fold("HATCH_KEY").Value ?? "";
+        var keyForProbe = freshFold("HATCH_KEY").Value ?? "";
+
+        Environment["HATCH_BASE"] = origin;
+
+        Say.Line($"wrote {target}");
+
         if (keyForProbe.Length == 0)
             Say.Complain(
                 $"hatch: no key - calls will name themselves \"{RunnerName}\", " +
@@ -512,12 +520,24 @@ public sealed record ConfigCommand(
         // What a real subsequent load resolves the origin to - checked and
         // proved against this, even under --here/--profile, where the overlay
         // file may carry none of its own and fall through to the user layer.
-        var originForProbe = fold("HATCH_BASE").Value ?? "";
+        var (originValueForProbe, originLayer) = fold("HATCH_BASE");
+        var originForProbe = originValueForProbe ?? "";
         if (originForProbe.Length == 0)
         {
             Say.Complain("hatch: no origin is set yet - run `hatch config --origin <origin>` first");
             return 1;
         }
+
+        // The layer this write is about to land in - read before the write, so
+        // the warning below describes the file as it stood when the key was
+        // typed. A key that lands anywhere else is one the pairing rule (HA-1479)
+        // will not send: it only reads HATCH_KEY from the layer HATCH_BASE came
+        // from.
+        var writingLayer = here ? Settings.Layer.Checkout
+            : ProfileName is not null ? Settings.Layer.Profile
+            : Settings.Layer.User;
+        if (originLayer != writingLayer)
+            Say.Complain($"hatch: that key will not be sent - HATCH_BASE comes from {Where(originLayer)}. Set both there, or neither.");
 
         var origin = Field("HATCH_BASE");
         var claudeBin = Field("HATCH_CLAUDE_BIN");
@@ -898,7 +918,7 @@ public sealed record ConfigCommand(
     /// <summary>What is set, and which of the three layers it came from.</summary>
     private async Task<int> ShowAsync(CancellationToken ct)
     {
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var (fold, ignoredKeyLayer) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");
@@ -966,6 +986,17 @@ public sealed record ConfigCommand(
             var (value, from) = fold(name);
             var where = from == Settings.Layer.Unset ? "" : $"  ({Where(from)})";
 
+            // Two notes, independent of each other and of `where`: a key the
+            // pairing rule (HA-1479) drops regardless of what this layer's own
+            // line shows, and a board-bound name (HA-1480) the active profile
+            // kept the per-user file out of reach of.
+            var note = "";
+            if (name == "HATCH_KEY" && ignoredKeyLayer() is { } ignored)
+                note += $"  (ignored: {Where(ignored)} holds a key, but HATCH_BASE comes from " +
+                         $"{Where(fold("HATCH_BASE").From)} - set both there, or neither)";
+            if (Settings.IsBoardBound(name) && ProfilePath is not null)
+                note += "  (profile active: the per-user file was not consulted)";
+
             // One path per line rather than the raw joined value - a person
             // reading this is asking which checkouts, not which separator.
             if (name == "HATCH_REPOS")
@@ -975,9 +1006,9 @@ public sealed record ConfigCommand(
                     : [];
 
                 if (paths.Length == 0)
-                    Say.Line($"{(name + ":").PadRight(19)}<unset>");
+                    Say.Line($"{(name + ":").PadRight(19)}<unset>{note}");
                 else
-                    foreach (var path in paths) Say.Line($"{(name + ":").PadRight(19)}{path}{where}");
+                    foreach (var path in paths) Say.Line($"{(name + ":").PadRight(19)}{path}{where}{note}");
 
                 continue;
             }
@@ -986,14 +1017,14 @@ public sealed record ConfigCommand(
             {
                 if (value is not { Length: > 0 })
                 {
-                    Say.Line($"{(name + ":").PadRight(19)}<unset>");
+                    Say.Line($"{(name + ":").PadRight(19)}<unset>{note}");
                     continue;
                 }
 
                 var sentence = Settings.ParseTags(value, out var parsed);
                 Say.Line(sentence is null
-                    ? $"{(name + ":").PadRight(19)}{string.Join(", ", parsed)}{where}"
-                    : $"{(name + ":").PadRight(19)}{value}  (refused: {sentence}){where}");
+                    ? $"{(name + ":").PadRight(19)}{string.Join(", ", parsed)}{where}{note}"
+                    : $"{(name + ":").PadRight(19)}{value}  (refused: {sentence}){where}{note}");
 
                 continue;
             }
@@ -1012,7 +1043,7 @@ public sealed record ConfigCommand(
 
             // A name as wide as the column would print its value glued to the colon.
             var label = name.Length + 1 < 19 ? (name + ":").PadRight(19) : name + ":  ";
-            Say.Line($"{label}{shown}{where}");
+            Say.Line($"{label}{shown}{where}{note}");
         }
 
         return 0;
