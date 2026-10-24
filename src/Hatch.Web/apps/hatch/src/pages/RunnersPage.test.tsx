@@ -39,6 +39,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   sequence: null,
   builtAt: null,
   boardDrift: 'Unknown',
+  sourceDrift: 'Unknown',
   ...over,
 });
 
@@ -97,6 +98,31 @@ describe('RunnersPage Row', () => {
     for (const drift of ['Ahead', 'Current', 'Unknown'] as const) {
       expect(renderRow(runner({ boardDrift: drift }))).not.toContain('Behind');
     }
+  });
+
+  it('badges only a row whose build is Behind its own checkout\'s source', () => {
+    expect(renderRow(runner({ sourceDrift: 'Behind' }))).toContain('Rebuild');
+    for (const drift of ['Ahead', 'Current', 'Unknown'] as const) {
+      expect(renderRow(runner({ sourceDrift: drift }))).not.toContain('Rebuild');
+    }
+  });
+
+  it('keeps the two badges apart, and draws both on a row behind both', () => {
+    const board = renderRow(runner({ boardDrift: 'Behind' }));
+    expect(board).toContain('Behind');
+    expect(board).not.toContain('Rebuild');
+
+    const source = renderRow(runner({ sourceDrift: 'Behind' }));
+    expect(source).toContain('Rebuild');
+    expect(source).not.toContain('Behind');
+
+    const both = renderRow(runner({ boardDrift: 'Behind', sourceDrift: 'Behind' }));
+    expect(both).toContain('Behind');
+    expect(both).toContain('Rebuild');
+
+    const neither = renderRow(runner());
+    expect(neither).not.toContain('Behind');
+    expect(neither).not.toContain('Rebuild');
   });
 
   it('keeps where, agent and drives off the closed row', () => {

@@ -2046,6 +2046,9 @@ export interface Runner {
       way a client's build is against a replica's. Mirrors RunnerDto's
       BoardDrift. */
   boardDrift: RevisionDrift;
+  /** Where this runner's own build sits against its own reported source - the
+      checkout's history, not the API. Mirrors RunnerDto's SourceDrift. */
+  sourceDrift: RevisionDrift;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

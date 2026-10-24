@@ -55,6 +55,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   sequence: null,
   builtAt: null,
   boardDrift: 'Unknown',
+  sourceDrift: 'Unknown',
   ...over,
 });
 

@@ -2849,6 +2849,17 @@ public class EfHatchRunner
     public DateTimeOffset? BuiltAt { get; set; }
 
     /// <summary>
+    /// The sha of the source checkout this runner was started from, when that
+    /// checkout holds the CLI's own source. Null for a runner started in any
+    /// other checkout, which has no source of its own to fall behind.
+    /// </summary>
+    [MaxLength(MaxRevisionLength)]
+    public string? SourceRevision { get; set; }
+
+    /// <summary>The commit count of <see cref="SourceRevision"/>, read beside <see cref="Sequence"/>.</summary>
+    public int? SourceSequence { get; set; }
+
+    /// <summary>
     /// The tags this runner carries, newline-joined - a fact about the
     /// running process, overwritten on every heartbeat that names any, the
     /// same as <see cref="Remotes"/>.
