@@ -97,7 +97,9 @@ if (command == "config")
     var configRunnerName = await ResolveRunnerAsync(
         fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, CancellationToken.None);
 
-    return await new ConfigCommand(say, new Input(), environment, checkoutEnv, configRunnerName, Root: root)
+    return await new ConfigCommand(
+            say, new Input(), environment, checkoutEnv, configRunnerName, Root: root,
+            ProfileName: profileArg, ProfilePath: profileFile)
         .RunAsync(rest, CancellationToken.None);
 }
 
