@@ -764,6 +764,66 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_KEY"));
     }
 
+    [Fact]
+    public void A_profile_skips_every_board_bound_name_in_the_per_user_file_but_not_the_machine_bound_ones()
+    {
+        var user = Write("user.config",
+            "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine", "HATCH_RUNNER=mine",
+            "HATCH_TAGS=gpu", "HATCH_WORKSPACE=/mine/workspace", "HATCH_REPOS=/mine/repo",
+            "HATCH_CLAUDE_BIN=/mine/claude", "HATCH_AGENT=codex");
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
+
+        Assert.Null(settings.Runner);
+        Assert.Empty(settings.Tags);
+        Assert.Empty(settings.Repos);
+        Assert.True(settings.WorkspaceDefaulted);
+        Assert.Equal("", settings.Key);
+        Assert.Equal("/mine/claude", settings.ClaudeBin);
+        Assert.Equal("codex", settings.Agent);
+    }
+
+    [Fact]
+    public void With_no_profile_the_same_user_file_reads_every_value_as_today()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_RUNNER=mine", "HATCH_TAGS=gpu");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal("mine", settings.Runner);
+        Assert.Contains("gpu", settings.Tags);
+    }
+
+    [Fact]
+    public void A_named_profile_with_no_file_behind_it_still_skips_the_user_file_for_board_bound_names()
+    {
+        var missingProfile = Path.Combine(_temp, "no-such-profile.config"); // never written
+        var user = Write("user.config", "HATCH_RUNNER=mine", "HATCH_CLAUDE_BIN=/mine/claude");
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://exported")), out var settings, out _, user, missingProfile));
+
+        Assert.Null(settings.Runner);
+        Assert.Equal("/mine/claude", settings.ClaudeBin);
+    }
+
+    [Fact]
+    public void The_exported_layer_and_the_checkouts_env_still_supply_board_bound_names_under_a_profile()
+    {
+        var checkout = Write("checkout.env", "HATCH_WORKSPACE=/checkout/workspace");
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+        var user = Write("user.config", "HATCH_RUNNER=mine");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_TAGS", "gpu")), out var settings, out _, user, profile));
+
+        Assert.Equal("/checkout/workspace", settings.Workspace);
+        Assert.False(settings.WorkspaceDefaulted);
+        Assert.Contains("gpu", settings.Tags);
+        Assert.Null(settings.Runner);
+    }
+
     // ---- the key goes with its origin ----
 
     [Fact]
