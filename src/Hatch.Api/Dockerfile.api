@@ -103,6 +103,7 @@ COPY src/Hatch.Cli src/Hatch.Cli
 
 FROM cli-src AS cli-win-x64
 ARG HATCH_REVISION
+ARG HATCH_SEQUENCE
 RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       --runtime win-x64 \
       --configuration Release \
@@ -110,10 +111,12 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:PublishSingleFile=true \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
-      -p:SourceRevisionId=$HATCH_REVISION
+      -p:SourceRevisionId=$HATCH_REVISION \
+      -p:HatchSequence=$HATCH_SEQUENCE
 
 FROM cli-src AS cli-osx-arm64
 ARG HATCH_REVISION
+ARG HATCH_SEQUENCE
 RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       --runtime osx-arm64 \
       --configuration Release \
@@ -121,10 +124,12 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:PublishSingleFile=true \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
-      -p:SourceRevisionId=$HATCH_REVISION
+      -p:SourceRevisionId=$HATCH_REVISION \
+      -p:HatchSequence=$HATCH_SEQUENCE
 
 FROM cli-src AS cli-osx-x64
 ARG HATCH_REVISION
+ARG HATCH_SEQUENCE
 RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       --runtime osx-x64 \
       --configuration Release \
@@ -132,10 +137,12 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:PublishSingleFile=true \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
-      -p:SourceRevisionId=$HATCH_REVISION
+      -p:SourceRevisionId=$HATCH_REVISION \
+      -p:HatchSequence=$HATCH_SEQUENCE
 
 FROM cli-src AS cli-linux-x64
 ARG HATCH_REVISION
+ARG HATCH_SEQUENCE
 RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       --runtime linux-x64 \
       --configuration Release \
@@ -143,7 +150,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:PublishSingleFile=true \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
-      -p:SourceRevisionId=$HATCH_REVISION
+      -p:SourceRevisionId=$HATCH_REVISION \
+      -p:HatchSequence=$HATCH_SEQUENCE
 
 # Build runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

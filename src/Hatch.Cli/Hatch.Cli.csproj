@@ -79,4 +79,20 @@
     <InternalsVisibleTo Include="Hatch.Cli.Tests" />
   </ItemGroup>
 
+  <!--
+    The git identity of this build (docs/plans/version.md). The sha rides in on
+    SourceRevisionId, which the SDK already appends to
+    AssemblyInformationalVersion as "+<sha>" - there is no equivalent well-known
+    property for an ordering, so the sequence travels as assembly metadata.
+    Both are read back by CliRevision.cs.
+
+    Conditioned so a local `dotnet build` - which passes neither - emits no
+    empty attribute, leaving the reader to report `dev` rather than an
+    ambiguous "". A dev machine's sha in a dev machine's artifact would answer
+    nobody's question anyway, so nothing here shells out to git.
+  -->
+  <ItemGroup Condition="'$(HatchSequence)' != ''">
+    <AssemblyMetadata Include="HatchSequence" Value="$(HatchSequence)" />
+  </ItemGroup>
+
 </Project>

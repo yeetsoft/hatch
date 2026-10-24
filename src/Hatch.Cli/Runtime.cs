@@ -29,6 +29,13 @@ public sealed record Runtime(
     public ModelFamilies Families { get; init; } = ModelFamilies.Default;
 
     /// <summary>
+    /// This process's own build identity, read once off the entry assembly -
+    /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
+    /// sends without a stamped assembly to build.
+    /// </summary>
+    public ICliRevision CliRevision { get; init; } = new CliRevision();
+
+    /// <summary>
     /// What a pinned readout would draw, kept current whether or not a
     /// terminal is actually drawing one - see <see cref="ReadoutState"/>.
     /// </summary>

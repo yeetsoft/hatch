@@ -1366,6 +1366,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Standing: runtime.Checkouts.Any(c => c.Standing),
                 Where: runtime.Where,
                 Agent: runtime.Adapter.Id,
+                Revision: runtime.CliRevision.Revision,
+                Sequence: runtime.CliRevision.Sequence,
+                BuiltAt: runtime.CliRevision.BuiltAt,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
                 // Absent before this loop's first rate_limit_event - a restart

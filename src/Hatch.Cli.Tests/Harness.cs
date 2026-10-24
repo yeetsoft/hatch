@@ -97,6 +97,16 @@ public sealed class FakeSessions : ISessionRunner
 }
 
 /// <summary>
+/// A build identity a test can set, rather than whatever this run's own
+/// assembly happens to carry - see <see cref="CliRevision"/>.
+/// </summary>
+public sealed record FakeCliRevision(
+    string Revision = "dev", int Sequence = 0, DateTimeOffset? BuiltAt = null) : ICliRevision
+{
+    public bool IsDevelopment => Revision == CliRevision.Development;
+}
+
+/// <summary>
 /// A second agent, standing in for whatever one that is not Claude would be -
 /// its own id, its own resume wording, its own stream format, its own hook
 /// shape - so a call site that only works by accident of Claude's own
