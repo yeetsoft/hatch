@@ -36,6 +36,15 @@ public sealed class TallyTests
         };
 
     [Fact]
+    public void A_tally_with_no_carried_state_is_fresh_and_one_carrying_state_is_not()
+    {
+        var clock = TimeProvider.System;
+
+        Assert.True(new Tally(clock).Fresh);
+        Assert.False(new Tally(clock, new NightState()).Fresh);
+    }
+
+    [Fact]
     public void Three_failures_in_a_row_end_the_night_and_name_them()
     {
         var tally = new Tally(TimeProvider.System);
