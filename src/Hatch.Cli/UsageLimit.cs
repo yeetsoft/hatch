@@ -78,20 +78,46 @@ public static partial class UsageLimit
         var window = said.Contains("weekly", StringComparison.OrdinalIgnoreCase) ? "weekly" : "session";
 
         var match = ClockPattern().Match(said);
-        if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
+        if (!match.Success || !TryReset(match, endedAt, runnerZone ?? TimeZoneInfo.Local, out var reset, out var zone, out var rolled))
+            return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
 
-        var runner = runnerZone ?? TimeZoneInfo.Local;
-        var zone = match.Groups["zone"].Success
+        if (rolled && window == "session" && reset - endedAt > WindowLengths["session"] + WindowSlack)
+            return new Recognised(TimeZoneInfo.ConvertTime(endedAt + PassedRetry, zone), ResetKnown: true, window, Passed: true);
+
+        return new Recognised(reset, ResetKnown: true, window);
+    }
+
+    /// <summary>
+    /// The instant the first <c>resets …</c> phrase in <paramref name="said"/>
+    /// names, read exactly as <see cref="Recognise"/> reads one - a time with
+    /// no date is its next occurrence after <paramref name="at"/>. Null where
+    /// there is no such phrase, or its time cannot be read.
+    /// </summary>
+    public static DateTimeOffset? ResetNamed(string said, DateTimeOffset at, TimeZoneInfo? runnerZone = null) =>
+        ClockPattern().Match(said) is { Success: true } match &&
+        TryReset(match, at, runnerZone ?? TimeZoneInfo.Local, out var reset, out _, out _)
+            ? reset
+            : null;
+
+    /// <summary>
+    /// The instant a matched <c>resets …</c> phrase names, in the zone it
+    /// names - <paramref name="rolled"/> when it named no date and so was
+    /// taken as the next occurrence of that clock time after <paramref name="at"/>.
+    /// </summary>
+    private static bool TryReset(Match match, DateTimeOffset at, TimeZoneInfo runner,
+        out DateTimeOffset reset, out TimeZoneInfo zone, out bool rolled)
+    {
+        reset = default;
+        rolled = false;
+        zone = match.Groups["zone"].Success
             ? ResolveZone(match.Groups["zone"].Value.Trim(), runner)
             : runner;
 
-        if (!TryHour(match, out var hour24, out var minute))
-            return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
+        if (!TryHour(match, out var hour24, out var minute)) return false;
 
-        var local = TimeZoneInfo.ConvertTime(endedAt, zone);
+        var local = TimeZoneInfo.ConvertTime(at, zone);
 
         DateOnly date;
-        var rolled = false;
         if (match.Groups["month"].Success && TryDate(match, local, out var named))
         {
             date = named;
@@ -106,12 +132,8 @@ public static partial class UsageLimit
 
         var wall = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0, DateTimeKind.Unspecified);
         var utc = TimeZoneInfo.ConvertTimeToUtc(wall, zone);
-        var offset = zone.GetUtcOffset(utc);
-
-        if (rolled && window == "session" && new DateTimeOffset(utc, TimeSpan.Zero) - endedAt > WindowLengths["session"] + WindowSlack)
-            return new Recognised(TimeZoneInfo.ConvertTime(endedAt + PassedRetry, zone), ResetKnown: true, window, Passed: true);
-
-        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true, window);
+        reset = new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(zone.GetUtcOffset(utc));
+        return true;
     }
 
     /// <summary>

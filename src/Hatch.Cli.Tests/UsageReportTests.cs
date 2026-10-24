@@ -115,6 +115,86 @@ public sealed class UsageReportTests
         Assert.Null(UsageReport.Parse([Fixtures.Init(), Fixtures.Result()]));
     }
 
+    private const string UsageText =
+        "Current session: 1% used · resets Oct 24 at 7:10pm (America/New_York)\n" +
+        "Current week (all models): 28% used · resets Oct 27 at 2pm (America/New_York)\n" +
+        "Current week (Opus 5): 12.5% used · resets Oct 27 at 2pm (America/New_York)";
+
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-10-24T14:00:00-04:00");
+
+    [Fact]
+    public void WithNoUsageReport_theWindowsAreReadFromTheAssistantText()
+    {
+        var windows = UsageReport.Parse([Fixtures.Init(), Fixtures.AssistantText(UsageText), Fixtures.Result()], Now);
+
+        Assert.Equal(["session", "weekly", "weeklyModel"], windows!.Select(w => w.Window));
+        Assert.Equal(["Session", "Weekly", "Weekly (Opus 5)"], windows!.Select(w => w.Label));
+        Assert.Equal(0.01, windows![0].Utilization, 3);
+        Assert.Equal(0.28, windows![1].Utilization, 3);
+        Assert.Equal(0.125, windows![2].Utilization, 3);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-24T19:10:00-04:00"), windows![0].ResetsAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-27T14:00:00-04:00"), windows![1].ResetsAt);
+    }
+
+    [Fact]
+    public void TheTextReset_isTheOneUsageLimitReads()
+    {
+        const string said = "resets Oct 27 at 2pm (America/New_York)";
+        var windows = UsageReport.Parse([Fixtures.AssistantText($"Current week (all models): 28% used · {said}")], Now);
+
+        Assert.Equal(UsageLimit.ResetNamed(said, Now), Assert.Single(windows!).ResetsAt);
+    }
+
+    [Fact]
+    public void AWeekThatNamesNoScope_isTheWholeWeek()
+    {
+        var window = Assert.Single(UsageReport.Parse([Fixtures.AssistantText("Current week: 28% used")], Now)!);
+
+        Assert.Equal("weekly", window.Window);
+        Assert.Equal("Weekly", window.Label);
+    }
+
+    [Fact]
+    public void ATextWindowWithNoReset_hasNoResetInstant()
+    {
+        var windows = UsageReport.Parse([Fixtures.AssistantText("Current session: 4% used")], Now);
+
+        Assert.Null(Assert.Single(windows!).ResetsAt);
+    }
+
+    [Fact]
+    public void AStructuredReport_winsOverTheText()
+    {
+        var windows = UsageReport.Parse(
+            [Fixtures.UsageReport([("session", 17, null)]), Fixtures.AssistantText(UsageText)], Now);
+
+        var window = Assert.Single(windows!);
+        Assert.Equal(0.17, window.Utilization, 3);
+    }
+
+    [Fact]
+    public void AssistantTextWithNoCurrentLine_isNoReading()
+    {
+        Assert.Null(UsageReport.Parse([Fixtures.AssistantText("Nothing to see here.")], Now));
+    }
+
+    [Fact]
+    public void SaidPreviewsTheAssistantText_notTheInitLine()
+    {
+        var said = UsageReport.Said([Fixtures.Init(), Fixtures.AssistantText("hello there"), Fixtures.Result()]);
+
+        Assert.Equal("hello there\n", said);
+    }
+
+    [Fact]
+    public void SaidFallsBackToTheResultText_andNeverTheInitLine()
+    {
+        var said = UsageReport.Said([Fixtures.Init(), Fixtures.Result(said: "it failed")]);
+
+        Assert.Equal("it failed", said);
+        Assert.DoesNotContain("init", UsageReport.Said([Fixtures.Init()]));
+    }
+
     [Fact]
     public void TurnsIsZeroForAProbeThatCostNothing()
     {

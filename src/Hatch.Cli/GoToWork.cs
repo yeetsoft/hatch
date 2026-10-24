@@ -1020,7 +1020,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 {
                     probedAt = probeNow;
                     var probed = await probe.ProbeAsync(runtime.TempDirectory, ct);
-                    var windows = probed is not null ? UsageReport.Parse(probed) : null;
+                    var windows = probed is not null ? UsageReport.Parse(probed, probeNow) : null;
 
                     if (windows is { } found)
                     {
@@ -1041,7 +1041,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         if (outcome != lastProbeOutcome)
                         {
                             lastProbeOutcome = outcome;
-                            var joined = probed is null ? "" : string.Join('\n', probed);
+                            var joined = probed is null ? "" : UsageReport.Said(probed);
                             var preview = joined.Length > 500 ? joined[..500] : joined;
                             runtime.Say.Line($"hatch: {outcome} - {preview}");
                         }
