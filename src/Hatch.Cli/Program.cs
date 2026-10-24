@@ -51,7 +51,9 @@ if (!Program.TryExtractProfile(rest, out rest, out var profileArg, out var extra
 }
 
 string? profileFile = null;
-if (command != "config")
+// `use` is how a pointer naming a missing profile gets repaired, so it cannot
+// be refused on that pointer; it reads no settings, so it has no layer to build.
+if (command is not ("config" or "use"))
 {
     if (!Settings.TryResolveProfile(profileArg, environment, out _, out profileFile, out var profileRefusal))
     {
@@ -63,7 +65,7 @@ if (command != "config")
         return 1;
     }
 }
-else if (profileArg is not null && Settings.ValidProfileName(profileArg))
+else if (command == "config" && profileArg is not null && Settings.ValidProfileName(profileArg))
 {
     // config never calls TryResolveProfile - an explicit name here may not
     // exist yet (HA-1464 creates it) and TryResolveProfile refuses exactly
@@ -98,6 +100,9 @@ if (command == "config")
     return await new ConfigCommand(say, new Input(), environment, checkoutEnv, configRunnerName, Root: root)
         .RunAsync(rest, CancellationToken.None);
 }
+
+// Two local files and no board, so it too has to work with nothing configured.
+if (command == "use") return new UseCommand(say).Run(rest);
 
 if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missing, profileFile: profileFile))
 {
@@ -402,7 +407,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -450,6 +455,9 @@ internal partial class Program
         "",
         "  hatch config                 ask for the origin and the key, and write them",
         "  hatch config --show          what is set, and which layer it came from",
+        "  hatch use <name>             make a saved profile the active one",
+        "  hatch use                    which profile is active, or <none>",
+        "  hatch use --none             ...clear it",
         "  hatch board                  the columns, and how many cards in each",
         "  hatch next                   top workable card of \"todo\"",
         "  hatch next \"in progress\"      ...or of any column",

@@ -946,23 +946,13 @@ public sealed record ConfigCommand(
     /// <summary>
     /// The file, written whole or not at all.
     /// </summary>
-    /// <remarks>
-    /// Temp file, then mode, then rename - the rename is what makes a
-    /// half-written file impossible to read as a whole one, and the mode is set
-    /// before there is anything in it to read. <c>File.SetUnixFileMode</c> is a
-    /// no-op concept on Windows, where the file inherits the directory's ACL
-    /// and <c>%APPDATA%</c> is already per-user.
-    /// </remarks>
+    /// <remarks>See <see cref="AtomicFile.Write"/> for how it is written whole.</remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
         string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
         string? path = null, bool here = false, string mode = "")
     {
         var target = path ?? ConfigPath;
-        var directory = Path.GetDirectoryName(target);
-        if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
-
-        var temp = $"{target}.{System.Environment.ProcessId}";
 
         var lines = here
             ? new List<string>
@@ -999,11 +989,7 @@ public sealed record ConfigCommand(
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
         if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
 
-        File.WriteAllLines(temp, lines);
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-
-        File.Move(temp, target, overwrite: true);
+        AtomicFile.Write(target, lines);
     }
 
     /// <summary>Enough of a key to recognise which one it is, and not enough to use.</summary>

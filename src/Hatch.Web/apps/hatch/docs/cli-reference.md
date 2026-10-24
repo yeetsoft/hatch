@@ -22,6 +22,7 @@ every variable.
 | Command | Needs a checkout | Writes to the board |
 |---|---|---|
 | `config` | No | No: it writes local files only |
+| `use` | No | No: it writes local files only |
 | `board` | No | No |
 | `next` | No | No |
 | `queue` | No | No |
@@ -94,6 +95,24 @@ header instead. Never put it in a repository, either way.
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
   already the checkout's own), or combined with `--show`.
+
+It touches no ticket and no column, so it writes nothing to the board.
+
+### use
+
+```
+hatch use [<name> | --none]
+```
+
+Switches, shows or clears the active profile: the one-line pointer file that
+names which profile file is layered in. It reads and writes local files only,
+so it works with nothing configured.
+
+- `hatch use` alone prints the active profile's name, or `<none>`.
+- `hatch use <name>` makes `<name>` the active profile and prints it. It is
+  refused, naming the profiles directory, unless a profile file by that name
+  already exists there.
+- `hatch use --none` clears the active profile.
 
 It touches no ticket and no column, so it writes nothing to the board.
 

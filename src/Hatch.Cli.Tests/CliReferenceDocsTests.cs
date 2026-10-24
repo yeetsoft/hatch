@@ -16,6 +16,7 @@ public sealed class CliReferenceDocsTests
     private static readonly Dictionary<string, string[]> UsageByCommand = new()
     {
         ["config"] = ConfigCommand.ConfigUsage,
+        ["use"] = UseCommand.UseUsage,
         ["board"] = BoardCommands.BoardUsage,
         ["next"] = BoardCommands.NextUsage,
         ["queue"] = BoardCommands.QueueUsage,
