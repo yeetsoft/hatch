@@ -3474,6 +3474,20 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// has to know the wall exists to draw its own controls.
 /// </param>
 /// <param name="Order">The standing order this runner's next loop heartbeat will read and clear, or null for none.</param>
+/// <param name="Revision">
+/// This runner's own build identity - the full sha it was built from, or
+/// "dev" for an unstamped build. Null for a runner that has never reported
+/// one (an older CLI).
+/// </param>
+/// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
+/// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
+/// <param name="BoardDrift">
+/// Where this runner's own build sits relative to the board's - the same
+/// comparison the board makes for its own web clients
+/// (<c>Hatch.Api.Models.HatchRevision.RevisionComparison</c>), computed
+/// server-side since a contract with no reference to the API cannot carry
+/// that type across the wire itself.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3499,11 +3513,29 @@ public record RunnerDto(
     IReadOnlyList<string> Tags = null!,
     string? For = null,
     bool CanControl = true,
-    RunnerOrderDto? Order = null)
+    RunnerOrderDto? Order = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null,
+    RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+}
+
+/// <summary>
+/// Where a runner's own reported build sits relative to the board's -
+/// <c>Hatch.Api.Models.HatchRevision.RevisionDrift</c>'s four answers, kept as
+/// a wire enum of its own since <see cref="RunnerDto"/> cannot reference that
+/// type across the module boundary. Same four names, same order.
+/// </summary>
+public enum RunnerBoardDrift
+{
+    Unknown,
+    Current,
+    Behind,
+    Ahead,
 }
 
 /// <summary>
@@ -3577,6 +3609,15 @@ public record RunnerDto(
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
+/// <param name="Revision">
+/// This runner's own build identity - the full sha it was built from, or
+/// "dev" for an unstamped build. Absent (an older CLI) leaves whatever the
+/// row already holds alone, the same tri-state convention as <see
+/// cref="Where"/> and <see cref="Agent"/>: a fact about the running process,
+/// not a bound the server would ever read back.
+/// </param>
+/// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
+/// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3595,7 +3636,12 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
     DateTimeOffset? UsageReadAt = null,
     IReadOnlyList<string>? Tags = null,
-    bool? Fresh = null);
+    bool? Fresh = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null,
+    string? SourceRevision = null,
+    int? SourceSequence = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -3711,3 +3757,37 @@ public record RunnerPatchRequest(
 /// </remarks>
 /// <param name="ProtectedToken">The credential as <c>SecretProtector.Protect</c> wrote it: <c>v1:&lt;base64&gt;</c>.</param>
 public record CredentialDto(string ProtectedToken);
+
+/// <summary>
+/// Who is at the browser, or what is calling in its place, as the nav strip
+/// needs them.
+/// </summary>
+/// <param name="Kind">
+/// <c>person</c> (a grant holds a person), <c>local</c> (the wall is off and
+/// the machine's own person is speaking), <c>none</c> (the wall is off and
+/// nobody local answered either), <c>key</c> (an API key), or <c>runner</c>
+/// (a wall-off runner header).
+/// </param>
+/// <param name="Name">What events written from this caller will say.</param>
+/// <param name="Role">
+/// <c>user</c> or <c>admin</c> for a person; for <c>key</c>, the key owner's
+/// <c>PersonRole</c> lowercased, or null with no owner; null for every other
+/// kind, which has no role to gate on.
+/// </param>
+/// <param name="Configured">
+/// Whether anybody actually said so. False means the name is the built-in
+/// default and the strip explains what to set - which is the one thing an
+/// operator who has just started Hatch for the first time needs told, and the
+/// one thing no amount of correct behaviour would tell them. Always true for a
+/// person, who is named because they enrolled.
+/// </param>
+/// <param name="CanSignOut">Whether there is a grant to end. False for local.</param>
+/// <param name="CanSignIn">
+/// Whether an authority is configured to sign in with. False for a person,
+/// who already holds a grant and so has nothing to sign in to.
+/// </param>
+/// <param name="Owner">The key's owner's name, for <c>key</c> with an owner. Null for every other kind.</param>
+/// <param name="Scopes">The key's scopes, for <c>key</c>. Null for every other kind.</param>
+public record MeDto(
+    string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
+    string? Owner = null, string[]? Scopes = null);

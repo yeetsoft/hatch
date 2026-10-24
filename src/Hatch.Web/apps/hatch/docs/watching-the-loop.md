@@ -20,7 +20,8 @@ runners` is the same read at a terminal, one line per row. Each row
 has:
 
 - **Runner** - its name, and `one increment` where it is not a `loop` (a loop
-  says nothing here, since that is the default).
+  says nothing here, since that is the default), and a **Behind** badge
+  when its own build has fallen behind the board's.
 - **Doing** - `Gone`, `Out of usage until …`, `Paused`, `Stopping`, `Working
   <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
   answering reads `Gone` whatever it was last asked to do. Silence is ninety
@@ -40,8 +41,9 @@ on this page.
 
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
-runs, the agent it runs, what it drives, and the repositories it serves, then
-a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
+runs, the agent it runs, its build - a short sha and how long ago, or
+`dev build` for one that hasn't been stamped - what it drives, and the
+repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
 not just a day), **Tags**, with **Save bounds** and **Revert** - and an Order
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at

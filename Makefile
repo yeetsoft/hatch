@@ -70,8 +70,19 @@ test-hatch-live-grok:
 # everything again whether or not MSBuild thinks it is current.
 HATCH_BUILD_ARGS ?=
 
+# Stamped with HEAD's own sha and commit count, computed with git rather than
+# taken as a build arg: the API only ever gets these from a CI build arg, but
+# this target's primary caller - scripts/hatch.sh's own supervisor, rebuilding
+# between increments at 2am (CLAUDE.md "If the loop spawned you") - has no CI
+# step to supply one, and it is already running inside a checkout that has a
+# git to ask. A git failure (no git, not a repository) leaves both properties
+# empty, which reads as dev/0 exactly like an unstamped `dotnet build` today -
+# never the reason this fails.
 build-hatch:
-	dotnet build ./src/Hatch.Cli/Hatch.Cli.csproj --configuration Release $(HATCH_BUILD_ARGS)
+	dotnet build ./src/Hatch.Cli/Hatch.Cli.csproj --configuration Release \
+		-p:SourceRevisionId=$(shell git rev-parse HEAD 2>/dev/null) \
+		-p:HatchSequence=$(shell git rev-list --count HEAD 2>/dev/null) \
+		$(HATCH_BUILD_ARGS)
 
 # The artifact somebody else downloads: one file, no SDK on the far side, for
 # every platform this house runs on. Self-contained because an operator taking
@@ -92,7 +103,9 @@ publish-hatch:
 			--output ./artifacts/hatch/$$rid \
 			-p:PublishSingleFile=true \
 			-p:SelfContained=true \
-			-p:PublishTrimmed=true || exit 1; \
+			-p:PublishTrimmed=true \
+			-p:SourceRevisionId=$(shell git rev-parse HEAD 2>/dev/null) \
+			-p:HatchSequence=$(shell git rev-list --count HEAD 2>/dev/null) || exit 1; \
 	done
 
 # The same suite with the claim's tests turned on. They need a real Postgres and

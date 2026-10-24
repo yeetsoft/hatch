@@ -2033,6 +2033,19 @@ export interface Runner {
   canControl: boolean;
   /** The standing order this loop has not yet read back, or null. Mirrors RunnerOrderDto. */
   order: { kind: 'work' | 'pass'; key: string | null; by: string | null; at: string | null } | null;
+  /** The sha this runner's own build was published from, `'dev'` for an
+      unstamped local build, or null from an older CLI that has never reported
+      one. Mirrors RunnerDto's Revision. */
+  revision: string | null;
+  /** The commit sequence number behind `revision`, or null alongside it. */
+  sequence: number | null;
+  /** When that build was published, or null - mirrors BuildStamp's own
+      `builtAt`. */
+  builtAt: string | null;
+  /** Where this runner's own build sits against the board's, judged the same
+      way a client's build is against a replica's. Mirrors RunnerDto's
+      BoardDrift. */
+  boardDrift: RevisionDrift;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

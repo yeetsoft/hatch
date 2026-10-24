@@ -618,7 +618,7 @@ state rather than a stall.
 | PUT | `/settings` | **person** | Edits them |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
 | GET | `/settings/claude-token` | key | The same, kept for an older container; `credentials/claude` is its successor |
-| GET | `/me` | key | Who is at the browser, for the nav strip |
+| GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
 
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
@@ -677,11 +677,16 @@ and [cli-reference](cli-reference). Both refuse outright wherever the wall
 is up - a credential that crosses a network Hatch does not own is a
 different question from one handed to a container on the same laptop.
 
-`/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn)`
-- `kind: person` when a grant holds a person, `kind: local` with the wall off
-and the machine's own person speaking, `kind: none` with the wall off and
-nobody local either (an unidentified browser, still able to sign in), and
-`204` for a key or a keyless runner, which is not somebody at a keyboard.
+`/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
+Owner, Scopes)` - `kind: key` for an API key, naming its own name, its
+owner's name (`Owner`, null with no owner), its scopes (`Scopes`, null for
+every other kind) and its owner's role lowercased (`Role`, null with no
+owner); `kind: runner` for a wall-off runner header, naming its own name with
+`Owner` and `Scopes` both null; `kind: person` when a grant holds a person;
+`kind: local` with the wall off and the machine's own person speaking;
+`kind: none` with the wall off and nobody local either (an unidentified
+browser, still able to sign in); and `204` only for an unidentified browser
+against a walled Hatch - no grant, no key, no local actor.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a

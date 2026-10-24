@@ -21,6 +21,7 @@ import {
   orderSentence,
   repositoriesLabel,
   runnerActivity,
+  runnerBuildLabel,
   tagsLabel,
   type RunnerBounds,
 } from '../lib/runners';
@@ -134,6 +135,7 @@ export function Row({
               row with no buttons reads as a bug otherwise. Only for a loop's
               row: a loop is the default, so saying nothing is saying loop. */}
           {runner.kind !== 'loop' && <Text tone="muted">one increment</Text>}
+          {runner.boardDrift === 'Behind' && <Badge tone="danger">Behind</Badge>}
         </td>
         <td>
           <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
@@ -209,7 +211,7 @@ export function Row({
       {open && (
         <tr>
           <td colSpan={6}>
-            <RunnerDetails runner={runner} />
+            <RunnerDetails runner={runner} now={now} />
             <BoundsForm runner={runner} onSave={onPatch} />
           </td>
         </tr>
@@ -218,14 +220,17 @@ export function Row({
   );
 }
 
-/** The four facts the row itself no longer carries, unfolded under it: where
-    it runs, the agent it runs, what it drives (always - this is the line
-    that says "driving nothing"), and the repositories it serves. */
-export function RunnerDetails({ runner }: { runner: Runner }) {
+/** The five facts the row itself no longer carries, unfolded under it: where
+    it runs, the agent it runs, its own build, what it drives (always - this
+    is the line that says "driving nothing"), and the repositories it
+    serves. */
+export function RunnerDetails({ runner, now }: { runner: Runner; now: Date }) {
+  const build = runnerBuildLabel(runner, now);
   return (
     <>
       {runner.where && <Text tone="muted">{runner.where}</Text>}
       {runner.agent && <Text tone="muted">{runner.agent}</Text>}
+      {build && <Text tone="muted">{build}</Text>}
       <Text tone="muted">{drivesLabel(runner)}</Text>
       {repositoriesLabel(runner) && <Text tone="muted">{repositoriesLabel(runner)}</Text>}
     </>

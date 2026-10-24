@@ -29,6 +29,13 @@ public sealed record Runtime(
     public ModelFamilies Families { get; init; } = ModelFamilies.Default;
 
     /// <summary>
+    /// This process's own build identity, read once off the entry assembly -
+    /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
+    /// sends without a stamped assembly to build.
+    /// </summary>
+    public ICliRevision CliRevision { get; init; } = new CliRevision();
+
+    /// <summary>
     /// What a pinned readout would draw, kept current whether or not a
     /// terminal is actually drawing one - see <see cref="ReadoutState"/>.
     /// </summary>
@@ -117,6 +124,16 @@ public sealed record Runtime(
         throw new InvalidOperationException("no source reader was configured");
 
     /// <summary>
+    /// How the checkout's own git history is read, for the narrower check
+    /// against the newest commit under its own source (src/Hatch.Cli,
+    /// src/Hatch.Contracts) rather than the board. Replaceable so a test can
+    /// say what the checkout's history looks like without a real repository
+    /// to ask.
+    /// </summary>
+    public Func<ISourceRevision> SourceRevision { get; init; } = () =>
+        throw new InvalidOperationException("no source revision reader was configured");
+
+    /// <summary>
     /// A fresh <see cref="Board"/> named for a runner this run was not started
     /// as - what <c>--repo</c> rebuilds when it changes <see cref="RunnerName"/>
     /// after this client already exists. Replaceable so a test can keep talking
@@ -131,6 +148,7 @@ public sealed record Runtime(
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
+        SourceRevision = () => new GitSourceRevision(Root),
         NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags),
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
