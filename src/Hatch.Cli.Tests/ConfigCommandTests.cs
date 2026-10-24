@@ -22,7 +22,9 @@ public sealed class ConfigCommandTests : IDisposable
         string runnerName = "test:/checkout",
         Func<Settings, CancellationToken, Task<IReadOnlyList<string>>>? liveRunners = null,
         Func<string, bool>? checkoutIgnoresEnv = null,
-        Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null) =>
+        Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null,
+        string? profileName = null,
+        string? profilePath = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
         {
@@ -32,6 +34,8 @@ public sealed class ConfigCommandTests : IDisposable
             LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<string>>([])),
             CheckoutIgnoresEnv = checkoutIgnoresEnv ?? (_ => true),
             MeProbe = meProbe ?? ((_, _, _) => Task.FromResult<MeDto?>(new MeDto("key", "stub", null, true, false, false))),
+            ProfileName = profileName,
+            ProfilePath = profilePath,
         };
 
     private string Said => string.Join("\n", _say.Said);
@@ -60,6 +64,20 @@ public sealed class ConfigCommandTests : IDisposable
         var checkoutEnv = Path.Combine(scripts, ".env");
         if (lines.Length > 0) File.WriteAllLines(checkoutEnv, lines);
         return (root, checkoutEnv);
+    }
+
+    /// <summary>
+    /// A named profile's own file, under <c>_temp</c> rather than the
+    /// machine's own profiles directory - the path a test passes as
+    /// <c>profilePath</c>, the same shape <see cref="Settings.ProfilePath"/>
+    /// would hand <c>Program.cs</c> for a resolved <c>--profile</c>.
+    /// </summary>
+    private string Profile(params string[] lines)
+    {
+        var path = Path.Combine(_temp, "profiles", Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (lines.Length > 0) File.WriteAllLines(path, lines);
+        return path;
     }
 
     // ---- writing ----
@@ -1614,6 +1632,237 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--show"], default);
 
         Assert.Contains($"checkout:         {checkoutEnv}  (written by --here)", Said);
+    }
+
+    // ---- --profile ----
+
+    [Fact]
+    public async Task Profile_tag_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--tag", "gpu"], default));
+
+        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_origin_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--origin", "https://hatch.example"], default));
+
+        Assert.Contains("HATCH_BASE=https://hatch.example", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_key_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["HATCH_BASE"] = "https://hatch.example",
+        };
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), environment: environment, profileName: "work", profilePath: profilePath)
+                .RunAsync(["--key", "hatch_ak_thesecret"], default));
+
+        Assert.Contains("HATCH_KEY=hatch_ak_thesecret", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_repo_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+        var a = Tree("profile-a");
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--repo", a], default));
+
+        Assert.Contains($"HATCH_REPOS={a}", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_workspace_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+        var dir = Path.Combine(_temp, "profile-clones");
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--workspace", dir], default));
+
+        Assert.Contains($"HATCH_WORKSPACE={dir}", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_interactive_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
+
+        Assert.Equal(0, await Command(input, profileName: "work", profilePath: profilePath).RunAsync([], default));
+
+        Assert.Contains("HATCH_BASE=https://hatch.example", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    /// <summary>
+    /// The same promise <c>--here</c> makes: an empty untouched field is never
+    /// a line, so a file that started with nothing holds only what was asked
+    /// for.
+    /// </summary>
+    [Fact]
+    public async Task Profile_tag_with_no_prior_profile_file_writes_only_the_tag()
+    {
+        var profilePath = Profile();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--tag", "breakdown"], default));
+
+        var written = File.ReadAllLines(profilePath).Where(l => l.Length > 0 && l[0] != '#').ToArray();
+        Assert.Equal(["HATCH_TAGS=breakdown"], written);
+    }
+
+    /// <summary>
+    /// The point of the profile's own <c>overlayOnly</c> read: an exported
+    /// value and a value in the per-user file are both real settings, but
+    /// neither is this profile's own - so neither leaks into the file
+    /// <c>--profile</c> writes.
+    /// </summary>
+    [Fact]
+    public async Task Profile_tag_carries_forward_only_the_profiles_own_lines()
+    {
+        var profilePath = Profile("HATCH_BASE=https://this-profile");
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_KEY=hatch_ak_fromuser"]);
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["HATCH_CLAUDE_BIN"] = "/opt/exported",
+        };
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), environment: environment, profileName: "work", profilePath: profilePath)
+                .RunAsync(["--tag", "gpu"], default));
+
+        var written = File.ReadAllLines(profilePath);
+        Assert.Contains("HATCH_BASE=https://this-profile", written);
+        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.DoesNotContain(written, l => l.StartsWith("HATCH_KEY=", StringComparison.Ordinal));
+        Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Profile_and_runner_is_refused()
+    {
+        var profilePath = Profile();
+
+        var code = await Command(new Replies(), profileName: "work", profilePath: profilePath)
+            .RunAsync(["--runner", "Liz Lemon"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("needs no --profile", Complained);
+        Assert.False(File.Exists(profilePath));
+    }
+
+    [Fact]
+    public async Task Profile_and_here_is_refused()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+        var profilePath = Profile();
+
+        var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv, profileName: "work", profilePath: profilePath)
+            .RunAsync(["--here", "--tag", "gpu"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("hatch: --here and --profile write to two different places - pick one", Complained);
+        Assert.False(File.Exists(checkoutEnv));
+        Assert.False(File.Exists(profilePath));
+    }
+
+    /// <summary>
+    /// Program.cs leaves <c>ProfilePath</c> null for a shape-invalid name but
+    /// passes the raw string through as <c>ProfileName</c> unchanged -
+    /// <c>ConfigCommand</c> is where that is caught, not silently dropped.
+    /// </summary>
+    [Fact]
+    public async Task Invalid_profile_name_is_refused_before_anything_is_written()
+    {
+        var code = await Command(new Replies(), profileName: "li z", profilePath: null)
+            .RunAsync(["--tag", "gpu"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("is not a valid profile name", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    // ---- config --show with --profile ----
+
+    [Fact]
+    public async Task Show_with_an_explicit_profile_names_Layer_Profile_for_every_value_it_supplies()
+    {
+        var profilePath = Profile("HATCH_BASE=https://from-profile", "HATCH_TAGS=gpu");
+
+        var code = await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains($"profile:          work  ({profilePath})", Said);
+        Assert.Contains($"HATCH_BASE:        https://from-profile  ({profilePath})", Said);
+        Assert.Contains($"HATCH_TAGS:        gpu  ({profilePath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_an_explicit_profile_reads_it_without_switching_the_active_one()
+    {
+        var profilePath = Profile("HATCH_BASE=https://from-profile");
+
+        var code = await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.False(File.Exists(Settings.ActiveProfilePath()));
+    }
+
+    [Fact]
+    public async Task Show_with_no_profile_given_and_HATCH_PROFILE_exported_but_missing_says_it_does_not_exist()
+    {
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["HATCH_PROFILE"] = "hatch-config-tests-no-such-profile",
+        };
+
+        var code = await Command(new Replies(), environment: environment).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("profile:          hatch-config-tests-no-such-profile  (does not exist)", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_no_profile_anywhere_prints_none()
+    {
+        var code = await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("profile:          <none>", Said);
     }
 
     public void Dispose()

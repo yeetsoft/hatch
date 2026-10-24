@@ -242,6 +242,9 @@ public sealed partial record Settings
 
         if (!ValidProfileName(candidate) || !File.Exists(ProfilePath(candidate)))
         {
+            // Named even on refusal - a caller showing what is active wants to
+            // say which name does not exist, not just that resolution failed.
+            name = candidate;
             refusal = $"""hatch: no such profile "{candidate}" - looked in {ProfilesDirectory()}""";
             return false;
         }

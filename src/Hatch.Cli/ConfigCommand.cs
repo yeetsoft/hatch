@@ -29,12 +29,15 @@ public sealed record ConfigCommand(
     IDictionary<string, string?> Environment,
     string? CheckoutEnvFile,
     string RunnerName,
-    string? Root = null)
+    string? Root = null,
+    string? ProfileName = null,
+    string? ProfilePath = null)
 {
     public static readonly string[] ConfigUsage =
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...] [--here]",
+        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...]",
+        "                     [--here | --profile <name>]",
         "",
         "  hatch config                    asks for the origin, the key and the runner",
         "                                     name, and writes them",
@@ -92,10 +95,17 @@ public sealed record ConfigCommand(
         "  combine it with any write above. Refused outside a checkout, with --runner",
         "  (a runner's name is already this checkout's), and with --show.",
         "",
-        "  Written to the per-user file, unless --here says to write this checkout's",
-        "  scripts/.env instead - mode 600 where the platform has modes.",
+        "  --profile <name> writes that profile's own file instead of the per-user",
+        "  file - combine it with any write above. The file need not exist yet.",
+        "  Refused with --here (two different places to write) or --runner (a",
+        "  runner's name is already this checkout's), and with an invalid name.",
+        "  `--show --profile <name>` reads the named profile as if it were active,",
+        "  without switching to it.",
+        "",
+        "  Written to the per-user file, unless --here or --profile <name> says to",
+        "  write that file instead - mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
-        "  checkout you are standing in, then that file.",
+        "  checkout you are standing in, then the active profile, then that file.",
         "",
         "  The key may be left empty for a Hatch running with its wall off, where",
         "  calls name themselves with a runner header instead. Never in a",
@@ -187,6 +197,18 @@ public sealed record ConfigCommand(
         var here = args.Contains("--here");
         if (here) args = [.. args.Where(a => a != "--here")];
 
+        if (ProfileName is not null && !Settings.ValidProfileName(ProfileName))
+        {
+            Say.Complain($"""hatch: "{ProfileName}" is not a valid profile name - letters, digits and hyphens only""");
+            return 1;
+        }
+
+        if (here && ProfileName is not null)
+        {
+            Say.Complain("hatch: --here and --profile write to two different places - pick one");
+            return 1;
+        }
+
         if (Usage.Wanted(args)) return Usage.Print(Say, ConfigUsage);
 
         if (here && args is ["--show"])
@@ -195,6 +217,12 @@ public sealed record ConfigCommand(
         if (here && args.Length > 0 && args[0] == "--runner")
         {
             Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --here");
+            return 1;
+        }
+
+        if (ProfileName is not null && args.Length > 0 && args[0] == "--runner")
+        {
+            Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --profile");
             return 1;
         }
 
@@ -239,35 +267,38 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Carry(string name) => overlayOnly.GetValueOrDefault(name, "");
 
         // Whatever is loaded already is the default, so changing one setting is
-        // not an excuse to retype the other. Under --here the bracket still
-        // shows what is actually active (fold), but Enter alone keeps only
-        // what this checkout's own file already carries - never a value
+        // not an excuse to retype the other. Under --here/--profile the bracket
+        // still shows what is actually active (fold), but Enter alone keeps
+        // only what this overlay's own file already carries - never a value
         // leaked in from an export or the per-user file.
         var originShown = fold("HATCH_BASE").Value ?? "";
-        var origin = here ? Carry("HATCH_BASE") : originShown;
+        var origin = overlay ? Carry("HATCH_BASE") : originShown;
         var keyShown = fold("HATCH_KEY").Value ?? "";
-        var key = here ? Carry("HATCH_KEY") : keyShown;
+        var key = overlay ? Carry("HATCH_KEY") : keyShown;
         var claudeBinShown = fold("HATCH_CLAUDE_BIN").Value ?? "";
-        var claudeBin = here ? Carry("HATCH_CLAUDE_BIN") : claudeBinShown;
+        var claudeBin = overlay ? Carry("HATCH_CLAUDE_BIN") : claudeBinShown;
         var codexBinShown = fold("HATCH_CODEX_BIN").Value ?? "";
-        var codexBin = here ? Carry("HATCH_CODEX_BIN") : codexBinShown;
+        var codexBin = overlay ? Carry("HATCH_CODEX_BIN") : codexBinShown;
         var grokBinShown = fold("HATCH_GROK_BIN").Value ?? "";
-        var grokBin = here ? Carry("HATCH_GROK_BIN") : grokBinShown;
+        var grokBin = overlay ? Carry("HATCH_GROK_BIN") : grokBinShown;
         var ollamaHostShown = fold("HATCH_OLLAMA_HOST").Value ?? "";
-        var ollamaHost = here ? Carry("HATCH_OLLAMA_HOST") : ollamaHostShown;
-        var ollamaTiers = here ? Carry("HATCH_OLLAMA_TIERS") : fold("HATCH_OLLAMA_TIERS").Value ?? "";
+        var ollamaHost = overlay ? Carry("HATCH_OLLAMA_HOST") : ollamaHostShown;
+        var ollamaTiers = overlay ? Carry("HATCH_OLLAMA_TIERS") : fold("HATCH_OLLAMA_TIERS").Value ?? "";
         var agentShown = fold("HATCH_AGENT").Value ?? "";
-        var agent = here ? Carry("HATCH_AGENT") : agentShown;
-        var repos = here ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
-        var workspace = here ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = here ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
+        var agent = overlay ? Carry("HATCH_AGENT") : agentShown;
+        var repos = overlay ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
+        var workspace = overlay ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
+        var tags = overlay ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
         Say.Line($"Writing {target}. Enter keeps what is shown in brackets.");
         Say.Line("");
 
@@ -355,7 +386,7 @@ public sealed record ConfigCommand(
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "");
+            path: overlayPath, overlay: overlay, mode: "");
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
@@ -407,14 +438,16 @@ public sealed record ConfigCommand(
 
         if (!HasScheme(origin)) return NoScheme(origin);
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
-        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
 
         // The key is a field this call does not touch - carried forward as
-        // this checkout's own line under --here, never one leaked in from an
-        // export or the per-user file.
+        // this overlay's own line under --here/--profile, never one leaked in
+        // from an export or the per-user file.
         var key = Field("HATCH_KEY");
         var claudeBin = Field("HATCH_CLAUDE_BIN");
         var codexBin = Field("HATCH_CODEX_BIN");
@@ -426,11 +459,11 @@ public sealed record ConfigCommand(
         var workspace = Field("HATCH_WORKSPACE");
         var tags = Field("HATCH_TAGS");
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "--origin");
+            path: overlayPath, overlay: overlay, mode: "--origin");
 
         Environment["HATCH_BASE"] = origin;
 
@@ -469,13 +502,15 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
-        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
 
         // What a real subsequent load resolves the origin to - checked and
-        // proved against this, even under --here, where the checkout's own
+        // proved against this, even under --here/--profile, where the overlay
         // file may carry none of its own and fall through to the user layer.
         var originForProbe = fold("HATCH_BASE").Value ?? "";
         if (originForProbe.Length == 0)
@@ -498,11 +533,11 @@ public sealed record ConfigCommand(
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "--key");
+            path: overlayPath, overlay: overlay, mode: "--key");
 
         Environment["HATCH_KEY"] = key;
 
@@ -633,10 +668,12 @@ public sealed record ConfigCommand(
             }
         }
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
-        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
 
         var origin = Field("HATCH_BASE");
         var key = Field("HATCH_KEY");
@@ -659,11 +696,11 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "--repo");
+            path: overlayPath, overlay: overlay, mode: "--repo");
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
 
@@ -688,10 +725,12 @@ public sealed record ConfigCommand(
         if (args is not ["--workspace", var dir])
             return Usage.Refuse(Say, "config --workspace takes one directory", ConfigUsage);
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
-        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
 
         var origin = Field("HATCH_BASE");
         var key = Field("HATCH_KEY");
@@ -707,7 +746,7 @@ public sealed record ConfigCommand(
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
 
         if (Settings.IsWorkspaceOff(dir))
         {
@@ -715,7 +754,7 @@ public sealed record ConfigCommand(
             Write(
                 origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
                 ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-                path: here ? CheckoutEnvFile : null, here: here, mode: "--workspace");
+                path: overlayPath, overlay: overlay, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {target}");
             return 0;
@@ -737,7 +776,7 @@ public sealed record ConfigCommand(
         Write(
             origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "--workspace");
+            path: overlayPath, overlay: overlay, mode: "--workspace");
 
         Environment["HATCH_WORKSPACE"] = dir;
 
@@ -783,10 +822,12 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
-        var checkoutOnly = Settings.ReadFile(CheckoutEnvFile);
-        string Carry(string name) => checkoutOnly.GetValueOrDefault(name, "");
-        string Field(string name) => here ? Carry(name) : fold(name).Value ?? "";
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
 
         var origin = Field("HATCH_BASE");
         var key = Field("HATCH_KEY");
@@ -799,11 +840,11 @@ public sealed record ConfigCommand(
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
 
-        var target = here ? CheckoutEnvFile! : ConfigPath;
+        var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
-            path: here ? CheckoutEnvFile : null, here: here, mode: "--tag");
+            path: overlayPath, overlay: overlay, mode: "--tag");
 
         Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
 
@@ -857,13 +898,22 @@ public sealed record ConfigCommand(
     /// <summary>What is set, and which of the three layers it came from.</summary>
     private async Task<int> ShowAsync(CancellationToken ct)
     {
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");
         Say.Line(CheckoutEnvFile is { Length: > 0 } checkoutEnvFile
             ? $"checkout:         {checkoutEnvFile}  (written by --here)"
             : "checkout:         <not in one>");
+
+        if (ProfileName is not null)
+            Say.Line($"profile:          {ProfileName}  ({ProfilePath})");
+        else if (Settings.TryResolveProfile(null, Environment, out var activeName, out var activeFile, out _))
+            Say.Line(activeName is { Length: > 0 }
+                ? $"profile:          {activeName}  ({activeFile})"
+                : "profile:          <none>");
+        else
+            Say.Line($"profile:          {activeName}  (does not exist)");
 
         var runnerFold = fold("HATCH_RUNNER");
         if (runnerFold.Value is { Length: > 0 } explicitRunner)
@@ -973,6 +1023,7 @@ public sealed record ConfigCommand(
     {
         Settings.Layer.Environment => "exported",
         Settings.Layer.Checkout => CheckoutEnvFile ?? "this checkout",
+        Settings.Layer.Profile => ProfilePath ?? "a profile",
         Settings.Layer.User => ConfigPath,
         _ => "unset",
     };
@@ -984,18 +1035,12 @@ public sealed record ConfigCommand(
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
         string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
-        string? path = null, bool here = false, string mode = "")
+        string? path = null, bool overlay = false, string mode = "")
     {
         var target = path ?? ConfigPath;
 
-        var lines = here
+        var lines = !overlay
             ? new List<string>
-              {
-                  $"# This checkout's own overrides, written by `hatch config --here{(mode.Length > 0 ? " " + mode : "")}`.",
-                  "# Read at higher precedence than the per-user file `hatch config` writes.",
-                  "",
-              }
-            : new List<string>
               {
                   "# Hatch's settings, written by `hatch config`.",
                   "#",
@@ -1004,14 +1049,29 @@ public sealed record ConfigCommand(
                   "# the hatch_ak_ prefix exists so that one which slips into a diff is",
                   "# recognisable on sight. Re-run `config` to change any of this.",
                   "",
-              };
+              }
+            : ProfileName is not null
+                ? new List<string>
+                  {
+                      $"# This profile's own overrides, written by `hatch config --profile {ProfileName}" +
+                      $"{(mode.Length > 0 ? " " + mode : "")}`.",
+                      "# Read when this profile is named explicitly, or made active with `hatch use`.",
+                      "",
+                  }
+                : new List<string>
+                  {
+                      $"# This checkout's own overrides, written by `hatch config --here{(mode.Length > 0 ? " " + mode : "")}`.",
+                      "# Read at higher precedence than the per-user file `hatch config` writes.",
+                      "",
+                  };
 
         // Written even when empty for the per-user file, so it records that the
         // omission was deliberate rather than looking like a half-finished
-        // config - but never for --here, which would otherwise leak an empty
-        // override on top of a real value the per-user file still carries.
-        if (!here || origin.Length > 0) lines.Add($"HATCH_BASE={origin}");
-        if (!here || key.Length > 0) lines.Add($"HATCH_KEY={key}");
+        // config - but never under an overlay (--here or --profile), which
+        // would otherwise leak an empty override on top of a real value the
+        // per-user file still carries.
+        if (!overlay || origin.Length > 0) lines.Add($"HATCH_BASE={origin}");
+        if (!overlay || key.Length > 0) lines.Add($"HATCH_KEY={key}");
 
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
         if (codexBin.Length > 0) lines.Add($"HATCH_CODEX_BIN={codexBin}");

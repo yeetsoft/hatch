@@ -792,7 +792,9 @@ public sealed class SettingsTests : IDisposable
         Assert.False(Settings.TryResolveProfile(
             "no-such-profile", Env(), out var name, out var file, out var refusal));
 
-        Assert.Null(name);
+        // Named even on refusal - config --show's "active but missing" line
+        // (HA-1464) needs the candidate, not just that resolution failed.
+        Assert.Equal("no-such-profile", name);
         Assert.Null(file);
         Assert.Contains("no such profile", refusal);
         Assert.Contains(Settings.ProfilesDirectory(), refusal);

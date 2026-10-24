@@ -62,7 +62,8 @@ ticket's history says who did what without anybody being asked to record it.
 
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
-              | --repo <path>... | --tag <tag>... | --workspace <dir>] [--here]
+              | --repo <path>... | --tag <tag>... | --workspace <dir>]
+             [--here | --profile <name>]
 ```
 
 Asks for the origin and the key, and writes them to a per-user file where they
@@ -97,6 +98,12 @@ header instead. Never put it in a repository, either way.
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
   already the checkout's own), or combined with `--show`.
+- `--profile <name>` writes that profile's own file instead of the per-user
+  file, for every write above. The file need not exist yet. Refused combined
+  with `--here` (two different places to write), `--runner` (a runner's name
+  is already the checkout's own), or an invalid name. `--show --profile
+  <name>` reads the named profile as if it were active, without switching to
+  it.
 
 It touches no ticket and no column, so it writes nothing to the board.
 
