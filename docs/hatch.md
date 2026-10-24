@@ -1912,7 +1912,10 @@ later of `ClaimedAt` and `ClaimChatterAt` — the last time anybody said
 anything, or the take itself where nobody ever has — is judged against
 `Hatch:StallLapseMinutes`, five minutes by default.
 A `--quiet` session sends no chatter at all, so its claim is measured from when
-it was taken. Every reader treats a quiet claim exactly as it treats an expired
+it was taken. A line the session prints counts as a word every time it is
+printed, even when its text is the same as the last one's - the CLI counts the
+prints, not the text, since a long line is clipped and a run that keeps making
+the same kind of call would otherwise read as silent. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
