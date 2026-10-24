@@ -126,9 +126,10 @@ public static class Reach
 
     /// <summary>
     /// <c>HATCH_BASE</c> set to <paramref name="settings"/>'s <see cref="Settings.Base"/>,
-    /// and <c>HATCH_KEY</c> to its <see cref="Settings.Key"/> where that is not empty - a
-    /// blank key exports nothing, because a blank reads as unset in every layer
-    /// <see cref="Settings.TryLoad"/> folds, so "no key" cannot be said any other way.
+    /// and <c>HATCH_KEY</c> to its <see cref="Settings.Key"/> where that is not empty. A
+    /// blank key removes any <c>HATCH_KEY</c> already exported rather than exporting
+    /// nothing: a key goes with its origin, so one the parent ignored and left in the
+    /// environment would pair, in the child, with the origin exported here.
     /// Null <paramref name="settings"/> leaves the environment exactly as it was.
     /// </summary>
     public static void ToHatch(IDictionary<string, string?> environment, Settings? settings)
@@ -137,5 +138,6 @@ public static class Reach
 
         environment["HATCH_BASE"] = settings.Base;
         if (settings.Key.Length > 0) environment["HATCH_KEY"] = settings.Key;
+        else environment.Remove("HATCH_KEY");
     }
 }

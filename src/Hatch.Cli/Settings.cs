@@ -155,6 +155,14 @@ public sealed partial record Settings
     /// </summary>
     public int RetrySeconds { get; init; } = 90;
 
+    /// <summary>
+    /// One line saying a <c>HATCH_KEY</c> was set in a layer other than the one
+    /// <c>HATCH_BASE</c> came from, and so not read - null where none was. Data
+    /// rather than a write to standard error, so a caller whose output is a
+    /// document can choose when to say it.
+    /// </summary>
+    public string? KeyNote { get; init; }
+
     /// <summary>Where each value came from, so <c>config --show</c> can say.</summary>
     public IReadOnlyDictionary<string, Layer> Sources { get; init; } =
         new Dictionary<string, Layer>(StringComparer.Ordinal);
@@ -281,7 +289,7 @@ public sealed partial record Settings
         string? profileFile = null)
     {
         var sources = new Dictionary<string, Layer>(StringComparer.Ordinal);
-        var fold = Layers(checkoutEnvFile, environment, userConfigFile, profileFile);
+        var (fold, ignoredKeyLayer) = LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile);
 
         string? Read(string name)
         {
@@ -378,8 +386,29 @@ public sealed partial record Settings
             WorkspaceDefaulted = workspace is null,
             Tags = tags,
             Sources = sources,
+            KeyNote = ignoredKeyLayer() is { } ignored
+                ? IgnoredKeySentence(
+                    ignored, sources["HATCH_BASE"], checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
+                : null,
         };
         return true;
+    }
+
+    /// <summary>The one line saying which layer held a key that was not read, and what to do.</summary>
+    private static string IgnoredKeySentence(
+        Layer ignored, Layer origin, string? checkoutEnvFile, string? profileFile, string userFile)
+    {
+        string Where(Layer layer) => layer switch
+        {
+            Layer.Environment => "the environment",
+            Layer.Checkout => checkoutEnvFile ?? "the checkout's scripts/.env",
+            Layer.Profile => profileFile ?? "the profile",
+            _ => userFile,
+        };
+
+        var fix = ignored == Layer.Environment ? "Export both, or neither." : $"Set both in {Where(ignored)}, or neither.";
+        return $"hatch: HATCH_KEY in {Where(ignored)} is ignored - HATCH_BASE comes from {Where(origin)}, " +
+               $"and a key goes with its origin. {fix}";
     }
 
     /// <summary>
@@ -416,29 +445,73 @@ public sealed partial record Settings
     /// </remarks>
     public static Func<string, (string? Value, Layer From)> Layers(
         string? checkoutEnvFile, IDictionary<string, string?> environment,
+        string? userConfigFile = null, string? profileFile = null) =>
+        LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile).Fold;
+
+    /// <summary>
+    /// <see cref="Layers"/>, and with it which layer held a <c>HATCH_KEY</c>
+    /// the fold ignored - read from the same files, so nothing is read twice.
+    /// </summary>
+    /// <remarks>
+    /// A key goes with its origin: <c>HATCH_KEY</c> answers only from the layer
+    /// <c>HATCH_BASE</c> came from, and is unset where that layer carries none.
+    /// A key in a lower or higher layer would be presented to a board it was
+    /// never issued for.
+    /// </remarks>
+    public static (Func<string, (string? Value, Layer From)> Fold, Func<Layer?> IgnoredKeyLayer) LayersWithNotes(
+        string? checkoutEnvFile, IDictionary<string, string?> environment,
         string? userConfigFile = null, string? profileFile = null)
     {
         var checkout = ReadFile(checkoutEnvFile);
         var profile = ReadFile(profileFile);
         var user = ReadFile(userConfigFile ?? UserConfigPath());
 
-        return name =>
+        string? In(Layer layer, string name)
         {
-            if (environment.TryGetValue(name, out var exported) && !string.IsNullOrWhiteSpace(exported))
-                return (exported, Layer.Environment);
+            var found = layer switch
+            {
+                Layer.Environment => environment.TryGetValue(name, out var exported) ? exported : null,
+                Layer.Checkout => checkout.GetValueOrDefault(name),
+                Layer.Profile => profile.GetValueOrDefault(name),
+                Layer.User => user.GetValueOrDefault(name),
+                _ => null,
+            };
+            return string.IsNullOrWhiteSpace(found) ? null : found;
+        }
 
-            if (checkout.TryGetValue(name, out var here) && !string.IsNullOrWhiteSpace(here))
-                return (here, Layer.Checkout);
-
-            if (profile.TryGetValue(name, out var named) && !string.IsNullOrWhiteSpace(named))
-                return (named, Layer.Profile);
-
-            if (user.TryGetValue(name, out var mine) && !string.IsNullOrWhiteSpace(mine))
-                return (mine, Layer.User);
+        (string? Value, Layer From) Lookup(string name)
+        {
+            foreach (var layer in Order)
+                if (In(layer, name) is { } value) return (value, layer);
 
             return (null, Layer.Unset);
-        };
+        }
+
+        (string? Value, Layer From) Fold(string name)
+        {
+            if (name != "HATCH_KEY") return Lookup(name);
+
+            var origin = Lookup("HATCH_BASE").From;
+            if (origin == Layer.Unset) return (null, Layer.Unset);
+
+            return In(origin, name) is { } key ? (key, origin) : (null, Layer.Unset);
+        }
+
+        Layer? IgnoredKeyLayer()
+        {
+            var origin = Lookup("HATCH_BASE").From;
+            if (origin == Layer.Unset) return null;
+
+            foreach (var layer in Order)
+                if (layer != origin && In(layer, "HATCH_KEY") is not null) return layer;
+
+            return null;
+        }
+
+        return (Fold, IgnoredKeyLayer);
     }
+
+    private static readonly Layer[] Order = [Layer.Environment, Layer.Checkout, Layer.Profile, Layer.User];
 
     /// <summary>
     /// <c>KEY=value</c> a line, blanks and <c>#</c> comments skipped, one layer

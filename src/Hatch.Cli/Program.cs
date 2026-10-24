@@ -132,6 +132,9 @@ if (command == "inbox")
         .RunAsync(rest, CancellationToken.None);
 }
 
+// After `inbox`, whose output is a document the session parses.
+if (settings.KeyNote is { } keyNote) say.Complain(keyNote);
+
 // The standing checkout, if there is one, then every checkout HATCH_REPOS
 // names - refused here, before any lock is taken and before anything is
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
