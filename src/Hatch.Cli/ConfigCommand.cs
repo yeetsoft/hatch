@@ -137,6 +137,13 @@ public sealed record ConfigCommand(
         };
 
     /// <summary>
+    /// Who <c>--show</c>'s own identity line names - a key or a runner, per
+    /// <c>/api/hatch/me</c>. Replaced by a test, which has no origin to reach.
+    /// </summary>
+    public Func<Settings, string, CancellationToken, Task<MeDto?>> MeProbe { get; init; } =
+        (settings, runnerName, ct) => new Board(new HatchClient(settings, runnerName)).MeAsync(ct);
+
+    /// <summary>
     /// Whether <c>scripts/.env</c> is ignored by this checkout's own git - the
     /// one check <c>--here</c> makes before it ever writes there, so a file
     /// that is not ignored is never one <c>git add</c> could pick up by
@@ -205,7 +212,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        if (args is ["--show"]) return Show();
+        if (args is ["--show"]) return await ShowAsync(ct);
 
         // Before the refusal below, and the one mode that asks nothing: it is
         // what the Runner page prints for a machine being set up, where the
@@ -838,8 +845,17 @@ public sealed record ConfigCommand(
         }
     }
 
+    /// <summary>Formats <see cref="MeProbe"/>'s answer for the <c>identity:</c> line - the key itself is never printed, only its name.</summary>
+    private static string Identity(MeDto? me) => me switch
+    {
+        { Kind: "runner" } => $"calls go out as \"{me.Name}\"",
+        { Kind: "key", Owner: null } => $"key \"{me.Name}\"",
+        { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}, scopes: {string.Join(", ", me.Scopes ?? [])}",
+        _ => "<unreachable>",
+    };
+
     /// <summary>What is set, and which of the three layers it came from.</summary>
-    private int Show()
+    private async Task<int> ShowAsync(CancellationToken ct)
     {
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
@@ -861,6 +877,24 @@ public sealed record ConfigCommand(
         }
         else
             Say.Line("runner:           <not in a checkout>");
+
+        var origin = fold("HATCH_BASE").Value;
+        var key = fold("HATCH_KEY").Value ?? "";
+
+        if (string.IsNullOrEmpty(origin))
+            Say.Line("identity:         <unreachable>");
+        else
+        {
+            try
+            {
+                var me = await MeProbe(new Settings { Base = origin.TrimEnd('/'), Key = key }, RunnerName, ct);
+                Say.Line($"identity:         {Identity(me)}");
+            }
+            catch (HatchException)
+            {
+                Say.Line("identity:         <unreachable>");
+            }
+        }
 
         // Environment-only, like HATCH_HEARTBEAT beside it - never a line in
         // FileNames, and so never a candidate for the loop below - but worth

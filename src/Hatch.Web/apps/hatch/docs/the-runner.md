@@ -175,6 +175,9 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 - the per-user file's path, and whether it exists yet, and the path of this
   checkout's `scripts/.env`;
 - the runner's name, and where it came from;
+- who `/api/hatch/me` says the caller is - the key, its owner and its scopes,
+  or that calls go out as a named runner - or `<unreachable>` when there is
+  no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
 - each setting that can live in a file, with the layer it came from: exported,
   the `.env` path, or the per-user file;
@@ -409,6 +412,7 @@ Run from `<checkout-a>`, which carries no overrides of its own:
 file:                 <per-user config>/config
 checkout:             <checkout-a>/scripts/.env  (written by --here)
 runner:               <checkout-a>  (<per-user config>/runners)
+identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
@@ -433,6 +437,7 @@ file; everything else still folds through to the same per-user file:
 file:                 <per-user config>/config
 checkout:             <checkout-b>/scripts/.env  (written by --here)
 runner:               <checkout-b>  (<per-user config>/runners)
+identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
@@ -453,6 +458,12 @@ Each setting line is the name padded out, the value, then two spaces and the
 layer it came from in brackets: `exported`, the checkout's `scripts/.env`
 path, or the per-user file's path. An unset line carries no layer. The key
 prints masked, never in full.
+
+The `identity:` line calls `/api/hatch/me` with whatever origin and key are
+folded above, and names the key, its owner and its scopes, or - for a runner
+header instead of a key - that calls go out as its name. It prints
+`<unreachable>` without calling out at all when no origin is set, and the
+same when the call itself fails, so `--show` keeps working fully offline.
 
 ### The workspace lock
 
