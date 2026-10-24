@@ -33,6 +33,13 @@ public sealed partial record Settings
         "HATCH_WORKSPACE", "HATCH_TAGS",
     ];
 
+    /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
+    public static readonly string[] BoardBoundNames =
+        ["HATCH_BASE", "HATCH_KEY", "HATCH_RUNNER", "HATCH_TAGS", "HATCH_WORKSPACE", "HATCH_REPOS"];
+
+    /// <summary>Whether <paramref name="name"/> is board-bound.</summary>
+    public static bool IsBoardBound(string name) => BoardBoundNames.Contains(name, StringComparer.Ordinal);
+
     /// <summary>The agent ids <see cref="Agents"/> knows how to resolve.</summary>
     public static readonly string[] KnownAgentIds = ["claude", "codex", "grok", "ollama"];
 
@@ -482,7 +489,10 @@ public sealed partial record Settings
         (string? Value, Layer From) Lookup(string name)
         {
             foreach (var layer in Order)
+            {
+                if (layer == Layer.User && profileFile is not null && IsBoardBound(name)) continue;
                 if (In(layer, name) is { } value) return (value, layer);
+            }
 
             return (null, Layer.Unset);
         }
