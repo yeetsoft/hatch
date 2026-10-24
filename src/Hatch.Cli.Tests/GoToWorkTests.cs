@@ -570,6 +570,10 @@ public sealed class GoToWorkTests
         Assert.Equal("session", window.Window);
         Assert.Equal(42, window.Percent);
         Assert.Single(fake.Probed);
+
+        // HA-1457: the caller says whether the probe's own answer carried a
+        // session window, every time it asks.
+        Assert.Contains(h.Say.Said, l => l.Contains("probe found a session window", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -591,6 +595,11 @@ public sealed class GoToWorkTests
         var window = Assert.Single(beat.Usage!);
         Assert.Equal("weekly", window.Window);
         Assert.Equal(10, window.Percent);
+
+        // HA-1457: a probe that answered nothing says why, once, rather than
+        // leaving a reader to guess from the readout alone.
+        Assert.Contains(h.Say.Said, l => l.Contains("probe found no session window", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("probe returned nothing", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -2109,6 +2118,139 @@ public sealed class GoToWorkTests
         // was still standing - proof the clamp used the weekly length.
         Assert.Empty(fake.Inner.Spawned);
         Assert.Contains(h.Say.Said, l => l.Contains("has come", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// HA-1457: the exhausted-wait's own reminder names the window it is
+    /// waiting on and when the wait was set, so a stuck wait's own log line
+    /// says more than "still out of usage" on its way past.
+    /// </summary>
+    [Fact]
+    public async Task The_exhausted_reminder_names_its_window_and_when_it_was_set()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, new NightState
+        {
+            ExhaustedUntil = start.AddDays(6),
+            ExhaustedWindow = "weekly",
+            ExhaustedAt = start,
+            UntilAt = start.AddSeconds(2),
+        });
+
+        var clock = new FakeTimeProvider(start);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, await run);
+
+        Assert.Contains(h.Say.Said, l =>
+            l.Contains("taking no tickets until then", StringComparison.Ordinal) &&
+            l.Contains("(weekly)", StringComparison.Ordinal) &&
+            l.Contains("set ", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// HA-1457, AC4: a wait that outlasts its sentence's reset time by more
+    /// than one reminder interval logs why - judged against the probe's own
+    /// last-known session reset, since the carried ExhaustedUntil is exactly
+    /// the value an incident can show was wrong. Here the probe's one good
+    /// reading (at the start) goes stale while a fresh increment's own
+    /// sentence sets a much later ExhaustedUntil behind it - the real
+    /// incident's shape.
+    /// </summary>
+    [Fact]
+    public async Task A_wait_set_past_the_probes_own_last_known_reset_says_why()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        Carrying(h, new NightState { UntilAt = start.AddSeconds(8) });
+
+        var clock = new FakeTimeProvider(start);
+        var probeCalls = 0;
+        var fake = new FakeProbingSessions
+        {
+            // The one good probe, at the start - its own session window never
+            // moves again, because every later call answers nothing.
+            Behaviour = () => ++probeCalls == 1
+                ? [Fixtures.UsageReport([("session", 100, start.ToString("O"))]), Fixtures.Result(turns: 0)]
+                : null,
+        };
+
+        var sessionCalls = 0;
+        fake.Inner.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            if (++sessionCalls == 1)
+            {
+                // The sentence's own reset, two hours out - set well behind
+                // the probe's own reading above, which never moves again.
+                onLine?.Invoke(Fixtures.RateLimitEvent(("five_hour", 1.0, start.AddHours(2).ToUnixTimeSeconds())));
+                onLine?.Invoke(Fixtures.Result(error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+                return Task.FromResult(new SessionResult(1, ""));
+            }
+
+            onLine?.Invoke(Fixtures.Result());
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, await run);
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("probe's own session window reset", StringComparison.Ordinal) && l.Contains("still waiting", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// HA-1457: nothing can print during a single nap, however long - so the
+    /// watchdog checks the moment execution resumes. An idle loop with an
+    /// interval longer than twice the reminder spacing naps clean through
+    /// that window in one call, and the only way the stall still surfaces is
+    /// this check firing right after.
+    /// </summary>
+    [Fact]
+    public async Task A_single_nap_past_twice_the_reminder_spacing_prints_on_waking()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var start = DateTimeOffset.UtcNow;
+        var longInterval = 1_300; // > twice the 600s reminder spacing
+
+        // Generous headroom past one nap's own length: a single driven clock
+        // jump can overshoot mid-nap, and a bound too close behind the nap's
+        // own duration catches that overshoot as --until itself, before the
+        // nap ever returns and gives the watchdog its turn.
+        Carrying(h, new NightState { UntilAt = start.AddSeconds(longInterval * 3) });
+
+        var clock = new FakeTimeProvider(start);
+        var runtime = h.Supervised with { Clock = clock };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(
+            ["--interval", longInterval.ToString(CultureInfo.InvariantCulture), "--restart-after", "0"], default);
+
+        // Five seconds a tick - NapAsync's own slice size - rather than the
+        // coarser minute this file's other drives use: a long nap chains many
+        // of those 5s slices internally, and a bigger jump races ahead of
+        // that chain, landing --until's own check on an already-advanced
+        // clock before the nap it was meant to outlast ever returns.
+        await DriveAsync(clock, run, TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, await run);
+
+        Assert.Contains(h.Say.Said, l => l.Contains("still waiting - nothing printed in", StringComparison.Ordinal));
     }
 
     [Fact]

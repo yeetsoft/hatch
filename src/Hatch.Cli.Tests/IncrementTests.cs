@@ -1373,6 +1373,37 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>HA-1457: the plain parsed sentence, with nothing else to win, names the parsed branch.</summary>
+    [Fact]
+    public async Task A_plain_parsed_sentence_prints_the_parsed_branch()
+    {
+        using var h = new Harness(clock: new FrozenClock(DateTimeOffset.Parse("2026-09-28T22:00:00+00:00")));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your session limit · resets 7:40pm (America/New_York)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.UsageLimitPassed);
+        Assert.Contains(h.Say.Said, l =>
+            l.Contains("exhausted-wait set by recognised limit (parsed)", StringComparison.Ordinal) &&
+            l.Contains("window=session", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
     /// <summary>
     /// HA-1108: the stream's own <c>rate_limit_event</c> carries the account's
     /// own reset instant, epoch seconds with nothing to parse - and when its
@@ -1414,6 +1445,9 @@ public sealed class IncrementTests
         Assert.True(report.UsageLimitResetKnown);
         Assert.False(report.UsageLimitPassed);
 
+        // HA-1457: the stream's own window won, and the line says so.
+        Assert.Contains(h.Say.Said, l => l.Contains("exhausted-wait set by recognised limit (stream)", StringComparison.Ordinal));
+
         await claim.ReleaseAsync();
     }
 
@@ -1454,6 +1488,35 @@ public sealed class IncrementTests
         Assert.Equal(new DateTimeOffset(2026, 12, 25, 23, 40, 0, TimeSpan.Zero), report.UsageLimitResetAt);
         Assert.True(report.UsageLimitResetKnown);
         Assert.False(report.UsageLimitPassed);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>HA-1457: the sentence's own reset already passed - the line names the passed-retry branch.</summary>
+    [Fact]
+    public async Task A_reset_that_has_already_passed_prints_the_passed_retry_branch()
+    {
+        using var h = new Harness(clock: new FrozenClock(DateTimeOffset.Parse("2026-09-28T22:00:00+00:00")));
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(
+                error: true, said: "You've hit your session limit · resets 5:00pm (America/New_York)"));
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimitPassed);
+        Assert.Contains(h.Say.Said, l => l.Contains("exhausted-wait set by recognised limit (passed-retry)", StringComparison.Ordinal));
 
         await claim.ReleaseAsync();
     }

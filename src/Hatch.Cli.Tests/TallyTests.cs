@@ -211,6 +211,113 @@ public sealed class TallyTests
         Assert.Null(tally.ExhaustedUntil);
     }
 
+    /// <summary>HA-1457: an increment that changes ExhaustedUntil logs it, naming the report's own key.</summary>
+    [Fact]
+    public void Record_logs_when_it_changes_ExhaustedUntil()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+        var resetAt = DateTimeOffset.UtcNow;
+
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: resetAt));
+
+        Assert.Contains(logged, l => l.Contains("Tally.Record", StringComparison.Ordinal) && l.Contains("AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1457: an increment that worked, with nothing already exhausted, leaves nothing to say.</summary>
+    [Fact]
+    public void Record_does_not_log_when_ExhaustedUntil_is_unchanged()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+
+        tally.Record(Report("AER-1", moved: true));
+
+        Assert.DoesNotContain(logged, l => l.Contains("Tally.Record", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1457: every branch of CorrectExhausted names itself on the way through.</summary>
+    [Fact]
+    public void CorrectExhausted_logs_the_branch_that_clears_it()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: DateTimeOffset.UtcNow));
+
+        tally.CorrectExhausted(new UsageWindow("session", "Session", 0.5, DateTimeOffset.UtcNow));
+
+        Assert.Null(tally.ExhaustedUntil);
+        Assert.Contains(logged, l => l.Contains("Tally.CorrectExhausted", StringComparison.Ordinal) && l.Contains("clearing", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CorrectExhausted_logs_the_branch_that_corrects_it()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+        var carried = DateTimeOffset.Parse("2026-09-28T22:00:00Z");
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: carried));
+
+        var probed = DateTimeOffset.Parse("2026-09-28T23:40:00Z");
+        tally.CorrectExhausted(new UsageWindow("session", "Session", 1.0, probed));
+
+        Assert.Contains(logged, l => l.Contains("Tally.CorrectExhausted", StringComparison.Ordinal) && l.Contains("correcting", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CorrectExhausted_logs_once_when_the_sessions_own_window_carries_no_reset_time()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: DateTimeOffset.UtcNow));
+
+        tally.CorrectExhausted(new UsageWindow("session", "Session", 1.0, null));
+
+        Assert.Contains(logged, l => l.Contains("Tally.CorrectExhausted", StringComparison.Ordinal) && l.Contains("no reset time", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1457: the backstop logs when it actually fires, naming itself rather than ClearExhausted.</summary>
+    [Fact]
+    public void ClampExhausted_logs_when_it_clears_a_stale_wait()
+    {
+        var logged = new List<string>();
+        var start = DateTimeOffset.UtcNow;
+        var clock = new FrozenClock(start);
+        var tally = new Tally(clock, log: logged.Add);
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: start.AddMinutes(1)));
+
+        tally.ClampExhausted(start + UsageLimit.WindowLengths["session"] + TimeSpan.FromMinutes(1));
+
+        Assert.Null(tally.ExhaustedUntil);
+        Assert.Contains(logged, l => l.Contains("Tally.ClampExhausted", StringComparison.Ordinal));
+        Assert.Contains(logged, l => l.Contains("Tally.ClearExhausted", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1457: a direct ClearExhausted call names itself when it actually clears something.</summary>
+    [Fact]
+    public void ClearExhausted_logs_when_it_clears_a_non_null_wait()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+        tally.Record(Report("AER-1", moved: false, usageLimitResetAt: DateTimeOffset.UtcNow));
+        logged.Clear();
+
+        tally.ClearExhausted();
+
+        Assert.Contains(logged, l => l.Contains("Tally.ClearExhausted", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ClearExhausted_says_nothing_when_there_was_nothing_to_clear()
+    {
+        var logged = new List<string>();
+        var tally = new Tally(TimeProvider.System, log: logged.Add);
+
+        tally.ClearExhausted();
+
+        Assert.Empty(logged);
+    }
+
     [Fact]
     public void A_keyboard_asking_to_stop_ends_the_night_and_names_the_keyboard()
     {

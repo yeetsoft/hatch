@@ -106,7 +106,11 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
 
     public async Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
     {
-        if (_probeCostly) return null;
+        if (_probeCostly)
+        {
+            warn?.Invoke("hatch: probe skipped - /usage was taken as a model turn earlier this run");
+            return null;
+        }
 
         using var process = new Process { StartInfo = ProbeStart(tempDirectory) };
         process.Start();
@@ -143,6 +147,8 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
 
         await Task.WhenAll(reading, errors).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         await process.WaitForExitAsync(CancellationToken.None);
+
+        warn?.Invoke($"hatch: /usage probe exited {process.ExitCode}, {lines.Count} line(s)");
 
         if (UsageReport.Turns(lines) > 0)
         {

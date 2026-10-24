@@ -552,6 +552,14 @@ public sealed class Increment(
                 report.UsageLimitWindow = hit.Window;
                 report.AgentDisplayName = adapter.DisplayName;
 
+                var streamWindow = facts.Usage?.FirstOrDefault(w => w.Window == hit.Window);
+                var fromStream = streamWindow is { ResetsAt: { } streamResetsAt } && streamResetsAt > endedAt;
+                var branch = fromStream ? "stream" : hit.Passed ? "passed-retry" : "parsed";
+                say.Line($"hatch: {report.Key} - exhausted-wait set by recognised limit ({branch}): " +
+                    $"said=\"{said}\" endedAt={endedAt:O} ({TimeZoneInfo.ConvertTime(endedAt, _clock.LocalTimeZone):O} local) " +
+                    $"window={hit.Window} hit.ResetAt={hit.ResetAt:O} hit.ResetKnown={hit.ResetKnown} hit.Passed={hit.Passed} " +
+                    $"facts.Usage[{hit.Window}].ResetsAt={(streamWindow?.ResetsAt is { } sr ? sr.ToString("O") : "none")}");
+
                 say.Line("");
                 say.Line(report.UsageLimitPassed
                     ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, the reset it named has just passed - trying again at {UsageLimit.Clock(report.UsageLimitResetAt!.Value, report.UsageLimitResetKnown)}"
