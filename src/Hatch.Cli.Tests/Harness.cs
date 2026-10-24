@@ -710,6 +710,18 @@ public sealed class FakeSelf : ISelf
     }
 }
 
+/// <summary>
+/// The checkout's own git history, without a repository to ask: a test sets
+/// what the next read answers, regardless of which paths it is asked about.
+/// </summary>
+public sealed class FakeSourceRevision : ISourceRevision
+{
+    /// <summary>What the next read answers. Null - the default - until a test says otherwise.</summary>
+    public SourceRevisionInfo? Info { get; set; }
+
+    public SourceRevisionInfo? Newest(IReadOnlyList<string> paths) => Info;
+}
+
 /// <summary>One test's runner: a stub wire, a stub session, a temporary tree.</summary>
 public sealed class Harness : IDisposable
 {
@@ -784,6 +796,7 @@ public sealed class Harness : IDisposable
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
+            SourceRevision = () => SourceRevision,
             NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags),
             MakeClone = Clone.Factory,
             Clock = Clock,
@@ -806,6 +819,9 @@ public sealed class Harness : IDisposable
 
     /// <summary>The loop's own source, as the loop finds it.</summary>
     public FakeSelf Self { get; } = new();
+
+    /// <summary>The checkout's own git history, as the loop finds it.</summary>
+    public FakeSourceRevision SourceRevision { get; } = new();
 
     /// <summary>The tree, as the pass finds it. Ready unless a test says otherwise.</summary>
     public FakeWorkspace Workspace { get; } = new();

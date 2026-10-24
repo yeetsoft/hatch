@@ -246,6 +246,39 @@ public sealed class GoToWorkTests
         Assert.Equal(0, beat.Sequence);
     }
 
+    [Fact]
+    public async Task Inside_a_checkout_of_its_own_source_the_heartbeat_carries_the_newest_commit_touching_it()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Directory.CreateDirectory(Path.Combine(h.Runtime.Root, "src", "Hatch.Cli"));
+        h.SourceRevision.Info = new SourceRevisionInfo("b465267d5809bc0c672d250a1e7cc81b8714ed92", 4127);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.SourceRevision);
+        Assert.Equal(4127, beat.SourceSequence);
+    }
+
+    [Fact]
+    public async Task Outside_a_checkout_of_its_own_source_the_heartbeat_sends_neither_field()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.SourceRevision.Info = new SourceRevisionInfo("b465267d5809bc0c672d250a1e7cc81b8714ed92", 4127);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.SourceRevision);
+        Assert.Null(beat.SourceSequence);
+    }
+
 
     [Theory]
     [InlineData(false)]

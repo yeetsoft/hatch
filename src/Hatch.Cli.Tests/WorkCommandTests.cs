@@ -908,6 +908,41 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task Inside_a_checkout_of_its_own_source_the_heartbeat_carries_the_newest_commit_touching_it()
+    {
+        using var h = new Harness();
+        Directory.CreateDirectory(Path.Combine(h.Runtime.Root, "src", "Hatch.Cli"));
+        h.SourceRevision.Info = new SourceRevisionInfo("b465267d5809bc0c672d250a1e7cc81b8714ed92", 4127);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.SourceRevision);
+        Assert.Equal(4127, beat.SourceSequence);
+    }
+
+    [Fact]
+    public async Task Outside_a_checkout_of_its_own_source_the_heartbeat_sends_neither_field()
+    {
+        using var h = new Harness();
+        h.SourceRevision.Info = new SourceRevisionInfo("b465267d5809bc0c672d250a1e7cc81b8714ed92", 4127);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.SourceRevision);
+        Assert.Null(beat.SourceSequence);
+    }
+
+    [Fact]
     public async Task A_jammed_board_counts_the_reasons_and_names_the_questions_waiting()
     {
         using var h = new Harness();

@@ -3607,7 +3607,9 @@ public record RunnerHeartbeatRequest(
     bool? Fresh = null,
     string? Revision = null,
     int? Sequence = null,
-    DateTimeOffset? BuiltAt = null);
+    DateTimeOffset? BuiltAt = null,
+    string? SourceRevision = null,
+    int? SourceSequence = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
