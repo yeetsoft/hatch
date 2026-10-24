@@ -24,7 +24,8 @@ public sealed class ConfigCommandTests : IDisposable
         Func<string, bool>? checkoutIgnoresEnv = null,
         Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null,
         string? profileName = null,
-        string? profilePath = null) =>
+        string? profilePath = null,
+        ConfigCommand.ProfileResolver? resolveProfile = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
         {
@@ -36,7 +37,20 @@ public sealed class ConfigCommandTests : IDisposable
             MeProbe = meProbe ?? ((_, _, _) => Task.FromResult<MeDto?>(new MeDto("key", "stub", null, true, false, false))),
             ProfileName = profileName,
             ProfilePath = profilePath,
+            // No active profile unless a test says otherwise: the real one reads
+            // the machine's own pointer, which no test may depend on.
+            ResolveProfile = resolveProfile ?? NoActiveProfile,
         };
+
+    private static bool NoActiveProfile(
+        string? requested, IDictionary<string, string?> environment,
+        out string? name, out string? file, out string refusal)
+    {
+        name = null;
+        file = null;
+        refusal = "";
+        return true;
+    }
 
     private string Said => string.Join("\n", _say.Said);
 
@@ -417,6 +431,89 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(0, await Command(new Replies(), root: root).RunAsync(["--runner", "Liz Lemon"], default));
 
         Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
+    }
+
+    [Fact]
+    public async Task Runner_with_profile_writes_that_profiles_record_entry()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var canonical = Checkout.Canonical(root);
+        ConfigCommand.ProfileResolver neverResolves = (string? _, IDictionary<string, string?> _, out string? _, out string? _, out string _) =>
+            throw new InvalidOperationException("an explicit --profile never resolves");
+
+        Assert.Equal(0, await Command(new Replies(), root: root, profileName: "a", profilePath: Profile(), resolveProfile: neverResolves)
+            .RunAsync(["--runner", "Toby"], default));
+        Assert.Equal(0, await Command(new Replies(), root: root, profileName: "b", profilePath: Profile(), resolveProfile: neverResolves)
+            .RunAsync(["--runner", "Troy"], default));
+
+        var record = RunnerNames.Record.Read(RunnersPath);
+        Assert.Equal("Toby", record[RunnerNames.Record.Key("a", canonical)]);
+        Assert.Equal("Troy", record[RunnerNames.Record.Key("b", canonical)]);
+        Assert.False(record.ContainsKey(canonical));
+    }
+
+    [Fact]
+    public async Task Runner_with_no_profile_flag_uses_the_active_one()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var canonical = Checkout.Canonical(root);
+        var profilePath = Profile();
+        ConfigCommand.ProfileResolver active = (string? _, IDictionary<string, string?> _, out string? name, out string? file, out string refusal) =>
+        {
+            name = "a";
+            file = profilePath;
+            refusal = "";
+            return true;
+        };
+
+        Assert.Equal(0, await Command(new Replies(), root: root, resolveProfile: active)
+            .RunAsync(["--runner", "Troy"], default));
+
+        var record = RunnerNames.Record.Read(RunnersPath);
+        Assert.Equal("Troy", record[RunnerNames.Record.Key("a", canonical)]);
+        Assert.False(record.ContainsKey(canonical));
+    }
+
+    [Fact]
+    public async Task Runner_refuses_a_dangling_active_profile()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        ConfigCommand.ProfileResolver dangling = (string? _, IDictionary<string, string?> _, out string? name, out string? file, out string refusal) =>
+        {
+            name = "ghost";
+            file = null;
+            refusal = "hatch: no such profile \"ghost\"";
+            return false;
+        };
+
+        var code = await Command(new Replies(), root: root, resolveProfile: dangling)
+            .RunAsync(["--runner", "Troy"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("no such profile \"ghost\"", Complained);
+        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
+    }
+
+    [Fact]
+    public async Task Runner_with_profile_asks_that_profiles_board()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        string? asked = null;
+
+        var code = await Command(
+                new Replies(),
+                root: root,
+                profileName: "a",
+                profilePath: Profile("HATCH_BASE=https://profile-board"),
+                liveRunners: (settings, _) =>
+                {
+                    asked = settings.Base;
+                    return Task.FromResult<IReadOnlyList<string>>([]);
+                })
+            .RunAsync(["--runner", "Troy"], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("https://profile-board", asked);
     }
 
     [Fact]
@@ -1852,16 +1949,30 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Profile_and_runner_is_refused()
+    public async Task Show_names_the_profile_on_the_runner_line()
     {
-        var profilePath = Profile();
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var canonical = Checkout.Canonical(root);
+        RunnerNames.Record.Set(RunnersPath, "a", canonical, "Toby");
+        RunnerNames.Record.Set(RunnersPath, null, canonical, "Bare");
 
-        var code = await Command(new Replies(), profileName: "work", profilePath: profilePath)
-            .RunAsync(["--runner", "Liz Lemon"], default);
+        await Command(new Replies(), root: root, profileName: "a", profilePath: Profile())
+            .RunAsync(["--show"], default);
 
-        Assert.Equal(1, code);
-        Assert.Contains("needs no --profile", Complained);
-        Assert.False(File.Exists(profilePath));
+        Assert.Contains($"runner:           Toby  ({RunnersPath})  (profile: a)", Said);
+        Assert.DoesNotContain("Bare", Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_profile_on_the_workspace_line()
+    {
+        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+
+        await Command(new Replies(), root: root, profileName: "a", profilePath: Profile())
+            .RunAsync(["--show"], default);
+
+        Assert.Contains(
+            $"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath("a")}>  (profile: a)", Said);
     }
 
     [Fact]
@@ -1929,7 +2040,8 @@ public sealed class ConfigCommandTests : IDisposable
             ["HATCH_PROFILE"] = "hatch-config-tests-no-such-profile",
         };
 
-        var code = await Command(new Replies(), environment: environment).RunAsync(["--show"], default);
+        var code = await Command(new Replies(), environment: environment, resolveProfile: Settings.TryResolveProfile)
+            .RunAsync(["--show"], default);
 
         Assert.Equal(0, code);
         Assert.Contains("profile:          hatch-config-tests-no-such-profile  (does not exist)", Said);
@@ -1961,8 +2073,8 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Contains(
-            $"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>" +
-            "  (profile active: the per-user file was not consulted)",
+            $"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath("work")}>" +
+            "  (profile: work)  (profile active: the per-user file was not consulted)",
             Said);
         Assert.Contains($"HATCH_CLAUDE_BIN:  /opt/claude-user  ({ConfigPath})", Said);
     }

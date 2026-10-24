@@ -66,9 +66,10 @@ public sealed record ConfigCommand(
         "  --runner sets the name this checkout calls itself on the board - a",
         "  character from the cast list by default, chosen once and kept from then",
         "  on. Refused, with nothing written, if it is empty, too long, not plain",
-        "  ASCII, or already the name of a live runner. Needs a checkout:",
-        "  a runner's name is a fact about one of them, not a setting that follows",
-        "  the person.",
+        "  ASCII, or already the name of a live runner. Needs a checkout, and is",
+        "  recorded for the active profile (or the one --profile names): a runner's",
+        "  name is still a fact about one checkout, not a setting that follows the",
+        "  person.",
         "",
         "  --repo writes HATCH_REPOS: the checkouts a loop with no checkout of its own",
         "  serves, beside whatever it is standing in. Each path is checked before the",
@@ -97,8 +98,8 @@ public sealed record ConfigCommand(
         "",
         "  --profile <name> writes that profile's own file instead of the per-user",
         "  file - combine it with any write above. The file need not exist yet.",
-        "  Refused with --here (two different places to write) or --runner (a",
-        "  runner's name is already this checkout's), and with an invalid name.",
+        "  Refused with --here (two different places to write) and with an",
+        "  invalid name.",
         "  `--show --profile <name>` reads the named profile as if it were active,",
         "  without switching to it.",
         "",
@@ -161,6 +162,17 @@ public sealed record ConfigCommand(
     /// </summary>
     public Func<string, bool> CheckoutIgnoresEnv { get; init; } = DefaultCheckoutIgnoresEnv;
 
+    /// <summary>
+    /// Resolves the active profile when no <c>--profile</c> names one -
+    /// <see cref="Settings.TryResolveProfile"/> reads the machine's real
+    /// pointer and files, so a test cannot stage them. Replaced by a test.
+    /// </summary>
+    public delegate bool ProfileResolver(
+        string? requested, IDictionary<string, string?> environment,
+        out string? name, out string? file, out string refusal);
+
+    public ProfileResolver ResolveProfile { get; init; } = Settings.TryResolveProfile;
+
     private static bool DefaultCheckoutIgnoresEnv(string root)
     {
         try
@@ -217,12 +229,6 @@ public sealed record ConfigCommand(
         if (here && args.Length > 0 && args[0] == "--runner")
         {
             Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --here");
-            return 1;
-        }
-
-        if (ProfileName is not null && args.Length > 0 && args[0] == "--runner")
-        {
-            Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --profile");
             return 1;
         }
 
@@ -595,7 +601,23 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
+        // An explicit --profile names the profile outright; otherwise it is the
+        // active one. A dangling pointer is refused rather than falling through
+        // to the bare key, which Checkout.RunnerAsync would not read under it.
+        string? profile;
+        string? profileFile;
+        if (ProfileName is not null)
+        {
+            profile = ProfileName;
+            profileFile = ProfilePath;
+        }
+        else if (!ResolveProfile(null, Environment, out profile, out profileFile, out var refusal))
+        {
+            Say.Complain(refusal);
+            return 1;
+        }
+
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, profileFile);
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
 
@@ -605,7 +627,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), candidate);
+        RunnerNames.Record.Set(RunnersPath, profile, Checkout.Canonical(root), candidate);
 
         Say.Line($"wrote {RunnersPath}");
         return 0;
@@ -918,7 +940,7 @@ public sealed record ConfigCommand(
     /// <summary>What is set, and which of the three layers it came from.</summary>
     private async Task<int> ShowAsync(CancellationToken ct)
     {
-        var (fold, ignoredKeyLayer, _) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var (fold, ignoredKeyLayer, ignoredRunnerLayer) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");
@@ -926,24 +948,39 @@ public sealed record ConfigCommand(
             ? $"checkout:         {checkoutEnvFile}  (written by --here)"
             : "checkout:         <not in one>");
 
+        // The profile the runner: and HATCH_WORKSPACE: lines below belong to -
+        // the same name the profile: line prints, null for "none".
+        string? profileName;
         if (ProfileName is not null)
+        {
+            profileName = ProfileName;
             Say.Line($"profile:          {ProfileName}  ({ProfilePath})");
-        else if (Settings.TryResolveProfile(null, Environment, out var activeName, out var activeFile, out _))
+        }
+        else if (ResolveProfile(null, Environment, out var activeName, out var activeFile, out _))
+        {
+            profileName = activeName is { Length: > 0 } ? activeName : null;
             Say.Line(activeName is { Length: > 0 }
                 ? $"profile:          {activeName}  ({activeFile})"
                 : "profile:          <none>");
+        }
         else
+        {
+            profileName = activeName;
             Say.Line($"profile:          {activeName}  (does not exist)");
+        }
+
+        var profileSuffix = $"  (profile: {profileName ?? "<none>"})";
 
         var runnerFold = fold("HATCH_RUNNER");
         if (runnerFold.Value is { Length: > 0 } explicitRunner)
             Say.Line($"runner:           {explicitRunner}  (HATCH_RUNNER, {Where(runnerFold.From)})");
         else if (Root is { Length: > 0 } root)
         {
-            var recorded = RunnerNames.Record.Read(RunnersPath).GetValueOrDefault(Checkout.Canonical(root));
+            var recorded = RunnerNames.Record.Read(RunnersPath)
+                .GetValueOrDefault(RunnerNames.Record.Key(profileName, Checkout.Canonical(root)));
             Say.Line(recorded is { Length: > 0 }
-                ? $"runner:           {recorded}  ({RunnersPath})"
-                : "runner:           <none yet - chosen the next time this checkout speaks to a board>");
+                ? $"runner:           {recorded}  ({RunnersPath}){profileSuffix}"
+                : $"runner:           <none yet - chosen the next time this checkout speaks to a board>{profileSuffix}");
         }
         else
             Say.Line("runner:           <not in a checkout>");
@@ -994,6 +1031,9 @@ public sealed record ConfigCommand(
             if (name == "HATCH_KEY" && ignoredKeyLayer() is { } ignored)
                 note += $"  (ignored: {Where(ignored)} holds a key, but HATCH_BASE comes from " +
                          $"{Where(fold("HATCH_BASE").From)} - set both there, or neither)";
+            if (name == "HATCH_RUNNER" && ignoredRunnerLayer() is { } ignoredRunner)
+                note += $"  (ignored: {Where(ignoredRunner)} holds a name, but a runner's name belongs to a checkout - " +
+                         "export it, or put it in scripts/.env)";
             if (Settings.IsBoardBound(name) && ProfilePath is not null)
                 note += "  (profile active: the per-user file was not consulted)";
 
@@ -1033,7 +1073,7 @@ public sealed record ConfigCommand(
                 ? name == "HATCH_KEY"
                     ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
                     : name == "HATCH_WORKSPACE"
-                        ? $"<unset - clones go to {Settings.DefaultWorkspacePath()}>"
+                        ? $"<unset - clones go to {Settings.DefaultWorkspacePath(profileName)}>{profileSuffix}"
                         : "<unset>"
                 : name == "HATCH_KEY"
                     ? Mask(value)
