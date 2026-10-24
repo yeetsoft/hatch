@@ -389,7 +389,10 @@ Two more things turn restarts off before any of those flags is even read:
 `--once`, since it heartbeats as a one-off and never comes back regardless;
 and an unset `HATCH_NIGHT_STATE`, which only Hatch's own supervisor sets. A
 `hatch` started by hand has nothing standing over it, so it is the loop it
-started as, and all three flags do nothing there.
+started as, and all three flags do nothing there. An unsupervised run also
+prints one line, once before its first increment, saying so and naming
+`scripts/hatch.sh go-to-work` (`scripts\hatch.ps1 go-to-work` in PowerShell)
+as the way to get restarts back.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it catches the 75, rebuilds and runs the loop again, carrying the

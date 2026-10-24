@@ -2426,11 +2426,11 @@ public sealed class GoToWorkTests
     {
         // The source changes under every one of these, and none of them comes
         // back as the new version.
-        foreach (var (what, args, supervised) in (ValueTuple<string, string[], bool>[])
+        foreach (var (what, args, supervised, warns) in (ValueTuple<string, string[], bool, bool>[])
                  [
-                     ("--no-restart", ["--no-restart", "--max-runs", "1"], true),
-                     ("--once", ["--once"], true),
-                     ("no supervisor", ["--max-runs", "1"], false),
+                     ("--no-restart", ["--no-restart", "--max-runs", "1"], true, false),
+                     ("--once", ["--once"], true, false),
+                     ("no supervisor", ["--max-runs", "1"], false, true),
                  ])
         {
             using var h = new Harness();
@@ -2447,6 +2447,9 @@ public sealed class GoToWorkTests
             // A runner started by hand never even reads its own source: there is
             // nobody standing over it to build the new one.
             if (!supervised) Assert.Equal(0, h.Self.Taken);
+
+            var mentionsWarning = h.Say.Said.Any(l => l.Contains("will not rebuild or restart itself", StringComparison.Ordinal));
+            Assert.Equal(warns, mentionsWarning);
         }
     }
 
