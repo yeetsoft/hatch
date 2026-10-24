@@ -731,7 +731,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             foreach (var stray in strays)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
-            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
+            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : (servedWorkspace ?? runtime.Root);
 
             // Not yet named for the new root - that asks the board, and asking
             // is deferred past the lock below, so a lock refusal touches the
@@ -817,7 +817,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), runtime.Root));
                 var runnerName = await Checkout.RunnerAsync(
-                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, null, lookupBoard, ct, runtime.RunnersPath);
+                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, runtime.ProfileName, lookupBoard, ct, runtime.RunnersPath);
 
                 runtime = runtime with
                 {

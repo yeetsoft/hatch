@@ -57,6 +57,14 @@ public sealed record Runtime(
     public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
 
     /// <summary>
+    /// The resolved active-or-named profile's name, not its file: the key
+    /// <see cref="Checkout.RunnerAsync"/> records the runner's name under, so
+    /// two profiles serving one workspace do not share a name. Null with no
+    /// profile.
+    /// </summary>
+    public string? ProfileName { get; init; }
+
+    /// <summary>
     /// Where the night's running totals are handed from one incarnation of the
     /// loop to the next. Set by the supervisor in <c>scripts/hatch.sh</c> or
     /// <c>scripts/hatch.ps1</c> and by nobody else, so its absence is how the
