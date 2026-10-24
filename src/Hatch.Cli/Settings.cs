@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -21,7 +23,7 @@ namespace Hatch.Cli;
 /// (docs/auth-architecture.md, "Local mode"), so a missing key is a mode and
 /// not a failure to load; <see cref="HatchClient"/> is where the two diverge.</para>
 /// </remarks>
-public sealed record Settings
+public sealed partial record Settings
 {
     /// <summary>Everything a settings file may carry. A line naming anything else is skipped, loudly.</summary>
     public static readonly string[] FileNames =
@@ -45,6 +47,9 @@ public sealed record Settings
 
         /// <summary>This checkout's <c>scripts/.env</c>.</summary>
         Checkout,
+
+        /// <summary>The named profile file, when one resolved.</summary>
+        Profile,
 
         /// <summary>The per-user file, which follows the person between checkouts.</summary>
         User,
@@ -183,6 +188,69 @@ public sealed record Settings
         "hatch",
         "workspace");
 
+    /// <summary>Where every profile file lives, named for the person rather than a checkout.</summary>
+    public static string ProfilesDirectory() => Path.Combine(ApplicationData, "hatch", "profiles");
+
+    /// <summary>A named profile's own file, inside <see cref="ProfilesDirectory"/>.</summary>
+    public static string ProfilePath(string name) => Path.Combine(ProfilesDirectory(), name);
+
+    /// <summary>The one line naming which profile is active when nothing names one explicitly.</summary>
+    public static string ActiveProfilePath() => Path.Combine(ApplicationData, "hatch", "profile");
+
+    /// <summary>The operating system's per-user folder, shared by every path above it.</summary>
+    private static string ApplicationData => Environment.GetFolderPath(
+        Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify);
+
+    /// <summary>A profile name safe to use as a file name: letters, digits and hyphens, and not blank.</summary>
+    public static bool ValidProfileName(string name) => !string.IsNullOrEmpty(name) && ProfileNamePattern().IsMatch(name);
+
+    [GeneratedRegex(@"^[A-Za-z0-9-]+$")]
+    private static partial Regex ProfileNamePattern();
+
+    /// <summary>
+    /// Which profile applies, highest first: <paramref name="requested"/> (already
+    /// trimmed by the caller), then <c>HATCH_PROFILE</c>, then the one line of
+    /// <see cref="ActiveProfilePath"/>. Nothing named anywhere is not a refusal -
+    /// it is today's fold, unchanged, with no profile in it at all. A name that
+    /// was actually named and has no file behind it is the only refusal.
+    /// </summary>
+    public static bool TryResolveProfile(
+        string? requested, IDictionary<string, string?> environment,
+        out string? name, out string? file, out string refusal)
+    {
+        name = null;
+        file = null;
+        refusal = "";
+
+        var candidate = requested;
+
+        if (string.IsNullOrEmpty(candidate) &&
+            environment.TryGetValue("HATCH_PROFILE", out var exported) && !string.IsNullOrWhiteSpace(exported))
+            candidate = exported.Trim();
+
+        if (string.IsNullOrEmpty(candidate))
+        {
+            var pointer = ActiveProfilePath();
+            if (File.Exists(pointer))
+            {
+                var line = File.ReadLines(pointer).FirstOrDefault()?.Trim();
+                if (!string.IsNullOrEmpty(line)) candidate = line;
+            }
+        }
+
+        if (string.IsNullOrEmpty(candidate)) return true;
+
+        if (!ValidProfileName(candidate) || !File.Exists(ProfilePath(candidate)))
+        {
+            refusal = $"""hatch: no such profile "{candidate}" - looked in {ProfilesDirectory()}""";
+            return false;
+        }
+
+        name = candidate;
+        file = ProfilePath(candidate);
+        return true;
+    }
+
     /// <summary>
     /// The three layers, folded. Answers the settings, or the sentence saying
     /// what is missing - which is the origin alone, since the key is optional.
@@ -196,15 +264,21 @@ public sealed record Settings
     /// The per-user file. Named rather than looked up so a test can put one
     /// somewhere that is not the machine's own.
     /// </param>
+    /// <param name="profileFile">
+    /// The resolved profile's own file, if one resolved - see
+    /// <see cref="TryResolveProfile"/>. Null is "no profile", which folds
+    /// exactly as it did before this layer existed.
+    /// </param>
     public static bool TryLoad(
         string? checkoutEnvFile,
         IDictionary<string, string?> environment,
         out Settings settings,
         out string refusal,
-        string? userConfigFile = null)
+        string? userConfigFile = null,
+        string? profileFile = null)
     {
         var sources = new Dictionary<string, Layer>(StringComparer.Ordinal);
-        var fold = Layers(checkoutEnvFile, environment, userConfigFile);
+        var fold = Layers(checkoutEnvFile, environment, userConfigFile, profileFile);
 
         string? Read(string name)
         {
@@ -329,7 +403,7 @@ public sealed record Settings
     public Layer SourceOf(string name) => Sources.GetValueOrDefault(name, Layer.Unset);
 
     /// <summary>
-    /// The three layers as one lookup: the value, and which layer it came from.
+    /// The four layers as one lookup: the value, and which layer it came from.
     /// </summary>
     /// <remarks>
     /// Separate from <see cref="TryLoad"/> because <c>config --show</c> has to
@@ -338,9 +412,11 @@ public sealed record Settings
     /// from.
     /// </remarks>
     public static Func<string, (string? Value, Layer From)> Layers(
-        string? checkoutEnvFile, IDictionary<string, string?> environment, string? userConfigFile = null)
+        string? checkoutEnvFile, IDictionary<string, string?> environment,
+        string? userConfigFile = null, string? profileFile = null)
     {
         var checkout = ReadFile(checkoutEnvFile);
+        var profile = ReadFile(profileFile);
         var user = ReadFile(userConfigFile ?? UserConfigPath());
 
         return name =>
@@ -350,6 +426,9 @@ public sealed record Settings
 
             if (checkout.TryGetValue(name, out var here) && !string.IsNullOrWhiteSpace(here))
                 return (here, Layer.Checkout);
+
+            if (profile.TryGetValue(name, out var named) && !string.IsNullOrWhiteSpace(named))
+                return (named, Layer.Profile);
 
             if (user.TryGetValue(name, out var mine) && !string.IsNullOrWhiteSpace(mine))
                 return (mine, Layer.User);

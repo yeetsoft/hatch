@@ -709,6 +709,105 @@ public sealed class SettingsTests : IDisposable
             path);
     }
 
+    // ---- profiles ----
+
+    /// <summary>
+    /// The new fourth layer, between the checkout file and the per-user file -
+    /// matching HA-1448's decision 2.
+    /// </summary>
+    [Fact]
+    public void A_profile_value_beats_the_per_user_file()
+    {
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+        var user = Write("user.config", "HATCH_BASE=https://from-the-user-file");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
+
+        Assert.Equal("https://from-the-profile", settings.Base);
+        Assert.Equal(Settings.Layer.Profile, settings.SourceOf("HATCH_BASE"));
+    }
+
+    [Fact]
+    public void The_checkouts_env_beats_a_profile_value_and_an_export_beats_both()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://from-the-checkout");
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+        var user = Write("user.config", "HATCH_BASE=https://from-the-user-file");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_BASE", "https://exported")), out var exported, out _, user, profile));
+        Assert.Equal("https://exported", exported.Base);
+        Assert.Equal(Settings.Layer.Environment, exported.SourceOf("HATCH_BASE"));
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var checkoutWins, out _, user, profile));
+        Assert.Equal("https://from-the-checkout", checkoutWins.Base);
+        Assert.Equal(Settings.Layer.Checkout, checkoutWins.SourceOf("HATCH_BASE"));
+    }
+
+    /// <summary>
+    /// Layered a value at a time, not a file at a time - the same guarantee
+    /// <see cref="Each_value_is_layered_on_its_own"/> makes for the other three.
+    /// </summary>
+    [Fact]
+    public void Each_value_is_layered_on_its_own_across_profile_and_user()
+    {
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
+
+        Assert.Equal("https://from-the-profile", settings.Base);
+        Assert.Equal("hatch_ak_mine", settings.Key);
+
+        Assert.Equal(Settings.Layer.Profile, settings.SourceOf("HATCH_BASE"));
+        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_KEY"));
+    }
+
+    /// <summary>
+    /// Neither candidate has a file behind it on this machine, so the call
+    /// refuses either way - what this proves is which name it tried, which is
+    /// what precedence actually means here.
+    /// </summary>
+    [Fact]
+    public void TryResolveProfile_an_explicit_name_wins_over_HATCH_PROFILE()
+    {
+        Assert.False(Settings.TryResolveProfile(
+            "explicit", Env(("HATCH_PROFILE", "from-env")), out _, out _, out var refusal));
+
+        Assert.Contains("\"explicit\"", refusal);
+    }
+
+    [Fact]
+    public void TryResolveProfile_HATCH_PROFILE_wins_over_the_active_pointer_when_no_name_is_given()
+    {
+        Assert.False(Settings.TryResolveProfile(
+            null, Env(("HATCH_PROFILE", "from-env")), out _, out _, out var refusal));
+
+        Assert.Contains("\"from-env\"", refusal);
+    }
+
+    [Fact]
+    public void TryResolveProfile_an_unknown_name_refuses_and_names_ProfilesDirectory()
+    {
+        Assert.False(Settings.TryResolveProfile(
+            "no-such-profile", Env(), out var name, out var file, out var refusal));
+
+        Assert.Null(name);
+        Assert.Null(file);
+        Assert.Contains("no such profile", refusal);
+        Assert.Contains(Settings.ProfilesDirectory(), refusal);
+    }
+
+    [Fact]
+    public void TryResolveProfile_nothing_named_anywhere_resolves_to_null_and_leaves_todays_fold_unchanged()
+    {
+        Assert.True(Settings.TryResolveProfile(null, Env(), out var name, out var file, out var refusal));
+
+        Assert.Null(name);
+        Assert.Null(file);
+        Assert.Equal("", refusal);
+    }
+
     public void Dispose()
     {
         try
