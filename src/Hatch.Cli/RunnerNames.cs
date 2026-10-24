@@ -105,7 +105,16 @@ public static class RunnerNames
         public static string DefaultPath() =>
             Path.Combine(Path.GetDirectoryName(Settings.UserConfigPath())!, "runners");
 
-        /// <summary><c>&lt;canonical checkout path&gt;=&lt;name&gt;</c>, one per line. Missing reads as empty.</summary>
+        /// <summary>
+        /// The record key for a checkout under a profile: the bare canonical
+        /// path when there is no profile, else <c>profile|path</c>. A profile
+        /// name is <c>[A-Za-z0-9-]+</c> and <c>|</c> cannot appear in a Windows
+        /// path segment, so neither side can hold the delimiter.
+        /// </summary>
+        public static string Key(string? profile, string canonicalRoot) =>
+            string.IsNullOrEmpty(profile) ? canonicalRoot : $"{profile}|{canonicalRoot}";
+
+        /// <summary><c>&lt;key&gt;=&lt;name&gt;</c>, one per line, the key being <see cref="Key"/>'s. Missing reads as empty.</summary>
         public static IReadOnlyDictionary<string, string> Read(string path)
         {
             var entries = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -126,13 +135,13 @@ public static class RunnerNames
         }
 
         /// <summary>
-        /// Records this checkout's name, keeping every other checkout's entry
+        /// Records this checkout's name under a profile, keeping every other entry
         /// untouched - a read, an update, and the same temp-file-then-rename
         /// write <c>ConfigCommand.Write</c> uses, mode 600 the same way.
         /// </summary>
-        public static void Set(string path, string canonicalRoot, string name)
+        public static void Set(string path, string? profile, string canonicalRoot, string name)
         {
-            var entries = new Dictionary<string, string>(Read(path), StringComparer.Ordinal) { [canonicalRoot] = name };
+            var entries = new Dictionary<string, string>(Read(path), StringComparer.Ordinal) { [Key(profile, canonicalRoot)] = name };
 
             var directory = Path.GetDirectoryName(path);
             if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);

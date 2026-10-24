@@ -153,14 +153,15 @@ public static class Checkout
     /// old row ages out on its own once that runner stops heartbeating.</para>
     /// </remarks>
     public static async Task<string> RunnerAsync(
-        string? configured, string host, string root, Board? board, CancellationToken ct, string? runnersPath = null)
+        string? configured, string host, string root, string? profile, Board? board, CancellationToken ct, string? runnersPath = null)
     {
         if (!string.IsNullOrWhiteSpace(configured)) return Cap(configured.Trim());
 
         var canonical = Canonical(root);
         var recordPath = runnersPath ?? RunnerNames.Record.DefaultPath();
+        var key = RunnerNames.Record.Key(profile, canonical);
         var recorded = RunnerNames.Record.Read(recordPath);
-        if (recorded.TryGetValue(canonical, out var already)) return Cap(already);
+        if (recorded.TryGetValue(key, out var already)) return Cap(already);
 
         var taken = new HashSet<string>(recorded.Values, StringComparer.OrdinalIgnoreCase);
 
@@ -178,7 +179,7 @@ public static class Checkout
         }
 
         var chosen = RunnerNames.Choose(host, canonical, taken);
-        RunnerNames.Record.Set(recordPath, canonical, chosen);
+        RunnerNames.Record.Set(recordPath, profile, canonical, chosen);
         return Cap(chosen);
     }
 

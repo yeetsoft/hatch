@@ -388,7 +388,7 @@ public sealed record ConfigCommand(
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
             path: overlayPath, overlay: overlay, mode: "");
 
-        if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
+        if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(Root!), chosenRunner);
 
         // Exported, not just set: this process is about to make the call below,
         // and a `work` spawned from here should not have to find the file again.
@@ -605,7 +605,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), candidate);
+        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), candidate);
 
         Say.Line($"wrote {RunnersPath}");
         return 0;
