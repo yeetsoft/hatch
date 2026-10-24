@@ -67,11 +67,11 @@ public class IssueClaimsTests
         var claims = TestClaims.With(stallLapseMinutes: 5);
 
         // ChatterAt is null throughout - a --quiet session sends no chatter -
-        // so the clock the quiet check reads runs from ClaimedAt. The
+        // so the deadline the quiet check reads runs from the take. The
         // heartbeat itself stays fresh, as an ongoing --quiet session's would,
         // so only the quiet clause is under test here and not the TTL.
         ClaimSnapshot Held(DateTimeOffset now) =>
-            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null);
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null, QuietAt: Now.AddMinutes(5));
 
         Assert.True(claims.IsLive(Held(Now.AddMinutes(4).AddSeconds(59)), Now.AddMinutes(4).AddSeconds(59)));
         Assert.False(claims.IsLive(Held(Now.AddMinutes(5).AddSeconds(1)), Now.AddMinutes(5).AddSeconds(1)));
@@ -84,7 +84,7 @@ public class IssueClaimsTests
 
         var claim = new ClaimSnapshot(
             Guid.NewGuid(), "hatch", "somewhere:/checkouts/one",
-            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-1));
+            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-1), QuietAt: Now.AddMinutes(4));
 
         Assert.True(claims.IsLive(claim, Now));
     }
@@ -98,7 +98,7 @@ public class IssueClaimsTests
         // time anybody looked, and that is what quiet measures.
         var claim = new ClaimSnapshot(
             Guid.NewGuid(), "hatch", "somewhere:/checkouts/one",
-            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-6));
+            Now.AddHours(-2), Now, "still here", Now.AddMinutes(-6), QuietAt: Now.AddMinutes(-1));
 
         Assert.False(claims.IsLive(claim, Now));
     }

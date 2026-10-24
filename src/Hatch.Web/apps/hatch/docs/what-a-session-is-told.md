@@ -141,8 +141,8 @@ its plan.
 ### Reaching Hatch
 
 Always. The `hatch` commands a session makes, to be run from the repository
-root: `comments`, `start`, `move`, `comment`, `ask`, and `api` for everything
-else. The key is already in the environment, and the brief above is already
+root: `comments`, `start`, `move`, `comment`, `ask`, `grace` (ahead of a command
+that will say nothing for minutes), and `api` for everything else. The key is already in the environment, and the brief above is already
 current, so there is no `show`. Two things change it:
 
 - On a check's column, `hatch verdict` stands where `start` and `move` would,

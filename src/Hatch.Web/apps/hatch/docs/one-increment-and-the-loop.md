@@ -76,6 +76,22 @@ the ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops
 the session itself rather than let it keep working a ticket the board may
 already have handed to somebody else.
 
+A claim also goes quiet when nothing has been said on it for that long, and a
+command that prints nothing for minutes (a UI suite, a long build) would lose
+the claim while it works. A session that knows it is about to run one says so
+first with `hatch grace <key> <minutes>`, which exempts that claim from the
+quiet rule for that long (up to `Hatch__StallGraceMaxMinutes`) without widening
+the window for every ticket. A project whose work is always slow sets a longer
+window of its own instead (`PUT /projects/{id}/claim-limits`, owner only).
+
+A ticket whose work can never finish inside its window would otherwise be taken,
+stopped and taken again indefinitely. When a take finds that the last
+`Hatch__ClaimLapseLimit` claims (two by default) all lapsed - each taken over
+after going quiet or expiring, with nothing worked, moved or answered between -
+it is refused before a session spawns, the new claim is let go, and Hatch asks a
+question on the ticket. The question blocks dispatch and lights the attention
+panel; a person's answer starts the count over.
+
 There is no wall-clock cap on an increment beyond that: a session runs as
 long as it has a lease to renew. Ctrl-C waits up to ten seconds for the
 session's own output to drain before it lets go.

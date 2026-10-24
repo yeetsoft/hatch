@@ -82,15 +82,74 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         ? options.Value.StallResumeLimit
         : new HatchOptions().StallResumeLimit;
 
-    /// <summary>The heartbeat at or after which a claim is still alive.</summary>
-    public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-TtlSeconds);
+    /// <summary>
+    /// The longest a holder may ask to be left alone, in seconds - see
+    /// <see cref="HatchOptions.StallGraceMaxMinutes"/>. Guarded the way
+    /// <see cref="StallLapseSeconds"/> is, except that zero keeps no
+    /// meaning of its own beyond "nobody may ask": a negative value falls back
+    /// to the default.
+    /// </summary>
+    public int StallGraceMaxSeconds { get; } = options.Value.StallGraceMaxMinutes switch
+    {
+        0 => 0,
+        > 0 => options.Value.StallGraceMaxMinutes * 60,
+        _ => new HatchOptions().StallGraceMaxMinutes * 60,
+    };
 
     /// <summary>
-    /// The instant at or after which a claim is not yet quiet, or null when
-    /// lapsing is off - see <see cref="IsQuiet"/>.
+    /// How many claims in a row may lapse on one ticket before the take that
+    /// would be the next one is refused and a person is asked - see
+    /// <see cref="HatchOptions.ClaimLapseLimit"/>. Zero is kept as "never
+    /// stop"; only a negative value falls back to the default.
     /// </summary>
-    public DateTimeOffset? QuietCutoff(DateTimeOffset now) =>
-        StallLapseSeconds > 0 ? now.AddSeconds(-StallLapseSeconds) : null;
+    public int ClaimLapseLimit { get; } = options.Value.ClaimLapseLimit switch
+    {
+        0 => 0,
+        > 0 => options.Value.ClaimLapseLimit,
+        _ => new HatchOptions().ClaimLapseLimit,
+    };
+
+    /// <summary>
+    /// The quiet window a project's claims are judged against, in seconds: the
+    /// project's own <see cref="EfHatchProject.StallLapseMinutes"/> where it
+    /// sets one (zero turning lapsing off for it), else the install's. A
+    /// negative value on a row is a misconfiguration and falls back, the way
+    /// the install-wide one does.
+    /// </summary>
+    public int LapseSecondsFor(int? projectMinutes) => projectMinutes switch
+    {
+        0 => 0,
+        > 0 => projectMinutes.Value * 60,
+        _ => StallLapseSeconds,
+    };
+
+    /// <summary>The most grace a project's claim may ask for, in seconds - the project's own, else the install's.</summary>
+    public int GraceMaxSecondsFor(int? projectMinutes) => projectMinutes switch
+    {
+        0 => 0,
+        > 0 => projectMinutes.Value * 60,
+        _ => StallGraceMaxSeconds,
+    };
+
+    /// <summary>The lapse limit for a project's tickets - the project's own, else the install's. Zero is off.</summary>
+    public int LapseLimitFor(int? projectLimit) => projectLimit switch
+    {
+        0 => 0,
+        > 0 => projectLimit.Value,
+        _ => ClaimLapseLimit,
+    };
+
+    /// <summary>
+    /// When a claim that was last heard from at <paramref name="lastWord"/> goes
+    /// quiet, or null where lapsing is off. The one place the arithmetic lives:
+    /// every write that moves it calls this, and every reader compares against
+    /// the column it lands in.
+    /// </summary>
+    public static DateTimeOffset? QuietAtFor(DateTimeOffset lastWord, int lapseSeconds) =>
+        lapseSeconds > 0 ? lastWord.AddSeconds(lapseSeconds) : null;
+
+    /// <summary>The heartbeat at or after which a claim is still alive.</summary>
+    public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-TtlSeconds);
 
     /// <summary>
     /// Whether something holds this issue right now. Exactly at the cutoff is
@@ -102,20 +161,18 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now) && !IsQuiet(claim, now);
 
     /// <summary>
-    /// Whether a live-looking claim has gone quiet: the later of its
-    /// <see cref="ClaimSnapshot.ClaimedAt"/> and <see cref="ClaimSnapshot.ChatterAt"/>
-    /// is older than <see cref="StallLapseSeconds"/>. A bare heartbeat does not
-    /// count - it says a process is still alive, not that anybody is still
-    /// looking at this ticket, and a runner that never sends a line at all
-    /// (<c>--quiet</c>) is measured from when it was claimed.
+    /// Whether a live-looking claim has gone quiet: its
+    /// <see cref="ClaimSnapshot.QuietAt"/> - the last time anybody said anything
+    /// (or the take itself where nobody ever has) plus the project's quiet
+    /// window, pushed out by any grace the holder asked for - is in the past. A
+    /// bare heartbeat does not move it - it says a process is still alive, not
+    /// that anybody is still looking at this ticket - and a runner that never
+    /// sends a line at all (<c>--quiet</c>) is measured from when it was claimed.
+    /// Null means lapsing is off for this claim, or that it was taken before the
+    /// column existed, and is never quiet.
     /// </summary>
-    public bool IsQuiet(ClaimSnapshot claim, DateTimeOffset now)
-    {
-        if (StallLapseSeconds <= 0 || claim.ClaimedAt is not { } claimedAt) return false;
-
-        var last = claim.ChatterAt is { } chatter && chatter > claimedAt ? chatter : claimedAt;
-        return last < now.AddSeconds(-StallLapseSeconds);
-    }
+    public bool IsQuiet(ClaimSnapshot claim, DateTimeOffset now) =>
+        claim.QuietAt is { } at && at < now;
 
     /// <summary>
     /// The claim as a client draws it, or null where there is none <em>or it
@@ -183,7 +240,6 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
         var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
 
         var tree = await db.Issues.AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -192,13 +248,13 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
 
         var live = await db.Issues.AsNoTracking()
             .Where(i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
-                && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff))
+                && (i.ClaimQuietAt == null || i.ClaimQuietAt >= now))
             .Select(i => new
             {
                 i.Id,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt, i.ClaimQuietAt),
             })
             .ToListAsync(ct);
 
@@ -270,19 +326,20 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// </summary>
     /// <remarks>
     /// The chatter is cleared with the take. A new lease does not inherit the
-    /// last one's last words.
+    /// last one's last words, nor its grace: the quiet deadline starts again at
+    /// the take, <paramref name="lapseSeconds"/> out (the install's where null).
     /// </remarks>
     public async Task<bool> TryTakeAsync(
         HatchContext db, long issueId, Guid token, string actor, string runner, int? playbookId,
-        DateTimeOffset now, CancellationToken ct)
+        DateTimeOffset now, CancellationToken ct, int? lapseSeconds = null)
     {
         var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
+        var quietAt = QuietAtFor(now, lapseSeconds ?? StallLapseSeconds);
 
         return await db.Issues
             .Where(i => i.Id == issueId
                 && (i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff
-                    || (quietCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < quietCutoff)))
+                    || (i.ClaimQuietAt != null && i.ClaimQuietAt < now)))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimToken, token)
                 .SetProperty(i => i.ClaimedBy, actor)
@@ -291,6 +348,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+                .SetProperty(i => i.ClaimQuietAt, quietAt)
                 .SetProperty(i => i.ClaimPlaybookId, playbookId), ct) == 1;
     }
 
@@ -312,12 +370,14 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// </param>
     public async Task<bool> TryRefreshAsync(
         HatchContext db, long issueId, Guid token, string? chatter, int? playbookId, DateTimeOffset now,
-        CancellationToken ct)
+        CancellationToken ct, int? lapseSeconds = null)
     {
         var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
+
+        // A word moves the deadline; a bare heartbeat, or a line cleared, does not.
+        var quietAt = QuietAtFor(now, lapseSeconds ?? StallLapseSeconds);
         var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff
-            && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff));
+            && (i.ClaimQuietAt == null || i.ClaimQuietAt >= now));
 
         var written = (chatter, playbookId) switch
         {
@@ -338,15 +398,43 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             (_, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, chatter)
-                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now), ct),
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now)
+                .SetProperty(i => i.ClaimQuietAt, quietAt), ct),
             (_, { } id) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, chatter)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now)
+                .SetProperty(i => i.ClaimQuietAt, quietAt)
                 .SetProperty(i => i.ClaimPlaybookId, id), ct),
         };
 
         return written == 1;
+    }
+
+    /// <summary>
+    /// Pushes a live lease's quiet deadline out to <paramref name="until"/>,
+    /// and answers whether there was a live lease with a deadline to push. Never
+    /// shortens one: the later of the two instants stands, so a second ask for
+    /// less is not a way to take the first back, and a word said after the
+    /// grace ends still moves the deadline from there.
+    /// </summary>
+    /// <remarks>
+    /// No token in the predicate, deliberately: the caller is the agent a
+    /// dispatcher spawned, which knows the ticket and not the lease. The
+    /// predicate is <see cref="IsLive"/> all the same, so it cannot extend a
+    /// lease that is already over, and the cap the caller applies bounds what
+    /// one ask can hold.
+    /// </remarks>
+    public async Task<bool> TryGraceAsync(
+        HatchContext db, long issueId, DateTimeOffset until, DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = Cutoff(now);
+
+        return await db.Issues
+            .Where(i => i.Id == issueId && i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
+                && i.ClaimQuietAt != null && i.ClaimQuietAt >= now)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimQuietAt, i => i.ClaimQuietAt > until ? i.ClaimQuietAt : until), ct) == 1;
     }
 
     /// <summary>
@@ -369,7 +457,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, CancellationToken ct) =>
         await Clear(db.Issues.Where(i => i.Id == issueId && i.ClaimToken != null), ct) == 1;
 
-    /// <summary>The eight columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
+    /// <summary>The nine columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
     private static Task<int> Clear(IQueryable<EfHatchIssue> rows, CancellationToken ct) =>
         rows.ExecuteUpdateAsync(s => s
             .SetProperty(i => i.ClaimToken, (Guid?)null)
@@ -379,6 +467,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             .SetProperty(i => i.ClaimHeartbeatAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimChatter, (string?)null)
             .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+            .SetProperty(i => i.ClaimQuietAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimPlaybookId, (int?)null), ct);
 }
 
@@ -395,7 +484,8 @@ public sealed record ClaimSnapshot(
     DateTimeOffset? ClaimedAt,
     DateTimeOffset? HeartbeatAt,
     string? Chatter,
-    DateTimeOffset? ChatterAt)
+    DateTimeOffset? ChatterAt,
+    DateTimeOffset? QuietAt = null)
 {
     public static ClaimSnapshot Of(EfHatchIssue issue) => new(
         issue.ClaimToken,
@@ -404,7 +494,8 @@ public sealed record ClaimSnapshot(
         issue.ClaimedAt,
         issue.ClaimHeartbeatAt,
         issue.ClaimChatter,
-        issue.ClaimChatterAt);
+        issue.ClaimChatterAt,
+        issue.ClaimQuietAt);
 }
 
 

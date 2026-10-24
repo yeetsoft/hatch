@@ -51,7 +51,7 @@ public class IssueMessagesController(
                 i.Id,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt, i.ClaimQuietAt),
             })
             .FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();

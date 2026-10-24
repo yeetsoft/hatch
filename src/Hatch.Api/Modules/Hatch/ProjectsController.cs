@@ -757,6 +757,57 @@ public class ProjectsController(
     }
 
     /// <summary>
+    /// Replaces this project's three claim limits whole - how long a claim may
+    /// say nothing before it is called quiet, the most grace a holder may ask for,
+    /// and how many lapses in a row stop the retrying. A null follows the
+    /// install's setting and zero turns that limit off. Only an owner may call
+    /// this: a window an agent could widen for its own project is a bound it could
+    /// lift on itself. This route is the only way to write them; <c>PATCH</c> does
+    /// not reach them.
+    /// </summary>
+    [HttpPut("{id:int}/claim-limits")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutClaimLimits(int id, ProjectClaimLimitsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change how long its claims may go quiet") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (OutOfRange(request.StallLapseMinutes, ProjectClaimLimitsWriteRequest.MaxMinutes) is { } lapseBad)
+            return BadRequest($"the quiet window is 0 to {ProjectClaimLimitsWriteRequest.MaxMinutes} minutes, or empty to follow the install - not {lapseBad}");
+        if (OutOfRange(request.StallGraceMaxMinutes, ProjectClaimLimitsWriteRequest.MaxMinutes) is { } graceBad)
+            return BadRequest($"the grace cap is 0 to {ProjectClaimLimitsWriteRequest.MaxMinutes} minutes, or empty to follow the install - not {graceBad}");
+        if (OutOfRange(request.ClaimLapseLimit, ProjectClaimLimitsWriteRequest.MaxLapseLimit) is { } limitBad)
+            return BadRequest($"the lapse limit is 0 to {ProjectClaimLimitsWriteRequest.MaxLapseLimit}, or empty to follow the install - not {limitBad}");
+
+        if (project.StallLapseMinutes != request.StallLapseMinutes
+            || project.StallGraceMaxMinutes != request.StallGraceMaxMinutes
+            || project.ClaimLapseLimit != request.ClaimLapseLimit)
+        {
+            project.StallLapseMinutes = request.StallLapseMinutes;
+            project.StallGraceMaxMinutes = request.StallGraceMaxMinutes;
+            project.ClaimLapseLimit = request.ClaimLapseLimit;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "Project {ProjectKey} claim limits set to lapse {Lapse}, grace {Grace}, limit {Limit} by {Actor}",
+                project.Key, project.StallLapseMinutes, project.StallGraceMaxMinutes, project.ClaimLapseLimit, await caller.ActorNameAsync(ct));
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>The value, when it is set and outside 0..<paramref name="max"/>; null when it is fine or follows the install.</summary>
+    private static int? OutOfRange(int? value, int max) => value is { } v && (v < 0 || v > max) ? v : null;
+
+    /// <summary>
     /// Whether <see cref="EfHatchProject.BindsTracker"/> is on - this project
     /// binds the tracker's own repository. At most one project on a board does,
     /// so turning it on takes the flag from whichever project had it, in the same
@@ -894,7 +945,8 @@ public class ProjectsController(
             RunnerTagColumn.Read(project.RunnerTags),
             project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
             ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now),
-            project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt);
+            project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt,
+            project.StallLapseMinutes, project.StallGraceMaxMinutes, project.ClaimLapseLimit);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

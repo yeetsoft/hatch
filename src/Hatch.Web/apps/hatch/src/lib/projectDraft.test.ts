@@ -4,6 +4,7 @@ import {
   projectBindsTrackerDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
+  projectClaimLimitsDiff,
   projectLandingDiff,
   projectReflectionDiff,
   projectRepoSourcedDiff,
@@ -65,6 +66,9 @@ describe('openProjectDraft', () => {
       bindsTracker: false,
       runnerTags: [],
       reflectionCadenceDays: null,
+      stallLapseMinutes: null,
+      stallGraceMaxMinutes: null,
+      claimLapseLimit: null,
     });
   });
 
@@ -566,5 +570,63 @@ describe('projectReflectionDiff', () => {
   it('sends text that is no number as 0, for the server to refuse, never as null', () => {
     expect(projectReflectionDiff(withCadence('weekly', null))).toEqual({ cadenceDays: 0 });
     expect(projectReflectionDiff(withCadence('weekly', 7))).toEqual({ cadenceDays: 0 });
+  });
+});
+
+describe('projectClaimLimitsDiff', () => {
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
+    onePullRequest: false,
+    autoHealBugEnabled: false,
+    autoHealBugPriority: 'emergency' as const,
+    autoHealBugPreApproval: 'express' as const,
+    autoHealBugStatusId: null,
+    repoSourced: false,
+    bindsTracker: false,
+    runnerTags: [],
+    reflectionCadenceDays: null,
+    stallLapseMinutes: null,
+    stallGraceMaxMinutes: null,
+    claimLapseLimit: null,
+  };
+  const draft = (text: [string, string, string], knownLimits: [number | null, number | null, number | null] = [null, null, null]): ProjectDraft => ({
+    ...known,
+    known: { ...known, stallLapseMinutes: knownLimits[0], stallGraceMaxMinutes: knownLimits[1], claimLapseLimit: knownLimits[2] },
+    runnerTags: '',
+    reflectionCadenceDays: '',
+    stallLapseMinutes: text[0],
+    stallGraceMaxMinutes: text[1],
+    claimLapseLimit: text[2],
+  });
+
+  it('is null while the boxes still show what is known', () => {
+    expect(projectClaimLimitsDiff(draft(['', '', '']))).toBeNull();
+    expect(projectClaimLimitsDiff(draft(['15', '', '0'], [15, null, 0]))).toBeNull();
+  });
+
+  it('sends all three whole when any one changes, blank as null and zero as zero', () => {
+    expect(projectClaimLimitsDiff(draft(['15', '', '0']))).toEqual({
+      stallLapseMinutes: 15,
+      stallGraceMaxMinutes: null,
+      claimLapseLimit: 0,
+    });
+  });
+
+  it('sends a cleared box as null, handing the limit back to the install', () => {
+    expect(projectClaimLimitsDiff(draft(['', '', ''], [15, null, null]))).toEqual({
+      stallLapseMinutes: null,
+      stallGraceMaxMinutes: null,
+      claimLapseLimit: null,
+    });
+  });
+
+  it('sends text that is no number as -1, for the server to refuse, never as null', () => {
+    expect(projectClaimLimitsDiff(draft(['soon', '', '']))?.stallLapseMinutes).toBe(-1);
   });
 });

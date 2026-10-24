@@ -68,6 +68,31 @@ public class HatchOptions
     public int StallLapseMinutes { get; set; } = 5;
 
     /// <summary>
+    /// The longest a claim's holder may ask to go unremarked for, in minutes -
+    /// see <see cref="IssueClaims.StallGraceMaxSeconds"/>. A holder about to
+    /// run something it knows is slow (<c>hatch grace</c>) asks for the minutes
+    /// it needs, up to this; a longer ask is refused and names the cap. Zero
+    /// means nobody may ask, and a negative value falls back to the default.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="StallLapseMinutes"/> so that a slow command is a
+    /// thing a session says out loud, ticket by ticket, rather than the window
+    /// every claim is judged against being widened to fit the slowest.
+    /// </remarks>
+    public int StallGraceMaxMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// How many claims in a row may lapse on one ticket - taken over after going
+    /// quiet or expiring, with nothing worked, moved or answered between - before
+    /// the next take is refused and a question asks a person what to do. A ticket
+    /// whose session can never finish inside the quiet window would otherwise be
+    /// taken, stopped and taken again for as long as the board runs. Zero means
+    /// never stop; a negative value falls back to the default; a project may set
+    /// its own. See <see cref="IssueClaims.ClaimLapseLimit"/>.
+    /// </summary>
+    public int ClaimLapseLimit { get; set; } = 2;
+
+    /// <summary>
     /// How long a marked issue is folded before the loop picks it back up by
     /// itself - see <see cref="EfHatchIssue.StalledAt"/>. Zero means never
     /// resume unattended; negative falls back to the default, exactly as

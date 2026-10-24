@@ -209,6 +209,28 @@ public class EfHatchProject
     public bool BindsTracker { get; set; }
 
     /// <summary>
+    /// How long, in minutes, a claim on one of this project's tickets may go
+    /// without a word before it is called quiet. Null follows the install's
+    /// <c>Hatch:StallLapseMinutes</c>; zero turns the rule off for this project.
+    /// Read through <c>IssueClaims.LapseSecondsFor</c> and nowhere else.
+    /// </summary>
+    public int? StallLapseMinutes { get; set; }
+
+    /// <summary>
+    /// The most grace, in minutes, a holder of one of this project's claims may
+    /// ask for with <c>hatch grace</c>. Null follows the install's
+    /// <c>Hatch:StallGraceMaxMinutes</c>; zero means nobody may ask.
+    /// </summary>
+    public int? StallGraceMaxMinutes { get; set; }
+
+    /// <summary>
+    /// How many claims in a row may lapse on one of this project's tickets
+    /// before the next take is refused and a person is asked what to do. Null
+    /// follows the install's <c>Hatch:ClaimLapseLimit</c>; zero means never stop.
+    /// </summary>
+    public int? ClaimLapseLimit { get; set; }
+
+    /// <summary>
     /// Who last changed <see cref="BindsTracker"/> on this row, turning it on or
     /// off or having it taken by another project, as a name rather than a
     /// foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null until
@@ -1140,6 +1162,20 @@ public class EfHatchIssue
     /// the shape of the rest of this row.
     /// </summary>
     public int? ClaimPlaybookId { get; set; }
+
+    /// <summary>
+    /// When this claim goes quiet, or null where lapsing is off for it (or it
+    /// was taken before this column existed): the last word said on it - the take
+    /// itself where nobody ever has - plus its project's quiet window. A word
+    /// moves it; the holder may push it out ahead of a command it knows will say
+    /// nothing for a while (<c>hatch grace</c>), and never pull it in. It is one
+    /// stored instant, and not a window judged at read time, so that a window
+    /// that differs project to project is still one comparison in every
+    /// conditional <c>UPDATE</c>. It exempts a claim from the quiet rule alone:
+    /// the TTL is still judged on the heartbeat. Cleared with the rest of the
+    /// claim. See <c>IssueClaims.IsQuiet</c>.
+    /// </summary>
+    public DateTimeOffset? ClaimQuietAt { get; set; }
 
     /// <summary>
     /// The person this issue belongs to, or null. At most one of this and

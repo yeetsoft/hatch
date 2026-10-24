@@ -78,7 +78,9 @@ public class IssueClaimController(
         var token = Guid.NewGuid();
         var actor = await caller.ActorNameAsync(ct);
 
-        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, request.PlaybookId, now, ct))
+        var lapseSeconds = claims.LapseSecondsFor(issue.Project?.StallLapseMinutes);
+
+        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, request.PlaybookId, now, ct, lapseSeconds))
         {
             // Somebody won the race between that read and this write. Say who,
             // from the row as it stands now - and where the re-read finds it
@@ -101,12 +103,26 @@ public class IssueClaimController(
         // itself the fact worth telling: this take is a takeover, and the trail
         // says who stopped answering, and when, before it says who holds it now.
         if (previous.Token is not null)
+        {
             LogLapsed(issue, actor, Holder(previous.ClaimedBy, previous.Runner), previous.HeartbeatAt, now);
+
+            // And a takeover is where a ticket that can never finish inside its
+            // window is noticed: this lapse is the one more in a row, and past
+            // the limit the new claim is let go of before a session is spawned
+            // and a person is asked instead of the same increment being run again.
+            var limit = claims.LapseLimitFor(issue.Project?.ClaimLapseLimit);
+            if (limit > 0)
+            {
+                var lapses = 1 + await LapseStreak.ForIssueAsync(db, issue.Id, ct);
+                if (lapses >= limit)
+                    return Conflict(await StopAfterLapsesAsync(issue, token, lapses, lapseSeconds, now, ct));
+            }
+        }
 
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
-        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, claims.StallLapseSeconds);
+        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, lapseSeconds);
     }
 
     /// <summary>The name an answer nobody pressed is written under.</summary>
@@ -140,8 +156,10 @@ public class IssueClaimController(
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
 
+        var lapseSeconds = claims.LapseSecondsFor(issue.Project?.StallLapseMinutes);
+
         if (claim.Token != request.Token || !claims.IsLive(claim, now))
-            return Conflict(Why(claim, request.Token, now));
+            return Conflict(Why(claim, request.Token, now, lapseSeconds));
 
         // Normalised, then truncated rather than refused: the field is
         // cosmetic, and killing a live lease because a terminal printed
@@ -151,8 +169,8 @@ public class IssueClaimController(
         // The predicate can still refuse - the lease may have expired or been
         // retaken between that read and this write - and it is what actually
         // fences the write, so its answer is the one that decides.
-        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, request.PlaybookId, now, ct))
-            return Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now));
+        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, request.PlaybookId, now, ct, lapseSeconds))
+            return Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now, lapseSeconds));
 
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
@@ -184,6 +202,49 @@ public class IssueClaimController(
         await db.SaveChangesAsync(ct);
 
         return new ClaimPreemptedDto(emergencyKey, emergency.Title);
+    }
+
+    /// <summary>
+    /// Asks that a live claim not be called quiet for the next
+    /// <c>minutes</c>: the holder is about to run something that will say
+    /// nothing for longer than <c>Hatch:StallLapseMinutes</c>, and would
+    /// otherwise lose the lease to the quiet rule while it is still working.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the issue and not on the token, because the caller is the agent
+    /// a dispatcher spawned: it knows the ticket, and the lease is the
+    /// dispatcher's. It still needs a live claim to act on, so it cannot
+    /// resurrect one, and it is bounded by <c>Hatch:StallGraceMaxMinutes</c> so
+    /// one ask cannot hold a ticket for good. It exempts the claim from the
+    /// quiet rule alone - the heartbeat TTL is untouched. An allowance already
+    /// given is never shortened by a smaller ask.
+    /// </remarks>
+    [HttpPost("grace")]
+    public async Task<IActionResult> Grace(string key, ClaimGraceRequest request, CancellationToken ct)
+    {
+        if (await LoadAsync(key, ct) is not { } issue) return NotFound();
+
+        var cap = claims.GraceMaxSecondsFor(issue.Project?.StallGraceMaxMinutes) / 60;
+        if (request.Minutes <= 0) return BadRequest("grace is a number of minutes above zero");
+        if (request.Minutes > cap)
+            return BadRequest(cap == 0
+                ? $"{issue.Project?.Key} does not give grace: its limit is 0 minutes"
+                : $"grace is at most {cap} minutes here");
+
+        var now = time.GetUtcNow();
+        var claim = await SnapshotAsync(issue.Id, ct);
+        if (!claims.IsLive(claim, now))
+            return Conflict(claim.Token is null ? "nothing holds this issue" : "this claim is over, and grace does not revive it");
+
+        // Nothing to push out where lapsing is off for this claim: it is never
+        // called quiet, so the ask is already as good as granted.
+        if (claim.QuietAt is null) return NoContent();
+
+        var until = now.AddMinutes(request.Minutes);
+        if (!await claims.TryGraceAsync(db, issue.Id, until, now, ct))
+            return Conflict("the claim ended before the grace could be given");
+
+        return NoContent();
     }
 
     /// <summary>
@@ -234,7 +295,7 @@ public class IssueClaimController(
         if (claim.Token is null) return NoContent();
 
         if (token is { } presented && presented != claim.Token)
-            return Conflict(Why(claim, presented, now));
+            return Conflict(Why(claim, presented, now, claims.LapseSecondsFor(issue.Project?.StallLapseMinutes)));
 
         var actor = await caller.ActorNameAsync(ct);
         var holder = Holder(claim.ClaimedBy, claim.Runner);
@@ -298,6 +359,47 @@ public class IssueClaimController(
             }
             : null;
 
+    // ---- Stopping after repeated lapses ----
+
+    /// <summary>
+    /// Lets go of the claim just taken, asks a person what to do about a ticket
+    /// whose last <paramref name="lapses"/> claims all lapsed, and answers the
+    /// sentence the refused take carries. A question and not a flag of its own:
+    /// an open question already blocks the dispatcher and lights the attention
+    /// panel, and a person's answer is what ends the streak
+    /// (<see cref="LapseStreak"/>), so the one gesture that says "try again" is
+    /// the one that resets the count.
+    /// </summary>
+    private async Task<string> StopAfterLapsesAsync(
+        EfHatchIssue issue, Guid token, int lapses, int lapseSeconds, DateTimeOffset now, CancellationToken ct)
+    {
+        await claims.TryReleaseAsync(db, issue.Id, token, ct);
+
+        var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+        var window = lapseSeconds > 0 ? $"{lapseSeconds / 60} minutes" : "its window";
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = issue.Id,
+            Author = HatchActor,
+            Kind = EfHatchComment.Question,
+            Body = $"The last {lapses} claims on {key} lapsed in a row - each was taken over after going quiet " +
+                $"(nothing said for {window}) or expiring, with nothing worked, moved or answered between - so " +
+                "Hatch has stopped retrying it. Another run will lapse the same way unless something changes: " +
+                "raise this project's quiet window, split the work, or have the session run `hatch grace` before " +
+                "its slow commands. Answer to let it try again; the count starts over.",
+            Options = null,
+            CreatedAt = now,
+        });
+        issue.Events.Add(new EfHatchIssueEvent { Actor = HatchActor, Kind = EfHatchIssueEvent.Asked, At = now });
+        issue.UpdatedAt = now;
+
+        await db.SaveChangesAsync(ct);
+
+        return $"{key}: the last {lapses} claims lapsed in a row - a question asks a person what to do, " +
+            "and nothing retries it until it is answered";
+    }
+
     // ---- Saying why ----
 
     /// <summary>
@@ -306,11 +408,11 @@ public class IssueClaimController(
     /// the row carries this one and the lease is simply over, or the row
     /// carries somebody else's.
     /// </summary>
-    private string Why(ClaimSnapshot claim, Guid presented, DateTimeOffset now) => claim.Token switch
+    private string Why(ClaimSnapshot claim, Guid presented, DateTimeOffset now, int lapseSeconds) => claim.Token switch
     {
         null => "this claim was cleared",
         var held when held == presented => claims.IsQuiet(claim, now)
-            ? $"this claim has gone quiet for {claims.StallLapseSeconds / 60} minutes"
+            ? $"this claim has gone quiet for {lapseSeconds / 60} minutes"
             : "this claim has expired",
         _ => claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
     };
@@ -383,9 +485,9 @@ public class IssueClaimController(
             .Where(i => i.Id == issueId)
             .Select(i => new ClaimSnapshot(
                 i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt))
+                i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt, i.ClaimQuietAt))
             .FirstOrDefaultAsync(ct)
-        ?? new ClaimSnapshot(null, null, null, null, null, null, null);
+        ?? new ClaimSnapshot(null, null, null, null, null, null, null, null);
 
     /// <summary>
     /// The trail row, in <c>DependencyAdded</c>'s <c>{ from, to }</c> shape so

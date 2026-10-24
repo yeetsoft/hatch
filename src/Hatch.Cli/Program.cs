@@ -257,6 +257,7 @@ try
         "landed" => await new IssueCommands(cli).LandedAsync(rest, cancelling.Token),
         "verdict" => await new IssueCommands(cli).VerdictAsync(rest, cancelling.Token),
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
+        "grace" => await new GraceCommand(cli).RunAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
         "questions" => await new QuestionCommands(cli).QuestionsAsync(rest, cancelling.Token),
@@ -376,7 +377,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "grace", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -409,6 +410,7 @@ internal partial class Program
         "  hatch depends AER-12         what it waits on, and what waits on it",
         "  hatch depends AER-12 AER-11  AER-12 waits on AER-11",
         "  hatch depends AER-12 --remove AER-11        ...no longer",
+        "  hatch grace AER-12 20        ...not called quiet for the next 20 minutes, ahead of a slow command",
         "  hatch one-pr AER-5           whether the story's tasks share its branch and one PR",
         "  hatch one-pr AER-5 on        ...turn it on for this story (or off, or inherit)",
         "  hatch ask AER-12 \"how should retries be scoped?\" \\",

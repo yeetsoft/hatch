@@ -382,6 +382,14 @@ public class AdminSurfaceTests
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
 
+        // Grace: the session a dispatcher spawned asking its own live claim
+        // not to be called quiet while a slow command runs. A key's because
+        // the caller is the session and holds no token. It cannot revive a
+        // claim, is capped by Hatch:StallGraceMaxMinutes, and touches the
+        // quiet rule alone - the heartbeat TTL is still judged. See
+        // IssueClaimController.Grace.
+        "IssueClaimController.Grace",
+
         // A runner's verdict on whether an issue's branch merges with the
         // trunk, and Hatch-scoped for the reason the claim is: the caller is a
         // machine, and a verdict only an operator could enter would be one
@@ -566,6 +574,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
+        "ProjectsController.PutClaimLimits",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -717,6 +726,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
+        "ProjectsController.PutClaimLimits",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

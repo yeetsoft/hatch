@@ -32,6 +32,9 @@ namespace Hatch.Contracts;
 /// <param name="BindsTracker">Whether this project binds the tracker's own repository - see <see cref="EfHatchProject.BindsTracker"/>. At most one project does. Off by default.</param>
 /// <param name="BindsTrackerBy">Who last changed <paramref name="BindsTracker"/> on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerBy"/>.</param>
 /// <param name="BindsTrackerAt">When <paramref name="BindsTracker"/> was last changed on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerAt"/>.</param>
+/// <param name="StallLapseMinutes">How long a claim on this project's tickets may go without a word before it is called quiet, or null to follow the install's - see <see cref="EfHatchProject.StallLapseMinutes"/>. Zero turns the rule off here.</param>
+/// <param name="StallGraceMaxMinutes">The most grace a holder may ask for with <c>hatch grace</c>, or null to follow the install's - see <see cref="EfHatchProject.StallGraceMaxMinutes"/>.</param>
+/// <param name="ClaimLapseLimit">How many claims in a row may lapse on one ticket before a person is asked, or null to follow the install's - see <see cref="EfHatchProject.ClaimLapseLimit"/>. Zero means never stop.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -42,7 +45,8 @@ public record ProjectDto(
     bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null,
     IReadOnlyList<string> RunnerTags = null!,
     int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null,
-    bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null)
+    bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null,
+    int? StallLapseMinutes = null, int? StallGraceMaxMinutes = null, int? ClaimLapseLimit = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -112,6 +116,20 @@ public record ProjectReflectionWriteRequest(int? CadenceDays);
 
 /// <summary>A write to a project's playbook source - see <see cref="EfHatchProject.RepoSourced"/>.</summary>
 public record ProjectRepoSourcedWriteRequest(bool RepoSourced);
+
+/// <summary>
+/// A write to a project's three claim limits - see <see cref="ProjectDto.StallLapseMinutes"/>,
+/// <see cref="ProjectDto.StallGraceMaxMinutes"/> and <see cref="ProjectDto.ClaimLapseLimit"/>.
+/// Replaces all three whole: null follows the install's, zero turns that limit off.
+/// </summary>
+public record ProjectClaimLimitsWriteRequest(int? StallLapseMinutes, int? StallGraceMaxMinutes, int? ClaimLapseLimit)
+{
+    /// <summary>The longest window or grace a project may set, in minutes - a day.</summary>
+    public const int MaxMinutes = 1440;
+
+    /// <summary>The most claims in a row a project may allow to lapse.</summary>
+    public const int MaxLapseLimit = 20;
+}
 
 /// <summary>A write to which runners may implement a project's work - see <see cref="EfHatchProject.RunnerTags"/>.</summary>
 public record ProjectRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
@@ -833,6 +851,14 @@ public static class PreApprovalLevels
 /// it. There is no third state to clear it back to null from a heartbeat.
 /// </param>
 public record ClaimHeartbeatRequest(Guid Token, string? Chatter, int? PlaybookId = null);
+
+/// <summary>
+/// <c>POST /api/hatch/issues/{key}/claim/grace</c> - the holder of a live claim
+/// asking not to be called quiet for the next <paramref name="Minutes"/>, ahead
+/// of a command it knows will say nothing that long. Bounded by
+/// <c>Hatch:StallGraceMaxMinutes</c>.
+/// </summary>
+public record ClaimGraceRequest(int Minutes);
 
 /// <summary>
 /// A new issue. It lands in the leftmost status and at the bottom of that

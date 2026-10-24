@@ -55,6 +55,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/reflection` | **person** | Sets `reflectionCadenceDays` |
 | POST | `/projects/{id}/reflect` | **person** | Files one reflection on the spot - the reflect-now control |
 | PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
+| PUT | `/projects/{id}/claim-limits` | **person** | Replaces the project's three claim limits whole: how long a claim may say nothing, the most grace a holder may ask for, and how many lapses in a row stop the retrying |
 | PUT | `/projects/{id}/binds-tracker` | **person** | Sets `bindsTracker`, clearing it elsewhere |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
@@ -74,7 +75,9 @@ only the reflection job does. `POST .../reflect` takes no body, and answers
 an `IssueDto` - the reflection it just filed, or, pressed again while that
 one is still open, the same issue with nothing filed; it never writes
 `reflectionLastPeriodStart` either, only the job does. The runner-tags PUT body is
-`ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. The binds-tracker PUT body is
+`ProjectRunnerTagsWriteRequest(Tags)` - the whole list, not a delta. The claim-limits PUT body is
+`ProjectClaimLimitsWriteRequest(StallLapseMinutes, StallGraceMaxMinutes, ClaimLapseLimit)` - all three, not a delta; null follows the install's
+setting and zero turns that limit off. The binds-tracker PUT body is
 `ProjectBindsTrackerWriteRequest(BindsTracker)`; at most one project on a board binds the tracker's
 own repository, so turning it on takes it from whichever project had it, and the answer is a
 `ProjectBindsTrackerDto(Project, ClearedKey)` naming that project's key, or null. Every other answer is a `ProjectDto`
@@ -97,7 +100,8 @@ run the reflection a non-null cadence files. `POST .../reflect` 403s if the
 caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
-breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
+breaks its format rule or a list over the count limit. The claim-limits PUT 403s if the caller is not an owner, and 400s on a window or
+grace cap outside 0 to 1440 minutes or a lapse limit outside 0 to 20, naming which. The binds-tracker PUT 403s if the caller is not
 an owner, and 400s if the project binds no repository.
 
 ## Columns
@@ -478,6 +482,7 @@ one of its own.
 |---|---|---|
 | POST | `/issues/{key}/claim` | Takes the lease, or says who already has it |
 | POST | `/issues/{key}/claim/heartbeat` | Refreshes the lease, and answers whether the board has preempted it for an emergency |
+| POST | `/issues/{key}/claim/grace` | `{ minutes }` — asks that a live claim not be called quiet for that long, ahead of a command that will say nothing for longer than `Hatch__StallLapseMinutes`. No token: the caller is the session, not the dispatcher holding the lease |
 | DELETE | `/issues/{key}/claim` | Lets go of it |
 
 All three are a key's, with one narrowing below. A claim is a lease with a
@@ -491,6 +496,13 @@ lease and may replace the playbook it is running under; it writes no event on
 an ordinary beat, only on a preemption, which is the board's own decision to
 make room for an emergency ticket and is the one case a heartbeat answers a
 `ClaimPreemptedDto` instead of `204`.
+
+Grace exempts a claim from the quiet rule alone, until `minutes` from now; the
+heartbeat TTL still applies. It is `204` on a live claim, `409` on one that is
+unclaimed, expired or already quiet, and `400` on minutes at or below zero or
+above `Hatch__StallGraceMaxMinutes` (sixty by default), naming the cap. A
+smaller ask never shortens one already given, and the allowance is cleared with
+the claim.
 
 A live claim refuses a second `POST`, including the same runner's own -
 re-claiming is not a thing a runner does, it heartbeats - and a claim on an

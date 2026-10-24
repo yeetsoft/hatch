@@ -17,6 +17,7 @@ import {
   putProjectPlaybooksSource,
   putProjectReflection,
   putProjectRepositories,
+  putProjectClaimLimits,
   putProjectRunnerTags,
 } from '../api/client';
 import { message } from '../lib/errors';
@@ -30,9 +31,11 @@ import {
   projectLandingDiff,
   projectReflectionDiff,
   projectRepoSourcedDiff,
+  projectClaimLimitsDiff,
   projectRunnerTagsDiff,
   type ProjectDraft,
 } from '../lib/projectDraft';
+import { claimLimitsSentence } from '../lib/claimLimits';
 import { runnerTagsSentence } from '../lib/runnerTags';
 import {
   hasOwner,
@@ -147,6 +150,7 @@ export function ProjectEditDialog({
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
+    const claimLimitsDiff = projectClaimLimitsDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
       diff.patch === null &&
@@ -156,6 +160,7 @@ export function ProjectEditDialog({
       bindsTrackerDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
+      claimLimitsDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
       membersDiff.deletes.length === 0
@@ -173,6 +178,7 @@ export function ProjectEditDialog({
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
+      if (claimLimitsDiff !== null) await putProjectClaimLimits(project!.id, claimLimitsDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
@@ -477,6 +483,45 @@ export function ProjectEditDialog({
                 set by {project.bindsTrackerBy} on {project.bindsTrackerAt ? new Date(project.bindsTrackerAt).toLocaleDateString() : ''}
               </p>
             )}
+            <fieldset className="hatch-fieldset">
+              <legend>Quiet claims</legend>
+              <p className="hatch-section-hint text-muted">
+                A claim that says nothing for the quiet window is stopped. Leave a box blank to follow this install; 0 turns that limit
+                off.
+              </p>
+              <div className="hatch-inline-form">
+                <label>
+                  Quiet after{' '}
+                  <input
+                    inputMode="numeric"
+                    aria-label="Quiet window in minutes"
+                    value={draft.stallLapseMinutes ?? ''}
+                    onChange={(e) => setDraft((d) => d && { ...d, stallLapseMinutes: e.target.value })}
+                  />{' '}
+                  minute(s)
+                </label>
+                <label>
+                  Grace up to{' '}
+                  <input
+                    inputMode="numeric"
+                    aria-label="Most grace a session may ask for, in minutes"
+                    value={draft.stallGraceMaxMinutes ?? ''}
+                    onChange={(e) => setDraft((d) => d && { ...d, stallGraceMaxMinutes: e.target.value })}
+                  />{' '}
+                  minute(s)
+                </label>
+                <label>
+                  Ask a person after{' '}
+                  <input
+                    inputMode="numeric"
+                    aria-label="Lapses in a row before a person is asked"
+                    value={draft.claimLapseLimit ?? ''}
+                    onChange={(e) => setDraft((d) => d && { ...d, claimLapseLimit: e.target.value })}
+                  />{' '}
+                  lapse(s) in a row
+                </label>
+              </div>
+            </fieldset>
             <RunnerTagsField
               label="Runner tags"
               hint="One tag per line. Only a runner advertising every one of these is handed this project's implementation work. Blank means any runner."
@@ -496,6 +541,7 @@ export function ProjectEditDialog({
                 : `reflects every ${project.reflectionCadenceDays} day(s), next due ${project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : 'unknown'}`
             }.`}</p>
             <p>{runnerTagsSentence(project.runnerTags ?? [])}</p>
+            <p>{claimLimitsSentence(project)}</p>
             {project.bindsTracker && (
               <p>
                 Binds the tracker's own repository

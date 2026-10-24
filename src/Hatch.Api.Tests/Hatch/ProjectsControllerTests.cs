@@ -1440,6 +1440,77 @@ public class ProjectsControllerTests
     }
 
     [Fact]
+    public async Task AnOwnerSettingClaimLimits_StoresThemAndTheyRideTheProject()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        Assert.Null(created.StallLapseMinutes);
+
+        var written = Value(await h.Projects.PutClaimLimits(created.Id, new ProjectClaimLimitsWriteRequest(15, 90, 3), default));
+
+        Assert.Equal((15, 90, 3), (written.StallLapseMinutes, written.StallGraceMaxMinutes, written.ClaimLapseLimit));
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal((15, 90, 3), (read.StallLapseMinutes, read.StallGraceMaxMinutes, read.ClaimLapseLimit));
+    }
+
+    [Fact]
+    public async Task ClaimLimitsAreReplacedWhole_SoNullGoesBackToFollowingTheInstall()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutClaimLimits(created.Id, new ProjectClaimLimitsWriteRequest(15, 90, 3), default);
+
+        var cleared = Value(await h.Projects.PutClaimLimits(created.Id, new ProjectClaimLimitsWriteRequest(null, 0, null), default));
+
+        Assert.Null(cleared.StallLapseMinutes);
+        Assert.Equal(0, cleared.StallGraceMaxMinutes);
+        Assert.Null(cleared.ClaimLapseLimit);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutClaimLimitsNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutClaimLimits(created.Id, new ProjectClaimLimitsWriteRequest(30, null, null), default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.Null((await h.Db.Projects.FindAsync(created.Id))!.StallLapseMinutes);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPutClaimLimits()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutClaimLimits(h.ProjectId, new ProjectClaimLimitsWriteRequest(30, null, null), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Null((await h.Db.Projects.FindAsync(h.ProjectId))!.StallLapseMinutes);
+    }
+
+    [Theory]
+    [InlineData(-1, null, null, "quiet window")]
+    [InlineData(1441, null, null, "quiet window")]
+    [InlineData(null, -5, null, "grace cap")]
+    [InlineData(null, null, 21, "lapse limit")]
+    public async Task ALimitOutOfRange_IsRefusedNamingItAndWritesNothing(int? lapse, int? grace, int? limit, string named)
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutClaimLimits(created.Id, new ProjectClaimLimitsWriteRequest(lapse, grace, limit), default);
+
+        Assert.Contains(named, Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.Equal((null, null, null), (row.StallLapseMinutes, row.StallGraceMaxMinutes, row.ClaimLapseLimit));
+    }
+
+    [Fact]
     public async Task ATagBreakingTheRule_IsRefusedAndWritesNothing()
     {
         var h = await NewAsync();

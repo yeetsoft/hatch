@@ -171,6 +171,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__ClaimTtlSeconds` | `300` | How long a claim survives without a heartbeat. |
 | `Hatch__RunnerGoneAfterSeconds` | `90` | How long a runner may go without a heartbeat before its row reads *gone*. |
 | `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
+| `Hatch__ClaimLapseLimit` | `2` | How many claims in a row may lapse on one ticket, with nothing worked, moved or answered between, before the next take is refused and a question asks a person what to do. `0` never stops. A project may set its own. |
+| `Hatch__StallGraceMaxMinutes` | `60` | The most a session may ask for with `hatch grace` to keep a claim from being called quiet while a slow command runs. `0` means nobody may ask. |
 | `Hatch__StallResumeMinutes` | `15` | How long a marked issue is folded before the loop picks it back up on its own. |
 | `Hatch__StallResumeLimit` | `3` | How many consecutive stalls an issue may resume through before it holds for a person instead. |
 | `Hatch__DoneHorizonHours` | `48` | How long a card sits in a terminal column before the board stops handing it over. |

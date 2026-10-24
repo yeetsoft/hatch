@@ -24,13 +24,21 @@ internal static class TestClaims
     /// <summary>The stall resume limit every harness here uses unless it is testing the limit itself - three, the shipped default.</summary>
     public const int StallResumeLimit = 3;
 
+    /// <summary>The most grace a holder may ask for, unless a harness is testing the cap - an hour, the shipped default.</summary>
+    public const int StallGraceMaxMinutes = 60;
+
+    /// <summary>How many lapses in a row stop the retrying, unless a harness is testing the limit - two, the shipped default.</summary>
+    public const int ClaimLapseLimit = 2;
+
     public static IssueClaims With(
         int ttlSeconds = Ttl, int stallLapseMinutes = StallLapseMinutes,
-        int stallResumeMinutes = StallResumeMinutes, int stallResumeLimit = StallResumeLimit) =>
+        int stallResumeMinutes = StallResumeMinutes, int stallResumeLimit = StallResumeLimit,
+        int stallGraceMaxMinutes = StallGraceMaxMinutes, int claimLapseLimit = ClaimLapseLimit) =>
         new(Options.Create(new HatchOptions
         {
             ClaimTtlSeconds = ttlSeconds, StallLapseMinutes = stallLapseMinutes,
             StallResumeMinutes = stallResumeMinutes, StallResumeLimit = stallResumeLimit,
+            StallGraceMaxMinutes = stallGraceMaxMinutes, ClaimLapseLimit = claimLapseLimit,
         }));
 
     /// <summary>

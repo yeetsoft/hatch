@@ -36,6 +36,7 @@ every variable.
 | `landed` | No: reads git where it stands, or where `--repo` says | Yes: records a sha |
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
+| `grace` | No | Yes: exempts the claim from the quiet rule for a while |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
@@ -324,6 +325,32 @@ edges are refused, each by name: an issue on itself, on one of its ancestors,
 on one of its descendants (both of those "could never be satisfied", since a
 parent is not done until its work is), and one that would close a cycle, which
 the refusal puts as the other issue "is already waiting on this issue".
+
+### grace
+
+```
+hatch grace AER-12 <minutes>
+```
+
+Asks that the ticket's claim not be called quiet for the next `<minutes>`. A
+claim is quiet once nothing has been said on it for `Hatch__StallLapseMinutes`
+(five by default), and a command that says nothing from start to finish, such
+as a UI suite or a long build, would otherwise lose the claim while it is still
+working. The window is install-wide and short on purpose, so a slow command asks
+for what it needs, on its own ticket, before it starts: `hatch grace GL-10 20`.
+
+- It exempts the claim from the quiet rule alone. The heartbeat is judged as
+  before, so a runner that dies under it still loses the claim on time.
+- A smaller ask never shortens one already given, and the allowance ends with
+  the claim, so the next increment on the ticket starts without it.
+- It needs a live claim: on an unclaimed ticket, or one already called quiet, it
+  is refused with `409`. Minutes above the cap (`Hatch__StallGraceMaxMinutes`,
+  sixty by default, or the project's own) are refused with `400`, which names
+  the cap.
+- A key may call it, with no claim token: the caller is the session a
+  dispatcher spawned, which knows the ticket and not the lease.
+
+The prompt a session is given lists it beside `hatch comment` and `hatch ask`.
 
 ### one-pr
 

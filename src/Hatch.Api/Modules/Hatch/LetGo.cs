@@ -79,7 +79,7 @@ public static class LetGo
     }
 
     /// <summary>A release's own outcome, or null where it did not say - see <see cref="ClaimOutcomes"/>.</summary>
-    private static string? ReleaseOutcome(string? payload)
+    internal static string? ReleaseOutcome(string? payload)
     {
         if (string.IsNullOrWhiteSpace(payload)) return null;
 

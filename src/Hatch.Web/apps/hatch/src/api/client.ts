@@ -55,6 +55,7 @@ import type {
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
+  ProjectClaimLimitsWriteRequest,
   ProjectRunnerTagsWriteRequest,
   QueueEntry,
   Revision,
@@ -142,6 +143,10 @@ export const putProjectReflection = (id: number, cadenceDays: number | null) =>
     Owner-only, same gate as putProjectLanding. */
 export const fileProjectReflection = (id: number) =>
   fetchJson<Issue>(`/api/hatch/projects/${id}/reflect`, { method: 'POST' });
+/** Sets a project's quiet window, grace cap and lapse limit whole - owner-only,
+    see ProjectsController.PutClaimLimits. */
+export const putProjectClaimLimits = (id: number, request: ProjectClaimLimitsWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/claim-limits`, { method: 'PUT', ...asJson(request) });
 export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a project binds the tracker's own repository, taking the flag

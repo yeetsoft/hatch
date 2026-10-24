@@ -74,6 +74,16 @@ export interface Project {
       lower-cased, deduplicated; empty means any runner. Absent from a
       project that predates it. See ProjectDto.RunnerTags. */
   runnerTags?: string[];
+  /** Minutes a claim on this project's tickets may say nothing before it is
+      called quiet; null follows the install's, 0 turns the rule off here.
+      Absent from a project that predates it. See ProjectDto.StallLapseMinutes. */
+  stallLapseMinutes?: number | null;
+  /** The most grace, in minutes, a holder may ask for with `hatch grace`; null
+      follows the install's. See ProjectDto.StallGraceMaxMinutes. */
+  stallGraceMaxMinutes?: number | null;
+  /** How many claims in a row may lapse on one ticket before a person is asked;
+      null follows the install's, 0 never stops. See ProjectDto.ClaimLapseLimit. */
+  claimLapseLimit?: number | null;
   /** Days between the reflections this project files by itself, or null for
       never. See ProjectDto.ReflectionCadenceDays. */
   reflectionCadenceDays: number | null;
@@ -925,6 +935,14 @@ export interface ProjectBindsTrackerResponse {
 /** A write to a project's reflection cadence; null is off. See ProjectReflectionWriteRequest (Hatch.Contracts). */
 export interface ProjectReflectionWriteRequest {
   cadenceDays: number | null;
+}
+
+/** A write to a project's three claim limits, replaced whole - null follows the
+    install's setting. See ProjectClaimLimitsWriteRequest (Hatch.Contracts). */
+export interface ProjectClaimLimitsWriteRequest {
+  stallLapseMinutes: number | null;
+  stallGraceMaxMinutes: number | null;
+  claimLapseLimit: number | null;
 }
 
 /** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */

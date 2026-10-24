@@ -864,6 +864,304 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
     }
 
+    // ---- Asking for grace ----
+
+    [SkippableFact]
+    public async Task AClaimWithGrace_IsNotQuietInsideIt_AndIsQuietOnceItIsOver()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(20), default));
+
+        // Silent for far longer than the five-minute window, with the loop's
+        // heartbeat landing inside the TTL as it does.
+        for (var i = 0; i < 4; i++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        // 16 minutes in; 21 is past the 20 asked for, and nothing was said.
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal(
+            "this claim has gone quiet for 5 minutes",
+            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+    }
+
+    [SkippableFact]
+    public async Task AClaimWithGrace_IsStillTakenOverOnceItsHeartbeatLapses()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(30), default));
+
+        // Grace is the quiet rule's only; a dead runner still loses on the TTL.
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+    }
+
+    [SkippableFact]
+    public async Task ASmallerAskNeverShortensAGraceAlreadyGiven()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(20), default));
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(2), default));
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    [SkippableFact]
+    public async Task AGraceOverTheCap_IsRefusedAndNamesTheCap()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallGraceMaxMinutes: 30);
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+
+        Assert.Equal(
+            "grace is at most 30 minutes here",
+            BadRequest(await h.Claims.Grace(issue, new ClaimGraceRequest(31), default)));
+        Assert.Equal(
+            "grace is a number of minutes above zero",
+            BadRequest(await h.Claims.Grace(issue, new ClaimGraceRequest(0), default)));
+    }
+
+    [SkippableFact]
+    public async Task GraceOnAnUnclaimedOrQuietClaim_IsRefused()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        Assert.IsType<ConflictObjectResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(10), default));
+
+        await h.TakeAsync(issue);
+        h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
+
+        // A quiet claim is not live, and grace is not a way to revive one.
+        Assert.IsType<ConflictObjectResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(10), default));
+    }
+
+    [SkippableFact]
+    public async Task TheGraceEndsWithTheClaim()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        var atTake = (await h.RowAsync(issue)).ClaimQuietAt;
+        Assert.Equal(Now.AddMinutes(5), atTake);
+
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(30), default));
+        Assert.Equal(Now.AddMinutes(30), (await h.RowAsync(issue)).ClaimQuietAt);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, default));
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietAt);
+
+        // The next claim starts from its own take, not from the last one's grace.
+        await h.TakeAsync(issue);
+        Assert.Equal(Now.AddMinutes(5), (await h.RowAsync(issue)).ClaimQuietAt);
+    }
+
+    // ---- A project's own window ----
+
+    [SkippableFact]
+    public async Task AProjectsLongerWindow_KeepsASilentClaimAliveUntilItsOwnLapses()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.StallLapseMinutes = 20);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        for (var i = 0; i < 4; i++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal(
+            "this claim has gone quiet for 20 minutes",
+            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+    }
+
+    [SkippableFact]
+    public async Task AProjectsWindowOfZero_NeverCallsItsClaimsQuiet()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.StallLapseMinutes = 0);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietAt);
+        for (var i = 0; i < 5; i++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+    }
+
+    [SkippableFact]
+    public async Task AWordSaid_MovesTheDeadlineByTheProjectsWindow()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.StallLapseMinutes = 12);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        Assert.Equal(Now.AddMinutes(12), (await h.RowAsync(issue)).ClaimQuietAt);
+
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "building"), default)).Result);
+        Assert.Equal(Now.AddMinutes(16), (await h.RowAsync(issue)).ClaimQuietAt);
+    }
+
+    [SkippableFact]
+    public async Task TheTake_CarriesTheProjectsWindowAndNotTheInstalls()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.StallLapseMinutes = 15);
+        var issue = await h.FileAsync();
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        Assert.Equal(900, taken.StallLapseSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AProjectsGraceCap_ReplacesTheInstalls()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.StallGraceMaxMinutes = 10);
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+
+        Assert.Equal("grace is at most 10 minutes here", BadRequest(await h.Claims.Grace(issue, new ClaimGraceRequest(11), default)));
+        Assert.IsType<NoContentResult>(await h.Claims.Grace(issue, new ClaimGraceRequest(10), default));
+    }
+
+    // ---- Stopping after repeated lapses ----
+
+    [SkippableFact]
+    public async Task TheSecondLapseInARow_RefusesTheTakeAndAsksAPerson()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        // Quiet once: taken over, and that is one lapse - under the limit of two.
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        Assert.NotNull((await h.RowAsync(issue)).ClaimToken);
+
+        // Quiet again: that is two, so this take is refused before a session runs.
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        var refused = Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        Assert.Contains("the last 2 claims lapsed in a row", refused);
+        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+
+        var question = Assert.Single(await h.CommentsAsync(issue), c => c.Kind == EfHatchComment.Question);
+        Assert.Equal("Hatch", question.Author);
+        Assert.Contains("The last 2 claims", question.Body);
+        Assert.Equal(2, (await h.EventsAsync(issue)).Count(e => e.Kind == EfHatchIssueEvent.ClaimLapsed));
+        Assert.Contains(await h.EventsAllAsync(issue), e => e.Kind == EfHatchIssueEvent.Asked);
+    }
+
+    [SkippableFact]
+    public async Task APersonsAnswer_StartsTheCountOver()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        await h.AnswerAsync(issue);
+
+        // Taken, quiet, taken over: one lapse since the answer, not three.
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        Assert.NotNull((await h.RowAsync(issue)).ClaimToken);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseThatWorked_StartsTheCountOver()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        var token = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default)).Token;
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Worked, default));
+
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+    }
+
+    [SkippableFact]
+    public async Task ALapseLimitOfZero_NeverStops()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(claimLapseLimit: 0);
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        for (var i = 0; i < 5; i++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(6));
+            Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+        }
+    }
+
+    [SkippableFact]
+    public async Task AProjectsLapseLimit_ReplacesTheInstalls()
+    {
+        await using var h = await NewAsync();
+        await h.SetProjectAsync(p => p.ClaimLapseLimit = 1);
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+
+        h.Time.Advance(TimeSpan.FromMinutes(6));
+
+        Assert.Contains("the last 1 claims lapsed in a row",
+            Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default)));
+    }
+
+    [Fact]
+    public void TheStreak_CountsLapsesBackToAnAnswerAWorkedReleaseOrAMove()
+    {
+        const string Lapsed = EfHatchIssueEvent.ClaimLapsed;
+
+        Assert.Equal(0, LapseStreak.Count([]));
+        Assert.Equal(2, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.ClaimTaken, null), (Lapsed, null)]));
+
+        // Newest first: the answer ends the count at what came after it.
+        Assert.Equal(1, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.Answered, "{}"), (Lapsed, null)]));
+        Assert.Equal(1, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.StatusChanged, null), (Lapsed, null)]));
+        Assert.Equal(1, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.ClaimReleased, "{\"outcome\":\"worked\"}"), (Lapsed, null)]));
+
+        // Stepped over: a dropped or outcome-less release, and an answer a lapse wrote.
+        Assert.Equal(2, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.ClaimReleased, "{\"outcome\":\"dropped\"}"), (Lapsed, null)]));
+        Assert.Equal(2, LapseStreak.Count([(Lapsed, null), (EfHatchIssueEvent.Answered, "{\"lapsed\":true}"), (Lapsed, null)]));
+    }
+
     // ---- Taking a claim answers no question ----
 
     [SkippableFact]
@@ -1446,6 +1744,31 @@ public class IssueClaimTests
             Value(await Thread.GetComments(key, default));
 
         /// <summary>A question asked in prose - no options, and never a stall question however long it waits.</summary>
+        /// <summary>Edits the harness project's row - a project's own claim limits.</summary>
+        public async Task SetProjectAsync(Action<EfHatchProject> edit)
+        {
+            var db = Connect();
+            var project = await db.Projects.SingleAsync(p => p.Id == ProjectId);
+            edit(project);
+            await db.SaveChangesAsync();
+        }
+
+        /// <summary>A person's answer to whatever is asked on the issue: the event that ends a streak.</summary>
+        public async Task AnswerAsync(string key)
+        {
+            var issue = await RowAsync(key);
+            var db = Connect();
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id,
+                Actor = "Nathan",
+                Kind = EfHatchIssueEvent.Answered,
+                Payload = "{}",
+                At = Time.GetUtcNow(),
+            });
+            await db.SaveChangesAsync();
+        }
+
         public async Task<long> AskProseAsync(string key, DateTimeOffset at, string body)
         {
             var issue = await RowAsync(key);

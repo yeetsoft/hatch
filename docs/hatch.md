@@ -1926,6 +1926,45 @@ seconds, `0` when lapsing is off — the server is what honours it, so the
 server is what says what it is, the same argument `TtlSeconds` makes for
 itself.
 
+**The quiet window is a deadline on the claim, set from its project.** The
+window is `EfHatchProject.StallLapseMinutes` where a project sets one (zero
+turns the rule off for it) and `Hatch:StallLapseMinutes` where it does not.
+`IssueClaims` turns it into `ClaimQuietAt` at the take and at every word said
+(`QuietAtFor`), and everything that asks whether a claim is quiet compares
+against that one stored instant, so a window that differs project to project is
+still one comparison in every conditional `UPDATE`. The take answers the window
+it set, as `stallLapseSeconds`. A project's `StallGraceMaxMinutes` and
+`ClaimLapseLimit` work the same way over `Hatch:StallGraceMaxMinutes` and
+`Hatch:ClaimLapseLimit`, and an owner writes all three with `PUT
+/projects/{id}/claim-limits`.
+
+**A ticket whose claims keep lapsing is stopped, and a person is asked.** A
+claim lost to the quiet rule writes no release outcome - the lease is gone, so
+the session is stopped and nothing further is written - and `letGo` skips such a
+release rather than counting it, so a ticket that can never finish inside its
+window never looked like a stall. `LapseStreak` counts the `claim_lapsed` events
+newest first, back to a `worked` release, a status change or an answer a person
+wrote. When a take finds a lapsed claim and that count, with this lapse, reaches
+`Hatch:ClaimLapseLimit` (two by default; a project's own where set; zero never
+stops), the new claim is released before a session spawns, the take is refused
+with `409`, and Hatch writes a question on the ticket as the `Hatch` actor. A
+question and not a flag of its own because an open question already blocks the
+dispatcher and lights the attention panel, and the answer that ends the streak is
+the same gesture that says try again.
+
+**A holder may ask for more of the window, one claim at a time.** Some commands
+say nothing for longer than `Hatch:StallLapseMinutes` by design - a UI suite, a
+long build - and widening the window for every claim to fit the slowest would
+leave a hung session unreclaimed for that long everywhere. So the session asks
+for it before the command: `hatch grace AER-12 20` pushes `ClaimQuietAt` out to
+twenty minutes from now, and `IsQuiet` is false until that instant passes. It
+exempts a claim from the quiet rule alone - the TTL is still judged on the
+heartbeat - it is bounded by the project's grace cap, else
+`Hatch:StallGraceMaxMinutes` (sixty by default; zero means nobody may ask), a
+smaller ask never shortens one already given, a word said after it still moves
+the deadline from there, and the take and both release lanes reset the column,
+so the allowance never outlives the claim it was given to.
+
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from
 the claim-quiet one above on purpose (see `HatchOptions.StallResumeMinutes`'s
@@ -3009,6 +3048,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
 | `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired?, onePullRequest? }` — `onePullRequest` is the project's default for [one pull request](#one-pull-request); `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/claim-limits` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ stallLapseMinutes, stallGraceMaxMinutes, claimLapseLimit }` — all three replaced whole; null follows the install's `Hatch:StallLapseMinutes`, `Hatch:StallGraceMaxMinutes` and `Hatch:ClaimLapseLimit`, zero turns that limit off. `400` naming the one outside 0–1440 minutes / 0–20 lapses. |
 | `/projects/{id}/runner-tags` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ tags }` — the whole list, replaced; trimmed, lower-cased and deduplicated, at most 8 tags of at most 32 characters, none with a space or comma. `403` naming the project's key from anybody but an owner, `400` naming the tag that breaks the rule (or the limit, on a list over 8), `404` on an unknown project. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
@@ -3049,6 +3089,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
+| `/issues/{key}/claim/grace` | POST | `{ minutes }` — the holder of a live claim asking not to be called quiet for that long: pushes `ClaimQuietAt` out, which `IssueClaims.IsQuiet` and the conditional `UPDATE`s read. Keyed on the issue and not the token, because the caller is the session and the lease is the dispatcher's. `204`; `409` where nothing live holds the issue; `400` on minutes at or below zero or above the project's grace cap (`Hatch:StallGraceMaxMinutes`, 60, where the project sets none), naming the cap. Never shortens an allowance already given; cleared with the claim. |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |

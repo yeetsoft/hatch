@@ -30,6 +30,7 @@ public sealed class CliReferenceDocsTests
         ["landed"] = IssueCommands.LandedUsage,
         ["verdict"] = IssueCommands.VerdictUsage,
         ["depends"] = DependsCommand.DependsUsage,
+        ["grace"] = GraceCommand.GraceUsage,
         ["one-pr"] = OnePrCommand.OnePrUsage,
         ["ask"] = QuestionCommands.AskUsage,
         ["questions"] = QuestionCommands.QuestionsUsage,

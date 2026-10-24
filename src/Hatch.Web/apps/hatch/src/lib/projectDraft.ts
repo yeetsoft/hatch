@@ -11,6 +11,7 @@ import type { PreApproval } from '../components/PreApprovalControl';
 import type {
   Project,
   ProjectBindsTrackerWriteRequest,
+  ProjectClaimLimitsWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
   ProjectReflectionWriteRequest,
@@ -37,6 +38,9 @@ export interface ProjectDraft {
     bindsTracker: boolean;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
+    stallLapseMinutes?: number | null;
+    stallGraceMaxMinutes?: number | null;
+    claimLapseLimit?: number | null;
   };
   name: string;
   key: string;
@@ -55,6 +59,11 @@ export interface ProjectDraft {
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
   reflectionCadenceDays: string;
+  /** The three claim limits, held as text: blank follows the install's setting, 0 turns the limit off.
+      Optional so a draft built before they existed reads as unchanged. */
+  stallLapseMinutes?: string;
+  stallGraceMaxMinutes?: string;
+  claimLapseLimit?: string;
 }
 
 export interface ProjectDraftDiff {
@@ -65,6 +74,20 @@ export interface ProjectDraftDiff {
 function sameRepositories(a: ProjectRepositoryWriteRequest[], b: ProjectRepositoryWriteRequest[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((entry, i) => entry.remote === b[i].remote && entry.baseBranch === b[i].baseBranch);
+}
+
+function limitText(value: number | null | undefined): string {
+  return value === null || value === undefined ? '' : String(value);
+}
+
+/** Blank follows the install's setting (null); text that is no number is sent as
+    -1, which the server refuses naming the limit, rather than as a null that would
+    quietly hand the project back to the install's setting. */
+function limitValue(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : -1;
 }
 
 export function openProjectDraft(project: Project): ProjectDraft {
@@ -88,6 +111,9 @@ export function openProjectDraft(project: Project): ProjectDraft {
       bindsTracker: project.bindsTracker,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
+      stallLapseMinutes: project.stallLapseMinutes ?? null,
+      stallGraceMaxMinutes: project.stallGraceMaxMinutes ?? null,
+      claimLapseLimit: project.claimLapseLimit ?? null,
     },
     name: project.name,
     key: project.key,
@@ -105,6 +131,9 @@ export function openProjectDraft(project: Project): ProjectDraft {
     bindsTracker: project.bindsTracker,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
+    stallLapseMinutes: limitText(project.stallLapseMinutes),
+    stallGraceMaxMinutes: limitText(project.stallGraceMaxMinutes),
+    claimLapseLimit: limitText(project.claimLapseLimit),
   };
 }
 
@@ -178,4 +207,19 @@ export function projectReflectionDiff(draft: ProjectDraft): ProjectReflectionWri
 export function projectRunnerTagsDiff(draft: ProjectDraft): ProjectRunnerTagsWriteRequest | null {
   const tags = runnerTagsRequest(draft.runnerTags);
   return sameTags(tags, draft.known.runnerTags) ? null : { tags };
+}
+
+/** Its own route and its own request shape, like projectReflectionDiff - all
+    three limits are replaced whole, so any one changing sends all three. */
+export function projectClaimLimitsDiff(draft: ProjectDraft): ProjectClaimLimitsWriteRequest | null {
+  const request = {
+    stallLapseMinutes: limitValue(draft.stallLapseMinutes ?? ''),
+    stallGraceMaxMinutes: limitValue(draft.stallGraceMaxMinutes ?? ''),
+    claimLapseLimit: limitValue(draft.claimLapseLimit ?? ''),
+  };
+  const same =
+    request.stallLapseMinutes === (draft.known.stallLapseMinutes ?? null) &&
+    request.stallGraceMaxMinutes === (draft.known.stallGraceMaxMinutes ?? null) &&
+    request.claimLapseLimit === (draft.known.claimLapseLimit ?? null);
+  return same ? null : request;
 }

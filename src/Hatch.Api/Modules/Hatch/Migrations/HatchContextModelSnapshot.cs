@@ -207,6 +207,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("ClaimPlaybookId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("ClaimQuietAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ClaimRunner")
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
@@ -785,6 +788,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
+                    b.Property<int?>("ClaimLapseLimit")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Color")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
@@ -845,6 +851,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
+
+                    b.Property<int?>("StallGraceMaxMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StallLapseMinutes")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
