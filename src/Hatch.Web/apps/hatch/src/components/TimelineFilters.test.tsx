@@ -32,6 +32,7 @@ const projectOf = (key: string, name: string): Project => ({
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
 });
 
 const ONE = [projectOf('AER', 'Aero')];

@@ -40,6 +40,7 @@ function project(overrides: Partial<Project>): Project {
     reflectionCadenceDays: null,
     reflectionLastPeriodStart: null,
     reflectionNextDueAt: null,
+    storiesOnEpics: false,
     runnerTags: [],
     ...overrides,
   };
@@ -126,6 +127,27 @@ describe('ProjectEditDialog', () => {
     const html = render(project({ canAdminister: false, bindsTracker: false }));
 
     expect(html).not.toContain('Binds the tracker');
+  });
+
+  it('shows an owner the Board heading and the stories-on-epics checkbox', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('>Board</h2>');
+    expect(html).toContain('Show stories on epics, not the board');
+  });
+
+  it('shows anyone else a sentence, and no control, where the project shows stories on epics', () => {
+    const html = render(project({ canAdminister: false, storiesOnEpics: true }));
+
+    expect(html).toContain('Stories shown on their epics.');
+    expect(html).not.toContain('Show stories on epics, not the board');
+  });
+
+  it('shows anyone else a sentence where the project shows stories on the board', () => {
+    const html = render(project({ canAdminister: false, storiesOnEpics: false }));
+
+    expect(html).toContain('Stories shown on the board.');
+    expect(html).not.toContain('Show stories on epics, not the board');
   });
 
   it('shows an owner the runner tags textarea, one tag per line', () => {

@@ -35,6 +35,7 @@ function project(overrides: Partial<Project>): Project {
     reflectionCadenceDays: null,
     reflectionLastPeriodStart: null,
     reflectionNextDueAt: null,
+    storiesOnEpics: false,
     ...overrides,
   };
 }

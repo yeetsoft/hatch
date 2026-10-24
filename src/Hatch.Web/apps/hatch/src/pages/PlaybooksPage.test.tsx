@@ -65,6 +65,7 @@ const TABLE_PROJECT: Project = {
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
 };
 
 const REPO_PROJECT: Project = { ...TABLE_PROJECT, repoSourced: true };

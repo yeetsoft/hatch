@@ -32,6 +32,7 @@ const BASE: Project = {
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
 };
 
 const noop = () => undefined;
