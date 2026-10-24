@@ -1,6 +1,7 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -565,6 +566,68 @@ public class RunnersControllerTests
 
         Assert.NotNull(instruction);
         Assert.Equal("claude", (await h.OneAsync()).Agent);
+    }
+
+    // ---- Revision ----
+
+    [Fact]
+    public async Task Revision_IsSeededOverwrittenAndLeftAloneTheSameWayAgentIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "abc123"));
+        Assert.Equal("abc123", (await h.OneAsync()).Revision);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "def456"));
+        Assert.Equal("def456", (await h.OneAsync()).Revision);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal("def456", (await h.OneAsync()).Revision);
+    }
+
+    [Fact]
+    public async Task Sequence_IsSeededOverwrittenAndLeftAloneTheSameWayAgentIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Sequence: 10));
+        Assert.Equal(10, (await h.OneAsync()).Sequence);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Sequence: 20));
+        Assert.Equal(20, (await h.OneAsync()).Sequence);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(20, (await h.OneAsync()).Sequence);
+    }
+
+    [Fact]
+    public async Task BuiltAt_IsSeededOverwrittenAndLeftAloneTheSameWayAgentIs()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(BuiltAt: Now.AddDays(-1)));
+        Assert.Equal(Now.AddDays(-1), (await h.OneAsync()).BuiltAt);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(BuiltAt: Now));
+        Assert.Equal(Now, (await h.OneAsync()).BuiltAt);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(Now, (await h.OneAsync()).BuiltAt);
+    }
+
+    [Fact]
+    public async Task BoardDrift_IsBehindWhenTheRunnersSequenceTrailsTheServers()
+    {
+        var h = await NewAsync(revision: new StubRevision("server-sha", 10));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "old-sha", Sequence: 5));
+
+        Assert.Equal(RunnerBoardDrift.Behind, (await h.OneAsync()).BoardDrift);
+    }
+
+    [Fact]
+    public async Task BoardDrift_IsCurrentWhenTheShasAgree()
+    {
+        var h = await NewAsync(revision: new StubRevision("server-sha", 10));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "server-sha", Sequence: 10));
+
+        Assert.Equal(RunnerBoardDrift.Current, (await h.OneAsync()).BoardDrift);
     }
 
     // ---- What it is working ----
@@ -1756,7 +1819,7 @@ public class RunnersControllerTests
 
     private static async Task<Harness> NewAsync(
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
-        PersonRole? keyOwner = null, bool nobody = false)
+        PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -1768,7 +1831,10 @@ public class RunnersControllerTests
 
         var time = new FakeTimeProvider(Now);
         var claims = TestClaims.With();
-        var runners = new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }), Options.Create(new AuthOptions { Enabled = wall }));
+        var runners = new Runners(
+            Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
+            Options.Create(new AuthOptions { Enabled = wall }),
+            revision ?? new StubRevision("dev", 0));
 
         var id = personId ?? Guid.NewGuid();
         var caller = nobody
@@ -1824,6 +1890,14 @@ public class RunnersControllerTests
 
         public Task<string> ActorNameAsync(CancellationToken ct) =>
             Task.FromResult(Person?.Name ?? Key?.Name ?? CallerIdentity.Unattributed);
+    }
+
+    private sealed class StubRevision(string revision, int sequence) : IHatchRevision
+    {
+        public string Revision { get; } = revision;
+        public int Sequence { get; } = sequence;
+        public DateTimeOffset? BuiltAt => null;
+        public bool IsDevelopment => Revision == global::Hatch.Api.Services.HatchRevision.Development;
     }
 
     private static T Value<T>(ActionResult<T> result) =>
