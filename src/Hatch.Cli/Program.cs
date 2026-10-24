@@ -72,6 +72,9 @@ if (command == "config")
         .RunAsync(rest, CancellationToken.None);
 }
 
+// Two local files and no board, so it too has to work with nothing configured.
+if (command == "use") return new UseCommand(say).Run(rest);
+
 if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missing))
 {
     // A hook that fails is a session that is told so. Nothing to ask, nothing
@@ -375,7 +378,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -386,6 +389,9 @@ internal partial class Program
         "",
         "  hatch config                 ask for the origin and the key, and write them",
         "  hatch config --show          what is set, and which layer it came from",
+        "  hatch use <name>             make a saved profile the active one",
+        "  hatch use                    which profile is active, or <none>",
+        "  hatch use --none             ...clear it",
         "  hatch board                  the columns, and how many cards in each",
         "  hatch next                   top workable card of \"todo\"",
         "  hatch next \"in progress\"      ...or of any column",
