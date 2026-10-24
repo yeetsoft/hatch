@@ -77,18 +77,18 @@ public sealed class SettingsTests : IDisposable
     [Fact]
     public void Each_value_is_layered_on_its_own()
     {
-        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository");
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository", "HATCH_KEY=hatch_ak_here");
         var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine");
 
         Assert.True(Settings.TryLoad(
             checkout, Env(("HATCH_CLAUDE_BIN", "/opt/claude")), out var settings, out _, user));
 
         Assert.Equal("https://this-repository", settings.Base);
-        Assert.Equal("hatch_ak_mine", settings.Key);
+        Assert.Equal("hatch_ak_here", settings.Key);
         Assert.Equal("/opt/claude", settings.ClaudeBin);
 
         Assert.Equal(Settings.Layer.Checkout, settings.SourceOf("HATCH_BASE"));
-        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_KEY"));
+        Assert.Equal(Settings.Layer.Checkout, settings.SourceOf("HATCH_KEY"));
         Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_CLAUDE_BIN"));
     }
 
@@ -757,10 +757,94 @@ public sealed class SettingsTests : IDisposable
         Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
 
         Assert.Equal("https://from-the-profile", settings.Base);
-        Assert.Equal("hatch_ak_mine", settings.Key);
+        Assert.Equal("", settings.Key);
+        Assert.NotNull(settings.KeyNote);
 
         Assert.Equal(Settings.Layer.Profile, settings.SourceOf("HATCH_BASE"));
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_KEY"));
+    }
+
+    // ---- the key goes with its origin ----
+
+    [Fact]
+    public void An_exported_key_over_an_origin_from_a_file_is_ignored_and_the_note_names_the_environment()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_KEY", "hatch_ak_exported")), out var settings, out _, Write("user.config")));
+
+        Assert.Equal("", settings.Key);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_KEY"));
+        Assert.NotNull(settings.KeyNote);
+        Assert.Contains("HATCH_KEY in the environment is ignored", settings.KeyNote);
+        Assert.Contains($"HATCH_BASE comes from {checkout}", settings.KeyNote);
+        Assert.EndsWith("Export both, or neither.", settings.KeyNote);
+    }
+
+    [Fact]
+    public void An_exported_origin_and_an_exported_key_pair_and_say_nothing()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://exported"), ("HATCH_KEY", "hatch_ak_exported")),
+            out var settings, out _, user));
+
+        Assert.Equal("hatch_ak_exported", settings.Key);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_KEY"));
+        Assert.Null(settings.KeyNote);
+    }
+
+    [Fact]
+    public void A_checkout_origin_and_key_beat_a_per_user_key_and_the_user_key_is_noted()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository", "HATCH_KEY=hatch_ak_here");
+        var user = Write("user.config", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, user));
+
+        Assert.Equal("hatch_ak_here", settings.Key);
+        Assert.Equal(Settings.Layer.Checkout, settings.SourceOf("HATCH_KEY"));
+        Assert.Contains($"HATCH_KEY in {user} is ignored", settings.KeyNote);
+        Assert.EndsWith($"Set both in {user}, or neither.", settings.KeyNote);
+    }
+
+    [Fact]
+    public void With_no_profile_an_origin_and_key_in_the_user_file_load_as_before()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal("hatch_ak_mine", settings.Key);
         Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_KEY"));
+        Assert.Null(settings.KeyNote);
+    }
+
+    [Fact]
+    public void A_key_alone_in_the_checkout_is_ignored_when_the_origin_comes_from_the_user_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_KEY=hatch_ak_here");
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, user));
+
+        Assert.Equal("", settings.Key);
+        Assert.Contains($"HATCH_KEY in {checkout} is ignored", settings.KeyNote);
+        Assert.Contains($"HATCH_BASE comes from {user}", settings.KeyNote);
+    }
+
+    [Fact]
+    public void A_profile_origin_with_no_key_does_not_inherit_the_per_user_key()
+    {
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
+        var user = Write("user.config", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
+
+        Assert.Equal("", settings.Key);
+        Assert.Contains($"HATCH_KEY in {user} is ignored", settings.KeyNote);
     }
 
     /// <summary>

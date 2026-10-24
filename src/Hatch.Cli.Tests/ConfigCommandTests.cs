@@ -578,9 +578,8 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Show_says_which_of_the_three_layers_each_value_came_from()
     {
-        var checkoutEnv = WriteCheckoutEnv("HATCH_BASE=https://this-repository");
-        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_KEY=hatch_ak_from_the_user_file"]);
+        // A key goes with its origin (HA-1479), so it sits beside HATCH_BASE.
+        var checkoutEnv = WriteCheckoutEnv("HATCH_BASE=https://this-repository", "HATCH_KEY=hatch_ak_from_the_checkout_file");
 
         var code = await Command(
                 new Replies(),
@@ -593,7 +592,7 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Contains($"HATCH_BASE:        https://this-repository  ({checkoutEnv})", Said);
-        Assert.Contains($"HATCH_KEY:         hatch_ak_fro...file  ({ConfigPath})", Said);
+        Assert.Contains($"HATCH_KEY:         hatch_ak_fro...file  ({checkoutEnv})", Said);
         Assert.Contains("HATCH_CLAUDE_BIN:  /opt/claude  (exported)", Said);
         Assert.Contains("HATCH_BASE_BRANCH: <unset>", Said);
     }
@@ -654,7 +653,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Show_masks_the_key_and_never_prints_it_whole()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_KEY=hatch_ak_abcdefghijklmnop"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://this-repository", "HATCH_KEY=hatch_ak_abcdefghijklmnop"]);
 
         await Command(new Replies()).RunAsync(["--show"], default);
 

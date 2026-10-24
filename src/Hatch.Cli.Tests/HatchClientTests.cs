@@ -58,6 +58,39 @@ public sealed class HatchClientTests
         Assert.Equal("test:/checkout", wire.Runner);
     }
 
+    /// <summary>
+    /// A profile that names an origin and no key, over a per-user file that has
+    /// one: the key is not the profile's, so it is not sent.
+    /// </summary>
+    [Fact]
+    public async Task A_profile_origin_with_no_key_sends_the_runner_and_no_authorization()
+    {
+        var temp = Directory.CreateTempSubdirectory("hatch-client-").FullName;
+        try
+        {
+            var profile = Path.Combine(temp, "profile.config");
+            var user = Path.Combine(temp, "user.config");
+            File.WriteAllLines(profile, ["HATCH_BASE=https://hatch.example"]);
+            File.WriteAllLines(user, ["HATCH_KEY=hatch_ak_mine"]);
+
+            Assert.True(Hatch.Cli.Settings.TryLoad(
+                null, new Dictionary<string, string?>(), out var loaded, out _, user, profile));
+
+            using var wire = new HeaderWire();
+            using var client = new HatchClient(loaded, "test:/checkout", wire);
+
+            await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+
+            Assert.False(client.Keyed);
+            Assert.Null(wire.Authorization);
+            Assert.Equal("test:/checkout", wire.Runner);
+        }
+        finally
+        {
+            Directory.Delete(temp, true);
+        }
+    }
+
     /// <summary>The same header the server reads, spelled once on each side.</summary>
     [Fact]
     public void The_runner_header_is_the_one_the_server_reads()

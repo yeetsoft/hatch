@@ -202,6 +202,18 @@ public sealed class ReachTests
     }
 
     [Fact]
+    public void ToHatch_with_an_empty_key_removes_a_HATCH_KEY_already_exported()
+    {
+        var environment = Env("/usr/bin");
+        environment["HATCH_KEY"] = "hatch_ak_ignored_by_the_parent";
+
+        Reach.ToHatch(environment, new Settings { Base = "https://example.hatch", Key = "" });
+
+        Assert.Equal("https://example.hatch", environment["HATCH_BASE"]);
+        Assert.False(environment.ContainsKey("HATCH_KEY"));
+    }
+
+    [Fact]
     public void ToHatch_with_no_settings_leaves_the_environment_alone()
     {
         var environment = Env("/usr/bin");
