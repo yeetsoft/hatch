@@ -813,7 +813,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **38** person-only paths on this page,
+on this page with both) - there are **40** person-only paths on this page,
 across both halves together:
 
 ```
@@ -859,7 +859,7 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-seven belong to a project, a column, the WIP section, a ticket's own
+Twenty-nine belong to a project, a column, the WIP section, a ticket's own
 fields, or image upload; the other eleven are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
