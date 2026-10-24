@@ -185,6 +185,9 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 
 - the per-user file's path, and whether it exists yet, and the path of this
   checkout's `scripts/.env`;
+- the active profile, and where it came from - an explicit `--profile`, the
+  resolved active one, or `<none>`; the `runner:` line below and an unset
+  `HATCH_WORKSPACE:` line name it in turn;
 - the runner's name, and where it came from;
 - who `/api/hatch/me` says the caller is - the key, its owner and its scopes,
   or that calls go out as a named runner - or `<unreachable>` when there is
@@ -246,6 +249,13 @@ is the part that still identifies the checkout.
 `hatch config --runner <name>` refuses a name that is empty, too long, not
 plain ASCII, or already a live runner's - apart from this checkout's own
 current name - and writes nothing. It also needs a checkout: a name belongs to a checkout, not to a person.
+
+The record is keyed on `RunnerNames.Record.Key(profile, canonicalRoot)`
+(`RunnerNames.cs:114`): the bare canonical path with no profile, or
+`<profile>|<canonical path>` under one - so the same checkout under two
+profiles gets two names, each chosen and kept on its own. `HATCH_RUNNER` set
+in a profile file or the per-user file is ignored here too, same as *Four
+layers*' Warn above.
 
 ## Where the key never goes
 
@@ -364,7 +374,7 @@ at a Hatch of its own.
 Two things already belong to one checkout and no other, with nothing to set:
 
 - **The runner's name.** Recorded in the `runners` file beside the per-user
-  config file, keyed on the checkout's canonical path, so `<checkout-a>` and
+  config file, keyed on the (profile, checkout) pair, so `<checkout-a>` and
   `<checkout-b>` each get a name of their own the first time either speaks to
   a board - see [the runner's name](#the-runners-name).
 - **The loop lock.** One `go-to-work` or `work` at a time per checkout; a
@@ -420,9 +430,10 @@ gives this checkout a key of its own.
 Run from `<checkout-a>`, which carries no overrides of its own:
 
 ```
-file:                 <per-user config>/config
-checkout:             <checkout-a>/scripts/.env  (written by --here)
-runner:               <checkout-a>  (<per-user config>/runners)
+file:             <per-user config>/config
+checkout:         <checkout-a>/scripts/.env  (written by --here)
+profile:          <none>
+runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
 identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
@@ -436,7 +447,7 @@ HATCH_AGENT:       claude  (<per-user config>/config)
 HATCH_BASE_BRANCH: <unset>
 HATCH_RUNNER:      <unset>
 HATCH_REPOS:       <unset>
-HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>
+HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>  (profile: <none>)
 HATCH_TAGS:        <unset>
 ```
 
@@ -445,9 +456,10 @@ only `HATCH_TAGS` and `HATCH_WORKSPACE` now come from this checkout's own
 file; everything else still folds through to the same per-user file:
 
 ```
-file:                 <per-user config>/config
-checkout:             <checkout-b>/scripts/.env  (written by --here)
-runner:               <checkout-b>  (<per-user config>/runners)
+file:             <per-user config>/config
+checkout:         <checkout-b>/scripts/.env  (written by --here)
+profile:          <none>
+runner:           <checkout-b>  (<per-user config>/runners)  (profile: <none>)
 identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)

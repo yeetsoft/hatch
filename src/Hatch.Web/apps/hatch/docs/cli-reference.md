@@ -81,8 +81,12 @@ header instead. Never put it in a repository, either way.
 - `--key <key>` writes the key alone, and needs an origin already set. A key on
   a command line stays in shell history; the prompt does not, so prefer the
   prompt on a machine other people can read.
-- `--runner <name>` sets what the board calls this checkout. It needs a
-  checkout, since a runner's name is a fact about one of them.
+- `--runner <name>` sets what the board calls this checkout - a character
+  from the cast list by default, chosen once and kept from then on. Refused,
+  with nothing written, if it is empty, too long, not plain ASCII, or already
+  the name of a live runner. It needs a checkout, and is recorded for the
+  active profile (or the one `--profile` names): a runner's name is still a
+  fact about one checkout, not a setting that follows the person.
 - `--repo <path>` also serves that checkout, for a loop with no checkout of its
   own. It is repeatable, each path must exist and carry a `.git`, and bare
   `--repo` clears them.
@@ -100,10 +104,9 @@ header instead. Never put it in a repository, either way.
   already the checkout's own), or combined with `--show`.
 - `--profile <name>` writes that profile's own file instead of the per-user
   file, for every write above. The file need not exist yet. Refused combined
-  with `--here` (two different places to write), `--runner` (a runner's name
-  is already the checkout's own), or an invalid name. `--show --profile
-  <name>` reads the named profile as if it were active, without switching to
-  it.
+  with `--here` (two different places to write) or an invalid name. `--show
+  --profile <name>` reads the named profile as if it were active, without
+  switching to it.
 
 It touches no ticket and no column, so it writes nothing to the board.
 
