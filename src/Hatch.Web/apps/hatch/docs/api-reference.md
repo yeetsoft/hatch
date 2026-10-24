@@ -626,7 +626,8 @@ clones, `mine`, `standing`, where it runs, which agent spawned it - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
 stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
 running within. Those four bounds are written by a fresh loop's first beat
-(`Fresh: true`, a `loop` beat only) and otherwise only by a person's `PATCH` -
+(`Fresh: true`, a `loop` beat only), which also clears any the row held for a
+flag the loop was not given, and otherwise only by a person's `PATCH` -
 a supervisor restart sending its original `--max-runs` again never undoes an
 operator's midnight edit, a `once` beat never writes them, and a running agent
 cannot raise its own budget: only a new process started with flags can, which

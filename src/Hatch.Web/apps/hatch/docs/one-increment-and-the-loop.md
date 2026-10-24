@@ -336,6 +336,15 @@ increment in flight.
 The same bounds are controls on **Agents → Runners**, and a value set there is folded
 in on the next heartbeat, including being cleared (*Watching the loop*).
 
+From the loop's side, a bound reaches that row when the loop starts fresh: a
+loop started by hand, or the supervisor's first start. Its first heartbeat
+writes the four bounds it was started with, and clears any the row held for a
+flag it was not given, so restarting by hand with `--max-runs` dropped leaves
+no limit on the row rather than the old one. The supervisor's own restart
+(exit 75, which carries the night in) writes none and keeps what the row
+holds, so a bound edited on the page at midnight survives it. `hatch work` and
+`go-to-work --once` never write them.
+
 **Ctrl-C** lets go of the claim on the way out, prints the night, and exits 0
 from `go-to-work` (`work` exits 130). SIGTERM and a closed terminal do the
 same, and so do `c` then `y`. A second Ctrl-C is not handled, so the process
