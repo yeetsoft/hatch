@@ -630,6 +630,35 @@ public class RunnersControllerTests
         Assert.Equal(RunnerBoardDrift.Current, (await h.OneAsync()).BoardDrift);
     }
 
+    [Fact]
+    public async Task SourceDrift_IsBehindWhenTheRunnersBuildTrailsItsOwnCheckout()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "built-sha", Sequence: 5, SourceRevision: "newer-sha", SourceSequence: 8));
+
+        Assert.Equal(RunnerBoardDrift.Behind, (await h.OneAsync()).SourceDrift);
+    }
+
+    [Fact]
+    public async Task SourceDrift_IsCurrentWhenTheBuildMatchesItsOwnCheckout()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "built-sha", Sequence: 8, SourceRevision: "built-sha", SourceSequence: 8));
+
+        Assert.Equal(RunnerBoardDrift.Current, (await h.OneAsync()).SourceDrift);
+    }
+
+    [Fact]
+    public async Task SourceDrift_IsUnknownWhenTheRunnerNeverReportedASource()
+    {
+        var h = await NewAsync(revision: new StubRevision("server-sha", 10));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Revision: "old-sha", Sequence: 5));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(RunnerBoardDrift.Behind, runner.BoardDrift);
+        Assert.Equal(RunnerBoardDrift.Unknown, runner.SourceDrift);
+    }
+
     // ---- What it is working ----
 
     [Fact]

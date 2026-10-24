@@ -3488,6 +3488,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// server-side since a contract with no reference to the API cannot carry
 /// that type across the wire itself.
 /// </param>
+/// <param name="SourceDrift">
+/// Where this runner's own build sits relative to its own checkout's source
+/// - the same comparison as <paramref name="BoardDrift"/>, with the reference
+/// the sha the runner reported for its checkout rather than the board's.
+/// <c>Unknown</c> for a runner whose checkout holds no source of its own.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3517,7 +3523,8 @@ public record RunnerDto(
     string? Revision = null,
     int? Sequence = null,
     DateTimeOffset? BuiltAt = null,
-    RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown)
+    RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown,
+    RunnerBoardDrift SourceDrift = RunnerBoardDrift.Unknown)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
