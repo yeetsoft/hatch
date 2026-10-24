@@ -138,7 +138,7 @@ public sealed class WorkCommand(Runtime runtime)
             var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
             var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), root));
             var runnerName = await Checkout.RunnerAsync(
-                runtime.Settings.Runner, Checkout.Host(), root, lookupBoard, ct, runtime.RunnersPath);
+                runtime.Settings.Runner, Checkout.Host(), root, null, lookupBoard, ct, runtime.RunnersPath);
 
             runtime = runtime with
             {

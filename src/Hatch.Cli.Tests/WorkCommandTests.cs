@@ -867,7 +867,7 @@ public sealed class WorkCommandTests
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
         var runnerName = await Checkout.RunnerAsync(
-            null, Checkout.Host(), elsewhere, null, default, h.Runtime.RunnersPath);
+            null, Checkout.Host(), elsewhere, null, null, default, h.Runtime.RunnersPath);
 
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));

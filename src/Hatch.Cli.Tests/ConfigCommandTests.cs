@@ -765,7 +765,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Show_in_a_checkout_prints_the_recorded_name_and_the_runners_file()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), "Jeff Winger");
 
         await Command(new Replies(), root: root).RunAsync(["--show"], default);
 
@@ -776,7 +776,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Show_says_HATCH_RUNNER_wins_when_it_is_set()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(root), "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), "Jeff Winger");
 
         await Command(
                 new Replies(),

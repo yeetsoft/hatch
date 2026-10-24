@@ -817,7 +817,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), runtime.Root));
                 var runnerName = await Checkout.RunnerAsync(
-                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, lookupBoard, ct, runtime.RunnersPath);
+                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, null, lookupBoard, ct, runtime.RunnersPath);
 
                 runtime = runtime with
                 {
