@@ -1128,6 +1128,68 @@ public class ProjectsControllerTests
         return created;
     }
 
+    // ---- Stories on epics ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutStoriesOnEpics()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutStoriesOnEpics(h.ProjectId, new ProjectStoriesOnEpicsWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutStoriesOnEpicsNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutStoriesOnEpics(created.Id, new ProjectStoriesOnEpicsWriteRequest(true), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change whether stories show on their epics", Reason(result.Result));
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.StoriesOnEpics);
+    }
+
+    [Fact]
+    public async Task AnOwnersTrueThenFalse_RoundTripsThroughAFreshGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        Assert.False(created.StoriesOnEpics);
+
+        var on = Value(await h.Projects.PutStoriesOnEpics(created.Id, new ProjectStoriesOnEpicsWriteRequest(true), default));
+        var readOn = Value(await h.Projects.GetProjects(default)).Single(p => p.Key == "TST");
+
+        Assert.True(on.StoriesOnEpics);
+        Assert.True(readOn.StoriesOnEpics);
+
+        var off = Value(await h.Projects.PutStoriesOnEpics(created.Id, new ProjectStoriesOnEpicsWriteRequest(false), default));
+        var readOff = Value(await h.Projects.GetProjects(default)).Single(p => p.Key == "TST");
+
+        Assert.False(off.StoriesOnEpics);
+        Assert.False(readOff.StoriesOnEpics);
+    }
+
+    [Fact]
+    public async Task ResendingTheStoriesOnEpicsAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutStoriesOnEpics(created.Id, new ProjectStoriesOnEpicsWriteRequest(true), default);
+        var countBefore = await h.Db.Projects.CountAsync();
+
+        var result = Value(await h.Projects.PutStoriesOnEpics(created.Id, new ProjectStoriesOnEpicsWriteRequest(true), default));
+
+        Assert.Equal(countBefore, await h.Db.Projects.CountAsync());
+        Assert.True(result.StoriesOnEpics);
+    }
+
     // ---- Reflection ----
 
     [Fact]

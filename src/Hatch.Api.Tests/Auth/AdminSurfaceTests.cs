@@ -566,6 +566,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
+        "ProjectsController.PutStoriesOnEpics",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -717,6 +718,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutReflection",
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
+        "ProjectsController.PutStoriesOnEpics",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

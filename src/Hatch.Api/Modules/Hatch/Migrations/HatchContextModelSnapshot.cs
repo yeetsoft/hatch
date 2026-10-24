@@ -846,6 +846,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
 
+                    b.Property<bool>("StoriesOnEpics")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.HasKey("Id");
 
                     b.HasIndex("AutoHealBugStatusId");

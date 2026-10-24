@@ -32,6 +32,7 @@ namespace Hatch.Contracts;
 /// <param name="BindsTracker">Whether this project binds the tracker's own repository - see <see cref="EfHatchProject.BindsTracker"/>. At most one project does. Off by default.</param>
 /// <param name="BindsTrackerBy">Who last changed <paramref name="BindsTracker"/> on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerBy"/>.</param>
 /// <param name="BindsTrackerAt">When <paramref name="BindsTracker"/> was last changed on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerAt"/>.</param>
+/// <param name="StoriesOnEpics">Whether this project's stories show on their epics - see <see cref="EfHatchProject.StoriesOnEpics"/>. Off by default.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -42,7 +43,8 @@ public record ProjectDto(
     bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null,
     IReadOnlyList<string> RunnerTags = null!,
     int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null,
-    bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null)
+    bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null,
+    bool StoriesOnEpics = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -118,6 +120,9 @@ public record ProjectRunnerTagsWriteRequest(IReadOnlyList<string> Tags);
 
 /// <summary>A write to whether a project binds the tracker's own repository - see <see cref="EfHatchProject.BindsTracker"/>.</summary>
 public record ProjectBindsTrackerWriteRequest(bool BindsTracker);
+
+/// <summary>A write to whether a project's stories show on their epics - see <see cref="EfHatchProject.StoriesOnEpics"/>.</summary>
+public record ProjectStoriesOnEpicsWriteRequest(bool StoriesOnEpics);
 
 /// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
 /// <param name="Project">The project written.</param>
