@@ -125,7 +125,7 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Set_then_read_round_trips()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/hatch", "Jeff Winger");
 
         Assert.Equal("Jeff Winger", RunnerNames.Record.Read(RunnersPath)["/Users/x/code/hatch"]);
     }
@@ -133,8 +133,8 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Setting_one_checkout_leaves_every_other_entry_alone()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Jeff Winger");
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/two", "Liz Lemon");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/one", "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/two", "Liz Lemon");
 
         var entries = RunnerNames.Record.Read(RunnersPath);
         Assert.Equal("Jeff Winger", entries["/Users/x/code/one"]);
@@ -144,9 +144,9 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Setting_a_checkout_again_replaces_only_that_entry()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Jeff Winger");
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/two", "Liz Lemon");
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/one", "Troy Barnes");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/one", "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/two", "Liz Lemon");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/one", "Troy Barnes");
 
         var entries = RunnerNames.Record.Read(RunnersPath);
         Assert.Equal("Troy Barnes", entries["/Users/x/code/one"]);
@@ -155,11 +155,59 @@ public sealed class RunnerNamesTests : IDisposable
     }
 
     [Fact]
+    public void Key_with_no_profile_is_the_bare_path()
+    {
+        Assert.Equal("/Users/x/code/hatch", RunnerNames.Record.Key(null, "/Users/x/code/hatch"));
+    }
+
+    [Fact]
+    public void Key_with_a_profile_differs_from_the_bare_path()
+    {
+        var key = RunnerNames.Record.Key("prod", "/Users/x/code/hatch");
+
+        Assert.Contains("|", key);
+        Assert.NotEqual(RunnerNames.Record.Key(null, "/Users/x/code/hatch"), key);
+    }
+
+    [Fact]
+    public void A_record_file_in_todays_form_still_reads()
+    {
+        File.WriteAllLines(RunnersPath, ["/Users/x/code/one=Jeff Winger", "/Users/x/code/two=Liz Lemon"]);
+
+        var entries = RunnerNames.Record.Read(RunnersPath);
+        Assert.Equal("Jeff Winger", entries["/Users/x/code/one"]);
+        Assert.Equal("Liz Lemon", entries["/Users/x/code/two"]);
+        Assert.Equal(2, entries.Count);
+    }
+
+    [Fact]
+    public void Setting_the_same_checkout_under_two_profiles_gives_two_entries()
+    {
+        const string root = "/Users/x/code/hatch";
+        RunnerNames.Record.Set(RunnersPath, "a", root, "Jeff");
+        RunnerNames.Record.Set(RunnersPath, "b", root, "Troy");
+
+        var entries = RunnerNames.Record.Read(RunnersPath);
+        Assert.Equal("Jeff", entries[RunnerNames.Record.Key("a", root)]);
+        Assert.Equal("Troy", entries[RunnerNames.Record.Key("b", root)]);
+        Assert.DoesNotContain(RunnerNames.Record.Key(null, root), entries.Keys);
+    }
+
+    [Fact]
+    public void Setting_with_no_profile_still_writes_the_old_shape()
+    {
+        const string root = "/Users/x/code/hatch";
+        RunnerNames.Record.Set(RunnersPath, null, root, "Jeff");
+
+        Assert.Equal([$"{root}=Jeff"], File.ReadAllLines(RunnersPath));
+    }
+
+    [Fact]
     public void The_file_is_written_mode_600_where_the_platform_has_modes()
     {
         if (OperatingSystem.IsWindows()) return;
 
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/hatch", "Jeff Winger");
 
         var mode = File.GetUnixFileMode(RunnersPath);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, mode);
@@ -175,7 +223,7 @@ public sealed class RunnerNamesTests : IDisposable
     [Fact]
     public void Reading_the_record_prints_no_allowlist_warning()
     {
-        RunnerNames.Record.Set(RunnersPath, "/Users/x/code/hatch", "Jeff Winger");
+        RunnerNames.Record.Set(RunnersPath, null, "/Users/x/code/hatch", "Jeff Winger");
 
         var original = Console.Error;
         var captured = new StringWriter();

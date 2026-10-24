@@ -1224,7 +1224,7 @@ public sealed class GoToWorkTests
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
         var runnerName = await Checkout.RunnerAsync(
-            null, Checkout.Host(), elsewhere, null, default, h.Runtime.RunnersPath);
+            null, Checkout.Host(), elsewhere, null, null, default, h.Runtime.RunnersPath);
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", elsewhere], default));
 

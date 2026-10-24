@@ -95,7 +95,7 @@ if (command == "config")
     var fold = Settings.Layers(checkoutEnv, environment, profileFile: profileFile);
     var configured = fold("HATCH_RUNNER").Value;
     var configRunnerName = await ResolveRunnerAsync(
-        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, CancellationToken.None);
+        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, null, CancellationToken.None);
 
     return await new ConfigCommand(
             say, new Input(), environment, checkoutEnv, configRunnerName, Root: root,
@@ -126,7 +126,7 @@ if (command == "inbox")
         out var inboxAdapter, out var inboxRefusal))
         return 0;
 
-    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, CancellationToken.None);
+    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, null, CancellationToken.None);
     using var hooked = new HatchClient(settings, inboxRunnerName);
     return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, inboxAdapter.HookOutput)
         .RunAsync(rest, CancellationToken.None);
@@ -158,7 +158,7 @@ foreach (var stray in strays)
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
 var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : here;
-var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, CancellationToken.None);
+var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, null, CancellationToken.None);
 
 // A lambda rather than say.Complain directly: `say` is reassigned below to a
 // LiveTerminal once the readout is known to apply, and a call made after that
@@ -367,7 +367,7 @@ PosixSignalRegistration? Handle(PosixSignal signal)
 /// this one exists only long enough to read <c>GET /api/hatch/runners</c>, and
 /// its own name never reaches the board for anything else.
 /// </remarks>
-async Task<string> ResolveRunnerAsync(string? origin, string? key, string? configured, string forRoot, CancellationToken ct)
+async Task<string> ResolveRunnerAsync(string? origin, string? key, string? configured, string forRoot, string? profile, CancellationToken ct)
 {
     var host = Checkout.Host();
 
@@ -376,7 +376,7 @@ async Task<string> ResolveRunnerAsync(string? origin, string? key, string? confi
         : new HatchClient(new Settings { Base = origin.TrimEnd('/'), Key = key ?? "" }, Checkout.Where(host, forRoot));
 
     return await Checkout.RunnerAsync(
-        configured, host, forRoot, lookupClient is null ? null : new Board(lookupClient), ct);
+        configured, host, forRoot, profile, lookupClient is null ? null : new Board(lookupClient), ct);
 }
 
 internal partial class Program

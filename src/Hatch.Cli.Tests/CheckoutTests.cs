@@ -128,14 +128,14 @@ public sealed class CheckoutTests : IDisposable
     {
         Assert.Equal(
             "the-box",
-            await Checkout.RunnerAsync("the-box", "kestrel", "/Users/x/code/Hatch", null, default, RunnersPath));
+            await Checkout.RunnerAsync("the-box", "kestrel", "/Users/x/code/Hatch", null, null, default, RunnersPath));
     }
 
     [Fact]
     public async Task A_long_configured_runner_loses_its_head_rather_than_its_tail()
     {
         var deep = "/" + string.Join('/', Enumerable.Repeat("a-directory-with-a-long-name", 20)) + "/Hatch";
-        var runner = await Checkout.RunnerAsync(deep, "kestrel", "/Users/x/code/Hatch", null, default, RunnersPath);
+        var runner = await Checkout.RunnerAsync(deep, "kestrel", "/Users/x/code/Hatch", null, null, default, RunnersPath);
 
         // The server refuses a longer one, and a refused claim is a loop that
         // cannot start.
@@ -152,8 +152,8 @@ public sealed class CheckoutTests : IDisposable
     {
         var tree = Tree("one");
 
-        var first = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
-        var second = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
+        var first = await Checkout.RunnerAsync(null, "kestrel", tree, null, null, default, RunnersPath);
+        var second = await Checkout.RunnerAsync(null, "kestrel", tree, null, null, default, RunnersPath);
 
         Assert.Equal(first, second);
         Assert.Contains(first, RunnerNames.All);
@@ -161,12 +161,39 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
+    public async Task The_same_checkout_under_two_profiles_gets_two_names()
+    {
+        var tree = Tree("one");
+
+        var a = await Checkout.RunnerAsync(null, "kestrel", tree, "a", null, default, RunnersPath);
+        var b = await Checkout.RunnerAsync(null, "kestrel", tree, "b", null, default, RunnersPath);
+        var aAgain = await Checkout.RunnerAsync(null, "kestrel", tree, "a", null, default, RunnersPath);
+
+        Assert.NotEqual(a, b);
+        Assert.Equal(a, aAgain);
+    }
+
+    [Fact]
+    public async Task Two_no_checkout_loops_in_two_workspaces_get_two_names()
+    {
+        var one = Tree("workspace-one");
+        var two = Tree("workspace-two");
+
+        var first = await Checkout.RunnerAsync(null, "kestrel", one, null, null, default, RunnersPath);
+        var second = await Checkout.RunnerAsync(null, "kestrel", two, null, null, default, RunnersPath);
+
+        Assert.NotEqual(first, second);
+        Assert.Equal(first, await Checkout.RunnerAsync(null, "kestrel", one, null, null, default, RunnersPath));
+        Assert.Equal(second, await Checkout.RunnerAsync(null, "kestrel", two, null, null, default, RunnersPath));
+    }
+
+    [Fact]
     public async Task A_recorded_name_beats_a_fresh_choice()
     {
         var tree = Tree("one");
-        RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(tree), "Some Recorded Name");
+        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(tree), "Some Recorded Name");
 
-        Assert.Equal("Some Recorded Name", await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath));
+        Assert.Equal("Some Recorded Name", await Checkout.RunnerAsync(null, "kestrel", tree, null, null, default, RunnersPath));
     }
 
     [Fact]
@@ -175,8 +202,8 @@ public sealed class CheckoutTests : IDisposable
         var tree = Tree("one");
         var trailingSlash = tree + Path.DirectorySeparatorChar;
 
-        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, default, RunnersPath);
-        var again = await Checkout.RunnerAsync(null, "kestrel", trailingSlash, null, default, RunnersPath);
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, null, default, RunnersPath);
+        var again = await Checkout.RunnerAsync(null, "kestrel", trailingSlash, null, null, default, RunnersPath);
 
         Assert.Equal(chosen, again);
         Assert.Single(RunnerNames.Record.Read(RunnersPath));
@@ -185,8 +212,8 @@ public sealed class CheckoutTests : IDisposable
     [Fact]
     public async Task Two_checkouts_on_one_machine_never_share_a_name_even_hashing_to_the_same_slot()
     {
-        var one = await Checkout.RunnerAsync(null, "kestrel", Tree("one"), null, default, RunnersPath);
-        var two = await Checkout.RunnerAsync(null, "kestrel", Tree("two"), null, default, RunnersPath);
+        var one = await Checkout.RunnerAsync(null, "kestrel", Tree("one"), null, null, default, RunnersPath);
+        var two = await Checkout.RunnerAsync(null, "kestrel", Tree("two"), null, null, default, RunnersPath);
 
         Assert.NotEqual(one, two);
     }
@@ -206,7 +233,7 @@ public sealed class CheckoutTests : IDisposable
         var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);
         var board = new Board(client);
 
-        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, board, default, RunnersPath);
 
         Assert.NotEqual(wouldChoose, chosen);
     }
@@ -224,7 +251,7 @@ public sealed class CheckoutTests : IDisposable
         var client = new HatchClient(new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, "lookup", wire);
         var board = new Board(client);
 
-        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, board, default, RunnersPath);
 
         Assert.NotEqual(wouldChoose, chosen);
     }
@@ -239,7 +266,7 @@ public sealed class CheckoutTests : IDisposable
         // No rule stubbed on the wire, so the read 404s the way an unreachable
         // or too-old Hatch would - and a name is still chosen rather than the
         // whole command failing over it.
-        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, board, default, RunnersPath);
+        var chosen = await Checkout.RunnerAsync(null, "kestrel", tree, null, board, default, RunnersPath);
 
         Assert.Contains(chosen, RunnerNames.All);
     }
