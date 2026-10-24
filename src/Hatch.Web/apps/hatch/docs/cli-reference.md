@@ -70,8 +70,10 @@ for the name the board should call this runner. The key may be left blank
 against a Hatch with its wall off, where calls name themselves with a runner
 header instead. Never put it in a repository, either way.
 
-- `--show` says what is set and which layer each value came from. What it
-  prints is in [the runner](the-runner#what---show-prints).
+- `--show` says what is set and which layer each value came from, including an
+  `identity:` line naming who `/api/hatch/me` says the caller is - printed as
+  `<unreachable>` rather than failing when the origin is unset or does not
+  answer. What it prints is in [the runner](the-runner#what---show-prints).
 - `--origin <origin>` writes the origin alone, asking nothing, and leaves the
   key and everything else as they were.
 - `--key <key>` writes the key alone, and needs an origin already set. A key on

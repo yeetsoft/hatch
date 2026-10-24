@@ -21,7 +21,8 @@ public sealed class ConfigCommandTests : IDisposable
         string? root = null,
         string runnerName = "test:/checkout",
         Func<Settings, CancellationToken, Task<IReadOnlyList<string>>>? liveRunners = null,
-        Func<string, bool>? checkoutIgnoresEnv = null) =>
+        Func<string, bool>? checkoutIgnoresEnv = null,
+        Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
         {
@@ -30,6 +31,7 @@ public sealed class ConfigCommandTests : IDisposable
             Probe = probe ?? ((_, _, _) => Task.FromResult<string?>("To Do, In Progress, Done")),
             LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<string>>([])),
             CheckoutIgnoresEnv = checkoutIgnoresEnv ?? (_ => true),
+            MeProbe = meProbe ?? ((_, _, _) => Task.FromResult<MeDto?>(new MeDto("key", "stub", null, true, false, false))),
         };
 
     private string Said => string.Join("\n", _say.Said);
@@ -734,6 +736,44 @@ public sealed class ConfigCommandTests : IDisposable
             .RunAsync(["--show"], default);
 
         Assert.Contains("runner:           the-box  (HATCH_RUNNER, exported)", Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_a_keys_identity_with_its_owner_and_scopes()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
+                meProbe: (_, _, _) => Task.FromResult<MeDto?>(
+                    new MeDto("key", "ada-key", "admin", true, false, false, "Ada", ["hatch"])))
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("identity:         key \"ada-key\", owned by Ada, scopes: hatch", Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_a_runners_identity_by_its_name()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
+                meProbe: (_, _, _) => Task.FromResult<MeDto?>(new MeDto("runner", "Morty", null, true, false, false)))
+            .RunAsync(["--show"], default);
+
+        Assert.Contains("identity:         calls go out as \"Morty\"", Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_unreachable_when_meProbe_throws_and_still_exits_zero()
+    {
+        var code = await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
+                meProbe: (_, _, _) => throw new HatchException("boom"))
+            .RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("identity:         <unreachable>", Said);
     }
 
     // ---- --key ----
