@@ -820,6 +820,12 @@ export interface Board {
       is off, never wherever it is merely missing - a done card stays on the
       board forever only when an operator set this to 0. */
   doneHorizonHours?: number | null;
+  /** The stories the horizon folded out of `issues`: closed before the
+      cutoff, in a terminal column, whose parent epic is still on the board
+      and not deferred - an epic in a deferred column drops its stories too.
+      So an epic card can count them. Optional so existing Board fixtures
+      still type-check; the server always sends the list, never null. */
+  pastHorizon?: IssueCard[];
 }
 
 // ---- The importer ----
