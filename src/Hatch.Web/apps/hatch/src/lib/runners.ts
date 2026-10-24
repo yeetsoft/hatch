@@ -14,6 +14,7 @@
 
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
+import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import type { Runner, RunnerPatchRequest } from '../types';
 
@@ -156,6 +157,17 @@ export function repositoriesLabel(runner: Runner): string | null {
   if (runner.repositories.length === 0) return null;
   const repos = runner.repositories.join(', ');
   return runner.clones ? `${repos}, clones what it lacks` : repos;
+}
+
+/** A runner's own build, as the row says it: a short sha and how long ago,
+    `'dev build'` for an unstamped one, or null for an older CLI that has
+    never reported one at all - the one case with nothing to say, mirrored
+    on BuildStamp's own `revision === null` rule. */
+export function runnerBuildLabel(runner: Runner, now: Date): string | null {
+  if (runner.revision === null) return null;
+  if (!isStamped(runner.revision)) return 'dev build';
+  const phrase = buildTimePhrase(runner.revision, runner.builtAt, now);
+  return phrase ? `${shortSha(runner.revision)} · ${phrase.relative}` : shortSha(runner.revision);
 }
 
 /** A runner's tags, joined - or null where it has named none. */

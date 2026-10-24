@@ -396,6 +396,10 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   for: null,
   canControl: true,
   order: null,
+  revision: null,
+  sequence: null,
+  builtAt: null,
+  boardDrift: 'Unknown',
   ...over,
 });
 
