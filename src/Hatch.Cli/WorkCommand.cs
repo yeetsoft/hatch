@@ -304,6 +304,14 @@ public sealed class WorkCommand(Runtime runtime)
         // one to, and the row ages out on its own once this exits. The one
         // refusal that is not weather still ends the run, before anything is
         // claimed.
+
+        // Inert outside a checkout that actually holds this source - an
+        // operator running `hatch` against their own unrelated project has
+        // none of it to compare against.
+        var source = Directory.Exists(Path.Combine(runtime.Root, "src", "Hatch.Cli"))
+            ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
+            : null;
+
         var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: RunnerKinds.Once,
@@ -313,7 +321,9 @@ public sealed class WorkCommand(Runtime runtime)
                 Agent: runtime.Adapter.Id,
                 Revision: runtime.CliRevision.Revision,
                 Sequence: runtime.CliRevision.Sequence,
-                BuiltAt: runtime.CliRevision.BuiltAt),
+                BuiltAt: runtime.CliRevision.BuiltAt,
+                SourceRevision: source?.Sha,
+                SourceSequence: source?.Sequence),
             ct);
 
         if (beat.Refusal is { Length: > 0 } refusal)

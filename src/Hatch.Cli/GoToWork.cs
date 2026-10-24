@@ -1350,6 +1350,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
     {
         var usage = runtime.Readout.Snapshot();
 
+        // Inert outside a checkout that actually holds this source - an
+        // operator running `hatch` against their own unrelated project has
+        // none of it to compare against.
+        var source = Directory.Exists(Path.Combine(runtime.Root, "src", "Hatch.Cli"))
+            ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
+            : null;
+
         var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
@@ -1369,6 +1376,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Revision: runtime.CliRevision.Revision,
                 Sequence: runtime.CliRevision.Sequence,
                 BuiltAt: runtime.CliRevision.BuiltAt,
+                SourceRevision: source?.Sha,
+                SourceSequence: source?.Sequence,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
                 // Absent before this loop's first rate_limit_event - a restart
