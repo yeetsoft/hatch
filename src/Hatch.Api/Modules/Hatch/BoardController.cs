@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -24,6 +25,67 @@ namespace Hatch.Api.Modules.Hatch;
 public class BoardController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon) : ControllerBase
 {
+    /// <summary>
+    /// One row, shared by <see cref="GetBoard"/>'s two card queries - the board
+    /// list and the past-horizon list - so a column added to one card's shape
+    /// cannot drift from the other's.
+    /// </summary>
+    private sealed record CardRow(
+        long Id,
+        string ProjectKey,
+        int Number,
+        string Type,
+        string Title,
+        int StatusId,
+        long Rank,
+        string? ParentProjectKey,
+        int? ParentNumber,
+        DateTimeOffset? ReadyAt,
+        bool ReadyAtHasTime,
+        DateTimeOffset? DueAt,
+        bool DueAtHasTime,
+        Guid? AssigneePersonId,
+        Guid? AssigneeApiKeyId,
+        int Priority,
+        int PreApproval,
+        DateTimeOffset? StalledAt,
+        string? StalledWhy,
+        bool Held,
+        string? PullRequestUrl,
+        DateTimeOffset? ClosedAt,
+        ClaimSnapshot Claim);
+
+    /// <summary>
+    /// The projection itself, as an expression tree so it translates to SQL -
+    /// the same pattern as <c>PeopleController.ToDto</c>.
+    /// </summary>
+    private static readonly Expression<Func<EfHatchIssue, CardRow>> Row = i => new CardRow(
+        i.Id,
+        i.Project!.Key,
+        i.Number,
+        i.Type,
+        i.Title,
+        i.StatusId,
+        i.Rank,
+        i.Parent == null ? null : i.Parent.Project!.Key,
+        i.Parent == null ? (int?)null : i.Parent.Number,
+        i.ReadyAt,
+        i.ReadyAtHasTime,
+        i.DueAt,
+        i.DueAtHasTime,
+        i.AssigneePersonId,
+        i.AssigneeApiKeyId,
+        i.Priority,
+        i.PreApproval,
+        i.StalledAt,
+        i.StalledWhy,
+        i.Held,
+        i.PullRequestUrl,
+        i.ClosedAt,
+        new ClaimSnapshot(
+            i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+            i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt));
+
     [HttpGet]
     public async Task<ActionResult<BoardDto>> GetBoard(CancellationToken ct)
     {
@@ -73,44 +135,41 @@ public class BoardController(
             .OrderBy(i => i.StatusId)
             .ThenBy(i => i.Rank)
             .ThenBy(i => i.Id)
-            .Select(i => new
-            {
-                i.Id,
-                ProjectKey = i.Project!.Key,
-                i.Number,
-                i.Type,
-                i.Title,
-                i.StatusId,
-                i.Rank,
-                ParentProjectKey = i.Parent == null ? null : i.Parent.Project!.Key,
-                ParentNumber = i.Parent == null ? (int?)null : i.Parent.Number,
-                i.ReadyAt,
-                i.ReadyAtHasTime,
-                i.DueAt,
-                i.DueAtHasTime,
-                i.AssigneePersonId,
-                i.AssigneeApiKeyId,
-                i.Priority,
-                i.PreApproval,
-                i.StalledAt,
-                i.StalledWhy,
-                i.Held,
-                i.PullRequestUrl,
-                i.ClosedAt,
-                Claim = new ClaimSnapshot(
-                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
-            })
+            .Select(Row)
             .ToListAsync(ct);
+
+        // The exact complement of the horizon filter above: a story closed
+        // before the cutoff, in a terminal column, whose parent epic is still
+        // on the board and not itself dropped by the horizon or sitting in a
+        // deferred column. One query for the whole board, run only where the
+        // horizon is on - with it off there is nothing for it to find.
+        var pastRows = cutoff is { } pastNotBefore
+            ? await db.Issues.AsNoTracking()
+                .Where(i => i.Type == "story"
+                    && terminalStatusIds.Contains(i.StatusId)
+                    && i.ClosedAt != null && i.ClosedAt < pastNotBefore
+                    && i.Parent != null && i.Parent.Type == "epic"
+                    && !i.Parent.Status!.IsDeferred
+                    && (!terminalStatusIds.Contains(i.Parent.StatusId)
+                        || i.Parent.ClosedAt == null || i.Parent.ClosedAt >= pastNotBefore))
+                .OrderBy(i => i.StatusId)
+                .ThenBy(i => i.Rank)
+                .ThenBy(i => i.Id)
+                .Select(Row)
+                .ToListAsync(ct)
+            : [];
 
         var priorities = await PriorityTree.ForAsync(db, ct);
 
-        issues = issues
-            .OrderBy(i => i.StatusId)
-            .ThenByDescending(i => priorities.Effective(i.Id).Level)
-            .ThenBy(i => i.Rank)
-            .ThenBy(i => i.Id)
+        List<CardRow> Sort(List<CardRow> rows) => rows
+            .OrderBy(r => r.StatusId)
+            .ThenByDescending(r => priorities.Effective(r.Id).Level)
+            .ThenBy(r => r.Rank)
+            .ThenBy(r => r.Id)
             .ToList();
+
+        issues = Sort(issues);
+        var past = Sort(pastRows);
 
         // Two more queries for the whole board, however many cards it holds:
         // the directory is memoized per request, so this is not a lookup a card.
@@ -118,12 +177,12 @@ public class BoardController(
         // resolves to null and the card draws nothing - the same answer the
         // issue page and the dispatcher give, at the same instant.
         var assignees = new Dictionary<long, AssigneeDto?>();
-        foreach (var i in issues)
+        foreach (var i in issues.Concat(past))
             assignees[i.Id] = await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct);
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
 
-        var cards = issues.Select(i =>
+        IssueCardDto Card(CardRow i)
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
@@ -157,8 +216,12 @@ public class BoardController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt);
-        }).ToList();
+        }
 
-        return new BoardDto(statusDtos, cards, wip?.ToDto(), horizon.Hours > 0 ? horizon.Hours : (int?)null);
+        var cards = issues.Select(Card).ToList();
+        var pastCards = past.Select(Card).ToList();
+
+        return new BoardDto(
+            statusDtos, cards, wip?.ToDto(), horizon.Hours > 0 ? horizon.Hours : (int?)null, pastCards);
     }
 }
