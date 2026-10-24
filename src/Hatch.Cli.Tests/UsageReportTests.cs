@@ -146,6 +146,15 @@ public sealed class UsageReportTests
     }
 
     [Fact]
+    public void AWeekThatNamesNoScope_isTheWholeWeek()
+    {
+        var window = Assert.Single(UsageReport.Parse([Fixtures.AssistantText("Current week: 28% used")], Now)!);
+
+        Assert.Equal("weekly", window.Window);
+        Assert.Equal("Weekly", window.Label);
+    }
+
+    [Fact]
     public void ATextWindowWithNoReset_hasNoResetInstant()
     {
         var windows = UsageReport.Parse([Fixtures.AssistantText("Current session: 4% used")], Now);

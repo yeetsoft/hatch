@@ -92,7 +92,8 @@ public static partial class UsageReport
             var (window, label) = match.Groups["kind"].Value.ToLowerInvariant() switch
             {
                 "session" => ("session", "Session"),
-                _ when scope.Equals("all models", StringComparison.OrdinalIgnoreCase) => ("weekly", "Weekly"),
+                // A week that names no scope is the account's whole week, not a model's.
+                _ when scope.Length == 0 || scope.Equals("all models", StringComparison.OrdinalIgnoreCase) => ("weekly", "Weekly"),
                 _ => ("weeklyModel", $"Weekly ({scope})"),
             };
 
