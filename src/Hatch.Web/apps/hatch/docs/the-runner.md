@@ -107,16 +107,17 @@ the runner needs one (*People, roles and keys*). A call that goes through
 prints `reached <origin> - columns: …`, naming the board's own columns, so the
 address and the key are both known good before anything is claimed.
 
-## Three layers
+## Four layers
 
-Every setting is read from three places, highest first:
+Every setting is read from four places, highest first:
 
 1. an exported variable;
 2. `scripts/.env` in the checkout you are standing in;
-3. the per-user file `hatch config` writes.
+3. the named profile file, when one resolved (`--profile`, `HATCH_PROFILE`, or the active-profile pointer file);
+4. the per-user file `hatch config` writes.
 
 `hatch config --here` writes the second layer directly - every other write
-mode writes the third ([`config`](cli-reference#config)).
+mode writes the fourth ([`config`](cli-reference#config)).
 
 `hatch config --show` prints where that file is, so no path is written here.
 It is mode 600 wherever the platform has modes; on Windows it inherits the
@@ -129,9 +130,10 @@ comments skipped, one layer of matching quotes stripped off the value. An
 empty value never wins over a layer beneath it that is set, and a name not on
 the allowed list is ignored with a line saying so, rather than silently.
 
-Five settings are read from the environment only: `HATCH_HEARTBEAT`,
-`HATCH_RETRY_SECONDS`, `HATCH_ROOT`, `HATCH_NIGHT_STATE` and `HATCH_RTK`. A
-file line naming one of them is ignored, with a warning that says so.
+Six settings are read from the environment only: `HATCH_HEARTBEAT`,
+`HATCH_RETRY_SECONDS`, `HATCH_ROOT`, `HATCH_NIGHT_STATE`, `HATCH_RTK` and
+`HATCH_PROFILE`. A file line naming one of them is ignored, with a warning
+that says so.
 `HATCH_BASE_BRANCH` has no `config` flag: export it, or put it in
 `scripts/.env`.
 

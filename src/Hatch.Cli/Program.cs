@@ -44,6 +44,35 @@ var environment = Environment.GetEnvironmentVariables()
     .Cast<System.Collections.DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => e.Value as string);
 
+if (!Program.TryExtractProfile(rest, out rest, out var profileArg, out var extractRefusal))
+{
+    say.Complain(extractRefusal);
+    return 1;
+}
+
+string? profileFile = null;
+// `use` is how a pointer naming a missing profile gets repaired, so it cannot
+// be refused on that pointer; it reads no settings, so it has no layer to build.
+if (command is not ("config" or "use"))
+{
+    if (!Settings.TryResolveProfile(profileArg, environment, out _, out profileFile, out var profileRefusal))
+    {
+        // Mirrors the origin-refusal shape below (the TryLoad check further
+        // down), inbox exception included - a hook that cannot resolve its
+        // profile fails the same silent way one that cannot load settings does.
+        if (command == "inbox") return 0;
+        say.Complain(profileRefusal);
+        return 1;
+    }
+}
+else if (command == "config" && profileArg is not null && Settings.ValidProfileName(profileArg))
+{
+    // config never calls TryResolveProfile - an explicit name here may not
+    // exist yet (HA-1464 creates it) and TryResolveProfile refuses exactly
+    // that case on purpose. Guard the shape only, never existence.
+    profileFile = Settings.ProfilePath(profileArg);
+}
+
 // Where the increment happens. hatch.sh names it, because it knows where it
 // lives; a runner started by hand finds it by walking up from wherever it was
 // started, which is what every other tool in a repository does. Not every
@@ -63,7 +92,7 @@ var checkoutEnv = root is null ? null : Path.Combine(root, "scripts", ".env");
 // refuse for want of the origin it is there to ask for.
 if (command == "config")
 {
-    var fold = Settings.Layers(checkoutEnv, environment);
+    var fold = Settings.Layers(checkoutEnv, environment, profileFile: profileFile);
     var configured = fold("HATCH_RUNNER").Value;
     var configRunnerName = await ResolveRunnerAsync(
         fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, CancellationToken.None);
@@ -75,7 +104,7 @@ if (command == "config")
 // Two local files and no board, so it too has to work with nothing configured.
 if (command == "use") return new UseCommand(say).Run(rest);
 
-if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missing))
+if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missing, profileFile: profileFile))
 {
     // A hook that fails is a session that is told so. Nothing to ask, nothing
     // said: the message stays unread and a later step asks again.
@@ -382,6 +411,43 @@ internal partial class Program
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
+
+    /// <summary>
+    /// Strips <c>--profile &lt;name&gt;</c> out of <paramref name="args"/> wherever it
+    /// appears - before, between or after every other flag - the same way
+    /// <c>ConfigCommand.RunAsync</c> strips <c>--here</c>, but value-taking, closer
+    /// in shape to <c>WorkCommand</c>'s <c>--repo</c>/<c>--workspace</c> pairs. A
+    /// trailing bare <c>--profile</c> with nothing after it is a refusal rather
+    /// than a silent drop; repeated <c>--profile</c> leaves the last one standing,
+    /// the same as <c>--model</c>/<c>--agent</c> elsewhere.
+    /// </summary>
+    internal static bool TryExtractProfile(string[] args, out string[] rest, out string? profile, out string refusal)
+    {
+        var kept = new List<string>(args.Length);
+        profile = null;
+        refusal = "";
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] != "--profile")
+            {
+                kept.Add(args[i]);
+                continue;
+            }
+
+            if (i + 1 >= args.Length)
+            {
+                rest = args;
+                refusal = "hatch: --profile takes a name";
+                return false;
+            }
+
+            profile = args[++i].Trim();
+        }
+
+        rest = kept.ToArray();
+        return true;
+    }
 
     public static readonly string[] Usage =
     [

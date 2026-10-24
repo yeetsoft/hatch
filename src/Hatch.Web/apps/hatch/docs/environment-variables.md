@@ -23,7 +23,7 @@ One table, grouped by the bold label in the first column. "Settings file" says
 whether the `hatch` binary will take the variable from `scripts/.env` in the
 checkout (which `hatch config --here` writes directly) or from the per-user
 file `hatch config` writes otherwise, as well as from the environment; those
-three layers are explained in [the runner](the-runner#three-layers). A file
+four layers are explained in [the runner](the-runner#four-layers). A file
 line naming a variable that says **no** is skipped, with a line on stderr
 saying so; those are read from the environment alone.
 
