@@ -137,6 +137,17 @@ that says so.
 `HATCH_BASE_BRANCH` has no `config` flag: export it, or put it in
 `scripts/.env`.
 
+**Warn:** `HATCH_RUNNER` is read only from the first two layers - an exported
+variable, or this checkout's own `scripts/.env` - never the profile file or
+the per-user file, whether or not a profile is active. A name belongs to a
+checkout, not to a person carried between them; a value found in the profile
+or the per-user file is ignored, with a line saying which held it.
+
+A profile with no `HATCH_WORKSPACE` of its own does not share the no-profile
+default: it gets its own `hatch/workspaces/<profile>` directory, beside -
+never inside - the no-profile `hatch/workspace`, so a clone in the one can
+never collide with a profile subdirectory in the other.
+
 These are the settings `hatch --help` lists, with their defaults:
 
 ```

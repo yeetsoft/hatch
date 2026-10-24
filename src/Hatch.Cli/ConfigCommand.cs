@@ -918,7 +918,7 @@ public sealed record ConfigCommand(
     /// <summary>What is set, and which of the three layers it came from.</summary>
     private async Task<int> ShowAsync(CancellationToken ct)
     {
-        var (fold, ignoredKeyLayer) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var (fold, ignoredKeyLayer, _) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");

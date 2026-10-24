@@ -141,6 +141,7 @@ if (command == "inbox")
 
 // After `inbox`, whose output is a document the session parses.
 if (settings.KeyNote is { } keyNote) say.Complain(keyNote);
+if (settings.RunnerNote is { } runnerNote) say.Complain(runnerNote);
 
 // The standing checkout, if there is one, then every checkout HATCH_REPOS
 // names - refused here, before any lock is taken and before anything is

@@ -464,6 +464,44 @@ public sealed class SettingsTests : IDisposable
             Settings.DefaultWorkspacePath());
     }
 
+    /// <summary>Regression guard: a null or absent profile keeps today's path, unchanged by HA-1484.</summary>
+    [Fact]
+    public void DefaultWorkspacePath_with_no_profile_is_todays_path()
+    {
+        Assert.Equal(
+            Path.Combine(Path.GetDirectoryName(Settings.UserConfigPath())!, "workspace"),
+            Settings.DefaultWorkspacePath());
+        Assert.Equal(Settings.DefaultWorkspacePath(), Settings.DefaultWorkspacePath(null));
+        Assert.Equal(Settings.DefaultWorkspacePath(), Settings.DefaultWorkspacePath(""));
+    }
+
+    [Fact]
+    public void DefaultWorkspacePath_is_per_profile()
+    {
+        var a = Settings.DefaultWorkspacePath("a");
+        var b = Settings.DefaultWorkspacePath("b");
+        var none = Settings.DefaultWorkspacePath();
+        var workspaces = Path.Combine(Path.GetDirectoryName(Settings.UserConfigPath())!, "workspaces");
+
+        Assert.NotEqual(a, b);
+        Assert.NotEqual(a, none);
+        Assert.NotEqual(b, none);
+        Assert.StartsWith(workspaces, a);
+        Assert.StartsWith(workspaces, b);
+    }
+
+    [Fact]
+    public void A_profile_with_no_workspace_set_gets_its_own_default()
+    {
+        var profile = Write("myprofile", "HATCH_BASE=https://from-the-profile");
+
+        Assert.True(Settings.TryLoad(
+            null, Env(), out var settings, out _, Path.Combine(_temp, "does-not-exist"), profile));
+
+        Assert.Equal(Settings.DefaultWorkspacePath("myprofile"), settings.Workspace);
+        Assert.True(settings.WorkspaceDefaulted);
+    }
+
     [Theory]
     [InlineData("off")]
     [InlineData("OFF")]
@@ -784,14 +822,20 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal("codex", settings.Agent);
     }
 
+    /// <summary>
+    /// Everything but <c>HATCH_RUNNER</c> still reads from the per-user file
+    /// with no profile active, exactly as before HA-1484 - a name belongs to a
+    /// checkout, never a person, with or without a profile.
+    /// </summary>
     [Fact]
-    public void With_no_profile_the_same_user_file_reads_every_value_as_today()
+    public void With_no_profile_the_same_user_file_reads_every_value_as_today_except_HATCH_RUNNER()
     {
         var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_RUNNER=mine", "HATCH_TAGS=gpu");
 
         Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
 
-        Assert.Equal("mine", settings.Runner);
+        Assert.Null(settings.Runner);
+        Assert.Contains($"HATCH_RUNNER in {user} is ignored", settings.RunnerNote);
         Assert.Contains("gpu", settings.Tags);
     }
 
@@ -952,6 +996,57 @@ public sealed class SettingsTests : IDisposable
         Assert.Null(name);
         Assert.Null(file);
         Assert.Equal("", refusal);
+    }
+
+    // ---- a runner name belongs to a checkout ----
+
+    [Fact]
+    public void HATCH_RUNNER_in_the_per_user_file_is_ignored_with_a_note()
+    {
+        var user = Write("user.config", "HATCH_RUNNER=from-the-user-file");
+
+        Assert.True(Settings.TryLoad(null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _, user));
+
+        Assert.Null(settings.Runner);
+        Assert.Contains($"HATCH_RUNNER in {user} is ignored", settings.RunnerNote);
+    }
+
+    [Fact]
+    public void HATCH_RUNNER_in_a_profile_is_ignored_with_a_note()
+    {
+        var profile = Write("profile.config", "HATCH_BASE=https://mine", "HATCH_RUNNER=from-the-profile");
+        var user = Path.Combine(_temp, "does-not-exist");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
+
+        Assert.Null(settings.Runner);
+        Assert.Contains($"HATCH_RUNNER in {profile} is ignored", settings.RunnerNote);
+    }
+
+    [Fact]
+    public void An_exported_HATCH_RUNNER_still_wins_over_a_profile()
+    {
+        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile", "HATCH_RUNNER=from-the-profile");
+        var user = Path.Combine(_temp, "does-not-exist");
+
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_RUNNER", "from-the-environment")), out var settings, out _, user, profile));
+
+        Assert.Equal("from-the-environment", settings.Runner);
+        Assert.Null(settings.RunnerNote);
+    }
+
+    [Fact]
+    public void A_checkouts_own_scripts_env_HATCH_RUNNER_still_wins()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://from-the-checkout", "HATCH_RUNNER=from-the-checkout");
+        var profile = Write("profile.config", "HATCH_RUNNER=from-the-profile");
+        var user = Path.Combine(_temp, "does-not-exist");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, user, profile));
+
+        Assert.Equal("from-the-checkout", settings.Runner);
+        Assert.Null(settings.RunnerNote);
     }
 
     public void Dispose()
