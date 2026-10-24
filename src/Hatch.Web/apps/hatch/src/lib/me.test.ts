@@ -17,6 +17,14 @@ describe('describeMe', () => {
     expect(describeMe(null)).toBeNull();
   });
 
+  it('draws nothing for a key', () => {
+    expect(describeMe(me({ kind: 'key' }))).toBeNull();
+  });
+
+  it('draws nothing for a runner', () => {
+    expect(describeMe(me({ kind: 'runner' }))).toBeNull();
+  });
+
   it('hints at an unnamed local person and offers nothing else', () => {
     expect(describeMe(me({}))).toEqual({
       name: 'friend',

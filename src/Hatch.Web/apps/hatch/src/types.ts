@@ -1619,8 +1619,11 @@ export interface ExhaustedRunner {
 export interface Me {
   /** `local` when the wall is off, `person` when a grant holds a person, `none`
       when the wall is off and nobody local answered either - a browser that has
-      not signed in. */
-  kind: 'local' | 'person' | 'none';
+      not signed in. `key` and `runner` mirror the two other MeDto.Kind values,
+      but a browser never actually receives either - only a Bearer key or an
+      X-Hatch-Runner header reaches those branches, and a browser's fetch sends
+      neither. */
+  kind: 'local' | 'person' | 'none' | 'key' | 'runner';
   /** What events written from this browser will say. Empty for `none`. */
   name: string;
   /** Null for `local`, which has no role to gate on. */

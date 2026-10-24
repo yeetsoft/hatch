@@ -14,7 +14,7 @@ export interface MeView {
 }
 
 export function describeMe(me: Me | null): MeView | null {
-  if (me === null) return null;
+  if (me === null || me.kind === 'key' || me.kind === 'runner') return null;
 
   // Not signed in: a name would be a guess and there is nothing to sign out
   // of, so the only thing to offer is the way in, whatever canSignIn says.
