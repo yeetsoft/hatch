@@ -13,7 +13,7 @@ A usage mistake is different from a failed call (see [When a call
 fails](#when-a-call-fails)): it prints `hatch: ` and what was wrong, a blank
 line, then that command's usage block, all on standard error, and exits `1`.
 Which origin it talks to, and which key it names itself with, come
-from three layers of settings, highest first: [the runner](the-runner) has how
+from four layers of settings, highest first: [the runner](the-runner) has how
 to get the binary and what those layers are, and [`environment-variables`](environment-variables) has
 every variable.
 
