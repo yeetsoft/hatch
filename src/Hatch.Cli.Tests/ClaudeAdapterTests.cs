@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -95,6 +97,44 @@ public sealed class ClaudeAdapterTests : IDisposable
     public void The_probe_redirects_its_standard_error_so_it_cannot_write_under_the_readout()
     {
         Assert.True(Adapter().ProbeStart("/tmp").RedirectStandardError);
+    }
+
+    /// <summary>HA-1457: a probe already known to cost a turn says so and asks nothing, rather than spawning again in silence.</summary>
+    [Fact]
+    public async Task ProbeAsync_says_so_and_asks_nothing_once_already_known_costly()
+    {
+        var logged = new List<string>();
+        var adapter = new ClaudeAdapter(_bin, warn: logged.Add);
+        Assert.True(adapter.CanSpawn(out _));
+
+        // Same instant the real trip happens in (a probe that came back having
+        // cost a turn) - reached directly rather than by actually spending one,
+        // the same reach this file's own doc comment already claims.
+        typeof(ClaudeAdapter).GetField("_probeCostly", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(adapter, true);
+
+        var result = await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+        Assert.Null(result);
+        Assert.Contains(logged, l => l.Contains("probe skipped", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1457: once the process exits, the probe names its exit code and how many lines it read - here, a real spawn of a binary that is not the claude CLI, so the exit is a predictable failure with nothing on stdout.</summary>
+    [Fact]
+    public async Task ProbeAsync_logs_the_exit_code_and_line_count_once_the_process_exits()
+    {
+        var git = Reach.Find("git", Environment.GetEnvironmentVariable("PATH"));
+        Assert.NotNull(git);
+
+        var logged = new List<string>();
+        var adapter = new ClaudeAdapter(git, warn: logged.Add);
+        Assert.True(adapter.CanSpawn(out _));
+
+        var result = await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+        Assert.NotNull(result);
+        Assert.Empty(result);
+        Assert.Contains(logged, l => l.Contains("/usage probe exited", StringComparison.Ordinal) && l.Contains("0 line(s)", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -18,6 +18,7 @@ public sealed class Tally
     private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
     private readonly DateTimeOffset _started;
+    private readonly Action<string>? _log;
 
     /// <summary>
     /// A fresh night, or one already part-spent - <paramref name="carried"/>
@@ -25,9 +26,10 @@ public sealed class Tally
     /// bound is measured against is seeded from it, which is what stops a
     /// restart from being a way to start the budget over.
     /// </summary>
-    public Tally(TimeProvider clock, NightState? carried = null)
+    public Tally(TimeProvider clock, NightState? carried = null, Action<string>? log = null)
     {
         _clock = clock;
+        _log = log;
         _moved = [.. carried?.Moved ?? []];
         _clamped = [.. carried?.Clamped ?? []];
         _stalled = [.. carried?.Stalled ?? []];
@@ -98,6 +100,9 @@ public sealed class Tally
     /// </summary>
     public void ClearExhausted()
     {
+        if (ExhaustedUntil is { } was)
+            _log?.Invoke($"hatch: Tally.ClearExhausted cleared ExhaustedUntil {was:O}");
+
         ExhaustedUntil = null;
         ExhaustedKnown = true;
         ExhaustedAt = null;
@@ -113,15 +118,25 @@ public sealed class Tally
     /// </summary>
     public void CorrectExhausted(UsageWindow? session)
     {
-        if (ExhaustedUntil is null || session is null) return;
+        if (ExhaustedUntil is not { } current || session is null) return;
 
-        if (session.Utilization < 1) { ClearExhausted(); return; }
+        if (session.Utilization < 1)
+        {
+            _log?.Invoke($"hatch: Tally.CorrectExhausted clearing - ExhaustedUntil was {current:O}, session.Utilization {session.Utilization} < 1");
+            ClearExhausted();
+            return;
+        }
 
         if (session.ResetsAt is { } resetsAt && resetsAt != ExhaustedUntil)
         {
+            _log?.Invoke($"hatch: Tally.CorrectExhausted correcting ExhaustedUntil {current:O} -> {resetsAt:O}, session.Utilization {session.Utilization}");
             ExhaustedUntil = TimeZoneInfo.ConvertTime(resetsAt, _clock.LocalTimeZone);
             ExhaustedKnown = true;
+            return;
         }
+
+        if (session.ResetsAt is null)
+            _log?.Invoke("hatch: Tally.CorrectExhausted - probe's session window carried no reset time while the wait is running");
     }
 
     /// <summary>
@@ -134,13 +149,16 @@ public sealed class Tally
     /// </summary>
     public void ClampExhausted(DateTimeOffset now)
     {
-        if (ExhaustedUntil is null || ExhaustedAt is not { } at) return;
+        if (ExhaustedUntil is not { } until || ExhaustedAt is not { } at) return;
 
         var length = ExhaustedWindow is { } window && UsageLimit.WindowLengths.TryGetValue(window, out var known)
             ? known
             : UsageLimit.WindowLengths["session"];
 
-        if (now - at >= length) ClearExhausted();
+        if (now - at < length) return;
+
+        _log?.Invoke($"hatch: Tally.ClampExhausted clamping - ExhaustedUntil {until:O} has sat {now - at} past its own window ({ExhaustedWindow ?? "session"} length {length})");
+        ClearExhausted();
     }
 
     /// <summary>The sentence naming what ended the run.</summary>
@@ -230,6 +248,8 @@ public sealed class Tally
         if (report.Cost is { } cost) Spent += cost;
         if (report.Unpriced) Unpriced++;
 
+        var before = ExhaustedUntil;
+
         // Set on every increment and cleared the moment one finishes without
         // hitting one - a person restarting the loop by hand is the only other
         // way this clears, since a fresh incarnation carries nothing forward.
@@ -237,6 +257,13 @@ public sealed class Tally
         ExhaustedKnown = report.UsageLimitResetKnown;
         ExhaustedAt = report.UsageLimited ? _clock.GetUtcNow() : null;
         ExhaustedWindow = report.UsageLimited ? report.UsageLimitWindow : null;
+
+        if (before != ExhaustedUntil)
+        {
+            var was = before is { } o ? o.ToString("O") : "none";
+            var now = ExhaustedUntil is { } n ? n.ToString("O") : "none";
+            _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {now} for {report.Key}");
+        }
 
         // A third list, because a usage limit is neither: nothing was moved,
         // and nothing is waiting on a person either - the next runner with
@@ -425,6 +452,18 @@ public sealed class SaidOnce
         _since = default;
         _last = default;
     }
+}
+
+/// <summary>
+/// The instant anything was last printed, shared across <c>LoopAsync</c> and
+/// <c>PassAsync</c> - a holder rather than a local, because the idle/busy/skipped
+/// prints the watchdog below has to see happen inside the latter. Not
+/// <see cref="Chatter"/>, whose own doc comment scopes it to the board
+/// heartbeat line alone.
+/// </summary>
+internal sealed class Printed
+{
+    public DateTimeOffset At { get; set; }
 }
 
 /// <summary>
@@ -791,7 +830,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
-            var tally = new Tally(runtime.Clock, carried)
+            var tally = new Tally(runtime.Clock, carried, log: runtime.Say.Line)
             {
                 MaxRuns = maxRuns,
                 MaxSpend = maxSpend,
@@ -903,6 +942,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var busy = new SaidOnce();
         var paused = new SaidOnce();
         var exhausted = new SaidOnce();
+        var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
 
         // Its own clock, independent of --interval - the three halves it
@@ -943,6 +983,18 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // and the decisions on HA-173.
         DateTimeOffset? probedAt = null;
 
+        // The probe's own last-known session reset - independent of
+        // ExhaustedUntil, which the reminder below cannot trust to judge
+        // staleness against, since it is exactly the value an incident can
+        // show was wrong.
+        DateTimeOffset? lastProbedResetsAt = null;
+
+        // What the previous due probe came back with, when it was not a
+        // usable window - null once a probe succeeds. Lets the "why" below
+        // print once per change rather than once per poll, the same reason
+        // SaidOnce exists.
+        string? lastProbeOutcome = null;
+
         // Set once an increment actually ran, off Pass.Worked, and read at the
         // top of the very next iteration: a session's own rate_limit_event has
         // just replaced the readout's reading with whatever the stream
@@ -962,10 +1014,31 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 {
                     probedAt = probeNow;
                     var probed = await probe.ProbeAsync(runtime.TempDirectory, ct);
-                    if (probed is not null && UsageReport.Parse(probed) is { } windows)
+                    var windows = probed is not null ? UsageReport.Parse(probed) : null;
+
+                    if (windows is { } found)
                     {
-                        runtime.Readout.SetUsage(windows, probeNow);
-                        tally.CorrectExhausted(windows.FirstOrDefault(w => w.Window == "session"));
+                        runtime.Readout.SetUsage(found, probeNow);
+                        var session = found.FirstOrDefault(w => w.Window == "session");
+                        lastProbedResetsAt = session?.ResetsAt;
+                        tally.CorrectExhausted(session);
+                        runtime.Say.Line(session is not null
+                            ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
+                            : "hatch: probe found no session window");
+                        lastProbeOutcome = null;
+                    }
+                    else
+                    {
+                        runtime.Say.Line("hatch: probe found no session window");
+
+                        var outcome = probed is null ? "probe returned nothing" : "the probe's lines did not parse";
+                        if (outcome != lastProbeOutcome)
+                        {
+                            lastProbeOutcome = outcome;
+                            var joined = probed is null ? "" : string.Join('\n', probed);
+                            var preview = joined.Length > 500 ? joined[..500] : joined;
+                            runtime.Say.Line($"hatch: {outcome} - {preview}");
+                        }
                     }
                 }
             }
@@ -1016,10 +1089,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     // A spawn would only fail, and the order is spent already.
                     line.Line = $"order spent - out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(limit, tally.ExhaustedKnown, runtime.Clock)}";
                     runtime.Say.Line($"hatch: {line.Line}");
+                    printed.At = runtime.Clock.GetUtcNow();
                     continue;
                 }
 
-                var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, interval, once, restart, line, ct,
+                var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, restart, line, ct,
                     orderedKey: ordering.Kind == RunnerOrderKinds.Work ? ordering.Key : null);
                 if (ordered == Pass.Worked) workedSinceProbe = true;
                 if (ordered == Pass.Fatal) return false;
@@ -1040,6 +1114,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 runtime.Say.Line(
                     $"hatch: this loop has been running {Format.Duration((long)(now - restart.Born).TotalSeconds)} - restarting to pick up anything that landed");
                 runtime.Say.Line($"hatch:   {tally.SoFar()}");
+                printed.At = runtime.Clock.GetUtcNow();
                 return true;
             }
 
@@ -1058,7 +1133,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     ? "paused - waiting to be set running again"
                     : "paused from the keyboard (p to resume)";
                 runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                await SayQuietlyAsync(paused, now, interval, once,
+                if (await SayQuietlyAsync(paused, now, interval, once,
                     digest: boardPaused ? "paused" : "paused-keyboard",
                     still: "hatch: still paused",
                     inFull: () =>
@@ -1067,7 +1142,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                             ? "hatch: the board has this runner paused - nothing will be picked up until it is set running"
                             : "hatch: paused from the keyboard - nothing will be picked up until it is set running again (p)");
                         return Task.CompletedTask;
-                    });
+                    }))
+                    printed.At = runtime.Clock.GetUtcNow();
 
                 // The board wins the sentence above when both are true, and
                 // wins the wake here too: a local p cannot read as having
@@ -1076,6 +1152,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // reason this loop is paused.
                 if (!await NapAsync(interval, tally, ct, wake: () => !boardPaused && tally.Controls?.Snapshot() is { Paused: false }))
                     return false;
+
+                Watchdog(printed);
 
                 // train is not on this path and keeps ticking regardless - the
                 // epic's own decision (HA-463) is that the merge train runs
@@ -1097,14 +1175,32 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 busy.Clear();
                 var waiting = $"out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(until, tally.ExhaustedKnown, runtime.Clock)}";
                 line.Line = waiting;
-                await SayQuietlyAsync(exhausted, now, interval, once,
+
+                var setAt = tally.ExhaustedAt is { } at ? $", set {at:O}" : "";
+                var window = tally.ExhaustedWindow is { } ew ? $" ({ew})" : "";
+                var lastProbed = probedAt is { } pa ? $", last probed {pa:O}" : "";
+                var still = $"hatch: still out of {runtime.Adapter.DisplayName} usage{window}{setAt}{lastProbed}";
+
+                if (await SayQuietlyAsync(exhausted, now, interval, once,
                     digest: $"exhausted:{until:O}",
-                    still: $"hatch: still out of {runtime.Adapter.DisplayName} usage",
+                    still: still,
                     inFull: () =>
                     {
-                        runtime.Say.Line($"hatch: this runner is {waiting} - taking no tickets until then");
+                        runtime.Say.Line($"hatch: this runner is {waiting} - taking no tickets until then{window}{setAt}{lastProbed}");
                         return Task.CompletedTask;
-                    });
+                    }))
+                    printed.At = runtime.Clock.GetUtcNow();
+
+                // AC4: a wait outlasting its sentence's reset time by more than
+                // one reminder interval logs why - judged against the probe's
+                // own last-known session reset rather than now/until, since
+                // until is ExhaustedUntil itself, exactly the value an
+                // incident can show was wrong.
+                if (lastProbedResetsAt is { } lastReset && now - lastReset > TimeSpan.FromSeconds(interval))
+                {
+                    runtime.Say.Line($"hatch: probe's own session window reset {Format.Duration((long)(now - lastReset).TotalSeconds)} ago, still waiting");
+                    printed.At = runtime.Clock.GetUtcNow();
+                }
 
                 // The one thing a paused wait does not have to do: stay
                 // current. Nothing here is ever dispatched against a stale
@@ -1127,6 +1223,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                 if (!await NapAsync(interval, tally, ct)) return false;
 
+                Watchdog(printed);
+
                 // Same as the paused branch above: train is not on this path
                 // either, and keeps ticking through exhaustion too.
                 continue;
@@ -1136,6 +1234,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 runtime.Say.Line("");
                 runtime.Say.Line($"hatch: back within {runtime.Adapter.DisplayName} usage - taking tickets again");
+                printed.At = runtime.Clock.GetUtcNow();
             }
 
             exhausted.Clear();
@@ -1149,7 +1248,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // straight on asks git nothing more than one that waited.
             await poll.RunAsync(runtime, interval, ct);
 
-            var pass = await PassAsync(under, quiet, mine, tally, idle, busy, interval, once, restart, line, ct);
+            var pass = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, restart, line, ct);
             if (pass == Pass.Worked) workedSinceProbe = true;
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
@@ -1169,6 +1268,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // the board again straight away, the same as a cleared conflict.
             if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
             if (!await NapAsync(interval, tally, ct, checkNow: true)) return false;
+
+            Watchdog(printed);
         }
 
         if (ct.IsCancellationRequested) tally.StopWhy ??= "interrupted";
@@ -1345,7 +1446,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     private async Task<Pass> PassAsync(
         string? under, bool quiet, bool mine, Tally tally,
-        SaidOnce idle, SaidOnce busy, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct,
+        SaidOnce idle, SaidOnce busy, Printed printed, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct,
         string? orderedKey = null)
     {
         // Hoisted so the catch below - which has to cover picking, claiming,
@@ -1406,38 +1507,41 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     busy.Clear();
                     line.Line = "nothing on the board is an agent's to move";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                    await SayQuietlyAsync(idle, now, interval, once,
+                    if (await SayQuietlyAsync(idle, now, interval, once,
                         digest: string.Join('\n', Digest.Of(picked.Queue)),
                         still: "hatch: still nothing an agent may move",
-                        inFull: () => runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct));
+                        inFull: () => runtime.Idle(mine).ReportAsync(under, picked.Queue, runtime.OffsetMinutes, ct)))
+                        printed.At = runtime.Clock.GetUtcNow();
                     return Pass.Waited;
 
                 case Pick.Busy:
                     idle.Clear();
                     line.Line = "every issue an agent could take is being worked elsewhere";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                    await SayQuietlyAsync(busy, now, interval, once,
+                    if (await SayQuietlyAsync(busy, now, interval, once,
                         digest: string.Join('\n', picked.Busy),
                         still: "hatch: every issue an agent could take is still being worked elsewhere",
                         inFull: () =>
                         {
                             runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
                             return Task.CompletedTask;
-                        });
+                        }))
+                        printed.At = runtime.Clock.GetUtcNow();
                     return Pass.Waited;
 
                 case Pick.Skipped:
                     idle.Clear();
                     line.Line = "every issue an agent could take is one this agent cannot take";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
-                    await SayQuietlyAsync(busy, now, interval, once,
+                    if (await SayQuietlyAsync(busy, now, interval, once,
                         digest: string.Join('\n', picked.Skipped!),
                         still: "hatch: every issue an agent could take is still one this agent cannot take",
                         inFull: () =>
                         {
                             runtime.Say.Lines(Picker.SkippedReport(picked.Skipped!));
                             return Task.CompletedTask;
-                        });
+                        }))
+                        printed.At = runtime.Clock.GetUtcNow();
                     return Pass.Waited;
 
                 case Pick.Unreadable:
@@ -1795,7 +1899,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         runtime.Say.Line($"hatch:   {tally.SoFar()}");
     }
 
-    private async Task SayQuietlyAsync(
+    private async Task<bool> SayQuietlyAsync(
         SaidOnce paced, DateTimeOffset now, int interval, bool once,
         string digest, string still, Func<Task> inFull)
     {
@@ -1809,11 +1913,31 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // is a report about the board having changed, not a fresh
             // explanation of the interval.
             if (first && !once) runtime.Say.Line($"hatch: waiting, and asking again every {interval}s");
+            return true;
         }
-        else if (paced.Again(now, StillNothing))
+
+        if (paced.Again(now, StillNothing))
         {
             runtime.Say.Line($"{still}, {Format.Duration((long)paced.For(now).TotalSeconds)} now");
+            return true;
         }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Called the moment execution resumes after a nap - nothing can print
+    /// during the nap itself, so this is what surfaces a stall as soon as the
+    /// loop wakes, rather than leaving it to whatever prints next.
+    /// </summary>
+    private void Watchdog(Printed printed)
+    {
+        var now = runtime.Clock.GetUtcNow();
+        var quiet = now - printed.At;
+        if (quiet <= StillNothing + StillNothing) return;
+
+        runtime.Say.Line($"hatch: still waiting - nothing printed in {Format.Duration((long)quiet.TotalSeconds)}");
+        printed.At = now;
     }
 
     /// <summary>
