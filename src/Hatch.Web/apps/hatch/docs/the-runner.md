@@ -399,10 +399,10 @@ any prompt keeps only what this checkout's own file already carries - never a
 value read in from the per-user file or an export, even though the bracket
 shown is whatever is actually active.
 
-**Warn:** `--here --origin` alone leaves the per-user key in force for
-`<checkout-b>` too - a key is still read from the per-user file once the
-checkout's own file carries none of its own - so the second Hatch is sent the
-first one's key until `--here --key` is run as well.
+**Warn:** a key is read only from the file that carries the origin it pairs
+with, so `--here --origin` alone leaves `<checkout-b>` keyless - the per-user
+key is ignored, with a line saying which file held it - until `--here --key`
+gives this checkout a key of its own.
 
 ### What --show prints in each checkout
 
@@ -537,16 +537,8 @@ loop spawns reaches that loop's own origin and key, from its standing checkout
 or a clone in its own workspace. **Agents → Runners** shows both runners at
 once, each with its tags and where it is working from.
 
-### The one shape this does not cover
-
-A runner against a Hatch with its wall off, standing beside a keyed runner
-against a Hatch with its wall up, on the same machine. A blank key reads as
-unset in every layer there is, so a checkout has no way to say "no key, on
-purpose" over a key the per-user file carries - it will fold through and send
-that key regardless. The fix is the same one *Setting up the second checkout*
-already gives for two Hatches: keep the key out of the per-user file
-entirely, with each keyed checkout carrying its own via `--here --key`. That
-leaves the keyless checkout nothing to inherit, and genuinely keyless.
+A checkout, profile or export that names an origin and no key is keyless on
+purpose, whatever the per-user file carries.
 
 ## When it will not run
 
