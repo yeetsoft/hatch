@@ -161,3 +161,13 @@ on its own page, not repeated here:
 
 Columns and their flags are the shape of the board. [Issues](issues) is what
 moves across them: dependencies, deferring, and closing a subtree.
+
+## Stories on epics
+
+Stories on epics is a per-project setting that only an owner of the project
+can change. It is written through the API alone for now
+([API reference](api-reference)); the project dialog does not show it yet.
+
+Once the board's story cards land, it will draw a project's stories inside
+their epic's card instead of as cards of their own. Today it changes nothing
+drawn on the board: it is only a setting the project holds.
