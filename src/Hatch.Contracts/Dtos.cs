@@ -3474,6 +3474,20 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// has to know the wall exists to draw its own controls.
 /// </param>
 /// <param name="Order">The standing order this runner's next loop heartbeat will read and clear, or null for none.</param>
+/// <param name="Revision">
+/// This runner's own build identity - the full sha it was built from, or
+/// "dev" for an unstamped build. Null for a runner that has never reported
+/// one (an older CLI).
+/// </param>
+/// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
+/// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
+/// <param name="BoardDrift">
+/// Where this runner's own build sits relative to the board's - the same
+/// comparison the board makes for its own web clients
+/// (<c>Hatch.Api.Models.HatchRevision.RevisionComparison</c>), computed
+/// server-side since a contract with no reference to the API cannot carry
+/// that type across the wire itself.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3499,11 +3513,29 @@ public record RunnerDto(
     IReadOnlyList<string> Tags = null!,
     string? For = null,
     bool CanControl = true,
-    RunnerOrderDto? Order = null)
+    RunnerOrderDto? Order = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null,
+    RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+}
+
+/// <summary>
+/// Where a runner's own reported build sits relative to the board's -
+/// <c>Hatch.Api.Models.HatchRevision.RevisionDrift</c>'s four answers, kept as
+/// a wire enum of its own since <see cref="RunnerDto"/> cannot reference that
+/// type across the module boundary. Same four names, same order.
+/// </summary>
+public enum RunnerBoardDrift
+{
+    Unknown,
+    Current,
+    Behind,
+    Ahead,
 }
 
 /// <summary>

@@ -963,6 +963,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<DateTimeOffset?>("BuiltAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool?>("Clones")
                         .HasColumnType("boolean");
 
@@ -1017,6 +1020,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<string>("Remotes")
                         .HasColumnType("text");
+
+                    b.Property<string>("Revision")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("Sequence")
+                        .HasColumnType("integer");
 
                     b.Property<bool?>("Standing")
                         .HasColumnType("boolean");

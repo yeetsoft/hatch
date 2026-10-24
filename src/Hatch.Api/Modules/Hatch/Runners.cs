@@ -1,4 +1,6 @@
 using Hatch.Api.Ef;
+using Hatch.Api.Models.HatchRevision;
+using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -22,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// somebody asks, which is the same lazy expiry the claim uses. There is no
 /// timeout to tune and no background job to notice has stopped.
 /// </remarks>
-public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions> auth)
+public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions> auth, IHatchRevision revision)
 {
     /// <summary>
     /// How long after its last heartbeat a row is still returned by the read:
@@ -91,32 +93,49 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// </remarks>
     public RunnerDto Project(
         EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null,
-        string? forName = null, bool canControl = true, RunnerOrderDto? order = null) => new(
-        runner.Name,
-        runner.Kind,
-        runner.FirstSeenAt,
-        runner.LastSeenAt,
-        claim?.Key,
-        claim is { } held ? held.Claim.Chatter : runner.Line,
-        claim is { } at ? at.Claim.ChatterAt : runner.LineAt,
-        runner.State,
-        runner.Under,
-        runner.MaxRuns,
-        runner.MaxSpend,
-        runner.UntilAt,
-        GoneAfterSeconds,
-        runner.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-        runner.Clones,
-        runner.Mine,
-        runner.Standing,
-        runner.Where,
-        runner.Agent,
-        runner.ExhaustedUntil,
-        drives,
-        runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? [],
-        forName,
-        canControl,
-        order);
+        string? forName = null, bool canControl = true, RunnerOrderDto? order = null)
+    {
+        var drift = RevisionComparison.Compare(revision.Revision, revision.Sequence, runner.Revision ?? "", runner.Sequence ?? 0);
+
+        return new(
+            runner.Name,
+            runner.Kind,
+            runner.FirstSeenAt,
+            runner.LastSeenAt,
+            claim?.Key,
+            claim is { } held ? held.Claim.Chatter : runner.Line,
+            claim is { } at ? at.Claim.ChatterAt : runner.LineAt,
+            runner.State,
+            runner.Under,
+            runner.MaxRuns,
+            runner.MaxSpend,
+            runner.UntilAt,
+            GoneAfterSeconds,
+            runner.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
+            runner.Clones,
+            runner.Mine,
+            runner.Standing,
+            runner.Where,
+            runner.Agent,
+            runner.ExhaustedUntil,
+            drives,
+            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray() ?? [],
+            forName,
+            canControl,
+            order,
+            runner.Revision,
+            runner.Sequence,
+            runner.BuiltAt,
+            ToBoardDrift(drift));
+    }
+
+    private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
+    {
+        RevisionDrift.Current => RunnerBoardDrift.Current,
+        RevisionDrift.Behind => RunnerBoardDrift.Behind,
+        RevisionDrift.Ahead => RunnerBoardDrift.Ahead,
+        _ => RunnerBoardDrift.Unknown,
+    };
 
     /// <summary>
     /// What the loop reads back off its own heartbeat: the row's operator half,

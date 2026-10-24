@@ -1,5 +1,6 @@
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Microsoft.Extensions.Options;
 
@@ -53,7 +54,16 @@ internal static class TestClaims
             db,
             new Dispatch(db, actors ?? new StubActorDirectory(), rule, time),
             rule,
-            runners ?? new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions())),
+            runners ?? new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision()),
             time);
     }
+}
+
+/// <summary>An <see cref="IHatchRevision"/> for a harness with nothing to say about build drift - unstamped, so every <see cref="RunnerBoardDrift"/> it computes reads <see cref="RunnerBoardDrift.Unknown"/>.</summary>
+internal sealed class StubHatchRevision : IHatchRevision
+{
+    public string Revision => "dev";
+    public int Sequence => 0;
+    public DateTimeOffset? BuiltAt => null;
+    public bool IsDevelopment => true;
 }
