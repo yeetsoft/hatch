@@ -592,6 +592,8 @@ public class RunnersController(
             Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
             Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength),
             Sequence = request.Sequence,
+            SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
+            SourceSequence = request.SourceSequence,
             BuiltAt = request.BuiltAt,
             Tags = tags,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
@@ -642,6 +644,8 @@ public class RunnersController(
         if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
         if (request.Revision is not null) row.Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength);
         if (request.Sequence is not null) row.Sequence = request.Sequence;
+        if (request.SourceRevision is not null) row.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
+        if (request.SourceSequence is not null) row.SourceSequence = request.SourceSequence;
         if (request.BuiltAt is not null) row.BuiltAt = request.BuiltAt;
 
         // Tags are seeded once, not a fact-vs-absent field like the rest of

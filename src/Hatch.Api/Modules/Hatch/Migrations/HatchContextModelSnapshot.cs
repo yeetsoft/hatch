@@ -1028,6 +1028,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("Sequence")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SourceRevision")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("SourceSequence")
+                        .HasColumnType("integer");
+
                     b.Property<bool?>("Standing")
                         .HasColumnType("boolean");
 

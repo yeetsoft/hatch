@@ -135,7 +135,11 @@ export function Row({
               row with no buttons reads as a bug otherwise. Only for a loop's
               row: a loop is the default, so saying nothing is saying loop. */}
           {runner.kind !== 'loop' && <Text tone="muted">one increment</Text>}
+          {/* Two badges, two fixes: Behind is a binary older than the board's
+              (restart it against a newer deploy), Rebuild one older than its
+              own checkout's source (make build-hatch there). */}
           {runner.boardDrift === 'Behind' && <Badge tone="danger">Behind</Badge>}
+          {runner.sourceDrift === 'Behind' && <Badge tone="danger">Rebuild</Badge>}
         </td>
         <td>
           <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>

@@ -96,6 +96,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         string? forName = null, bool canControl = true, RunnerOrderDto? order = null)
     {
         var drift = RevisionComparison.Compare(revision.Revision, revision.Sequence, runner.Revision ?? "", runner.Sequence ?? 0);
+        // Reference and client swapped on purpose: the reference here is the
+        // runner's own checkout, not the board.
+        var sourceDrift = RevisionComparison.Compare(runner.SourceRevision ?? "", runner.SourceSequence ?? 0, runner.Revision ?? "", runner.Sequence ?? 0);
 
         return new(
             runner.Name,
@@ -126,7 +129,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Revision,
             runner.Sequence,
             runner.BuiltAt,
-            ToBoardDrift(drift));
+            ToBoardDrift(drift),
+            ToBoardDrift(sourceDrift));
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch

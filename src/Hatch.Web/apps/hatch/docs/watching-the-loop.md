@@ -20,8 +20,13 @@ runners` is the same read at a terminal, one line per row. Each row
 has:
 
 - **Runner** - its name, and `one increment` where it is not a `loop` (a loop
-  says nothing here, since that is the default), and a **Behind** badge
-  when its own build has fallen behind the board's.
+  says nothing here, since that is the default); a **Behind** badge when its
+  own build has fallen behind the board's (restart it against a newer
+  deploy), and a **Rebuild** badge when its own build has fallen behind its
+  own checkout's source (run `make build-hatch` in that checkout). The two
+  never mean the same thing, and either, both or neither can be true of one
+  row; a runner started outside a checkout holding Hatch's source never shows
+  **Rebuild**.
 - **Doing** - `Gone`, `Out of usage until …`, `Paused`, `Stopping`, `Working
   <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
   answering reads `Gone` whatever it was last asked to do. Silence is ninety
