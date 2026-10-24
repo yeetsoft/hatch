@@ -51,11 +51,12 @@ if (!Program.TryExtractProfile(rest, out rest, out var profileArg, out var extra
 }
 
 string? profileFile = null;
+string? profileName = null;
 // `use` is how a pointer naming a missing profile gets repaired, so it cannot
 // be refused on that pointer; it reads no settings, so it has no layer to build.
 if (command is not ("config" or "use"))
 {
-    if (!Settings.TryResolveProfile(profileArg, environment, out _, out profileFile, out var profileRefusal))
+    if (!Settings.TryResolveProfile(profileArg, environment, out profileName, out profileFile, out var profileRefusal))
     {
         // Mirrors the origin-refusal shape below (the TryLoad check further
         // down), inbox exception included - a hook that cannot resolve its
@@ -94,8 +95,14 @@ if (command == "config")
 {
     var fold = Settings.Layers(checkoutEnv, environment, profileFile: profileFile);
     var configured = fold("HATCH_RUNNER").Value;
+    // The name the profile file was chosen by, like profileFile above: an
+    // explicit name needs only its shape to be valid; otherwise the active one,
+    // and only when resolving it succeeded - a refusal leaves a dangling name.
+    var configProfileName = profileArg is not null && Settings.ValidProfileName(profileArg)
+        ? profileArg
+        : Settings.TryResolveProfile(null, environment, out var activeProfile, out _, out _) ? activeProfile : null;
     var configRunnerName = await ResolveRunnerAsync(
-        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, null, CancellationToken.None);
+        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, configProfileName, CancellationToken.None);
 
     return await new ConfigCommand(
             say, new Input(), environment, checkoutEnv, configRunnerName, Root: root,
@@ -126,7 +133,7 @@ if (command == "inbox")
         out var inboxAdapter, out var inboxRefusal))
         return 0;
 
-    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, null, CancellationToken.None);
+    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, profileName, CancellationToken.None);
     using var hooked = new HatchClient(settings, inboxRunnerName);
     return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, inboxAdapter.HookOutput)
         .RunAsync(rest, CancellationToken.None);
@@ -157,8 +164,8 @@ foreach (var stray in strays)
 
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
-var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : here;
-var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, null, CancellationToken.None);
+var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : (settings.Workspace ?? here);
+var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, profileName, CancellationToken.None);
 
 // A lambda rather than say.Complain directly: `say` is reassigned below to a
 // LiveTerminal once the readout is known to apply, and a call made after that
@@ -255,6 +262,7 @@ try
             // by nobody else, which is how a runner started by hand knows there
             // is nothing standing over it to build the new source and run it
             // again. See docs/hatch.md, "What it stops for".
+            ProfileName = profileName,
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
             Readout = readoutState,
             Controls = controls,

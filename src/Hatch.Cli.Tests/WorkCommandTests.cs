@@ -826,6 +826,41 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_repo_override_records_the_runner_under_the_profile_the_run_resolved()
+    {
+        using var h = new Harness();
+        var tree = Tree(h, "profiled", "https://example.test/profiled.git");
+        var runtime = h.Runtime with { ProfileName = "night" };
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1", "--repo", tree], default));
+
+        var recorded = RunnerNames.Record.Read(runtime.RunnersPath);
+        Assert.Contains(RunnerNames.Record.Key("night", Checkout.Canonical(h.Root)), recorded.Keys);
+        Assert.DoesNotContain(Checkout.Canonical(h.Root), recorded.Keys);
+    }
+
+    [Fact]
+    public async Task A_repo_override_with_no_profile_records_the_runner_under_the_bare_path()
+    {
+        using var h = new Harness();
+        var tree = Tree(h, "unprofiled", "https://example.test/unprofiled.git");
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--repo", tree], default));
+
+        Assert.Equal([Checkout.Canonical(h.Root)], RunnerNames.Record.Read(h.Runtime.RunnersPath).Keys.ToArray());
+    }
+
+    [Fact]
     public async Task Repo_given_on_the_command_line_ignores_whatever_HATCH_REPOS_produced()
     {
         using var h = new Harness();

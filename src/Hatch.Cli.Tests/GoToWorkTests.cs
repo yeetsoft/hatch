@@ -1125,6 +1125,53 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_repo_override_records_the_runner_under_the_profile_the_run_resolved()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var tree = Tree(h, "profiled", "https://example.test/profiled.git");
+        var runtime = h.Runtime with { ProfileName = "night" };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", tree], default));
+
+        var recorded = RunnerNames.Record.Read(runtime.RunnersPath);
+        Assert.Contains(RunnerNames.Record.Key("night", Checkout.Canonical(h.Root)), recorded.Keys);
+        Assert.DoesNotContain(Checkout.Canonical(h.Root), recorded.Keys);
+    }
+
+    [Fact]
+    public async Task A_repo_override_with_no_profile_records_the_runner_under_the_bare_path()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var tree = Tree(h, "unprofiled", "https://example.test/unprofiled.git");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", tree], default));
+
+        Assert.Equal([Checkout.Canonical(h.Root)], RunnerNames.Record.Read(h.Runtime.RunnersPath).Keys.ToArray());
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_checkout_is_recorded_under_the_workspace_it_serves()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var workspace = Path.Combine(h.Temp, "empty-workspace");
+        Directory.CreateDirectory(workspace);
+        var runtime = h.Runtime with { Checkouts = [] };
+
+        Assert.Equal(
+            0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--workspace", workspace], default));
+
+        var recorded = RunnerNames.Record.Read(runtime.RunnersPath);
+        Assert.Equal([Checkout.Canonical(workspace)], recorded.Keys.ToArray());
+        Assert.DoesNotContain(Checkout.Canonical(h.Root), recorded.Keys);
+    }
+
+    [Fact]
     public async Task Repo_given_on_the_command_line_ignores_whatever_HATCH_REPOS_produced()
     {
         using var h = new Harness();

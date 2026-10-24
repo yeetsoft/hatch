@@ -135,10 +135,10 @@ public sealed class WorkCommand(Runtime runtime)
             foreach (var stray in strays)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
-            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : runtime.Root;
+            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : (servedWorkspace ?? runtime.Root);
             var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), root));
             var runnerName = await Checkout.RunnerAsync(
-                runtime.Settings.Runner, Checkout.Host(), root, null, lookupBoard, ct, runtime.RunnersPath);
+                runtime.Settings.Runner, Checkout.Host(), root, runtime.ProfileName, lookupBoard, ct, runtime.RunnersPath);
 
             runtime = runtime with
             {
