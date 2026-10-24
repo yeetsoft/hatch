@@ -235,6 +235,13 @@ public class EfHatchProject
     /// calls). Written only by <see cref="ProjectsController.PutRunnerTags"/>.
     /// </summary>
     public string RunnerTags { get; set; } = "[]";
+
+    /// <summary>
+    /// Whether this project's stories show on their epics. Off by default.
+    /// Carries no <c>*By</c>/<c>*At</c> audit columns. Written only by
+    /// <see cref="ProjectsController.PutStoriesOnEpics"/>.
+    /// </summary>
+    public bool StoriesOnEpics { get; set; }
 }
 
 /// <summary>

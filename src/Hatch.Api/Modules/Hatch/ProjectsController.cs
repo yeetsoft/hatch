@@ -823,6 +823,38 @@ public class ProjectsController(
             ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow()), clearedKey);
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.StoriesOnEpics"/> is on - this project's
+    /// stories show on their epics. Only an owner may call this, and writing the
+    /// value a project already has changes nothing. This route is the only way to
+    /// write the flag; <c>PATCH</c> and <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/stories-on-epics")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutStoriesOnEpics(int id, ProjectStoriesOnEpicsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether stories show on their epics") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.StoriesOnEpics != project.StoriesOnEpics)
+        {
+            project.StoriesOnEpics = request.StoriesOnEpics;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} stories on epics set to {StoriesOnEpics} by {Actor}", project.Key, project.StoriesOnEpics, await caller.ActorNameAsync(ct));
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -894,7 +926,8 @@ public class ProjectsController(
             RunnerTagColumn.Read(project.RunnerTags),
             project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
             ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now),
-            project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt);
+            project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt,
+            project.StoriesOnEpics);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
