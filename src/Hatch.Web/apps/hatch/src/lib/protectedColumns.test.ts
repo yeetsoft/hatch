@@ -80,6 +80,7 @@ const project = (over: Partial<Project> = {}): Project => ({
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
   ...over,
 });
 

@@ -52,6 +52,7 @@ import type {
   ProjectPatchRequest,
   ProjectBindsTrackerResponse,
   ProjectBindsTrackerWriteRequest,
+  ProjectStoriesOnEpicsWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
@@ -148,6 +149,9 @@ export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWrite
     from whichever project had it - see ProjectsController.PutBindsTracker. */
 export const putProjectBindsTracker = (id: number, request: ProjectBindsTrackerWriteRequest) =>
   fetchJson<ProjectBindsTrackerResponse>(`/api/hatch/projects/${id}/binds-tracker`, { method: 'PUT', ...asJson(request) });
+/** Sets whether a project's board shows stories on their epics. */
+export const putProjectStoriesOnEpics = (id: number, request: ProjectStoriesOnEpicsWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/stories-on-epics`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember =(id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>
