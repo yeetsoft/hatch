@@ -81,6 +81,8 @@ export interface Project {
   reflectionLastPeriodStart: string | null;
   /** When the next reflection falls due, or null while the cadence is off. */
   reflectionNextDueAt: string | null;
+  /** Whether the board draws stories inside their epic's card, not as cards of their own. See ProjectDto.StoriesOnEpics. */
+  storiesOnEpics: boolean;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -913,6 +915,11 @@ export interface ProjectRepoSourcedWriteRequest {
 /** A write to whether a project binds the tracker's own repository. See ProjectBindsTrackerWriteRequest (Hatch.Contracts). */
 export interface ProjectBindsTrackerWriteRequest {
   bindsTracker: boolean;
+}
+
+/** A write to whether a project shows stories on their epics. See ProjectStoriesOnEpicsWriteRequest (Hatch.Contracts). */
+export interface ProjectStoriesOnEpicsWriteRequest {
+  storiesOnEpics: boolean;
 }
 
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and

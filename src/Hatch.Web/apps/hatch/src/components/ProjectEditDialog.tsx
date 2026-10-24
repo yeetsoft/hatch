@@ -11,6 +11,7 @@ import {
   getStatuses,
   patchProject,
   putProjectBindsTracker,
+  putProjectStoriesOnEpics,
   putProjectLanding,
   putProjectLogo,
   putProjectMember,
@@ -25,6 +26,7 @@ import { fileReflection } from '../lib/projectReflect';
 import {
   openProjectDraft,
   projectBindsTrackerDiff,
+  projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
   projectLandingDiff,
@@ -145,6 +147,7 @@ export function ProjectEditDialog({
     const landingDiff = projectLandingDiff(draft!);
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
+    const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
@@ -154,6 +157,7 @@ export function ProjectEditDialog({
       landingDiff === null &&
       repoSourcedDiff === null &&
       bindsTrackerDiff === null &&
+      storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
       logoPending === null &&
@@ -171,6 +175,7 @@ export function ProjectEditDialog({
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
+      if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
@@ -506,6 +511,25 @@ export function ProjectEditDialog({
               </p>
             )}
           </>
+        )}
+
+        <h2 className="hatch-section-title">Board</h2>
+        {project.canAdminister ? (
+          <>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.storiesOnEpics}
+                onChange={(e) => setDraft((d) => d && { ...d, storiesOnEpics: e.target.checked })}
+              />
+              Show stories on epics, not the board
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Stories are drawn inside their epic's card instead of as cards of their own; off, the board is exactly as it is today.
+            </p>
+          </>
+        ) : (
+          <p>Stories {project.storiesOnEpics ? 'shown on their epics' : 'shown on the board'}.</p>
         )}
 
         <h2 className="hatch-section-title">Members</h2>

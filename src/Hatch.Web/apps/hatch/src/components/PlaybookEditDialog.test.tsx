@@ -67,6 +67,7 @@ const ONE_PROJECT: Project[] = [
     reflectionCadenceDays: null,
     reflectionLastPeriodStart: null,
     reflectionNextDueAt: null,
+    storiesOnEpics: false,
   },
 ];
 

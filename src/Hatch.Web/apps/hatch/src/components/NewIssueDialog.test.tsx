@@ -79,6 +79,7 @@ const PROJECT: Project = {
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
 };
 
 const OTHER: Project = {
@@ -110,6 +111,7 @@ const OTHER: Project = {
   reflectionCadenceDays: null,
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
+  storiesOnEpics: false,
 };
 
 const noop = () => undefined;
