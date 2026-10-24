@@ -1397,7 +1397,9 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// card whose <see cref="IssueCardDto.ClosedAt"/> is older than
 /// <see cref="DoneHorizonHours"/> is withheld rather than handed over, because
 /// a done column only grows and nobody is asking "what may I work on" of a
-/// card that closed months ago.
+/// card that closed months ago. <see cref="Issues"/> is unchanged by
+/// <see cref="PastHorizon"/>'s addition - what it withholds, the new list
+/// alone carries.
 /// </remarks>
 /// <param name="Wip">
 /// How full the WIP section is right now, or null only where the board has
@@ -1411,9 +1413,15 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// is off - an operator who set it to <c>0</c> - never wherever it is merely
 /// unset: the default is 48, not null.
 /// </param>
+/// <param name="PastHorizon">
+/// The stories the horizon folded out of <see cref="Issues"/>: closed before
+/// the cutoff, in a terminal column, whose parent epic is still on the board
+/// and not deferred. Empty wherever the horizon is off; the server always
+/// sends the list, never null.
+/// </param>
 public record BoardDto(
     IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null,
-    int? DoneHorizonHours = null);
+    int? DoneHorizonHours = null, IReadOnlyList<IssueCardDto>? PastHorizon = null);
 
 /// <summary>
 /// How full the WIP section is right now, the shape <c>GET /board</c> carries
