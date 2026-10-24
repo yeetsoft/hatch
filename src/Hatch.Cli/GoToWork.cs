@@ -845,6 +845,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
             };
 
             var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
+
+            if (!restart.On && !noRestart && !once)
+                runtime.Say.Line(
+                    "hatch: this run has no supervisor, so it will not rebuild or restart itself on a source change - " +
+                    "run it as scripts/hatch.sh go-to-work (scripts\\hatch.ps1 go-to-work in PowerShell) instead");
+
             var restarting = false;
             var refused = false;
 
