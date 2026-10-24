@@ -57,11 +57,22 @@ public class MeControllerTests
     }
 
     [Fact]
-    public async Task AKey_IsNobodyToDraw()
+    public async Task AKey_IsAnsweredWithItsOwnerAndScopes()
     {
-        var controller = NewController(local: null, key: new EfApiKey { Name = "k", Prefix = "p", Hash = [], CreatedAt = default });
+        var controller = NewController(local: null, key: new EfApiKey
+        {
+            Name = "k", Prefix = "p", Hash = [], CreatedAt = default,
+            Scopes = ["hatch"],
+            Owner = new EfPerson { Name = "Ada", Role = PersonRole.Admin, CreatedAt = default, UpdatedAt = default },
+        });
 
-        Assert.IsType<NoContentResult>((await controller.GetMe(default)).Result);
+        var me = Value(await controller.GetMe(default));
+
+        Assert.Equal("key", me.Kind);
+        Assert.Equal("k", me.Name);
+        Assert.Equal("admin", me.Role);
+        Assert.Equal("Ada", me.Owner);
+        Assert.Contains("hatch", me.Scopes!);
     }
 
     [Fact]
@@ -128,13 +139,18 @@ public class MeControllerTests
         Assert.True(Value(await controller.GetMe(default)).Configured);
     }
 
-    /// <summary>A runner is a program that named itself, and the strip this feeds is a browser's.</summary>
+    /// <summary>A runner is a program that named itself, so it is answered by that name, with no owner or scopes to report.</summary>
     [Fact]
-    public async Task ARunner_IsNobodyToDraw()
+    public async Task ARunner_IsAnsweredByItsOwnName()
     {
         var runner = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
 
-        Assert.IsType<NoContentResult>((await NewController(runner).GetMe(default)).Result);
+        var me = Value(await NewController(runner).GetMe(default));
+
+        Assert.Equal("runner", me.Kind);
+        Assert.Equal("host:/src", me.Name);
+        Assert.Null(me.Role);
+        Assert.Null(me.Owner);
     }
 
     private static MeController NewController(
