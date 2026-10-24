@@ -2692,6 +2692,9 @@ public class EfHatchRunner
     public const int MaxStateLength = 16;
     public const int MaxAgentLength = 16;
 
+    /// <summary>Room for a full git sha, or "dev" for an unstamped build.</summary>
+    public const int MaxRevisionLength = 40;
+
     /// <summary>Room for an issue key, which is what <c>--under</c> takes.</summary>
     public const int MaxUnderLength = 32;
 
@@ -2829,6 +2832,21 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxAgentLength)]
     public string? Agent { get; set; }
+
+    /// <summary>
+    /// This runner's own build identity - the full sha it was built from, or
+    /// "dev" for an unstamped build. A fact about the running process,
+    /// overwritten on every heartbeat that names one, the same as
+    /// <see cref="Where"/> and <see cref="Agent"/>.
+    /// </summary>
+    [MaxLength(MaxRevisionLength)]
+    public string? Revision { get; set; }
+
+    /// <summary>This runner's own commit count at build time, read beside <see cref="Revision"/>.</summary>
+    public int? Sequence { get; set; }
+
+    /// <summary>When this runner's binary was written, read beside <see cref="Revision"/>.</summary>
+    public DateTimeOffset? BuiltAt { get; set; }
 
     /// <summary>
     /// The tags this runner carries, newline-joined - a fact about the

@@ -14,6 +14,7 @@ import {
   mineLabel,
   repositoriesLabel,
   runnerActivity,
+  runnerBuildLabel,
   runnerStrip,
   tagsLabel,
 } from './runners';
@@ -50,6 +51,10 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   for: null,
   canControl: true,
   order: null,
+  revision: null,
+  sequence: null,
+  builtAt: null,
+  boardDrift: 'Unknown',
   ...over,
 });
 
@@ -352,5 +357,23 @@ describe('isIssueKeyShape', () => {
 
   it.each(['', 'HA', '12', 'HA-', 'HA-12 x'])('refuses %j', (text) => {
     expect(isIssueKeyShape(text)).toBe(false);
+  });
+});
+
+describe('runnerBuildLabel', () => {
+  const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9011121314';
+
+  it('draws the short sha and how long ago for a stamped build', () => {
+    expect(runnerBuildLabel(runner({ revision: SHA, builtAt: at(-3 * 60 * 60_000) }), NOW)).toBe(
+      `${SHA.slice(0, 7)} · 3 hours ago`,
+    );
+  });
+
+  it('says dev build for an unstamped revision', () => {
+    expect(runnerBuildLabel(runner({ revision: 'dev', builtAt: null }), NOW)).toBe('dev build');
+  });
+
+  it('says nothing for a runner that has never reported a build', () => {
+    expect(runnerBuildLabel(runner({ revision: null }), NOW)).toBeNull();
   });
 });

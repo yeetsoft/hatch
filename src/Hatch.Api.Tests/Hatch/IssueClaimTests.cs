@@ -1270,7 +1270,7 @@ public class IssueClaimTests
         public const int RunnerGoneAfterSeconds = 60;
 
         public Runners RunnersRule { get; } =
-            new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = RunnerGoneAfterSeconds }), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()));
+            new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = RunnerGoneAfterSeconds }), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
 
         /// <summary>
         /// A controller on a context of its own, because that is what an HTTP

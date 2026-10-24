@@ -35,6 +35,10 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   for: null,
   canControl: true,
   order: null,
+  revision: null,
+  sequence: null,
+  builtAt: null,
+  boardDrift: 'Unknown',
   ...over,
 });
 
@@ -86,6 +90,13 @@ describe('RunnersPage Row', () => {
   it('says one increment for a once row, and nothing for a loop row', () => {
     expect(renderRow(runner())).not.toContain('one increment');
     expect(renderRow(runner({ kind: 'once' }))).toContain('one increment');
+  });
+
+  it('badges only a row whose build is Behind the board\'s', () => {
+    expect(renderRow(runner({ boardDrift: 'Behind' }))).toContain('Behind');
+    for (const drift of ['Ahead', 'Current', 'Unknown'] as const) {
+      expect(renderRow(runner({ boardDrift: drift }))).not.toContain('Behind');
+    }
   });
 
   it('keeps where, agent and drives off the closed row', () => {
@@ -195,7 +206,7 @@ describe('RunnersPage BoundsSummary', () => {
 const renderDetails = (r: Runner) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <RunnerDetails runner={r} />
+      <RunnerDetails runner={r} now={NOW} />
     </MemoryRouter>,
   );
 
@@ -221,5 +232,14 @@ describe('RunnersPage RunnerDetails', () => {
   it('joins repositories and says clones when it clones what it lacks', () => {
     const html = renderDetails(runner({ repositories: ['a', 'b'], clones: true }));
     expect(html).toContain('a, b, clones what it lacks');
+  });
+
+  it('draws the build label when revision and builtAt are set', () => {
+    const html = renderDetails(runner({ revision: 'a1b2c3d4e5f60718293a4b5c6d7e8f9011121314', builtAt: at(-3_600_000) }));
+    expect(html).toContain('a1b2c3d');
+  });
+
+  it('draws nothing for a build when revision is null', () => {
+    expect(renderDetails(runner({ revision: null }))).not.toContain('dev build');
   });
 });
