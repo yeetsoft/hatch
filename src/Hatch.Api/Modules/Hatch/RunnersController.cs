@@ -132,11 +132,12 @@ public class RunnersController(
     /// </summary>
     /// <remarks>
     /// <para>The four bounds in the body are what this process started with,
-    /// and they are written <em>only when the row is created</em>. That is the
-    /// one subtle thing in this file: a loop restarting overnight sends its
-    /// original <c>--max-runs</c> on every incarnation's first heartbeat, and a
-    /// row that re-seeded would quietly undo the edit an operator made at
-    /// midnight.</para>
+    /// and they are written <em>when the row is created</em> and by a
+    /// <c>loop</c> beat that says it is <c>Fresh</c> - never by any other beat.
+    /// That is the one subtle thing in this file: a loop restarting overnight
+    /// sends its original <c>--max-runs</c> on every incarnation's first
+    /// heartbeat, but not as <c>Fresh</c>, because a row that took them would
+    /// quietly undo the edit an operator made at midnight.</para>
     ///
     /// <para>Nothing here is refused for being unreasonable. A heartbeat is not
     /// a decision, and a night that ended because a runner sent a line somebody
@@ -198,7 +199,8 @@ public class RunnersController(
                 // beside it - can both find no row and both insert one. The
                 // second loses on the primary key and becomes what it should
                 // have been, which is an update: it does not re-seed, so the
-                // bounds on the row are the ones that got there first.
+                // bounds on the row are the ones that got there first, unless
+                // it is a fresh beat.
                 db.Entry(row).State = EntityState.Detached;
                 row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
                 if (row is null) throw;
@@ -551,47 +553,60 @@ public class RunnersController(
 
     // ---- The rows ----
 
+    /// <summary>
+    /// The four bounds, from what the flags said, so the row shows the bounds
+    /// it is actually running under rather than reading as unbounded until
+    /// somebody sets something. One place for a new row and a fresh beat, so
+    /// the two cannot drift.
+    /// </summary>
+    private static void Bound(EfHatchRunner row, RunnerHeartbeatRequest request)
+    {
+        row.Under = Fits(request.Under, EfHatchRunner.MaxUnderLength);
+        row.MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null;
+        row.MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null;
+        row.UntilAt = request.UntilAt;
+    }
+
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
         string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        Guid? forPersonId, string? tags) => new()
+        Guid? forPersonId, string? tags)
     {
-        Name = name,
-        Kind = kind,
-        FirstSeenAt = now,
-        LastSeenAt = now,
-        Line = line is { Length: > 0 } ? line : null,
-        LineAt = line is { Length: > 0 } ? now : null,
-        State = EfHatchRunner.Running,
+        var row = new EfHatchRunner
+        {
+            Name = name,
+            Kind = kind,
+            FirstSeenAt = now,
+            LastSeenAt = now,
+            Line = line is { Length: > 0 } ? line : null,
+            LineAt = line is { Length: > 0 } ? now : null,
+            State = EfHatchRunner.Running,
 
-        // What the flags said, so the row shows the bounds it is actually
-        // running under from its first appearance rather than reading as
-        // unbounded until somebody sets something.
-        Under = Fits(request.Under, EfHatchRunner.MaxUnderLength),
-        MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null,
-        MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null,
-        UntilAt = request.UntilAt,
+            // Facts about the process, not bounds an operator set - written from
+            // whatever the first beat carried, the same as every later one.
+            Remotes = Canonicalised(request.Remotes),
+            Clones = request.Clones,
+            Mine = request.Mine,
+            Standing = request.Standing,
+            Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
+            Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
+            Tags = tags,
+            ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            ForPersonId = forPersonId,
+            Usage = UsageJson(request),
+            UsageReadAt = request.UsageReadAt,
+        };
 
-        // Facts about the process, not bounds an operator set - written from
-        // whatever the first beat carried, the same as every later one.
-        Remotes = Canonicalised(request.Remotes),
-        Clones = request.Clones,
-        Mine = request.Mine,
-        Standing = request.Standing,
-        Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
-        Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
-        Tags = tags,
-        ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
-        ForPersonId = forPersonId,
-        Usage = UsageJson(request),
-        UsageReadAt = request.UsageReadAt,
-    };
+        Bound(row, request);
+        return row;
+    }
 
     /// <summary>
     /// A row that already exists: kind, last seen, line, and the two facts
-    /// about what it serves. The state and the four bounds are the operator's,
-    /// and a heartbeat that wrote one would be the runner having the last word
-    /// on what it may spend.
+    /// about what it serves. The state is the operator's. The four bounds are
+    /// the flags' at a fresh start - a <c>loop</c> beat that says so - and the
+    /// operator's after: any other beat writing one would be the runner having
+    /// the last word on what it may spend.
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
@@ -638,8 +653,13 @@ public class RunnersController(
         else if (request.Exhausted == false) row.ExhaustedUntil = null;
 
         // Whose key this is can change on the API Keys page, so this is
-        // written every beat like Where and Remotes, unlike the four bounds.
+        // written every beat like Where and Remotes, unlike the four bounds,
+        // which only a fresh loop's first beat writes. Not a `once` beat:
+        // `hatch work` shares a runner name with a loop in the same checkout,
+        // and its flagless beat must not clear the loop's budget.
         row.ForPersonId = forPersonId;
+
+        if (request.Fresh == true && kind == EfHatchRunner.LoopKind) Bound(row, request);
 
         // A non-empty reading writes; absent or empty leaves the row's own
         // reading alone - see the remark on RunnerHeartbeatRequest.Usage.

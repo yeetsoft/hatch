@@ -49,7 +49,16 @@ public sealed class Tally
         ExhaustedKnown = carried?.ExhaustedKnown ?? true;
         ExhaustedAt = carried?.ExhaustedAt ?? (carried?.ExhaustedUntil is not null ? clock.GetUtcNow() : null);
         ExhaustedWindow = carried?.ExhaustedWindow;
+        Fresh = carried is null;
     }
+
+    /// <summary>
+    /// True until the board has answered a beat of this loop's first start: no
+    /// night state was carried in, so the bounds this process holds are the
+    /// flags somebody typed and not a page edit a restart must keep. Sent as
+    /// <c>fresh</c> so the server writes them onto the row.
+    /// </summary>
+    public bool Fresh { get; set; }
 
     public int Runs { get; private set; }
     public decimal Spent { get; private set; }
@@ -1221,10 +1230,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// </summary>
     /// <remarks>
     /// The four bounds are sent on every beat and read on none. The server
-    /// writes them when it first sees this name and never again, so what
-    /// somebody set at midnight survives the loop's own half-hourly restart -
-    /// and sending them each time is what makes the row show the truth from its
-    /// first appearance without the runner having to know whether it is new.
+    /// writes them only on a fresh loop's first beat, so what somebody set at
+    /// midnight survives the loop's own half-hourly restart: a restart carries
+    /// night state in and is never fresh. <see cref="Tally.Fresh"/> stays true
+    /// until a beat is answered, so a beat that throws is tried again.
     /// The tags are still sent every beat, but the server takes them only on a
     /// row's first-ever beat; after that the row is the board's, the answer
     /// carries it back, and <see cref="Fold"/> adopts it.
@@ -1237,6 +1246,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var beat = await runtime.Runners().BeatAsync(
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
+                Fresh: !once && tally.Fresh ? true : null,
                 Line: line.Line,
                 Under: under,
                 MaxRuns: tally.MaxRuns,
@@ -1265,6 +1275,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // live runner somewhere else, so nothing here is claimed.
         if (beat.Refusal is { Length: > 0 } refusal) throw new HatchException($"hatch: {refusal}");
 
+        // Answered, so the server has the bounds this start was typed with.
+        if (beat.Instruction is not null) tally.Fresh = false;
+
         // `--once` says hello and reads nothing back. There is no second pass
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
@@ -1277,9 +1290,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// inside, or null for the whole board.
     /// </summary>
     /// <remarks>
-    /// Wholesale, including the absences: the row was seeded from the flags
-    /// this process started with, so a field that is empty on it is a field
-    /// somebody cleared. Reading an absence as "leave the flag alone" would
+    /// Wholesale, including the absences: the row holds this process's flags
+    /// from its fresh beat, or a person's edit, so a field that is empty on it
+    /// is a field somebody cleared. Reading an absence as "leave the flag alone" would
     /// make a cap impossible to take off from the page that set it. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a

@@ -295,6 +295,68 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
     }
 
+    // ---- A fresh loop says so on its first answered beat ----
+
+    private static IReadOnlyList<RunnerHeartbeatRequest> Beats(Harness h) =>
+        [.. h.Wire.To("POST", Beat).Select(c => c.Read<RunnerHeartbeatRequest>())];
+
+    [Fact]
+    public async Task A_loop_with_no_carried_state_sends_fresh_on_its_first_beat_with_its_bounds()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, 20m, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-spend", "20", "--max-runs", "1"], default));
+
+        var first = Beats(h)[0];
+        Assert.True(first.Fresh);
+        Assert.Equal(20m, first.MaxSpend);
+        Assert.Equal(1, first.MaxRuns);
+        Assert.DoesNotContain(h.Say.Said, l => l.StartsWith("hatch: the board set", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_loop_restarted_with_carried_state_never_sends_fresh()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1 });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.NotEqual(true, b.Fresh));
+    }
+
+    [Fact]
+    public async Task Only_the_first_answered_beat_of_a_fresh_loop_is_fresh()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
+
+        var beats = Beats(h);
+        Assert.True(beats.Count >= 2);
+        Assert.True(beats[0].Fresh);
+        Assert.All(beats.Skip(1), b => Assert.NotEqual(true, b.Fresh));
+    }
+
+    [Fact]
+    public async Task A_once_beat_is_never_fresh()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.All(Beats(h), b => Assert.NotEqual(true, b.Fresh));
+    }
+
     [Fact]
     public async Task The_heartbeat_carries_standing_false_when_no_checkout_is_standing()
     {

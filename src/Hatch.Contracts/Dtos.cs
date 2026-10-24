@@ -3570,6 +3570,13 @@ public record RunnerDto(
 /// serving - a fact about the process, on the terms <see cref="Mine"/>
 /// already has: absent leaves the row alone, true or false sets or clears it.
 /// </param>
+/// <param name="Fresh">
+/// True only on the first answered beat of a loop process that carried no
+/// night state, i.e. one typed by hand or the first start under a supervisor:
+/// the four bounds in this body are then the flags it was started with, and
+/// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
+/// supervisor restart) leaves the row's bounds alone.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3587,7 +3594,8 @@ public record RunnerHeartbeatRequest(
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
     DateTimeOffset? UsageReadAt = null,
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null,
+    bool? Fresh = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

@@ -682,9 +682,9 @@ public class RunnersControllerTests
         h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
         Assert.Empty(await h.ListAsync());
 
-        // The row was never deleted, only aged out of the read - so a checkout
-        // that starts a loop again the next evening is still bounded the way
-        // somebody set it.
+        // The row was never deleted, only aged out of the read - so a beat
+        // that is not fresh (a supervisor restart) still finds it bounded the
+        // way somebody set it. A fresh loop started by hand takes its flags.
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(MaxRuns: 5));
         Assert.Equal(40, (await h.OneAsync()).MaxRuns);
     }
@@ -994,6 +994,81 @@ public class RunnersControllerTests
         var runner = await h.OneAsync();
         Assert.Equal(3, runner.MaxRuns);
         Assert.Equal(5m, runner.MaxSpend);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_WritesAllFourBoundsOntoARowThatHasNone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Under: "AER-930", MaxRuns: 3, MaxSpend: 20m, UntilAt: Now.AddHours(6), Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("AER-930", runner.Under);
+        Assert.Equal(3, runner.MaxRuns);
+        Assert.Equal(20m, runner.MaxSpend);
+        Assert.Equal(Now.AddHours(6), runner.UntilAt);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_OverwritesWhatAPersonSet()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxSpend: "50"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxSpend: 20m, Fresh: true));
+
+        Assert.Equal(20m, (await h.OneAsync()).MaxSpend);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_WithNoBounds_ClearsAllFour()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Under: "AER-930", MaxRuns: 12, MaxSpend: 40m, UntilAt: Now.AddHours(6)));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxRuns: 0, MaxSpend: -1m, Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.Under);
+        Assert.Null(runner.MaxRuns);
+        Assert.Null(runner.MaxSpend);
+        Assert.Null(runner.UntilAt);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    public async Task ALoopBeat_ThatIsNotFresh_LeavesWhatAPersonSetAlone(bool? fresh)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxRuns: 12, MaxSpend: 40m));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3", MaxSpend: "5"));
+
+        // A supervisor restart: the same flags again, and no word that it is new.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxRuns: 12, MaxSpend: 40m, Fresh: fresh));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(3, runner.MaxRuns);
+        Assert.Equal(5m, runner.MaxSpend);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_EvenIfFresh_LeavesTheBoundsAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxRuns: 12, MaxSpend: 40m));
+
+        // `hatch work` shares the loop's runner name and carries no flags.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(12, runner.MaxRuns);
+        Assert.Equal(40m, runner.MaxSpend);
     }
 
     [Fact]

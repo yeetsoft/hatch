@@ -64,6 +64,14 @@ moves them from here on. The loop adopts a changed list on its very next
 heartbeat, saying so once - `hatch: the board set --tag ...`, or `--tag
 off` for none.
 
+The bounds are not seeded once the way tags are. Each fresh start of a loop -
+one started by hand, or the supervisor's first start - writes the bounds it
+was started with onto its row on its first heartbeat, overwriting an edit made
+here and clearing any bound the row held for a flag the loop was not given.
+A supervisor restart does not: it keeps what the row holds, so an edit made
+here survives it. A row made by `hatch work` or `go-to-work --once` never
+takes bounds from that heartbeat.
+
 An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one
 at a time, so the Order control is replaced by that line while it stands.
