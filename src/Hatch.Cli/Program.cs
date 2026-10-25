@@ -614,6 +614,8 @@ internal partial class Program
         "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
         "                     repository the board binds that it has no checkout of;",
         "                     unset means a per-user default, `off` means never clone",
+        "  HATCH_LOG          where this runner's log goes: `on` for the `logs` folder beside the",
+        "                     per-user file, a directory, or `off`; unset means no log",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
