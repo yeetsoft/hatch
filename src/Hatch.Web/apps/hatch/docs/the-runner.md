@@ -580,7 +580,10 @@ others gets:
   workspace lock](#the-workspace-lock)).
 
 Ctrl-C and `--stop-file` stop all of them, each after the increment it is in,
-and the output of each line is prefixed `[n]`. A second `--runners` set started
+and the output of each line is prefixed `[n]`. `--max-runs` and `--max-spend`
+bound the set's combined total, not each runner's own: each runner checks the
+sum of what the set has done, between its increments, and a restart of the set
+carries that sum forward. A second `--runners` set started
 over the same workspaces is refused: runner 1 meets the checkout lock (`a
 go-to-work is already running in <path>`) and the others meet the workspace
 lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.

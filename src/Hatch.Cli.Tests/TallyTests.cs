@@ -488,6 +488,97 @@ public sealed class TallyTests
         }
     }
 
+    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null)
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        return (
+            new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend },
+            new Tally(TimeProvider.System) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend },
+            dir);
+    }
+
+    [Fact]
+    public void Two_members_sharing_a_run_cap_each_stop_at_the_combined_count()
+    {
+        var (first, second, dir) = Pair(maxRuns: 3);
+        try
+        {
+            first.Record(Report());
+            first.Record(Report());
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+
+            second.Record(Report());
+
+            Assert.True(first.ShouldStop());
+            Assert.True(second.ShouldStop());
+            Assert.Equal("--max-runs 3 reached across the set at 3", first.StopWhy);
+            Assert.Contains("across the set", second.StopWhy, StringComparison.Ordinal);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_sharing_a_budget_each_stop_at_the_combined_spend()
+    {
+        var (first, second, dir) = Pair(maxSpend: 5m);
+        try
+        {
+            first.Record(Report(cost: 2m));
+            second.Record(Report(cost: 2m));
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+
+            first.Record(Report(cost: 2m));
+
+            Assert.True(first.ShouldStop());
+            Assert.True(second.ShouldStop());
+            Assert.Equal("--max-spend 5 reached across the set at $6.00", second.StopWhy);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_lone_runner_keeps_its_own_bounds_and_their_words()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxRuns = 3 };
+        tally.Record(Report());
+        tally.Record(Report());
+        tally.Record(Report());
+
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-runs 3 reached", tally.StopWhy);
+    }
+
+    [Fact]
+    public void A_garbage_ledger_is_ignored_and_a_members_own_file_may_be_absent()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.9"), "garbage");
+            var tally = new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = 1, MaxSpend = 1m };
+
+            Assert.False(tally.ShouldStop());
+            Assert.False(File.Exists(Path.Combine(dir.FullName, "ledger.1")));
+
+            tally.Record(Report());
+
+            Assert.True(File.Exists(Path.Combine(dir.FullName, "ledger.1")));
+            Assert.True(tally.ShouldStop());
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void Somebody_who_says_until_six_at_eleven_at_night_means_the_morning()
     {

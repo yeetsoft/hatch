@@ -1,7 +1,74 @@
+using System.Globalization;
+
 namespace Hatch.Cli.Tests;
 
 public sealed class RunnerSetTests
 {
+    [Fact]
+    public void A_ledger_totals_every_slot_but_the_one_asking()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            RunnerSet.WriteLedger(dir.FullName, 1, 2, 1.5m);
+            RunnerSet.WriteLedger(dir.FullName, 2, 1, 0.25m);
+            RunnerSet.WriteLedger(dir.FullName, 3, 4, 3m);
+
+            Assert.Equal((6, 4.5m),RunnerSet.ReadLedgerTotal(dir.FullName, 2));
+            Assert.Equal((3, 1.75m), RunnerSet.ReadLedgerTotal(dir.FullName, 3));
+            Assert.Equal((0, 0m), RunnerSet.ReadLedgerTotal(Path.Combine(dir.FullName, "missing"), 1));
+
+            // Rewriting a slot replaces it rather than adding to it, and leaves no temp file behind.
+            RunnerSet.WriteLedger(dir.FullName, 1, 3, 2m);
+            Assert.Equal((7, 5m), RunnerSet.ReadLedgerTotal(dir.FullName, 2));
+            Assert.Empty(Directory.GetFiles(dir.FullName, "*.tmp"));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_ledger_file_that_does_not_parse_or_is_half_written_counts_for_nothing()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.2"), "not a ledger");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.3"), "");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.4.tmp"), "9 9");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.5"), "1 -4");
+            RunnerSet.WriteLedger(dir.FullName, 6, 1, 2m);
+
+            Assert.Equal((1, 2m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_ledger_decimal_is_written_and_read_the_same_in_any_culture()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        var was = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            RunnerSet.WriteLedger(dir.FullName, 2, 1, 1.5m);
+
+            Assert.Equal("1 1.5", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
+            Assert.Equal((1, 1.5m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = was;
+            dir.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void Absent_defaults_to_one_runner_and_leaves_args_unchanged()
     {
