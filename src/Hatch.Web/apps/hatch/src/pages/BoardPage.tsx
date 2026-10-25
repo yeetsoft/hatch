@@ -36,9 +36,11 @@ import {
   DEFAULT_FILTER,
   assigneeFacets,
   filterCards,
+  initialProject,
   isFiltering,
   readBoardTypes,
   revealType,
+  writeBoardProject,
   writeBoardTypes,
 } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
@@ -149,7 +151,7 @@ export function BoardPage() {
     everyMs: POLL_MS,
     paused: dragging !== null || moving > 0,
   });
-  const { projects, byKey: projectsByKey } = useProjects();
+  const { projects, byKey: projectsByKey, loaded } = useProjects();
   const showProjectMark = hasMultipleProjects(projects);
   /* Who is signed in, read once for the whole board rather than once per card
      opened. The summary needs it to know whether to offer the expedite press -
@@ -160,14 +162,16 @@ export function BoardPage() {
   const [filing, setFiling] = useState(false);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  /* Only two halves of the filter outlive the page: the types are in the
-     browser's storage and the project is in the URL - see changeFilter below -
-     so each is read once here, on the way into local state, rather than off
-     `params` or storage on every render. */
+  /* Only two halves of the filter outlive the page: the types and the
+     project are both read from the browser's storage (readBoardTypes,
+     initialProject) on the way into local state, rather than off `params`
+     or storage on every render - a pasted link's `?project=` wins over
+     storage when it names one. The write-back for both lives in its own
+     effect, below. */
   const [filter, setFilter] = useState<CardFilter>(() => ({
     ...DEFAULT_FILTER,
     types: readBoardTypes(),
-    project: params.get(PROJECT) ?? '',
+    project: initialProject(params.get(PROJECT)),
   }));
 
   /* Wraps the plain setter so a change to the project also writes (or drops)
@@ -191,6 +195,13 @@ export function BoardPage() {
     },
     [params, setParams],
   );
+
+  // Persists the project on every change, whatever moved it - a URL-seeded
+  // value on mount, a picker press through changeFilter, or the stale-key
+  // scrub below clearing it back to ''.
+  useEffect(() => {
+    writeBoardProject(filter.project);
+  }, [filter.project]);
 
   /** The card a click opened a summary for. Null when the dialog is closed. */
   const [peeking, setPeeking] = useState<IssueCard | null>(null);
@@ -256,6 +267,9 @@ export function BoardPage() {
   }, []);
 
   useEffect(() => {
+    // Projects have not loaded yet - an empty list here is "not fetched",
+    // not "no projects exist", and must not be read as the latter.
+    if (!loaded) return;
     // A key in the URL that names no project reads as all projects, and
     // the param is dropped - the picker has nothing to show it as chosen.
     setFilter((prev) => {
@@ -265,7 +279,7 @@ export function BoardPage() {
       setParams(nextParams, { replace: true });
       return { ...prev, project: '' };
     });
-  }, [projects]);
+  }, [projects, loaded]);
 
   // A few pixels before a mouse drag begins, so the same element can be a link
   // and a card - tapping one opens the issue, dragging one moves it. A touch
