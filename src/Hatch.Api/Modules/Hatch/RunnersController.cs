@@ -131,7 +131,7 @@ public class RunnersController(
     /// reads back what the board would like.
     /// </summary>
     /// <remarks>
-    /// <para>The four bounds in the body are what this process started with,
+    /// <para>The five bounds in the body are what this process started with,
     /// and they are written <em>when the row is created</em> and by a
     /// <c>loop</c> beat that says it is <c>Fresh</c> - never by any other beat.
     /// That is the one subtle thing in this file: a loop restarting overnight
@@ -339,6 +339,17 @@ public class RunnersController(
         if (Money(request.MaxSpend, out var maxSpend) is { } spendError) return BadRequest(spendError);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
+        // A key is judged here, on the one write a person makes - a heartbeat
+        // is not where a project is checked. Before any write below, so a
+        // refused request changes nothing.
+        var wantedProjects = request.Projects is null ? null : ProjectKeys(request.Projects);
+        if (wantedProjects is { Count: > 0 })
+        {
+            var known = await db.Projects.Select(p => p.Key).ToListAsync(ct);
+            var unknown = wantedProjects.Where(k => !known.Contains(k)).ToList();
+            if (unknown.Count > 0) return BadRequest($"there is no project {string.Join(", ", unknown)}");
+        }
+
         DateTimeOffset? untilAt = null;
         if (request.UntilAt is { } until && until.Trim().Length > 0)
         {
@@ -361,6 +372,9 @@ public class RunnersController(
         // "" clears the board, never null - the whole of how PATCH's clear is
         // told apart from a row no heartbeat has seeded yet, with no migration.
         if (request.Tags is not null) row.Tags = normalisedTags.Count > 0 ? string.Join('\n', normalisedTags) : "";
+
+        // "" clears it, never null, the same as Tags above.
+        if (wantedProjects is not null) row.Projects = wantedProjects.Count > 0 ? string.Join('\n', wantedProjects) : "";
 
         await db.SaveChangesAsync(ct);
 
@@ -560,13 +574,15 @@ public class RunnersController(
     // ---- The rows ----
 
     /// <summary>
-    /// The four bounds, from what the flags said, so the row shows the bounds
+    /// The five bounds, from what the flags said, so the row shows the bounds
     /// it is actually running under rather than reading as unbounded until
     /// somebody sets something. One place for a new row and a fresh beat, so
     /// the two cannot drift.
     /// </summary>
     private static void Bound(EfHatchRunner row, RunnerHeartbeatRequest request)
     {
+        var keys = ProjectKeys(request.Projects);
+        row.Projects = keys.Count > 0 ? string.Join('\n', keys) : null;
         row.Under = Fits(request.Under, EfHatchRunner.MaxUnderLength);
         row.MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null;
         row.MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null;
@@ -618,7 +634,7 @@ public class RunnersController(
     /// A row that already exists: kind, last seen, line, and the two facts
     /// about what it serves. The state is the operator's, with one exception: a
     /// fresh <c>loop</c> beat that says <c>Standby</c> writes it <c>paused</c>.
-    /// The four bounds are the flags' at a fresh start - a <c>loop</c> beat that
+    /// The five bounds are the flags' at a fresh start - a <c>loop</c> beat that
     /// says so - and the operator's after: any other beat writing one would be
     /// the runner having the last word on what it may spend.
     /// </summary>
@@ -672,7 +688,7 @@ public class RunnersController(
         else if (request.Exhausted == false) row.ExhaustedUntil = null;
 
         // Whose key this is can change on the API Keys page, so this is
-        // written every beat like Where and Remotes, unlike the four bounds,
+        // written every beat like Where and Remotes, unlike the five bounds,
         // which only a fresh loop's first beat writes. Not a `once` beat:
         // `hatch work` shares a runner name with a loop in the same checkout,
         // and its flagless beat must not clear the loop's budget.
@@ -762,6 +778,14 @@ public class RunnersController(
             .ToList();
         return canonical.Count > 0 ? string.Join('\n', canonical) : null;
     }
+
+    /// <summary>
+    /// The project keys a request named: trimmed, upper-cased (the normal form
+    /// of <see cref="EfHatchProject.Key"/>), blanks dropped and duplicates
+    /// folded, in the order given.
+    /// </summary>
+    private static List<string> ProjectKeys(IEnumerable<string>? raw) =>
+        (raw ?? []).Select(p => p.Trim().ToUpperInvariant()).Where(p => p.Length > 0).Distinct().ToList();
 
     /// <summary>The normalised tags, newline-joined - or null where none survived.</summary>
     private static string? Joined(IReadOnlyList<string> tags) => tags.Count > 0 ? string.Join('\n', tags) : null;

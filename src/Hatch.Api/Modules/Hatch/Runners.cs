@@ -130,7 +130,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Sequence,
             runner.BuiltAt,
             ToBoardDrift(drift),
-            ToBoardDrift(sourceDrift));
+            ToBoardDrift(sourceDrift),
+            // Not sorted, unlike Tags: the order given is the order kept.
+            runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
@@ -152,7 +154,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     public static RunnerInstructionDto Instruct(
         EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null, RunnerOrderDto? order = null) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
-            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order);
+            runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
+            runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is

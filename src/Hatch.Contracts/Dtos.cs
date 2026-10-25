@@ -3512,6 +3512,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// the sha the runner reported for its checkout rather than the board's.
 /// <c>Unknown</c> for a runner whose checkout holds no source of its own.
 /// </param>
+/// <param name="Projects">
+/// The project keys this runner is bound to, in the order given - empty where
+/// it is bound to none. Re-applied by a fresh <c>loop</c> beat and moved by
+/// <c>PATCH</c>, unlike <see cref="Tags"/>.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3542,11 +3547,13 @@ public record RunnerDto(
     int? Sequence = null,
     DateTimeOffset? BuiltAt = null,
     RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown,
-    RunnerBoardDrift SourceDrift = RunnerBoardDrift.Unknown)
+    RunnerBoardDrift SourceDrift = RunnerBoardDrift.Unknown,
+    IReadOnlyList<string> Projects = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+    public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
 }
 
 /// <summary>
@@ -3568,7 +3575,7 @@ public enum RunnerBoardDrift
 /// itself.
 /// </summary>
 /// <remarks>
-/// The four bounds are <em>reported</em>, not requested: they are what this
+/// The five bounds are <em>reported</em>, not requested: they are what this
 /// process started with, and they are written only when the row is being
 /// created. A restart of the same loop sends them again and the server ignores
 /// them, which is what stops a restart from undoing an operator's edit.
@@ -3622,6 +3629,13 @@ public enum RunnerBoardDrift
 /// or dropped entry by entry, since a tag is a decision and a heartbeat is
 /// not the one to guess it.
 /// </param>
+/// <param name="Projects">
+/// The project keys this runner was started bound to (<c>--project</c>), read
+/// only on a fresh <c>loop</c> beat, with the other four bounds: it sets the
+/// row's list, and none given clears it. On any other beat it is ignored.
+/// Normalised server-side (trimmed, upper-cased, de-duplicated); a key is not
+/// checked against the projects here, since dispatch is where one is judged.
+/// </param>
 /// <param name="Standing">
 /// Whether this runner was started inside one of the checkouts it is
 /// serving - a fact about the process, on the terms <see cref="Mine"/>
@@ -3630,7 +3644,7 @@ public enum RunnerBoardDrift
 /// <param name="Fresh">
 /// True only on the first answered beat of a loop process that carried no
 /// night state, i.e. one typed by hand or the first start under a supervisor:
-/// the four bounds in this body are then the flags it was started with, and
+/// the five bounds in this body are then the flags it was started with, and
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
@@ -3667,7 +3681,8 @@ public record RunnerHeartbeatRequest(
     DateTimeOffset? BuiltAt = null,
     string? SourceRevision = null,
     int? SourceSequence = null,
-    bool? Standby = null);
+    bool? Standby = null,
+    IReadOnlyList<string>? Projects = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -3693,7 +3708,7 @@ public record RunnerUsageWindowDto(
 /// and read by nobody else.
 /// </summary>
 /// <remarks>
-/// The loop folds all five into its bounds before its next pick, so a person
+/// The loop folds all six into its bounds before its next pick, so a person
 /// editing a row changes what that loop does from the next ticket onward -
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
@@ -3721,6 +3736,10 @@ public record RunnerUsageWindowDto(
 /// where there was none, or where this beat was not a <c>loop</c> beat (see
 /// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
 /// </param>
+/// <param name="Projects">
+/// The project keys the row is bound to, <see cref="RunnerDto.Projects"/> - in
+/// the order they were given, empty where it is bound to none.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -3730,7 +3749,8 @@ public record RunnerInstructionDto(
     string? For = null,
     IReadOnlyList<string>? Drives = null,
     IReadOnlyList<string>? Tags = null,
-    RunnerOrderDto? Order = null);
+    RunnerOrderDto? Order = null,
+    IReadOnlyList<string>? Projects = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -3751,13 +3771,18 @@ public record RunnerInstructionDto(
 /// heartbeat's own tags, this is the one write that reaches a row after its
 /// first beat has seeded it.
 /// </param>
+/// <param name="Projects">
+/// Absent leaves the row's project bound alone, an empty list clears it, a
+/// list sets it. A key that names no project is refused, naming it.
+/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
     string? MaxRuns = null,
     string? MaxSpend = null,
     string? UntilAt = null,
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null,
+    IReadOnlyList<string>? Projects = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.
