@@ -102,4 +102,21 @@ public class HatchOptions
     /// the default, exactly as <see cref="StallLapseMinutes"/> does.
     /// </summary>
     public int DoneHorizonHours { get; set; } = 48;
+
+    /// <summary>
+    /// Where backups are written - see <see cref="BackupFolder"/>. Empty turns
+    /// backups off; that is the default, so an installation that never sets
+    /// this gets no process writing to its disk unasked.
+    /// </summary>
+    public string BackupPath { get; set; } = "";
+
+    /// <summary>
+    /// How many days of backups are kept before the oldest are pruned. Zero
+    /// means never prune; negative falls back to
+    /// <see cref="HatchOptions"/>'s own default, as
+    /// <see cref="IssueClaims.StallLapseSeconds"/> does for
+    /// <see cref="StallLapseMinutes"/>. The guard is applied by the backup
+    /// service, not here.
+    /// </summary>
+    public int BackupKeepDays { get; set; } = 14;
 }
