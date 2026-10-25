@@ -531,6 +531,7 @@ internal partial class Program
         "  hatch work --workspace /clones           ...clone what the board binds, into /clones",
         "  hatch go-to-work             increments, back to back, until told to stop",
         "  hatch go-to-work --once      ...one pass, and out",
+        "  hatch go-to-work --standby   ...start paused, until the board's Go to Work runs it",
         "  hatch go-to-work --under AER-1 --interval 300",
         "  hatch go-to-work --max-runs 5 --max-spend 20 --until 08:00",
         "  hatch go-to-work --stop-file /tmp/stop",

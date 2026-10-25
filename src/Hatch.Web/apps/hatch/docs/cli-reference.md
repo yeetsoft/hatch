@@ -502,7 +502,7 @@ has what it prints and every exit code.
 ### go-to-work
 
 ```
-hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]
+hatch go-to-work [--mine] [--under <epic key>] [--once] [--standby] [--quiet]
                  [--interval <seconds>] [--merge-interval <seconds>]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
                  [--until <HH:MM>] [--stop-file <path>] [--no-keys]
@@ -519,6 +519,9 @@ has the pass in order, the bounds and the restarts.
   person's tickets, including yours.
 - `--under <epic key>` stays inside one epic's subtree.
 - `--once` makes one pass, and out.
+- `--standby` starts the runner paused: it says so once, reports in, and takes
+  nothing until the board's Go to Work sets it running. A restarted incarnation
+  ignores it, and it is refused with `--once`.
 - `--quiet` prints no per-increment stream, only what each one ended as.
 - `--interval <seconds>` is how long to wait when there was nothing to do.
   The default is 60.
