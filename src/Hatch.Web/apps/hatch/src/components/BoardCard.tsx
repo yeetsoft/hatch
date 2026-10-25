@@ -6,12 +6,14 @@ import { ClaimBadge } from './ClaimBadge';
 import { FlowBand } from './FlowBand';
 import { MomentChip } from './MomentChip';
 import { TypeGlyph } from './TypeGlyph';
+import { statusVars } from '../lib/color';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
 import type { Spot } from '../lib/spotlight';
+import { countWords, storyCount } from '../lib/storiesOnEpics';
 import { truncate } from '../lib/text';
-import type { IssueCard, Project } from '../types';
+import type { IssueCard, Project, Status } from '../types';
 
 export interface CardProps {
   card: IssueCard;
@@ -22,6 +24,10 @@ export interface CardProps {
   /** The card's own project, resolved by the board - null draws no mark, the
       same key the board always drew before this had anything to add. */
   project?: Project | null;
+  /** The epic's own stories, rank order - absent or empty for every other card. */
+  stories?: IssueCard[];
+  /** Every column, for a story's own dot colour and title - absent only where `stories` is too. */
+  statuses?: Status[];
 }
 
 interface BoardCardProps {
@@ -88,6 +94,8 @@ export function BoardCard({
   waiting = false,
   terminal = false,
   project = null,
+  stories = [],
+  statuses = [],
   found = false,
   onPeek,
   depth = 0,
@@ -127,7 +135,7 @@ export function BoardCard({
       // their own, which a plain prop set earlier would lose to.
       aria-describedby={[attributes['aria-describedby'], band ? tip.describedBy : null].filter(Boolean).join(' ') || undefined}
     >
-      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
+      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
       <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
     </Link>
   );
@@ -141,10 +149,10 @@ export function BoardCard({
  * understood the gesture. This is the same face, drawn in an overlay layer that
  * is positioned by the cursor rather than by the column it came from.
  */
-export function CardPreview({ card, waiting = false, terminal = false, project = null }: CardProps) {
+export function CardPreview({ card, waiting = false, terminal = false, project = null, stories = [], statuses = [] }: CardProps) {
   return (
     <div className={`hatch-card hatch-card-preview${askingClass(card)}${priorityClass(card)}`}>
-      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
+      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
     </div>
   );
 }
@@ -157,7 +165,15 @@ export function CardPreview({ card, waiting = false, terminal = false, project =
  * height; the first is what keeps a pasted paragraph out of the DOM, the
  * tooltip, and the drag preview even though the clamp would have hidden it.
  */
-function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
+function CardFace({
+  card,
+  waiting,
+  terminal,
+  project,
+  stories,
+  statuses,
+}: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
+  const { total, done } = storyCount(stories, statuses);
   return (
     <>
       <TypeGlyph type={card.type} />
@@ -280,6 +296,22 @@ function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps,
         {truncate(card.title)}
       </div>
       {card.parentKey && <div className="hatch-card-parent">↳ {card.parentKey}</div>}
+      {stories.length > 0 && (
+        <div className="hatch-card-stories" aria-label={`${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`}>
+          {stories.map((story) => {
+            const column = statuses.find((s) => s.id === story.statusId);
+            return (
+              <span
+                key={story.key}
+                className="hatch-card-story-dot"
+                style={statusVars(column?.color)}
+                title={`${story.key} - ${column?.name ?? ''}`}
+              />
+            );
+          })}
+          <span className="hatch-card-stories-words">{countWords(total, done)}</span>
+        </div>
+      )}
       {(card.dueAt || waiting) && (
         <div className="hatch-card-dates">
           {/* Only a waiting card shows its ready date. Once it has passed it has

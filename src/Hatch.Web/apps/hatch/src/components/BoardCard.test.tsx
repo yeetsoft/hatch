@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CardPreview } from './BoardCard';
-import type { IssueCard, Project } from '../types';
+import { countWords } from '../lib/storiesOnEpics';
+import type { IssueCard, Project, Status } from '../types';
 
 const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   key: 'AER-1',
@@ -68,6 +69,24 @@ const project = (over: Partial<Project> = {}): Project => ({
   reflectionNextDueAt: null,
   storiesOnEpics: false,
   ...over,
+});
+
+const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
+  id,
+  name: `status-${id}`,
+  sortOrder,
+  isTerminal: false,
+  isDeferred: false,
+  isWip: false,
+  expressSkips: false,
+  parentPulls: false,
+  agentFiles: false,
+  isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
+  runnerTags: [],
+  color: '#6b7280',
+  ...opts,
 });
 
 const between = (html: string, open: string) => {
@@ -180,5 +199,49 @@ describe('BoardCard CardFace', () => {
 
     expect(html).toContain('hatch-card-held');
     expect(html).not.toContain('hatch-card-stalled');
+  });
+
+  it('draws a dot per story, each coloured and titled from its own column, and the right "N of M done"', () => {
+    const epic = card({ type: 'epic', key: 'AER-1' });
+    const statuses = [
+      status(1, 0, { color: '#111111' }),
+      status(2, 1, { color: '#222222' }),
+      status(3, 2, { color: '#333333', isTerminal: true }),
+    ];
+    const stories = [
+      card({ key: 'AER-2', type: 'story', parentKey: 'AER-1', statusId: 1 }),
+      card({ key: 'AER-3', type: 'story', parentKey: 'AER-1', statusId: 2 }),
+      card({ key: 'AER-4', type: 'story', parentKey: 'AER-1', statusId: 3 }),
+    ];
+    const html = renderToStaticMarkup(
+      <CardPreview card={epic} waiting={false} terminal={false} project={null} stories={stories} statuses={statuses} />,
+    );
+
+    expect(html.split('hatch-card-story-dot').length - 1).toBe(3);
+    for (const [story, st] of [
+      [stories[0], statuses[0]],
+      [stories[1], statuses[1]],
+      [stories[2], statuses[2]],
+    ] as const) {
+      const dotStart = html.indexOf(`title="${story.key} - ${st.name}"`);
+      expect(dotStart).toBeGreaterThanOrEqual(0);
+    }
+    expect(html).toContain(countWords(3, 1));
+
+    const strip = between(html, '<div class="hatch-card-stories"');
+    expect(strip).toContain('aria-label="3 stories, 1 done"');
+  });
+
+  it('draws no stories strip when stories is absent or empty', () => {
+    const bare = card();
+    const noneHtml = renderToStaticMarkup(
+      <CardPreview card={bare} waiting={false} terminal={false} project={null} />,
+    );
+    expect(noneHtml).not.toContain('hatch-card-stories');
+
+    const emptyHtml = renderToStaticMarkup(
+      <CardPreview card={bare} waiting={false} terminal={false} project={null} stories={[]} statuses={[]} />,
+    );
+    expect(emptyHtml).not.toContain('hatch-card-stories');
   });
 });
