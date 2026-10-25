@@ -591,6 +591,43 @@ flag.
 A checkout, profile or export that names an origin and no key is keyless on
 purpose, whatever the per-user file carries.
 
+## Starting it at login
+
+`hatch standby install` registers a login item that starts this checkout's
+loop at every sign-in, with no terminal and no signed-in session required:
+
+- **Windows** - a Task Scheduler logon task, registered with `schtasks
+  /Create /XML` under the signed-in user (no elevation needed), run through
+  `conhost.exe --headless` so no window opens.
+- **macOS** - a launchd agent (`~/Library/LaunchAgents/<id>.plist`) with
+  `RunAtLoad`; nothing ever calls `launchctl`.
+- **Linux** - a systemd user unit, `enable`d but never started with `--now`,
+  where `systemctl --user show-environment` succeeds; otherwise an XDG
+  autostart entry (`~/.config/autostart/<id>.desktop`), for a login that
+  never starts the user session systemd would run the unit under.
+
+It starts the loop **paused**: the loop heartbeats but takes no ticket until
+something sets it running - the Runners page's **Resume**, or a `go-to-work
+--standby` run by hand reaching the same row. Everything the loop prints
+lands in its log, at the per-user hatch folder's
+`logs/standby-<fingerprint>.log` (`%APPDATA%\hatch\logs\...` on Windows),
+which a crash leaves readable.
+
+`hatch standby remove` forgets the login item alone - a loop already running
+keeps running. `hatch standby show` (or bare `hatch standby`) names whether
+the item is installed, the command and log it uses, and the pid of the loop
+holding this checkout's lock right now, if any.
+
+In Hatch's own checkout - where `scripts/hatch.sh` and `src/Hatch.Cli` both
+exist - the registered command runs the supervisor (`hatch.ps1` on Windows,
+`hatch.sh` elsewhere) rather than the installed binary directly, so a
+`src/Hatch.Cli` change landed on the trunk restarts the standby loop as the
+new build, the same as any other supervised run.
+
+Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or run it through
+`powershell -NoProfile -ExecutionPolicy Bypass -File`.
+
 ## When it will not run
 
 - **`hatch: no claude CLI on PATH.`** The runner looks on `PATH` only — never
