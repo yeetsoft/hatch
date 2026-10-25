@@ -178,6 +178,18 @@ the "Show stories on epics, not the board" checkbox, and it is saved with the
 rest of the dialog; anyone else sees a sentence saying what it is set to. It is
 also written through the API ([API reference](api-reference)).
 
-Once the board's story cards land, it will draw a project's stories inside
-their epic's card instead of as cards of their own. Today it changes nothing
-drawn on the board: it is only a setting the project holds.
+With the setting on, a project's stories are drawn on their epic's card
+instead of as cards of their own. An epic with stories carries one dot per
+story, in rank order, each coloured and titled from the column the story
+stands in, and a count reading "N of M done". Only a story in the terminal
+column counts as done: one in a protected column, such as a Merges PR column,
+or in a deferred one does not, and a story past the done horizon is still
+counted.
+
+A story is carried off the board exactly when the setting is on, its parent is
+an epic standing in a column the board draws, and it is not itself an epic, a
+task, a bug or a reflection. Everything else keeps its own card, including a
+story whose epic is missing, shelved or past the horizon. A carried story is
+never a card, at any column or fold stage, and the "hidden by the filter" count
+on a column never counts one. With the setting off, the board draws exactly as
+it always has.
