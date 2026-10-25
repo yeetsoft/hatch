@@ -5,11 +5,11 @@ order: 50
 summary: Where a Hatch keeps its data, how to dump it every night and restore it, and what replication means for it.
 ---
 
-Everything Hatch knows is in Postgres, so a dump is the backup and restoring is
-reading it back. Replication is a question for Postgres, not for Hatch; the
-last sections say what to tell Hatch once you have answered it.
+Everything Hatch knows is in Postgres. Hatch takes a dump of it itself, once
+when it starts and once a day after; restoring it, and replication, both stay
+what they already were.
 
-## Where the data is, and how to back it up
+## Where the data is
 
 Everything Hatch knows — every issue, comment, event and playbook — is in
 Postgres, inside a named volume called `hatch-local_pgdata`. Nothing lives in
@@ -28,18 +28,31 @@ it is clones of public history, reproducible from the remotes the board
 already names, and losing it costs a re-clone rather than anything a backup
 needs to answer for.
 
-**Do not back it up by copying the volume.** A file-level copy of a database
-directory that is being written to has no consistency guarantee, so what you
-would be keeping is a file that restores *sometimes*. Ask Postgres for the dump
-instead — it is one command, the stack stays up, and what comes back is a text
-file you can read.
+## How Hatch backs it up
 
-```
-docker compose exec -T db pg_dump -U user --clean --if-exists hatch > hatch-backup.sql
-```
+The api runs the dump itself: once when it starts, and again every 24 hours
+after, with no fixed hour of the day. Each run writes a file named
+`hatch-<UTC timestamp>.sql` — `hatch-20270115T030000Z.sql`, say — into the
+folder named by [`HATCH_BACKUP_DIR`](environment-variables).
 
-That is a board's worth of history in well under a megabyte. Put it wherever
-you already put things you would be sad to lose.
+It is a `pg_dump` and not a copy of the volume, because a file-level copy of a
+database directory that is being written to has no consistency guarantee, so
+what you would be keeping is a file that restores *sometimes*. Ask Postgres for
+the dump instead: the stack stays up, and what comes back is a text file you
+can read. It is a board's worth of history in well under a megabyte.
+
+Hatch keeps roughly the last two weeks. A copy goes only once it is older than
+`Hatch__BackupKeepDays` (14 by default) *and* that many newer copies remain, so
+a long outage still ends with that many copies, not one. Nothing but Hatch's
+own exactly-named files in that folder is ever touched, so the folder can hold
+other things.
+
+The Settings page's Backups card shows the last success, or that there has
+never been one, and the attention panel raises a hand on a backup that failed
+or has gone stale.
+
+Unset `HATCH_BACKUP_DIR` and Hatch takes no backups: nothing is written
+anywhere. A copy somewhere other than this machine is yours to arrange.
 
 ## Restoring
 
@@ -71,13 +84,20 @@ out which half arrived by using the board.
 The backup line's `>` works in either shell, as long as the PowerShell is 7 or
 newer — 5.1 writes UTF-16 there, which `psql` will not read back.
 
-## Every night
+## Doing it by hand instead
 
-A backup you have to remember to take is one you will not have. The line is the
-same dump, run from the directory that holds `compose.yaml` and writing a file
-named for the day. These keep the files in `hatch-backups` in your home
-directory, outside the checkout, so no commit can pick them up; create that
-directory first.
+If the api cannot reach a folder on the host, you can still take the dump
+yourself. It is one command, run from the directory that holds `compose.yaml`,
+and the stack stays up:
+
+```
+docker compose exec -T db pg_dump -U user --clean --if-exists hatch > hatch-backup.sql
+```
+
+To have it taken every night, schedule that same line, writing a file named for
+the day. These keep the files in `hatch-backups` in your home directory,
+outside the checkout, so no commit can pick them up; create that directory
+first.
 
 macOS / Linux — `crontab -e`, and add this line, with the path to your checkout
 in place of `<the checkout>`. Cron treats a bare `%` as a newline, which is why
@@ -103,9 +123,6 @@ Run each line once by hand before you trust it — the `docker compose` line on
 its own from the checkout, then the task itself (`Start-ScheduledTask -TaskName
 'Hatch backup'` on Windows) — and look for the file. A schedule that has never
 run has not been shown to work.
-
-How many nights to keep, and a copy somewhere other than this machine, are
-yours to decide; Hatch ships no backup container and does not prune anything.
 
 ## Replication
 
