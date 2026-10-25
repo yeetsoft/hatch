@@ -165,8 +165,10 @@ moves across them: dependencies, deferring, and closing a subtree.
 ## Stories on epics
 
 Stories on epics is a per-project setting that only an owner of the project
-can change. It is written through the API alone for now
-([API reference](api-reference)); the project dialog does not show it yet.
+can change. An owner sets it in the project dialog, in its Board section, with
+the "Show stories on epics, not the board" checkbox, and it is saved with the
+rest of the dialog; anyone else sees a sentence saying what it is set to. It is
+also written through the API ([API reference](api-reference)).
 
 Once the board's story cards land, it will draw a project's stories inside
 their epic's card instead of as cards of their own. Today it changes nothing
