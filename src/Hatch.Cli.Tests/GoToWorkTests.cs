@@ -427,6 +427,103 @@ public sealed class GoToWorkTests
         Assert.All(Beats(h), b => Assert.NotEqual(true, b.Fresh));
     }
 
+    private const string StandingBy = "hatch: standing by - the board's Go to Work starts this runner";
+
+    [Fact]
+    public async Task A_standby_start_sends_standby_on_its_first_beat_only()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--standby", "--max-runs", "2"], default));
+
+        var beats = Beats(h);
+        Assert.True(beats.Count >= 2);
+        Assert.True(beats[0].Fresh);
+        Assert.True(beats[0].Standby);
+        Assert.All(beats.Skip(1), b => Assert.Null(b.Standby));
+    }
+
+    [Fact]
+    public async Task A_standby_start_says_it_is_standing_by_once()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--standby", "--max-runs", "2"], default));
+
+        Assert.Single(h.Say.Said, l => l == StandingBy);
+    }
+
+    [Fact]
+    public async Task A_restarted_standby_loop_sends_no_standby_and_says_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1 });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--standby", "--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.Null(b.Standby));
+        Assert.All(Beats(h), b => Assert.NotEqual(true, b.Fresh));
+        Assert.DoesNotContain(h.Say.Said, l => l == StandingBy);
+    }
+
+    [Fact]
+    public async Task Standby_with_once_is_refused_before_any_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--standby", "--once"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--standby", StringComparison.Ordinal) && l.Contains("--once", StringComparison.Ordinal));
+        Assert.Empty(Beats(h));
+    }
+
+    [Fact]
+    public async Task Without_standby_the_beat_carries_none()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.Null(b.Standby));
+        Assert.DoesNotContain(h.Say.Said, l => l == StandingBy);
+    }
+
+    [Fact]
+    public async Task A_standby_start_answered_paused_takes_no_ticket()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("paused", null, null, null, null));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--standby", "--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(() => h.Wire.Count("POST", Beat) > 0, "the first heartbeat");
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
+            "the board's paused line");
+        await Task.Delay(50);
+
+        Assert.True(Beats(h)[0].Standby);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+
+        cts.Cancel();
+        await running;
+    }
+
     [Fact]
     public async Task The_heartbeat_carries_standing_false_when_no_checkout_is_standing()
     {

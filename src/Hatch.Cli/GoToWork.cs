@@ -62,6 +62,13 @@ public sealed class Tally
     /// </summary>
     public bool Fresh { get; set; }
 
+    /// <summary>
+    /// <c>--standby</c> was typed. Sent as <c>standby</c> beside <c>fresh</c>, so
+    /// the server starts the row paused; it rides <see cref="Fresh"/> and so is
+    /// resent after a beat that threw and never after one that was answered.
+    /// </summary>
+    public bool Standby { get; init; }
+
     public int Runs { get; private set; }
     public decimal Spent { get; private set; }
 
@@ -508,7 +515,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     public static readonly string[] GoToWorkUsage =
     [
-        "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--quiet]",
+        "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--standby] [--quiet]",
         "                        [--interval <seconds>] [--merge-interval <seconds>]",
         "                        [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
@@ -531,6 +538,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                     and the two are otherwise identical",
         "  --under            stay inside one epic's subtree",
         "  --once             one pass, and out",
+        "  --standby          start paused: the runner reports in and takes nothing until",
+        "                     the board's Go to Work sets it running. Ignored by a",
+        "                     restarted incarnation; refused with --once",
         "  --quiet            no per-increment stream, only what each one ended as",
         "  --interval         seconds to wait when there was nothing to do (default 60)",
         "  --merge-interval   seconds between the merge train's own checks of what is",
@@ -583,6 +593,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var interval = 60;
         var mergeInterval = 5;
         var once = false;
+        var standby = false;
         var quiet = false;
         var mine = false;
         var restartAfter = RestartAfterMinutes;
@@ -618,6 +629,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     break;
                 case "--once": once = true; break;
+                case "--standby": standby = true; break;
                 case "--quiet": quiet = true; break;
                 case "--max-runs" when i + 1 < args.Length:
                     if (!int.TryParse(args[++i], out var runs) || runs < 0)
@@ -678,6 +690,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             runtime.Say.Complain(
                 "hatch: go-to-work takes --under or a key, not both - one names where to look, the other names the ticket");
+            return 1;
+        }
+
+        // Refused here, before any lock or beat: a single pass has no board to
+        // wait for, so a standby that never ends would be a hang by another name.
+        if (standby && once)
+        {
+            runtime.Say.Complain(
+                "hatch: --standby and --once cannot be used together - a single pass has no board to wait for");
             return 1;
         }
 
@@ -842,7 +863,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt = carried?.UntilAt ?? untilAt,
                 StopFile = stopFile,
                 Controls = runtime.Controls,
+                Standby = standby,
             };
+
+            // Only a fresh start: a restarted incarnation carries the board's
+            // own pause or run, and has nothing to announce.
+            if (standby && tally.Fresh)
+                runtime.Say.Line("hatch: standing by - the board's Go to Work starts this runner");
 
             var restart = Restarts.Armed(runtime, noRestart, once, restartAfter);
 
@@ -1361,6 +1388,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
+                Standby: tally.Standby && tally.Fresh && !once ? true : null,
                 Line: line.Line,
                 Under: under,
                 MaxRuns: tally.MaxRuns,

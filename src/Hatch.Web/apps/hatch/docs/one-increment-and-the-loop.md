@@ -251,7 +251,9 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 3. **Age restart.** Under Hatch's own supervisor a loop that has run long
    enough asks to come back as a newer build ([Restarts](#restarts)).
 4. **Pause.** Paused from the board or from the keyboard, it keeps
-   heartbeating and takes nothing. The board wins if both are true.
+   heartbeating and takes nothing. The board wins if both are true. A
+   `--standby` start is paused the same way, until the board's Go to Work sets
+   it running.
 5. **Usage-limit wait.** A runner whose account ran out of usage takes
    nothing until it resets, obeying every bound and Ctrl-C meanwhile.
 6. **Review poll.** On the interval, pull requests in review are read for a
