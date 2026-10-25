@@ -1321,6 +1321,36 @@ public record AttentionDto(
     IReadOnlyList<DeadlockedDto>? Deadlocked = null);
 
 /// <summary>
+/// The backup folder's truth and the last attempt's, for the Backups card -
+/// what <c>GET /api/hatch/backup</c> and <c>POST /api/hatch/backup/run</c>
+/// both answer.
+/// </summary>
+/// <param name="Configured">Whether an operator has set a backup path at all.</param>
+/// <param name="Path">The configured backup path, or null when none is set.</param>
+/// <param name="KeepDays">How many newest copies pruning always keeps.</param>
+/// <param name="LastSuccessfulAt">The newest copy's own stamp, read from the folder - never from the last attempt, so deleting that file by hand changes the next read.</param>
+/// <param name="LastAttemptAt">When the last backup attempt - of any outcome - was made, or null when none has.</param>
+/// <param name="LastOutcome"><c>ok</c>, <c>failed</c>, <c>not-configured</c>, or <c>never</c> when no attempt has ever been recorded.</param>
+/// <param name="LastError">The last attempt's failure sentence, set only when <paramref name="LastOutcome"/> is <c>failed</c>.</param>
+/// <param name="FolderReadable">Whether the folder could be listed - false when not configured, or when the folder cannot be read.</param>
+/// <param name="FolderProblem">The reason the folder could not be listed, set only when <paramref name="FolderReadable"/> is false and a folder was configured.</param>
+/// <param name="Copies">The folder's finished backups, newest first.</param>
+public record BackupStatusDto(
+    bool Configured,
+    string? Path,
+    int KeepDays,
+    DateTimeOffset? LastSuccessfulAt,
+    DateTimeOffset? LastAttemptAt,
+    string LastOutcome,
+    string? LastError,
+    bool FolderReadable,
+    string? FolderProblem,
+    IReadOnlyList<BackupCopyDto> Copies);
+
+/// <summary>One finished backup on disk, as <see cref="BackupStatusDto.Copies"/> lists it.</summary>
+public record BackupCopyDto(string Name, long Bytes, DateTimeOffset TakenAt);
+
+/// <summary>
 /// One runner out of Claude usage, for the top of the attention panel.
 /// </summary>
 /// <param name="Name">What the runner calls itself - the same string the Runners page keys on.</param>
