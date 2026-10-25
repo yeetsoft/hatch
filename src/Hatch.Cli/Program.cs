@@ -160,6 +160,46 @@ if (memberSlot is { } slot)
     say.Line($"hatch: runner {slot} of a set - serves its own workspace only");
 }
 
+// Every way out through one door. A signal that is not handled kills the
+// process outright, and the increment that ends in an interrupt is exactly the
+// one whose claim most needs letting go of - so both are caught, the token is
+// cancelled, and the release happens on the way out of the `finally` the
+// commands already have. A second one is left to the runtime: somebody pressing
+// it twice means now.
+using var cancelling = new CancellationTokenSource();
+var caught = 0;
+
+using var interrupt = Handle(PosixSignal.SIGINT);
+using var terminate = Handle(PosixSignal.SIGTERM);
+
+// The terminal a loop runs in closing - a window shut, a session hung up on -
+// raises this on the platforms that have it, and .NET raises it for a closed
+// console window on Windows too. Handled the same way SIGINT is: the claim
+// most needs letting go of is the one held when nobody is watching any more.
+using var hangup = Handle(PosixSignal.SIGHUP);
+
+// A set: `--runners <n>` of 2 or more makes this process the host of n runners
+// on this machine, the first this checkout as it is today and the rest clones of
+// their own, and it ends them together. It holds no lock, claim or board client
+// itself - each child does - so it returns before any of that is built. -h goes
+// on to go-to-work's own usage, and a member never hosts a set of its own.
+var runners = 1;
+if (command is "go-to-work" or "do-my-work")
+{
+    if (!RunnerSet.TryExtract(rest, out rest, out runners, out var runnersRefusal))
+    {
+        say.Complain(runnersRefusal);
+        return 1;
+    }
+
+    if (runners > 1 && memberSlot is null && !Hatch.Cli.Usage.Wanted(rest))
+    {
+        return await RunnerSet.RunAsync(
+            command, runners, rest, profileArg, settings, environment, new ProcessSetLauncher(), say.Line,
+            cancelling.Token);
+    }
+}
+
 // The standing checkout, if there is one, then every checkout HATCH_REPOS
 // names - refused here, before any lock is taken and before anything is
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
@@ -190,24 +230,6 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
 var board = new Board(client, settings.Tags);
-
-// Every way out through one door. A signal that is not handled kills the
-// process outright, and the increment that ends in an interrupt is exactly the
-// one whose claim most needs letting go of - so both are caught, the token is
-// cancelled, and the release happens on the way out of the `finally` the
-// commands already have. A second one is left to the runtime: somebody pressing
-// it twice means now.
-using var cancelling = new CancellationTokenSource();
-var caught = 0;
-
-using var interrupt = Handle(PosixSignal.SIGINT);
-using var terminate = Handle(PosixSignal.SIGTERM);
-
-// The terminal a loop runs in closing - a window shut, a session hung up on -
-// raises this on the platforms that have it, and .NET raises it for a closed
-// console window on Windows too. Handled the same way SIGINT is: the claim
-// most needs letting go of is the one held when nobody is watching any more.
-using var hangup = Handle(PosixSignal.SIGHUP);
 
 LiveTerminal? live = null;
 KeyReader? keys = null;

@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Reflection;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -216,4 +219,150 @@ public static class RunnerSet
     /// <summary>Whether the set's host has left <paramref name="fileName"/> in <paramref name="setDir"/>.</summary>
     public static bool Signalled(string? setDir, string fileName) =>
         setDir is { Length: > 0 } && Path.Exists(Path.Combine(setDir, fileName));
+
+    /// <summary>
+    /// Runs <paramref name="runners"/> children of this command at once and
+    /// ends them together: the host of a set. Takes no lock, claim or board
+    /// client of its own - each child does - so it only starts them, prefixes
+    /// what they say, passes a stop or a restart between them through files in
+    /// one shared directory, and folds what they exit with.
+    /// </summary>
+    /// <remarks>
+    /// Cancelling <paramref name="ct"/> writes <see cref="StopFileName"/> and
+    /// waits; it never reaches a child itself, because a child killed mid-increment
+    /// is the one claim nobody released. A child that exits 75 while the set is
+    /// not stopped writes <see cref="RestartFileName"/> so the others finish
+    /// their increments and follow it; a child that exits 0 or 1 alone signals
+    /// nothing.
+    /// </remarks>
+    public static async Task<int> RunAsync(
+        string command, int runners, string[] rest, string? profile, Settings settings,
+        IReadOnlyDictionary<string, string?> environment, ISetLauncher launcher, Action<string> say,
+        CancellationToken ct)
+    {
+        var workspace = settings.WorkspaceFor(WorkspaceFrom(rest)).Workspace;
+        if (workspace is null)
+        {
+            say("hatch: --runners needs a workspace to clone into");
+            return 1;
+        }
+
+        var setDir = Path.Combine(Path.GetTempPath(), "hatch-set-" + Environment.ProcessId);
+        if (Directory.Exists(setDir)) Directory.Delete(setDir, recursive: true);
+        Directory.CreateDirectory(setDir);
+
+        try
+        {
+            var nightState = environment.GetValueOrDefault("HATCH_NIGHT_STATE");
+            var codes = new int[runners];
+
+            // Registered before the children start, so a cancel that arrived
+            // while the set was still being built is written at once.
+            using (ct.Register(() => Signal(setDir, StopFileName)))
+            {
+                var tasks = Enumerable.Range(1, runners).Select(async slot =>
+                {
+                    var child = ChildFor(command, slot, rest, profile, workspace, nightState, setDir);
+                    int code;
+                    try
+                    {
+                        code = await launcher.RunAsync(child, line => say($"[{slot}] {line}"), CancellationToken.None);
+                    }
+                    catch (Exception e)
+                    {
+                        say($"[{slot}] hatch: could not run this runner: {e.Message}");
+                        code = 1;
+                    }
+
+                    if (code == GoToWorkCommand.RestartExitCode && !ct.IsCancellationRequested)
+                        Signal(setDir, RestartFileName);
+
+                    codes[slot - 1] = code;
+                });
+
+                await Task.WhenAll(tasks);
+            }
+
+            return Fold(codes, ct.IsCancellationRequested);
+        }
+        finally
+        {
+            try { Directory.Delete(setDir, recursive: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>Everything one member of the set is started with.</summary>
+    private static SetChild ChildFor(
+        string command, int slot, string[] rest, string? profile, string baseWorkspace, string? nightState,
+        string setDir)
+    {
+        // Program has already taken --profile out of rest; a pinned profile has
+        // to be handed on, or the children resolve a different one.
+        string[] pinned = profile is null ? [] : ["--profile", profile];
+        string[] args = [command, .. pinned, .. ArgsFor(rest, slot, WorkspaceFor(baseWorkspace, slot))];
+
+        var env = new Dictionary<string, string> { [DirVariable] = setDir };
+        if (NightStateFor(nightState, slot) is { } state) env["HATCH_NIGHT_STATE"] = state;
+
+        // Slot 1 is the host's own checkout and serves it as a lone runner would.
+        if (slot >= 2) env[SlotVariable] = slot.ToString();
+
+        return new SetChild(slot, args, env);
+    }
+
+    private static void Signal(string setDir, string fileName)
+    {
+        try { File.WriteAllText(Path.Combine(setDir, fileName), ""); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+}
+
+/// <summary>One member of a set, as the host starts it.</summary>
+/// <param name="Slot">Which member, 1-based.</param>
+/// <param name="Args">The whole argument list, command word first.</param>
+/// <param name="Env">Only what this member adds to the environment it inherits.</param>
+public sealed record SetChild(int Slot, string[] Args, IReadOnlyDictionary<string, string> Env);
+
+/// <summary>The seam <see cref="RunnerSet.RunAsync"/> starts a member through.</summary>
+public interface ISetLauncher
+{
+    /// <summary>Runs one member to its end, handing each line of its output to <paramref name="line"/>. Returns its exit code.</summary>
+    Task<int> RunAsync(SetChild child, Action<string> line, CancellationToken ct);
+}
+
+/// <summary>The real thing: this same program, started again with the member's arguments.</summary>
+public sealed class ProcessSetLauncher : ISetLauncher
+{
+    public async Task<int> RunAsync(SetChild child, Action<string> line, CancellationToken ct)
+    {
+        var program = Environment.ProcessPath ?? throw new InvalidOperationException("the path of this program is unknown");
+        var start = new ProcessStartInfo
+        {
+            FileName = program,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            // A member draws no footer and reads no keys: its input is closed at once.
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+        };
+
+        // `dotnet run` and the like: the process is the host, and the program is its first argument.
+        if (Path.GetFileNameWithoutExtension(program).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(Assembly.GetEntryAssembly()!.Location);
+
+        foreach (var a in child.Args) start.ArgumentList.Add(a);
+        foreach (var (name, value) in child.Env) start.Environment[name] = value;
+
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("could not start a runner");
+        process.StandardInput.Close();
+
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        await process.WaitForExitAsync(ct);
+        return process.ExitCode;
+    }
 }

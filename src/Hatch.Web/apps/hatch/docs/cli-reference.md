@@ -511,7 +511,7 @@ hatch go-to-work [--mine] [--under <epic key>] [--once] [--standby] [--quiet]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
                  [--until <HH:MM>] [--stop-file <path>] [--no-keys]
                  [--restart-after <minutes> | --no-restart]
-                 [--repo <path>]... [--workspace <dir>]
+                 [--repo <path>]... [--workspace <dir>] [--runners <n>]
 ```
 
 `work` in a circle: the next actionable issue, one increment, ask again, until
@@ -540,6 +540,11 @@ has the pass in order, the bounds and the restarts.
 - `--repo <path>` also serves that checkout, and is repeatable.
 - `--workspace <dir>` is where to clone the repositories this runner has no
   checkout of.
+- `--runners <n>` starts `n` runners on this machine, from 1 to 16; the default
+  is 1. The first is this one as it runs today, and the others clone into
+  `<workspace>.n`. Output is prefixed `[n]` and no footer or keys are drawn.
+  Ctrl-C, `--stop-file` and a restart apply to all of them, and each finishes
+  its increment first. It needs a workspace, so `--workspace off` is refused.
 - `--max-runs <n>` stops after that many increments.
 - `--max-spend <dollars>` stops once the run has cost that much.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
@@ -559,7 +564,7 @@ hatch do-my-work [every go-to-work flag]
 ```
 
 Exactly `go-to-work --mine`, every flag included, and `hatch do-my-work -h`
-prints `go-to-work`'s own usage block. It exists for a smaller budget spent on
+prints `go-to-work`'s own usage block, so it takes `--runners` too. It exists for a smaller budget spent on
 one person's own tickets: on a board shared with other people, plain
 `go-to-work` works the shared pool and skips every person's own, so one loop
 never has to work both. Run `go-to-work` for the pool and `do-my-work`
