@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { GoToWorkControl, GoToWorkNote } from './GoToWorkControl';
 import { planGoToWork } from '../lib/goToWork';
-import type { GoToWorkPlan } from '../lib/goToWork';
+import type { GoToWorkPlan, StatusLine } from '../lib/goToWork';
 import type { Runner } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
@@ -47,10 +47,13 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   ...over,
 });
 
-const render = (plan: GoToWorkPlan, project = '', isPhone = false) =>
+const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0 };
+const WORKING: StatusLine = { before: 'Working ', key: 'FIL-97', after: ' · In Progress', tone: 'success', more: 0 };
+
+const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: StatusLine = EMPTY_LINE) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <GoToWorkControl plan={plan} project={project} reload={async () => {}} isPhone={isPhone} />
+      <GoToWorkControl plan={plan} status={status} project={project} reload={async () => {}} isPhone={isPhone} />
     </MemoryRouter>,
   );
 
@@ -69,15 +72,25 @@ describe('GoToWorkControl', () => {
     const html = render({ mode: 'none' });
 
     expect(html).toContain('disabled=""');
-    expect(html).toContain('No runner of yours is on.');
+    expect(html).toContain('Start one at login');
     expect(html).toContain('href="/docs/the-runner#starting-it-at-login"');
+    expect(html).not.toContain('No runner of yours is on.');
   });
 
-  it('is disabled and says so while the viewer’s runner is stopping', () => {
+  it('is disabled with no note while the viewer’s runner is stopping', () => {
     const html = render({ mode: 'stopping' });
 
     expect(html).toContain('disabled=""');
-    expect(html).toContain('Your runner is stopping.');
+    expect(html).not.toContain('hatch-go-to-work-note');
+  });
+
+  it('draws the status line beside the button on desktop, and not in the bar on a phone', () => {
+    expect(render(pause, '', false, WORKING)).toContain('href="/issues/FIL-97"');
+    expect(render(pause, '', true, WORKING)).not.toContain('hatch-go-to-work-status');
+  });
+
+  it('draws nothing for the empty status line', () => {
+    expect(render(pause)).not.toContain('hatch-go-to-work-status');
   });
 
   it('offers Go to Work, naming the project it will bound the start to', () => {
@@ -108,7 +121,7 @@ describe('GoToWorkControl', () => {
   });
 
   it('keeps the note out of the bar on a phone', () => {
-    expect(render({ mode: 'none' }, '', true)).not.toContain('No runner of yours is on.');
+    expect(render({ mode: 'none' }, '', true)).not.toContain('Start one at login');
   });
 });
 
@@ -117,5 +130,9 @@ describe('GoToWorkNote', () => {
     for (const plan of [{ mode: 'loading' }, go, pause] as GoToWorkPlan[]) {
       expect(renderToStaticMarkup(<GoToWorkNote plan={plan} />)).toBe('');
     }
+  });
+
+  it('is nothing while stopping, which the status line now says', () => {
+    expect(renderToStaticMarkup(<GoToWorkNote plan={{ mode: 'stopping' }} />)).toBe('');
   });
 });

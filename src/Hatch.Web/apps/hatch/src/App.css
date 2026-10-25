@@ -1512,6 +1512,37 @@ button.hatch-card-stories:focus-visible {
   white-space: nowrap;
 }
 
+/* The status line: one line of ellipsis beside the button; on a phone it sits
+   in the row under the bar, where it has the width to wrap. */
+.hatch-go-to-work-status {
+  font-size: var(--t-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18rem;
+}
+
+.hatch-go-to-work-note .hatch-go-to-work-status {
+  max-width: none;
+  white-space: normal;
+}
+
+.hatch-go-to-work-status--muted {
+  color: var(--muted);
+}
+
+.hatch-go-to-work-status--success {
+  color: var(--success);
+}
+
+.hatch-go-to-work-status--danger {
+  color: var(--danger);
+}
+
+.hatch-go-to-work-status--primary {
+  color: var(--primary-ink);
+}
+
 /* A refusal can be a sentence long, and the bar is as wide as it can be: drawn
    inline it widens the bar (and, on a phone, the page), so it hangs below the
    button instead, over what follows, and takes no room in the row. */
