@@ -53,13 +53,21 @@ jobs:
       # and the restore-drill test (BackupRestoreDrillTests) skips on any major
       # mismatch between pg_dump/psql and the server. PGDG's own apt setup script
       # is the route: it adds only the source the runner lacks, so it cannot
-      # collide with a pgdg source the image already carries.
+      # collide with a pgdg source the image already carries. The image's own
+      # PostgreSQL 16 pg_dump is ahead of the new one on PATH, so the 18 bin
+      # directory is put first for every later step, dotnet test included.
       - name: Install postgresql-client-18 (PGDG)
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y # ethos:allow - PGDG's script name, not a host
           sudo apt-get install -y postgresql-client-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+
+      # A separate step: $GITHUB_PATH only takes effect from the next step on.
+      - name: Show the pg_dump and psql the tests will see
+        run: |
+          command -v pg_dump
           pg_dump --version
           psql --version
 
