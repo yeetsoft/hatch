@@ -382,9 +382,10 @@ Two things already belong to one checkout and no other, with nothing to set:
   holding it ([one loop per served checkout](one-increment-and-the-loop#one-loop-per-served-checkout)).
 
 What is **not** per checkout is everything else. The per-user file - its
-directory is the OS application-data folder, `%APPDATA%\hatch` on Windows and
-`~/.config/hatch` on macOS and Linux; `hatch config --show` prints the exact
-path - holds the origin, the key, the agent, the tags and the workspace for
+directory is the OS application-data folder, `%APPDATA%\hatch` on Windows,
+`~/Library/Application Support/hatch` on macOS and `$XDG_CONFIG_HOME/hatch`
+(default `~/.config/hatch`) on Linux; `hatch config --show` prints the exact
+path, and is the one answer that is always right - holds the origin, the key, the agent, the tags and the workspace for
 every checkout on the machine, until a checkout's own `scripts/.env`
 overrides a line of it. Two checkouts left on the one `hatch config` are the
 same runner wearing two names: same board, same key, same tags, same

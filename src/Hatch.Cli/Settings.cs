@@ -184,8 +184,12 @@ public sealed partial record Settings
 
     /// <summary>
     /// The settings file that belongs to the person rather than to a checkout:
-    /// <c>ApplicationData/hatch/config</c>, which is <c>~/.config/hatch/config</c>
-    /// on Unix and <c>%APPDATA%\hatch\config</c> on Windows.
+    /// <c>hatch/config</c> under the operating system's application-data folder
+    /// (<c>Environment.SpecialFolder.ApplicationData</c>): <c>%APPDATA%\hatch\config</c>
+    /// on Windows, <c>~/Library/Application Support/hatch/config</c> on macOS and
+    /// <c>$XDG_CONFIG_HOME/hatch/config</c> (default <c>~/.config/hatch/config</c>)
+    /// on Linux. <c>hatch config --show</c> prints the exact path, and is the one
+    /// answer that is always right.
     /// </summary>
     /// <remarks>
     /// The whole reason this story exists: an installed <c>hatch</c> is run from
