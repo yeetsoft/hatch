@@ -1190,6 +1190,120 @@ public class ProjectsControllerTests
         Assert.True(result.StoriesOnEpics);
     }
 
+    // ---- Check approves merge ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutCheckApprovesMerge()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutCheckApprovesMerge(h.ProjectId, new ProjectCheckApprovesMergeWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.CheckApprovesMerge);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutCheckApprovesMergeNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change whether a passing check approves the merge", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.False(row.CheckApprovesMerge);
+        Assert.Null(row.CheckApprovesMergeBy);
+        Assert.Null(row.CheckApprovesMergeAt);
+    }
+
+    [Fact]
+    public async Task PutCheckApprovesMerge_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutCheckApprovesMerge(h.ProjectId + 1000, new ProjectCheckApprovesMergeWriteRequest(true), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningItOn_StampsWhoAndWhenWithNoRepositoryAndNoMergeColumn()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        Assert.Empty(created.Repositories);
+
+        var written = Value(await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default));
+
+        Assert.True(written.CheckApprovesMerge);
+        Assert.Equal(h.Nathan.Name, written.CheckApprovesMergeBy);
+        Assert.Equal(Now, written.CheckApprovesMergeAt);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningItOff_RestampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.CheckApprovesMergeBy = "someone earlier";
+        row.CheckApprovesMergeAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var written = Value(await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(false), default));
+
+        Assert.False(written.CheckApprovesMerge);
+        Assert.Equal(h.Nathan.Name, written.CheckApprovesMergeBy);
+        Assert.Equal(Now, written.CheckApprovesMergeAt);
+    }
+
+    [Fact]
+    public async Task ResendingTheCheckApprovesMergeAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.CheckApprovesMergeBy = "someone earlier";
+        row.CheckApprovesMergeAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default));
+
+        Assert.True(result.CheckApprovesMerge);
+        Assert.Equal("someone earlier", result.CheckApprovesMergeBy);
+        Assert.Equal(Now.AddDays(-1), result.CheckApprovesMergeAt);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsCheckApprovesMergeFieldsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.CheckApprovesMerge);
+        Assert.Null(created.CheckApprovesMergeBy);
+        Assert.Null(created.CheckApprovesMergeAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(fresh.CheckApprovesMerge);
+        Assert.Null(fresh.CheckApprovesMergeBy);
+        Assert.Null(fresh.CheckApprovesMergeAt);
+
+        await h.Projects.PutCheckApprovesMerge(created.Id, new ProjectCheckApprovesMergeWriteRequest(true), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.True(read.CheckApprovesMerge);
+        Assert.Equal(h.Nathan.Name, read.CheckApprovesMergeBy);
+        Assert.Equal(Now, read.CheckApprovesMergeAt);
+    }
+
     // ---- Reflection ----
 
     [Fact]

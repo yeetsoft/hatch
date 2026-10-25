@@ -371,7 +371,11 @@ matched against a runner's *own* tags, which may be set from the Runners page
 rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)),
 and `BindsTracker` (`bool`, default `false` - whether this project binds the
 tracker's own repository), with `BindsTrackerBy` and `BindsTrackerAt` beside it
-- who set it last and when, a name and an instant, null until the first write.
+- who set it last and when, a name and an instant, null until the first write,
+and `CheckApprovesMerge` (`bool`, default `false` - whether a passing check
+counts as the approval that lets a pull request merge), with
+`CheckApprovesMergeBy` and `CheckApprovesMergeAt` beside it - who changed it
+last and when, a name and an instant, null until the first change.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -418,6 +422,17 @@ instead). Re-sending the list the project already holds, the same tags in the
 same order, writes nothing, and an empty list clears it.
 `ProjectPatchRequest` carries no field for it, so this route is the only way in
 or out.
+
+`CheckApprovesMerge` is written through its own route too, `PUT
+/projects/{id}/check-approves-merge` (`ProjectsController.PutCheckApprovesMerge`),
+guarded exactly the way `PutPlaybooksSource` is - `[RequireRole(User)]`,
+`NotAPerson` checked again in the action, then an owner check answering `403`
+naming the project's key (*"only an owner of `<KEY>` may change whether a
+passing check approves the merge"*) to anyone else, and `404` on an unknown
+project. It has no repository or playbook precondition: turning it on for a
+project with no merge column is accepted. A change stamps `CheckApprovesMergeBy`
+and `CheckApprovesMergeAt`; re-sending the value the project already holds
+writes nothing, the stamp included. Nothing reads the flag yet.
 The dispatcher reads the list on every move a session is spawned for out of the
 implementation column, and on the review self-move while it is conflict or build
 work, folding a caller whose runner does not advertise every tag it holds - see
@@ -3015,6 +3030,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/runner-tags` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ tags }` — the whole list, replaced; trimmed, lower-cased and deduplicated, at most 8 tags of at most 32 characters, none with a space or comma. `403` naming the project's key from anybody but an owner, `400` naming the tag that breaks the rule (or the limit, on a list over 8), `404` on an unknown project. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing; nothing reads it yet |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |

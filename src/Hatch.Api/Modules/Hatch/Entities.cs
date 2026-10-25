@@ -200,6 +200,27 @@ public class EfHatchProject
     public DateTimeOffset? RepoSourcedAt { get; set; }
 
     /// <summary>
+    /// Whether a passing check on this project's pull request counts as the
+    /// approval that lets it merge. Off by default. Nothing reads it yet.
+    /// Written only by <see cref="ProjectsController.PutCheckApprovesMerge"/>.
+    /// </summary>
+    public bool CheckApprovesMerge { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="CheckApprovesMerge"/>, as a name rather than
+    /// a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null until
+    /// the first change. Written only by <see cref="ProjectsController.PutCheckApprovesMerge"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? CheckApprovesMergeBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="CheckApprovesMerge"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutCheckApprovesMerge"/>.
+    /// </summary>
+    public DateTimeOffset? CheckApprovesMergeAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered
