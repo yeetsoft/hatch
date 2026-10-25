@@ -349,6 +349,130 @@ public class RunnersControllerTests
         Assert.Equal("", (await h.RowAsync()).Tags);
     }
 
+    // ---- Projects ----
+
+    private static async Task AddProjectAsync(Harness h, string key)
+    {
+        h.Db.Projects.Add(new EfHatchProject { Key = key, Name = key, CreatedAt = Now });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_StoresTheNormalisedProjectsInTheOrderGiven()
+    {
+        var h = await NewAsync();
+        await AddProjectAsync(h, "FIL");
+
+        var answer = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Projects: ["fil", " AER", "FIL"], Fresh: true));
+
+        Assert.Equal("FIL\nAER", (await h.RowAsync()).Projects);
+        Assert.Equal(["FIL", "AER"], (await h.OneAsync()).Projects);
+        Assert.Equal(["FIL", "AER"], answer.Projects);
+    }
+
+    [Fact]
+    public async Task ANewRow_StoresTheProjectsItsFirstBeatNamed()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["aer"]));
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Projects);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_WithNoProjects_ClearsThem()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"], Fresh: true));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        Assert.Null((await h.RowAsync()).Projects);
+        Assert.Empty((await h.OneAsync()).Projects);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    public async Task ALoopBeat_ThatIsNotFresh_LeavesWhatAPersonSetProjectsToAlone(bool? fresh)
+    {
+        var h = await NewAsync();
+        await AddProjectAsync(h, "FIL");
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: ["FIL", "AER"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"], Fresh: fresh));
+
+        Assert.Equal(["FIL", "AER"], (await h.OneAsync()).Projects);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_EvenIfFresh_LeavesTheProjectsAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Projects: ["FIL"], Fresh: true));
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Projects);
+    }
+
+    [Fact]
+    public async Task APatchNamingProjects_StoresThemInTheOrderGiven()
+    {
+        var h = await NewAsync();
+        await AddProjectAsync(h, "FIL");
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: ["FIL", "AER"]));
+
+        Assert.Equal("FIL\nAER", (await h.RowAsync()).Projects);
+    }
+
+    [Fact]
+    public async Task APatchClearingProjects_StoresEmptyAndAFollowingNonFreshBeatDoesNotReseedIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: []));
+        Assert.Equal("", (await h.RowAsync()).Projects);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+        Assert.Equal("", (await h.RowAsync()).Projects);
+        Assert.Empty((await h.OneAsync()).Projects);
+    }
+
+    [Fact]
+    public async Task APatchThatDoesNotMentionProjects_LeavesThemAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal("AER", (await h.RowAsync()).Projects);
+    }
+
+    [Theory]
+    [InlineData("NOPE")]
+    [InlineData("AER", "NOPE")]
+    public async Task APatchNamingAProjectThatDoesNotExist_IsRefusedAndWritesNothing(params string[] keys)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
+
+        var refusal = await h.Runners.PatchRunner(
+            Runner, new RunnerPatchRequest(State: "paused", Projects: keys), default);
+
+        Assert.Contains("there is no project NOPE", Reason(refusal.Result), StringComparison.Ordinal);
+        var row = await h.RowAsync();
+        Assert.Equal("AER", row.Projects);
+        Assert.Equal(EfHatchRunner.Running, row.State);
+    }
+
     // ---- Out of Claude usage ----
 
     [Fact]
@@ -1775,6 +1899,18 @@ public class RunnersControllerTests
 
         Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
         Assert.Null((await h.OneAsync()).MaxSpend);
+    }
+
+    [Fact]
+    public async Task SettingWhichProjectsARunnerServes_IsClosedToAKey()
+    {
+        var h = await NewAsync(program: true);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Projects: ["AER"]), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Null((await h.RowAsync()).Projects);
     }
 
     [Fact]
