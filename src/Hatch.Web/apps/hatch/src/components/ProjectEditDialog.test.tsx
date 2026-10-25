@@ -132,6 +132,45 @@ describe('ProjectEditDialog', () => {
     expect(html).not.toContain('Binds the tracker');
   });
 
+  it('shows an owner the check-approves-merge checkbox and its hint', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('A passing check approves the merge');
+    expect(html).toContain("A check playbook&#x27;s pass out of the review column");
+  });
+
+  it('shows an owner who set the check-approves-merge flag, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        checkApprovesMerge: true,
+        checkApprovesMergeBy: 'Nathan',
+        checkApprovesMergeAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Nathan on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the check-approves-merge flag has never been written', () => {
+    const html = render(project({ canAdminister: true, checkApprovesMergeBy: null, checkApprovesMergeAt: null }));
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else a sentence, and no control, where a passing check approves the merge', () => {
+    const html = render(project({ canAdminister: false, checkApprovesMerge: true }));
+
+    expect(html).toContain('A passing check approves the merge');
+    expect(html).not.toContain("A check playbook&#x27;s pass out of the review column");
+  });
+
+  it('shows anyone else a sentence where a passing check does not approve the merge', () => {
+    const html = render(project({ canAdminister: false, checkApprovesMerge: false }));
+
+    expect(html).toContain('A passing check does not approve the merge');
+  });
+
   it('shows an owner the Board heading and the stories-on-epics checkbox', () => {
     const html = render(project({ canAdminister: true }));
 
