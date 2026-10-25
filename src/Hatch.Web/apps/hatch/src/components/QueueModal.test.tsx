@@ -139,6 +139,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   firstSeenAt: '2026-09-09T12:00:00Z',
   lastSeenAt: '2026-09-09T12:00:00Z',
   claimKey: null,
+  claimStatus: null,
   line: null,
   lineAt: null,
   state: 'running',

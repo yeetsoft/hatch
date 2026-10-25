@@ -2028,6 +2028,8 @@ export interface Runner {
   lastSeenAt: string;
   /** The issue it holds right now, or null between increments. */
   claimKey: string | null;
+  /** The column name of the issue it holds, or null with no claim. */
+  claimStatus: string | null;
   /** The last thing it said: the claim's chatter while it holds one, its own
       last line when it does not. */
   line: string | null;
