@@ -2885,7 +2885,11 @@ public sealed class GoToWorkTests
         OneTicket(h);
 
         var start = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
-        Carrying(h, new NightState { UntilAt = start.AddSeconds(8) });
+        // The driven clock runs a second per real millisecond, so --until is a
+        // budget for the one increment's real time: eight seconds left a slow
+        // machine's increment outlasting it, and the loop stopped before it
+        // reached the wait it is here to read. Ten minutes is 600 drive steps.
+        Carrying(h, new NightState { UntilAt = start.AddMinutes(10) });
 
         var clock = new FakeTimeProvider(start);
         var probeCalls = 0;
