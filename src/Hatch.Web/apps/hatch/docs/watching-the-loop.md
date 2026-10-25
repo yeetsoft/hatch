@@ -39,7 +39,14 @@ has:
   than showing four empty caps. The `under` epic, where set, is a link to its
   ticket too.
 
-There is no cost column here - spend lives on the **Leaderboard**. Own-tickets-only
+Runners that report the same machine are listed together, and a line under them
+totals what that machine has run and spent between them - its increments and its
+dollars. A machine with one runner draws no such line, and a runner that never
+said where it runs is never grouped with another: an absent machine is not
+evidence of a shared one.
+
+Spend shows here only as that per-machine total, with no cost column; the
+**Leaderboard** stays the place for spend over time and by session. Own-tickets-only
 still shows on the row, inside Bounds: the repositories a runner serves no
 longer do, and show once the row is unfolded instead - neither is a control
 on this page.

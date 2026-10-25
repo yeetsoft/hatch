@@ -142,6 +142,54 @@ export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripR
   });
 }
 
+/** The runners that share one machine, with what that machine has spent. */
+export interface RunnerHostGroup {
+  /** The machine, or null for a runner that never said - always alone. */
+  host: string | null;
+  runners: Runner[];
+  totalRuns: number;
+  totalSpent: number;
+}
+
+/**
+ * The runners gathered by the machine they run from, each group at the place
+ * its first member held - the server's order, so this does not sort.
+ *
+ * A runner with no host is a group of one and is never gathered with another:
+ * an absent host is not evidence of a shared machine. A member whose `runs` or
+ * `spent` is null has not reported yet and counts as nothing, the same reading
+ * the field itself carries.
+ */
+export function groupByHost(runners: readonly Runner[]): RunnerHostGroup[] {
+  const byHost = new Map<string, Runner[]>();
+  for (const runner of runners) {
+    if (!runner.host) continue;
+    const members = byHost.get(runner.host);
+    if (members) members.push(runner);
+    else byHost.set(runner.host, [runner]);
+  }
+
+  const emitted = new Set<string>();
+  const groups: RunnerHostGroup[] = [];
+  const group = (host: string | null, members: Runner[]): RunnerHostGroup => ({
+    host,
+    runners: members,
+    totalRuns: members.reduce((sum, m) => sum + (m.runs ?? 0), 0),
+    totalSpent: members.reduce((sum, m) => sum + (m.spent ?? 0), 0),
+  });
+
+  for (const runner of runners) {
+    if (!runner.host) {
+      groups.push(group(null, [runner]));
+    } else if (!emitted.has(runner.host)) {
+      emitted.add(runner.host);
+      groups.push(group(runner.host, byHost.get(runner.host) as Runner[]));
+    }
+  }
+
+  return groups;
+}
+
 /**
  * Whether this row has controls at all.
  *

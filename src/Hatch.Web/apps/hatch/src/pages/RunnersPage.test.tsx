@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { BoundsSummary, Row, RunnerDetails } from './RunnersPage';
+import { BoundsSummary, Row, RunnerDetails, RunnersPage } from './RunnersPage';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
+
+const listed = vi.hoisted(() => ({ runners: [] as unknown[] }));
+
+vi.mock('../lib/useRunners', () => ({
+  useRunners: () => ({ runners: listed.runners, error: null, reload: async () => undefined }),
+}));
 
 const NOW = new Date('2026-09-08T12:00:00Z');
 
@@ -282,5 +288,63 @@ describe('RunnersPage RunnerDetails', () => {
 
   it('draws nothing for a build when revision is null', () => {
     expect(renderDetails(runner({ revision: null }))).not.toContain('dev build');
+  });
+});
+
+describe('RunnersPage grouping by machine', () => {
+  const renderPage = (runners: Runner[]) => {
+    listed.runners = runners;
+    return renderToStaticMarkup(
+      <MemoryRouter>
+        <RunnersPage />
+      </MemoryRouter>,
+    );
+  };
+  const totals = (html: string) => html.match(/hatch-runners-host-total/g)?.length ?? 0;
+
+  it('totals the runs and spend of two runners that share a machine under one line', () => {
+    const html = renderPage([
+      runner({ name: 'a', host: 'box', runs: 3, spent: 1.5 }),
+      runner({ name: 'b', host: 'box', runs: 4, spent: 2.25 }),
+    ]);
+    expect(totals(html)).toBe(1);
+    expect(html).toContain('box');
+    expect(html).toContain('7 runs');
+    expect(html).toContain('$3.75');
+  });
+
+  it('reads a runner that has not reported runs or spend as nothing', () => {
+    const html = renderPage([
+      runner({ name: 'a', host: 'box', runs: 2, spent: 0.5 }),
+      runner({ name: 'b', host: 'box' }),
+    ]);
+    expect(html).toContain('2 runs');
+    expect(html).toContain('$0.50');
+  });
+
+  it('draws no summary for a machine with one runner', () => {
+    const html = renderPage([runner({ name: 'a', host: 'box', runs: 3, spent: 1.5 })]);
+    expect(totals(html)).toBe(0);
+    expect(html).toContain('>a<');
+  });
+
+  it('never groups two runners that have no host', () => {
+    const html = renderPage([
+      runner({ name: 'a', host: null, runs: 1, spent: 1 }),
+      runner({ name: 'b', host: null, runs: 1, spent: 1 }),
+      runner({ name: 'c', host: '', runs: 1, spent: 1 }),
+    ]);
+    expect(totals(html)).toBe(0);
+    for (const name of ['a', 'b', 'c']) expect(html).toContain(`>${name}<`);
+  });
+
+  it('gathers the runners of one machine together even when another runner sits between them', () => {
+    const html = renderPage([
+      runner({ name: 'a', host: 'box' }),
+      runner({ name: 'x', host: 'other' }),
+      runner({ name: 'b', host: 'box' }),
+    ]);
+    expect(totals(html)).toBe(1);
+    expect(html.indexOf('>b<')).toBeLessThan(html.indexOf('>x<'));
   });
 });
