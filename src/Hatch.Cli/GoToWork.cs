@@ -731,7 +731,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             foreach (var stray in strays)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
-            var root = repoCheckouts.Count > 0 ? repoCheckouts[0].Path : (servedWorkspace ?? runtime.Root);
+            var root = Checkouts.NamingRoot(repoCheckouts, servedWorkspace, runtime.Root);
 
             // Not yet named for the new root - that asks the board, and asking
             // is deferred past the lock below, so a lock refusal touches the

@@ -195,6 +195,20 @@ public static class Checkouts
             lazyWorkspace: defaulted);
     }
 
+    /// <summary>
+    /// The directory a run is named for: the standing checkout if there is one,
+    /// else the first checkout the run was named (not one discovered under the
+    /// served <paramref name="workspace"/>), else the workspace, else
+    /// <paramref name="fallback"/>. A clone found under the workspace never
+    /// counts, or the record key would change the night after the first clone.
+    /// </summary>
+    public static string NamingRoot(IReadOnlyList<CheckoutEntry> checkouts, string? workspace, string fallback)
+    {
+        if (checkouts.FirstOrDefault(c => c.Standing) is { } standing) return standing.Path;
+        var named = checkouts.FirstOrDefault(c => workspace is null || !IsUnder(workspace, c.Path));
+        return named?.Path ?? workspace ?? fallback;
+    }
+
     /// <summary>Whether <paramref name="path"/> lies under <paramref name="directory"/>.</summary>
     public static bool IsUnder(string directory, string path) =>
         IsAncestor(Checkout.Canonical(directory), Checkout.Canonical(path));
