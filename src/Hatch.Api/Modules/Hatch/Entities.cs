@@ -2874,6 +2874,15 @@ public class EfHatchRunner
     public string? Tags { get; set; }
 
     /// <summary>
+    /// The project keys this runner is bound to, newline-joined in the order
+    /// given - a key cannot contain a newline, and the wire is a JSON list. A
+    /// bound, unlike <see cref="Tags"/>: a fresh <c>loop</c> beat re-applies it
+    /// (no <c>--project</c> clears it) and a restart leaves it. Null or empty
+    /// is unbound.
+    /// </summary>
+    public string? Projects { get; set; }
+
+    /// <summary>
     /// This runner's own account ran out of Claude usage, and this is when it
     /// expects to reset - a fact about the process, like <see cref="Mine"/>,
     /// never a person's to set. A heartbeat that names one writes it; a loop
