@@ -48,6 +48,7 @@ public class BoardController(
         Guid? AssigneeApiKeyId,
         int Priority,
         int PreApproval,
+        string? Dangerous,
         DateTimeOffset? StalledAt,
         string? StalledWhy,
         bool Held,
@@ -77,6 +78,7 @@ public class BoardController(
         i.AssigneeApiKeyId,
         i.Priority,
         i.PreApproval,
+        i.Dangerous,
         i.StalledAt,
         i.StalledWhy,
         i.Held,
@@ -187,6 +189,7 @@ public class BoardController(
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
+            var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
             return new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
                 i.ProjectKey,
@@ -215,7 +218,10 @@ public class BoardController(
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
-                ClosedAt: i.ClosedAt);
+                ClosedAt: i.ClosedAt,
+                DangerousOwn: i.Dangerous,
+                Dangerous: dangerous,
+                DangerousFrom: dangerousFrom);
         }
 
         var cards = issues.Select(Card).ToList();

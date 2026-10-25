@@ -1894,14 +1894,20 @@ public sealed class PriorityTree
     // its parent always share one project.
     private readonly Dictionary<long, (IReadOnlyList<string> Own, IReadOnlyList<string> Project)> _runnerTags;
 
+    // Each issue's own dangerous reason, null where it is not flagged. Kept
+    // beside _rows rather than widening its tuple, as _runnerTags is.
+    private readonly Dictionary<long, string?> _dangerous;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
-        Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null)
+        Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null,
+        Dictionary<long, string?>? dangerous = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
+        _dangerous = dangerous ?? new();
     }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
@@ -1912,7 +1918,7 @@ public sealed class PriorityTree
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "", Terminal = i.Status!.IsTerminal,
-                i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags,
+                i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous,
             })
             .ToListAsync(ct);
 
@@ -1921,7 +1927,8 @@ public sealed class PriorityTree
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
             rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)),
-            rows.ToDictionary(r => r.Id, r => ((IReadOnlyList<string>)RunnerTagColumn.Read(r.RunnerTags), (IReadOnlyList<string>)RunnerTagColumn.Read(r.ProjectRunnerTags))));
+            rows.ToDictionary(r => r.Id, r => ((IReadOnlyList<string>)RunnerTagColumn.Read(r.RunnerTags), (IReadOnlyList<string>)RunnerTagColumn.Read(r.ProjectRunnerTags))),
+            rows.ToDictionary(r => r.Id, r => r.Dangerous));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -2018,6 +2025,27 @@ public sealed class PriorityTree
         }
 
         return (all, from);
+    }
+
+    /// <summary>
+    /// The dangerous reason live on this issue: its own, if it carries one, or
+    /// the nearest ancestor's. <c>FromKey</c> is null when the reason found is
+    /// the issue's own, or when the walk finds none.
+    /// </summary>
+    public (string? Reason, string? FromKey) EffectiveDangerous(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_dangerous.TryGetValue(id, out var reason) && !string.IsNullOrEmpty(reason) && TryGet(id, out var row))
+                return (reason, id == issueId ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (null, null);
     }
 
     /// <summary>
@@ -2247,6 +2275,9 @@ public sealed class DependencyGate
 
     /// <summary>The runner tags live on this issue - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</summary>
     public (IReadOnlyList<string> All, IReadOnlyList<RunnerTagSourceDto> From) EffectiveRunnerTags(long issueId) => _tree.EffectiveRunnerTags(issueId);
+
+    /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
+    public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
 
     /// <summary>The story whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);

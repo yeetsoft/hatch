@@ -402,6 +402,9 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
 /// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
 /// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
+/// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
+/// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
+/// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -433,7 +436,10 @@ public record IssueCardDto(
     DateTimeOffset? ClosedAt = null,
     IReadOnlyList<string> RunnerTagsOwn = null!,
     IReadOnlyList<string> RunnerTags = null!,
-    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
+    string? DangerousOwn = null,
+    string? Dangerous = null,
+    string? DangerousFrom = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -607,6 +613,9 @@ public record IssueClaimDto(
 /// <param name="RunnerTagsOwn">The list this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.RunnerTags"/>.</param>
 /// <param name="RunnerTags">The union <see cref="RunnerTagsOwn"/> contributes to, read live with the project's and every ancestor's own - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</param>
 /// <param name="RunnerTagsFrom">Where each tag in <paramref name="RunnerTags"/> beyond this issue's own comes from - see <see cref="RunnerTagSourceDto"/>.</param>
+/// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
+/// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
+/// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -658,7 +667,10 @@ public record IssueDto(
     string? ReleaseNote = null,
     IReadOnlyList<string> RunnerTagsOwn = null!,
     IReadOnlyList<string> RunnerTags = null!,
-    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!)
+    IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
+    string? DangerousOwn = null,
+    string? Dangerous = null,
+    string? DangerousFrom = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -1785,6 +1797,20 @@ public record ReleaseNoteRequest(string? Note)
     /// session's note to fit rather than losing it to a 400.
     /// </summary>
     public const int MaxLength = 2000;
+}
+
+/// <summary>
+/// An issue's dangerous flag. Empty or whitespace clears it; an absent or null
+/// reason is refused, so clearing is something the caller says.
+/// </summary>
+/// <param name="Reason">Why running the issue is dangerous. Trimmed before it is stored.</param>
+public record DangerousRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
 }
 
 /// <summary>
