@@ -343,11 +343,15 @@ describe('hasBattery', () => {
 
 describe('percentLabel', () => {
   it('states the percentage as a whole number', () => {
-    expect(percentLabel(limit({ percent: 17 }))).toBe('17%');
+    expect(percentLabel(limit({ percent: 17 }), NOW)).toBe('17%');
+  });
+
+  it('reads 0% once the row has reset, as the popup does', () => {
+    expect(percentLabel(limit({ percent: 88, resetsAt: at(-1) }), NOW)).toBe('0%');
   });
 
   it('is an em dash when there is no reading behind it', () => {
-    expect(percentLabel(null)).toBe('—');
+    expect(percentLabel(null, NOW)).toBe('—');
   });
 });
 
@@ -385,6 +389,12 @@ describe('batteryLabel', () => {
     expect(batteryLabel(reading({ limits: [limit({ resetsAt: null })] }), NOW)).toBe(
       'Claude session usage 17%, allowance to spare, reset time unknown',
     );
+  });
+
+  it('says 0% and has reset once the session window has elapsed, matching the popup row', () => {
+    const elapsed = reading({ limits: [limit({ percent: 88, resetsAt: at(-1) })] });
+
+    expect(batteryLabel(elapsed, NOW)).toBe('Claude session usage 0%, allowance to spare, has reset');
   });
 
   it('carries the age of a stale reading, so an old number says it is old', () => {
