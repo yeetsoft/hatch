@@ -75,7 +75,7 @@ public static class RunnerSet
     {
         if (slot == 1) return baseWorkspace;
 
-        var trimmed = baseWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var trimmed = baseWorkspace.TrimEnd('/', '\\');
         return $"{trimmed}.{slot}";
     }
 
