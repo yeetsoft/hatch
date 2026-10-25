@@ -112,6 +112,13 @@ public class WorkController(
     /// folds nothing, which is every caller before this one; a key no
     /// project has is refused with a 400 naming it.
     /// </param>
+    /// <param name="dangerous">
+    /// False is a runner that refuses dangerous work: an issue flagged
+    /// dangerous, or under a flagged ancestor, is folded on every move a
+    /// session that runs its code is spawned for. Absent or true folds
+    /// nothing, which is every caller before this one. A hop and the move into
+    /// implementation are never folded.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -123,9 +130,10 @@ public class WorkController(
         [FromQuery] bool mine = false,
         CancellationToken ct = default,
         [FromQuery] List<string>? tag = null,
-        [FromQuery] List<string>? project = null)
+        [FromQuery] List<string>? project = null,
+        [FromQuery] bool? dangerous = null)
     {
-        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project));
@@ -204,6 +212,12 @@ public class WorkController(
     /// row's own <see cref="EfHatchRunner.Projects"/> is what is read
     /// instead, the same way <paramref name="tag"/> is.
     /// </param>
+    /// <param name="dangerous">
+    /// False is a runner that refuses dangerous work - see
+    /// <see cref="GetNextWork"/>. Ignored beside <paramref name="asRunner"/>,
+    /// exactly as <paramref name="tag"/> is, since the row replaces the whole
+    /// declaration; the row will carry its own field for this.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -219,9 +233,10 @@ public class WorkController(
         CancellationToken ct = default,
         [FromQuery] string? asRunner = null,
         [FromQuery] List<string>? tag = null,
-        [FromQuery] List<string>? project = null)
+        [FromQuery] List<string>? project = null,
+        [FromQuery] bool? dangerous = null)
     {
-        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var projects = ProjectKeys(project);
 
@@ -443,6 +458,10 @@ public class WorkController(
     /// What the caller's runner advertises, repeatable - see
     /// <see cref="TagDeclaration"/> and <see cref="GetNextWork"/>.
     /// </param>
+    /// <param name="dangerous">
+    /// False is a runner that refuses dangerous work - see
+    /// <see cref="GetNextWork"/>.
+    /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
         string key, [FromQuery] Guid? heldToken = null,
@@ -450,11 +469,12 @@ public class WorkController(
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
         CancellationToken ct = default,
-        [FromQuery] List<string>? tag = null)
+        [FromQuery] List<string>? tag = null,
+        [FromQuery] bool? dangerous = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
-        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);

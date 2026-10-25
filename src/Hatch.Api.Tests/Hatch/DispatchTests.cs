@@ -492,6 +492,131 @@ public class DispatchTests
         Assert.Contains("in todo is worked only by a runner advertising", RowFor(judged, c).Blocked);
     }
 
+    // ---- Dangerous: a runner that refuses it is never handed a flagged issue's code ----
+
+    private static async Task FlagAsync(Harness h, EfHatchIssue issue, string reason = "load-tests the API")
+    {
+        issue.Dangerous = reason;
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFlaggedImplementationRow_FoldsForARunnerThatRefusesDangerousWork()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+        await FlagAsync(h, issue);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of([], refusesDangerous: true));
+
+        var row = RowFor(scan, issue);
+        Assert.Equal($"{key} is flagged dangerous (load-tests the API) - this runner refuses dangerous work", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+        Assert.Null(row.WaitsOn);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ATaskUnderAFlaggedStory_FoldsOnTheStorysReason()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var story = await h.FileAsync("story", "s", h.Todo);
+        await FlagAsync(h, story);
+        var task = await h.FileAsync("task", "t", h.InProgress, parentId: story.Id);
+        var key = IssueKey.Format(h.ProjectKey, task.Number);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of([], refusesDangerous: true));
+
+        Assert.Equal(
+            $"{key} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            RowFor(scan, task).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFlaggedImplementationRow_IsClearForARunnerThatDoesNotRefuseItAndForAnUnjudgedScan()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+        await FlagAsync(h, issue);
+
+        foreach (var tags in new[] { TagDeclaration.Of([]), TagDeclaration.Unjudged })
+        {
+            var scan = await h.Dispatch.ScanAsync(
+                0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: tags);
+
+            Assert.Null(RowFor(scan, issue).Blocked);
+        }
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFlaggedStoryInTodo_TheMoveIntoImplementation_IsNotDangerFolded()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+        await FlagAsync(h, issue);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of([], refusesDangerous: true));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFlaggedHop_IsNotDangerFolded()
+    {
+        var h = await NewAsync();
+        await h.TagColumnAsync(h.Todo, "gpu");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await FlagAsync(h, issue);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of([], refusesDangerous: true));
+
+        var row = RowFor(scan, issue);
+        Assert.True(row.Hop);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADangerFoldedRow_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        await FlagAsync(h, p);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var unjudged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Unjudged);
+        var judged = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, tags: TagDeclaration.Of([], refusesDangerous: true));
+
+        foreach (var scan in new[] { unjudged, judged })
+            foreach (var issue in new[] { p, c, x })
+                Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(judged, p).Blocked);
+        Assert.Contains("is flagged dangerous", RowFor(judged, p).Blocked);
+    }
+
     // ---- Dangerous: the reason an issue carries, or the nearest ancestor's ----
 
     [Fact]
