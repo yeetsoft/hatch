@@ -430,6 +430,12 @@ to bring it back. A pointer naming a profile with no file, or no valid name, is
 ignored: the loop says so once and stays on the profile it started under. A
 loop pinned with `--profile` or `HATCH_PROFILE` never looks.
 
+In a `--runners` set every member that follows the pointer looks between its
+own increments. The first to see it move exits `75`, and the set host writes
+the set's `restart` file; every other member finishes the increment it is in
+and follows, so the whole set comes back on the new board.
+[Switching the set](the-runner#switching-the-set) has the detail.
+
 The container runner never asks.
 
 Exit codes:
@@ -459,6 +465,10 @@ collide over a tree they share, one increment's reset landing in the middle
 of another's branch. Two checkouts, two loops, and both are welcome, whether
 each loop found its checkout by standing in it or by naming it.
 
+The lock belongs to the checkout, not to a profile: its name is made from the
+checkout's path alone. A second profile therefore cannot start a loop on a
+checkout one loop already serves, whichever board either is pointed at.
+
 The lock itself lives outside the checkout, under the system's temporary
 directory, named for the checkout's canonical path rather than the path as
 typed — so two spellings of the same checkout (a symlink, a different drive
@@ -474,7 +484,7 @@ every exit, the restart included, and a stale one is cleared the same way.
 
 A loop with none of its own checkouts of what a board binds can still serve
 it. **Cloning is on by default**: an unset `HATCH_WORKSPACE` is a per-user
-directory, and only `--workspace off` (or `HATCH_WORKSPACE=off`) never
+directory, one for each profile, and only `--workspace off` (or `HATCH_WORKSPACE=off`) never
 clones — `hatch config --show` prints which this runner would do. Named or
 default, the workspace is a directory the loop owns entirely, and it clones
 whatever a project binds that it has no checkout of into
@@ -487,10 +497,15 @@ of them in a row end the night the same way three failed spawns do. A
 directory already holding clones from an earlier night is served as it is
 found, nothing re-cloned.
 
-A second loop that never named its own workspace shares the default one
-with the first rather than being refused: it serves only the checkouts it
-already has and clones nothing, since the first loop already owns whatever
-directory the default's clones land in. A workspace may not sit inside a
+A second loop that never named its own workspace, under the same profile,
+shares the default one with the first rather than being refused: it serves
+only the checkouts it already has and clones nothing, since the first loop
+already owns whatever directory the default's clones land in. The default is
+per profile - `workspaces/<profile>` beside the per-user files, or `workspace`
+with no profile - so loops under different profiles have different default
+workspaces and share neither. The members of a `--runners` set never share
+one either: member 1 takes the workspace and each later member takes
+`<workspace>.<n>`. A workspace may not sit inside a
 named checkout, nor a named checkout inside it — a clone under a tree being
 reset, or a tree under a directory of clones, is two owners of one path.
 
