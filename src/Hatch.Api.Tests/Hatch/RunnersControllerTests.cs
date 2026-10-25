@@ -851,6 +851,7 @@ public class RunnersControllerTests
         // Read off the issue at request time rather than copied onto the row:
         // an operator clearing a claim clears this too, on the next poll.
         Assert.Equal(issue.Key, runner.ClaimKey);
+        Assert.Equal("inbox", runner.ClaimStatus);
         Assert.Equal("make test-api", runner.Line);
     }
 
@@ -866,6 +867,7 @@ public class RunnersControllerTests
 
         var runner = await h.OneAsync();
         Assert.Null(runner.ClaimKey);
+        Assert.Null(runner.ClaimStatus);
         Assert.Equal("claimed a ticket", runner.Line);
     }
 
@@ -882,7 +884,9 @@ public class RunnersControllerTests
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
-        Assert.Null((await h.OneAsync()).ClaimKey);
+        var runner = await h.OneAsync();
+        Assert.Null(runner.ClaimKey);
+        Assert.Null(runner.ClaimStatus);
     }
 
     [Fact]
