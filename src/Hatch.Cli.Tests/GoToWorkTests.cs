@@ -1269,6 +1269,44 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task Two_members_over_two_workspaces_are_named_apart_and_a_second_over_the_same_one_is_refused()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var a = Path.Combine(h.Temp, "member-2");
+        var b = Path.Combine(h.Temp, "member-3");
+        Directory.CreateDirectory(a);
+        Directory.CreateDirectory(b);
+        var none = h.Runtime with { Checkouts = [] };
+
+        Assert.Equal(0, await new GoToWorkCommand(none).RunAsync(["--once", "--workspace", a], default));
+        Assert.Equal(0, await new GoToWorkCommand(none).RunAsync(["--once", "--workspace", b], default));
+
+        var recorded = RunnerNames.Record.Read(none.RunnersPath);
+        Assert.Equal(
+            new[] { Checkout.Canonical(a), Checkout.Canonical(b) }.Order(), recorded.Keys.Order());
+        Assert.Equal(2, recorded.Values.Distinct().Count());
+
+        var wheres = h.Wire.Calls
+            .Where(c => c.Method == "POST" && c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal))
+            .Select(c => c.Read<RunnerHeartbeatRequest>().Where)
+            .Distinct()
+            .ToList();
+        Assert.Equal(2, wheres.Count);
+        Assert.NotEqual(WorkspaceLock.PathFor(a, h.Temp), WorkspaceLock.PathFor(b, h.Temp));
+
+        // A second member over a workspace the first still holds is refused.
+        using var held = WorkspaceLock.Take(a, "elsewhere-checkout", h.Temp, out _);
+        Assert.NotNull(held);
+
+        Assert.Equal(1, await new GoToWorkCommand(none).RunAsync(["--once", "--workspace", a], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains(a, StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Repo_given_on_the_command_line_ignores_whatever_HATCH_REPOS_produced()
     {
         using var h = new Harness();

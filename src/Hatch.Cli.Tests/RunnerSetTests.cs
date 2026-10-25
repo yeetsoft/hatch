@@ -203,4 +203,50 @@ public sealed class RunnerSetTests
     {
         Assert.Equal(75, RunnerSet.Fold([75, 1], false));
     }
+
+    [Theory]
+    [InlineData("2", 2)]
+    [InlineData(" 3 ", 3)]
+    [InlineData("16", 16)]
+    public void A_slot_of_two_or_more_is_a_member(string value, int expected) =>
+        Assert.Equal(expected, RunnerSet.SlotFrom(new Dictionary<string, string?> { [RunnerSet.SlotVariable] = value }));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("1")]
+    [InlineData("0")]
+    [InlineData("-2")]
+    [InlineData("two")]
+    public void Anything_else_is_an_ordinary_runner(string? value) =>
+        Assert.Null(RunnerSet.SlotFrom(new Dictionary<string, string?> { [RunnerSet.SlotVariable] = value }));
+
+    [Fact]
+    public void No_slot_variable_is_an_ordinary_runner() =>
+        Assert.Null(RunnerSet.SlotFrom(new Dictionary<string, string?>()));
+
+    [Fact]
+    public void A_member_keeps_its_origin_and_workspace_and_loses_its_checkouts_and_name()
+    {
+        var settings = new Settings
+        {
+            Repos = ["/a"], Runner = "Fry", Base = "https://example.test", Key = "k", Workspace = "/w",
+        };
+
+        var member = RunnerSet.ForMember(settings);
+
+        Assert.Empty(member.Repos);
+        Assert.Null(member.Runner);
+        Assert.Equal("https://example.test", member.Base);
+        Assert.Equal("/w", member.Workspace);
+    }
+
+    [Fact]
+    public void The_workspace_handed_over_is_the_last_one_given()
+    {
+        Assert.Null(RunnerSet.WorkspaceFrom(["--once"]));
+        Assert.Equal("/a", RunnerSet.WorkspaceFrom(["--once", "--workspace", "/a"]));
+        Assert.Equal("/b", RunnerSet.WorkspaceFrom(["--workspace", "/a", "--once", "--workspace", "/b"]));
+        Assert.Null(RunnerSet.WorkspaceFrom(["--once", "--workspace"]));
+    }
 }
