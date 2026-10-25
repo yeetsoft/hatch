@@ -125,8 +125,8 @@ reported for gets no battery at all, with no placeholder and no error — the
 endpoint answers `204`. That is a supported state, and it is the default.
 
 **Where the reading comes from.** The runner reports the account's usage on the
-heartbeat it already sends. During a session the reading comes from the
-session's own stream; between sessions it comes from a `/usage` probe at the top
+heartbeat it already sends, and on the claim heartbeat while an increment
+runs. During a session the reading comes from the session's own stream; between sessions it comes from a `/usage` probe at the top
 of idle passes. Hatch keeps it per person and answers only the caller's own. A
 person with two runners has one account, so the freshest whole reading wins
 rather than a merge of the two.

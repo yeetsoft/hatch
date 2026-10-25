@@ -268,17 +268,6 @@ public class RunnersController(
     }
 
     /// <summary>
-    /// The windows off a non-empty reading, as JSON, percent clamped 0..100 -
-    /// it is drawn as a fill, and a fill is a fraction of something. Null where
-    /// the request carries none, so the caller can tell "nothing to write" from
-    /// "write this".
-    /// </summary>
-    private static string? UsageJson(RunnerHeartbeatRequest request) =>
-        request.Usage is not { Count: > 0 } windows
-            ? null
-            : JsonSerializer.Serialize(windows.Select(w => w with { Percent = Math.Clamp(w.Percent, 0, 100) }));
-
-    /// <summary>
     /// Keep going, pause, stop after this one - and the bounds that are flags
     /// at a terminal.
     /// </summary>
@@ -631,7 +620,7 @@ public class RunnersController(
             Tags = tags,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
             ForPersonId = forPersonId,
-            Usage = UsageJson(request),
+            Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
         };
 
@@ -718,7 +707,7 @@ public class RunnersController(
 
         // A non-empty reading writes; absent or empty leaves the row's own
         // reading alone - see the remark on RunnerHeartbeatRequest.Usage.
-        if (UsageJson(request) is { } usage)
+        if (Utilization.Serialise(request.Usage) is { } usage)
         {
             row.Usage = usage;
             row.UsageReadAt = request.UsageReadAt;
