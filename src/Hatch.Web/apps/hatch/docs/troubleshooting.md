@@ -175,16 +175,16 @@ run](the-runner#when-it-will-not-run).
 - **`this run will not clone`.** Not a fault, the default workspace is
   another loop's: [When it will not run](the-runner#when-it-will-not-run).
 - **`hatch: --here writes this checkout's scripts/.env - run it inside
-  one`.** The command ran outside a git checkout; `cd` into one. See [two
-  runners on one machine](the-runner#two-runners-on-one-machine).
+  one`.** The command ran outside a git checkout; `cd` into one. See [several
+  runners on one machine](the-runner#several-runners-on-one-machine).
 - **`hatch: <path>/scripts/.env is not ignored by this checkout's git - add
   .env to .gitignore before --here can write it`.** Add `.env` to the
   checkout's `.gitignore`; it is refused on purpose so a key cannot reach a
-  tracked tree. See [two runners on one machine](the-runner#two-runners-on-one-machine).
+  tracked tree. See [several runners on one machine](the-runner#several-runners-on-one-machine).
 - **`hatch: the workspace <dir> is already served by pid <n>, from
   <checkout>.`** Another live loop holds a named workspace; give this
   checkout its own with `hatch config --here --workspace <dir>`, or stop
-  that loop. See [two runners on one machine](the-runner#two-runners-on-one-machine).
+  that loop. See [several runners on one machine](the-runner#several-runners-on-one-machine).
 
 ## The Runner page offers no downloads
 

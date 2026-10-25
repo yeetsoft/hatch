@@ -147,7 +147,7 @@ hatch: HATCH_KEY in <checkout-a>/scripts/.env is ignored - HATCH_BASE comes from
 An exported key gets `Export both, or neither.` in the same place. So a layer
 that names an origin and no key is keyless on purpose, and `hatch config --here
 --origin <origin>` alone leaves that checkout keyless - give it a key in the
-same call, or none. *Two runners on one machine* has this in a recipe.
+same call, or none. *Several runners on one machine* has this in a recipe.
 
 **Board-bound names.** While a profile is active, the per-user file is not
 consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_RUNNER`, `HATCH_TAGS`,
@@ -402,28 +402,90 @@ get answered in aggregate, which is how a wrong assumption gets in.
 Every command takes `-h` for what it accepts, and [CLI
 reference](cli-reference) has each one in full.
 
-## Two runners on one machine
+## Several runners on one machine
 
-One machine, two checkouts of the one repository a project binds, two loops -
-`<checkout-a>` and `<checkout-b>` below, standing for whatever two paths you
-actually clone to. Nothing here needs a second machine, a second person, or a
-second Hatch, though the last of those is covered too.
+One machine, more than one loop - `<checkout-a>` and `<checkout-b>` below
+stand for whatever paths you actually clone to, and `<profile-a>` and
+`<profile-b>` for whatever you name your profiles. Nothing here needs a second
+machine or a second person, though a second Hatch is covered too.
 
-### The layout
+### The shapes
 
-Two clones of the same repository, side by side, with one `go-to-work` (or
-`work`) loop standing in each. The two checkouts can serve the same board and
-split its work by tag (*Splitting the work by column*, below), or each point
-at a Hatch of its own.
+Four ways to arrange it, and which one you want decides the rest:
 
-### What is already per checkout
+- **Shape a: two checkouts, one board.** Two clones of the one repository a project
+  binds, a `go-to-work` loop standing in each, both reading the same board and
+  split by tag (*Splitting the work by column*, below).
+- **Shape b: one checkout, two boards, one at a time.** One clone and two
+  profiles; `hatch use` moves the loop from one board to the other.
+- **Shape c: two checkouts, two boards at once.** Each checkout pinned to a
+  profile of its own, each loop reading its own board.
+- **Shape d: a set of runners from one command.** `hatch go-to-work --runners <n>`
+  (*A set*, below).
+
+**One checkout runs one loop at a time, whatever its profile.** The loop lock
+keys on the checkout alone, so shape b is a switch and not concurrency: a
+second `go-to-work` in a checkout that already has one running is refused,
+under the same profile or another. Running two boards together takes two
+checkouts, which is shape c.
+
+### Profiles
+
+A profile is a named file holding the settings that belong to one board - its
+origin, its key, its tags, its workspace. [Four layers](#four-layers) says
+where it sits among the other layers, and what falls through to the per-user
+file while one is active; [What --show prints](#what---show-prints) says how
+`--show` marks each of those lines. This section is only the commands.
+
+Create one. The file need not exist yet, and `--profile` is refused combined
+with `--here`:
+
+```
+hatch config --profile <profile-a> --origin <origin>
+hatch config --profile <profile-a> --key <key>
+```
+
+Origin and key go in the same file, since a key answers only to the origin it
+was written beside. Read one back without switching to it:
+
+```
+hatch config --show --profile <profile-a>
+```
+
+Switch the active profile - the one-line pointer file every unpinned command
+reads:
+
+```
+hatch use <profile-a>
+hatch use
+hatch use --none
+```
+
+Bare `hatch use` prints the active name, or `<none>`; `--none` clears the
+pointer, which puts the loop back on the per-user file alone. `use` is refused
+for a name with no profile file.
+
+Pin one terminal to a profile without touching the pointer: put
+`--profile <profile-b>` anywhere after the command name, or export
+`HATCH_PROFILE`:
+
+```
+hatch go-to-work --profile <profile-b>
+```
+
+A pinned run ignores the pointer, and so is not moved by a later `hatch use`.
+
+### Per checkout, per board
+
+#### What is already per checkout
 
 Two things already belong to one checkout and no other, with nothing to set:
 
 - **The runner's name.** Recorded in the `runners` file beside the per-user
   config file, keyed on the (profile, checkout) pair, so `<checkout-a>` and
   `<checkout-b>` each get a name of their own the first time either speaks to
-  a board - see [the runner's name](#the-runners-name).
+  a board - and one checkout gets a different name under each profile - see
+  [the runner's name](#the-runners-name).
 - **The loop lock.** One `go-to-work` or `work` at a time per checkout; a
   second naming the same checkout is refused, with the pid of the one already
   holding it ([one loop per served checkout](one-increment-and-the-loop#one-loop-per-served-checkout)).
@@ -433,12 +495,12 @@ directory is the OS application-data folder, `%APPDATA%\hatch` on Windows,
 `~/Library/Application Support/hatch` on macOS and `$XDG_CONFIG_HOME/hatch`
 (default `~/.config/hatch`) on Linux; `hatch config --show` prints the exact
 path, and is the one answer that is always right - holds the origin, the key, the agent, the tags and the workspace for
-every checkout on the machine, until a checkout's own `scripts/.env`
-overrides a line of it. Two checkouts left on the one `hatch config` are the
-same runner wearing two names: same board, same key, same tags, same
-workspace - rarely the point of running two.
+every checkout on the machine, until a profile or a checkout's own
+`scripts/.env` overrides a line of it. Two checkouts left on the one `hatch
+config` are the same runner wearing two names: same board, same key, same
+tags, same workspace - rarely the point of running two.
 
-### Setting up the second checkout
+#### Setting up the second checkout
 
 In `<checkout-b>`:
 
@@ -462,6 +524,10 @@ hatch config --here --origin <origin>
 hatch config --here --key <key>
 ```
 
+Or give the board a profile, as in *Profiles* above, and pin `<checkout-b>`
+to it: the better home when the board is one you will want to switch to
+later.
+
 A key on a command line stays in shell history; the bare `hatch config
 --here` prompt asks for each in turn without echoing the key, and Enter on
 any prompt keeps only what this checkout's own file already carries - never a
@@ -471,11 +537,14 @@ shown is whatever is actually active.
 **Warn:** a key is read only from the file that carries the origin it pairs
 with, so `--here --origin` alone leaves `<checkout-b>` keyless - the per-user
 key is ignored, with a line saying which file held it - until `--here --key`
-gives this checkout a key of its own.
+gives this checkout a key of its own. A checkout, profile or export that names
+an origin and no key is keyless on purpose, whatever the per-user file
+carries.
 
-### What --show prints in each checkout
+#### What --show prints in each checkout
 
-Run from `<checkout-a>`, which carries no overrides of its own:
+Run from `<checkout-a>`, which carries no overrides of its own and follows
+the per-user file:
 
 ```
 file:             <per-user config>/config
@@ -485,12 +554,12 @@ runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
 identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
-HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
+HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
 HATCH_CLAUDE_BIN:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>
-HATCH_OLLAMA_TIERS: <unset>
+HATCH_OLLAMA_TIERS:  <unset>
 HATCH_AGENT:       claude  (<per-user config>/config)
 HATCH_BASE_BRANCH: <unset>
 HATCH_RUNNER:      <unset>
@@ -499,36 +568,44 @@ HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>  (profile:
 HATCH_TAGS:        <unset>
 ```
 
-Run from `<checkout-b>`, after the previous subsection's two `--here` writes -
-only `HATCH_TAGS` and `HATCH_WORKSPACE` now come from this checkout's own
-file; everything else still folds through to the same per-user file:
+Run from `<checkout-b>`, pinned to `<profile-b>` - shape c - which was
+created with `hatch config --profile <profile-b> --origin <origin>`, then
+`--key <key>` and `--tag breakdown`. Every board-bound line now answers from
+the profile or from nothing, and says so; `HATCH_AGENT` describes the machine,
+so it still folds through from the per-user file:
 
 ```
 file:             <per-user config>/config
 checkout:         <checkout-b>/scripts/.env  (written by --here)
-profile:          <none>
-runner:           <checkout-b>  (<per-user config>/runners)  (profile: <none>)
+profile:          <profile-b>  (<per-user config>/profiles/<profile-b>)
+runner:           <checkout-b>  (<per-user config>/runners)  (profile: <profile-b>)
 identity:         key "<name>", owned by <owner>, scopes: hatch
 HATCH_RETRY_SECONDS:  90  (default)
-HATCH_BASE:        <origin>  (<per-user config>/config)
-HATCH_KEY:         ●●●●●●●●  (<per-user config>/config)
+HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
+HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_CLAUDE_BIN:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>
-HATCH_OLLAMA_TIERS: <unset>
+HATCH_OLLAMA_TIERS:  <unset>
 HATCH_AGENT:       claude  (<per-user config>/config)
 HATCH_BASE_BRANCH: <unset>
-HATCH_RUNNER:      <unset>
-HATCH_REPOS:       <unset>
-HATCH_WORKSPACE:   <dir>  (<checkout-b>/scripts/.env)
-HATCH_TAGS:        breakdown  (<checkout-b>/scripts/.env)
+HATCH_RUNNER:      <unset>  (profile active: the per-user file was not consulted)
+HATCH_REPOS:       <unset>  (profile active: the per-user file was not consulted)
+HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspaces/<profile-b>>  (profile: <profile-b>)  (profile active: the per-user file was not consulted)
+HATCH_TAGS:        breakdown  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 ```
+
+A profile with no workspace of its own gets one beside the no-profile default,
+never inside it, so the two loops here do not meet in the workspace lock
+below. A line written with `--here` instead would show
+`<checkout-b>/scripts/.env` as its layer, and keep the note.
 
 Each setting line is the name padded out, the value, then two spaces and the
 layer it came from in brackets: `exported`, the checkout's `scripts/.env`
-path, or the per-user file's path. An unset line carries no layer. The key
-prints masked, never in full.
+path, the profile file's path, or the per-user file's path. An unset line
+carries no layer. The key prints as its first twelve and last four
+characters, or `(set)` when it is short, never in full.
 
 The `identity:` line calls `/api/hatch/me` with whatever origin and key are
 folded above, and names the key, its owner and its scopes, or - for a runner
@@ -536,7 +613,7 @@ header instead of a key - that calls go out as its name. It prints
 `<unreachable>` without calling out at all when no origin is set, and the
 same when the call itself fails, so `--show` keeps working fully offline.
 
-### The workspace lock
+#### The workspace lock
 
 Two loops serving the same board but sharing a workspace would reset each
 other's clones, so a workspace is held like a checkout is. Naming one that is
@@ -561,7 +638,7 @@ sentences in the context the renderer prints them in, and [one loop per
 served checkout](one-increment-and-the-loop#one-loop-per-served-checkout) has
 the lock's detail.
 
-### Splitting the work by column
+#### Splitting the work by column
 
 A tagged column gates every session spawned *out of* it for a runner that
 does not advertise the union of the project's, its ancestors', the issue's
@@ -592,7 +669,7 @@ checkout, names the missing tag by name when it passes a card over for want
 of one. See also [Runner tags](the-board-and-its-columns) for the column-side
 flag this recipe sets.
 
-### Starting them
+### A set
 
 One terminal per checkout, each left running its own loop:
 
@@ -639,8 +716,20 @@ lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `do-my-work` takes it too; [cli-reference](cli-reference#go-to-work) has the
 flag.
 
-A checkout, profile or export that names an origin and no key is keyless on
-purpose, whatever the per-user file carries.
+### Switching the set
+
+`hatch use <profile-b>` moves a running set to another board. Every member
+that follows the active profile - one started without `--profile` or
+`HATCH_PROFILE` - looks at the pointer between increments and never inside
+one. The first to see it change exits `75` (`RestartExitCode`), and the set
+host writes the set's restart file, so every other member finishes the
+increment it is in and stops; then the whole set comes back on the new
+profile's board, with the night's totals carried forward. A member pinned with
+`--profile` or `HATCH_PROFILE` never looks.
+
+Unsupervised, or run with `--no-restart`, there is nothing to bring the set
+back, so it stops instead and says why. [Restarts](one-increment-and-the-loop#restarts)
+has the rule in full, including a pointer that names a profile with no file.
 
 ## Starting it at login
 

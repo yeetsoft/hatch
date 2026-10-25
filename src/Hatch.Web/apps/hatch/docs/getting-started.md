@@ -177,8 +177,8 @@ and [the loop, `hatch go-to-work`](one-increment-and-the-loop#the-loop-hatch-go-
 which runs increments back to back. How the binary gets onto a machine and finds
 its board is in [the runner](the-runner).
 
-A second loop on the same machine is walked through in [two runners on one
-machine](the-runner#two-runners-on-one-machine).
+A second loop on the same machine is walked through in [several runners on one
+machine](the-runner#several-runners-on-one-machine).
 
 ## What to read next
 
