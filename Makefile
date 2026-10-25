@@ -114,6 +114,12 @@ publish-hatch:
 # one at all - so `make test-api` alone can be green having verified none of
 # them, and CI runs this lane rather than that one.
 #
+# The restore-drill test (BackupRestoreDrillTests) also needs pg_dump and psql of
+# the server's major (18) on PATH, else it skips with a message saying why.
+# Install postgresql-client-18 from PGDG
+# (https://www.postgresql.org/download/linux/ubuntu/ on Ubuntu/Debian), Homebrew
+# postgresql@18 on macOS, or the EDB/PGDG installer on Windows.
+#
 # The database named here is dropped and recreated. It is deliberately not the
 # `hatch` database `make db` serves the app from, and nothing discovers a
 # connection string on its own for the same reason: a test that TRUNCATEs what
