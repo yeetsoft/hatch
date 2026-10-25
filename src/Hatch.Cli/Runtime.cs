@@ -65,6 +65,19 @@ public sealed record Runtime(
     public string? ProfileName { get; init; }
 
     /// <summary>
+    /// The pointer this run follows between increments. Null when
+    /// <c>--profile</c> or <c>HATCH_PROFILE</c> pinned the run, and null by
+    /// default so a test never reads the machine's own.
+    /// </summary>
+    public string? ActiveProfilePath { get; init; }
+
+    /// <summary>
+    /// Where the named profiles live. Replaceable so a test reads its own
+    /// directory rather than the machine's, like <see cref="RunnersPath"/>.
+    /// </summary>
+    public string ProfilesDirectory { get; init; } = Settings.ProfilesDirectory();
+
+    /// <summary>
     /// Where the night's running totals are handed from one incarnation of the
     /// loop to the next. Set by the supervisor in <c>scripts/hatch.sh</c> or
     /// <c>scripts/hatch.ps1</c> and by nobody else, so its absence is how the

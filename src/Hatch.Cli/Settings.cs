@@ -243,6 +243,30 @@ public sealed partial record Settings
     private static partial Regex ProfileNamePattern();
 
     /// <summary>
+    /// What the pointer file at <paramref name="path"/> names: its trimmed first
+    /// line, or null when the file is missing or that line is blank.
+    /// </summary>
+    public static string? ReadActiveProfile(string path)
+    {
+        if (!File.Exists(path)) return null;
+        var line = File.ReadLines(path).FirstOrDefault()?.Trim();
+        return string.IsNullOrEmpty(line) ? null : line;
+    }
+
+    /// <summary>
+    /// True when the run names its profile itself - <paramref name="requested"/>
+    /// is non-empty, or <c>HATCH_PROFILE</c> is set to more than whitespace -
+    /// so the active pointer is not what it follows.
+    /// </summary>
+    public static bool Pinned(string? requested, IDictionary<string, string?> environment) =>
+        !string.IsNullOrEmpty(requested) || ExportedProfile(environment) is not null;
+
+    private static string? ExportedProfile(IDictionary<string, string?> environment) =>
+        environment.TryGetValue("HATCH_PROFILE", out var exported) && !string.IsNullOrWhiteSpace(exported)
+            ? exported.Trim()
+            : null;
+
+    /// <summary>
     /// Which profile applies, highest first: <paramref name="requested"/> (already
     /// trimmed by the caller), then <c>HATCH_PROFILE</c>, then the one line of
     /// <see cref="ActiveProfilePath"/>. Nothing named anywhere is not a refusal -
@@ -259,19 +283,9 @@ public sealed partial record Settings
 
         var candidate = requested;
 
-        if (string.IsNullOrEmpty(candidate) &&
-            environment.TryGetValue("HATCH_PROFILE", out var exported) && !string.IsNullOrWhiteSpace(exported))
-            candidate = exported.Trim();
+        if (string.IsNullOrEmpty(candidate)) candidate = ExportedProfile(environment);
 
-        if (string.IsNullOrEmpty(candidate))
-        {
-            var pointer = ActiveProfilePath();
-            if (File.Exists(pointer))
-            {
-                var line = File.ReadLines(pointer).FirstOrDefault()?.Trim();
-                if (!string.IsNullOrEmpty(line)) candidate = line;
-            }
-        }
+        if (string.IsNullOrEmpty(candidate)) candidate = ReadActiveProfile(ActiveProfilePath());
 
         if (string.IsNullOrEmpty(candidate)) return true;
 
