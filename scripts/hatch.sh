@@ -142,10 +142,12 @@ exec_hatch() {
 #
 # The totals travel in a file this names once per night: a restart that started
 # the budget over would be a way of outspending `--max-spend` by restarting.
+# The set host's per-member files sit beside it, as that name plus `.<n>`, and
+# go with it.
 night_state=""
 
 forget_night_state() {
-  [ -n "$night_state" ] && rm -f "$night_state"
+  [ -n "$night_state" ] && rm -f "$night_state" "$night_state".*
   return 0
 }
 
