@@ -199,6 +199,13 @@ column counts as done: one in a protected column, such as a Merges PR column,
 or in a deferred one does not, and a story past the done horizon is still
 counted.
 
+A story that is waiting on a person, with an unanswered question or held for
+a person, draws a dark "!" in place of its dot. The count then reads
+"N of M done · K needs me" (nothing is added at zero), a story's line shows
+"!" and **Needs me** where the column name would be, and the strip's
+screen-reader sentence adds "K needs you". A story stalled at the resume limit
+is not marked.
+
 A story is carried off the board exactly when the setting is on, its parent is
 an epic standing in a column the board draws, and it is not itself an epic, a
 task, a bug or a reflection. Everything else keeps its own card, including a
