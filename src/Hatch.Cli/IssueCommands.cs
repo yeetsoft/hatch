@@ -156,6 +156,10 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"runner tags:  {Listed(issue.RunnerTags)} - only a runner advertising {needs} is handed this ticket's implementation{sources}");
         }
 
+        // Said only where the issue is flagged, by itself or by an ancestor,
+        // like the lines above it.
+        if (DangerousCommand.Draw(issue) is { } dangerous) cli.Say.Line(dangerous);
+
         // Said only where it is on, or where a story has been told one way or
         // the other; a project that never turned it on has nothing to report.
         if (issue.OnePr || issue.OnePrOwn is not null) cli.Say.Line(OnePrCommand.Draw(issue));

@@ -46,6 +46,7 @@ without the flag.
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
+| `dangerous` | No | Only with a reason or `--clear` |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
 | `answer` | No | Yes: answers a question |
@@ -426,6 +427,26 @@ only the key it reads. With a second argument it writes:
 
 A story only, and it is locked once any task under it has started: set it when
 the story is filed, before its tasks are worked.
+
+### dangerous
+
+```
+hatch dangerous AER-5 ["reason" | --clear]
+```
+
+Whether running an issue's work could destabilise the machine that runs it:
+security testing, performance or load testing, or crashing or hanging
+processes on purpose. With only the key it reads. With a second argument it
+writes:
+
+- a reason flags the issue, for the operator of a runner to read.
+- `--clear` clears the issue's own flag.
+
+The reason is at most 200 characters, measured after trimming. A blank reason
+is refused and calls nothing, so clearing is always said as `--clear`. Open to
+a key. A task inherits the flag of the story or epic above it, and `hatch show`
+prints the reason with `(from AER-5)` after it when it is not the issue's own;
+it prints nothing for an issue that is not flagged.
 
 ### ask
 

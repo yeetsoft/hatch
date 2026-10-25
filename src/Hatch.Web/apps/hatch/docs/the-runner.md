@@ -367,6 +367,8 @@ hatch depends AER-13 AER-12       AER-13 waits on AER-12
 hatch depends AER-13 --remove AER-12        ...no longer
 hatch one-pr AER-5                whether the story's tasks share its branch and one PR
 hatch one-pr AER-5 on             ...turn it on for this story (or off, or inherit)
+hatch dangerous AER-12 "why"      flag it: running its work could destabilise a machine
+hatch dangerous AER-12 --clear    ...clear the flag
 hatch ask AER-12 "how should retries be scoped?"     --recommend "Per-node: one budget per node, so a slow node cannot starve"     --option "Global: one budget for the drain, simpler to reason about"
 hatch verdict AER-12 pass|fail ["findings"]
 hatch answer                      answer the open questions, one at a time, here

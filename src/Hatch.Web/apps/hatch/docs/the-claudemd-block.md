@@ -52,7 +52,7 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `changelog`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `one-pr`, `ask`,
+`queue`, `changelog`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `one-pr`, `dangerous`, `ask`,
 `questions`, `answer`, `config`, `use`, `standby`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
