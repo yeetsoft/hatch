@@ -20,6 +20,10 @@ API expects of a cluster, and what an operator writes.
     `\c quartz` line (line 5).
   - For a managed Postgres instead of one you run yourself, see [Backup,
     restore and replication](backup-restore-and-replication).
+  - To have Hatch back itself up, mount a volume into the pod and set
+    `Hatch__BackupPath` to where it is mounted; or use your own Postgres
+    backups and leave it unset ([Backup, restore and
+    replication](backup-restore-and-replication)).
 - **The migration before every rollout.** The same image with
   `HATCH_MIGRATE=1`, run to completion before any `api` pod starts, on every
   deploy (`Program.cs:368-422`). It migrates, logs, and exits `0`.
