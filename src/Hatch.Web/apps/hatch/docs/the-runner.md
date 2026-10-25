@@ -560,6 +560,34 @@ loop spawns reaches that loop's own origin and key, from its standing checkout
 or a clone in its own workspace. **Agents → Runners** shows both runners at
 once, each with its tags and where it is working from.
 
+One terminal, several runners: `--runners <n>` (1 to 16) starts `n` of them
+from the one command, instead of a checkout and a terminal for each:
+
+```
+hatch go-to-work --runners 3
+```
+
+Runner 1 is this checkout, served as a lone `go-to-work` would. Each of the
+others gets:
+
+- **A name of its own.** It is taken from the same `runners` record as any
+  runner's, keyed on the member's workspace rather than a checkout (see [the
+  runner's name](#the-runners-name)).
+- **A workspace of its own.** That is `<workspace>.n` - a sibling of the one
+  being served, never a directory inside it - where it clones the repositories
+  the project binds.
+- **A lock of its own.** It holds that workspace like any loop does (see [the
+  workspace lock](#the-workspace-lock)).
+
+Ctrl-C and `--stop-file` stop all of them, each after the increment it is in,
+and the output of each line is prefixed `[n]`. A second `--runners` set started
+over the same workspaces is refused: runner 1 meets the checkout lock (`a
+go-to-work is already running in <path>`) and the others meet the workspace
+lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
+`--runners` needs a workspace, so `--workspace off` is refused, and
+`do-my-work` takes it too; [cli-reference](cli-reference#go-to-work) has the
+flag.
+
 A checkout, profile or export that names an origin and no key is keyless on
 purpose, whatever the per-user file carries.
 
