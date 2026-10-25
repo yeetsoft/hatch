@@ -1,19 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UNASSIGNED, assigneeToken } from './assignee';
 import {
+  BOARD_PROJECT_STORAGE_KEY,
   BOARD_TYPES_STORAGE_KEY,
   DEFAULT_FILTER,
   DEFAULT_TYPES,
   assigneeFacets,
   filterCards,
+  initialProject,
   isFiltering,
   matchesQuery,
+  readBoardProject,
   readBoardTypes,
   revealType,
   toggleType,
   toggleWaiting,
   typeCounts,
   typesSummary,
+  writeBoardProject,
   writeBoardTypes,
 } from './filter';
 import { ISSUE_TYPES } from '../types';
@@ -411,5 +415,56 @@ describe('readBoardTypes / writeBoardTypes', () => {
     stubStorage({}, true);
 
     expect(() => writeBoardTypes(['task'])).not.toThrow();
+  });
+});
+
+describe('readBoardProject / writeBoardProject / initialProject', () => {
+  it('defaults to every project when nobody has chosen', () => {
+    stubStorage();
+
+    expect(readBoardProject()).toBe('');
+  });
+
+  it('round-trips a chosen project', () => {
+    stubStorage();
+
+    writeBoardProject('AER');
+
+    expect(readBoardProject()).toBe('AER');
+  });
+
+  it('stores an empty choice rather than deleting the key', () => {
+    const data = stubStorage({ [BOARD_PROJECT_STORAGE_KEY]: 'AER' });
+
+    writeBoardProject('');
+
+    expect(data[BOARD_PROJECT_STORAGE_KEY]).toBe('');
+    expect(readBoardProject()).toBe('');
+  });
+
+  it('falls back to every project when storage throws', () => {
+    stubStorage({}, true);
+
+    expect(readBoardProject()).toBe('');
+    expect(() => writeBoardProject('AER')).not.toThrow();
+  });
+
+  it('prefers the URL over what is stored', () => {
+    stubStorage({ [BOARD_PROJECT_STORAGE_KEY]: 'AER' });
+
+    expect(initialProject('OPS')).toBe('OPS');
+  });
+
+  it('falls back to storage when the URL names no project', () => {
+    stubStorage({ [BOARD_PROJECT_STORAGE_KEY]: 'AER' });
+
+    expect(initialProject(null)).toBe('AER');
+    expect(initialProject('')).toBe('AER');
+  });
+
+  it('falls back to every project when neither the URL nor storage names one', () => {
+    stubStorage();
+
+    expect(initialProject(null)).toBe('');
   });
 });
