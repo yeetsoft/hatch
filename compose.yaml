@@ -81,6 +81,10 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./src/Hatch.Api/.env.json:/App/.env.json
+      # The named volume is the fallback only so this line parses when
+      # HATCH_BACKUP_DIR is unset; with Hatch__BackupPath empty below, the api
+      # never writes to it.
+      - "${HATCH_BACKUP_DIR:-hatch-backups}:/backups"
     environment:
       DOTNET_ENVIRONMENT: Docker
       # `migrate` and `api` must agree on every Auth__* line: migrate is where
@@ -113,6 +117,10 @@ services:
       # wires only the first.
       Apps__AssetLinks__0__PackageName: "${HATCH_ANDROID_PACKAGE:-}"
       Apps__AssetLinks__0__Sha256CertFingerprints__0: "${HATCH_ANDROID_CERT_FINGERPRINT:-}"
+      # /backups only when HATCH_BACKUP_DIR is set; empty means off. No default
+      # folder: one inside Docker is lost with Docker, one inside the checkout is
+      # where the Docs say not to put backups.
+      Hatch__BackupPath: "${HATCH_BACKUP_DIR:+/backups}"
     ports:
       - "${HATCH_PORT:-8080}:8080"
     restart: unless-stopped
@@ -219,4 +227,5 @@ networks:
 
 volumes:
   pgdata:
+  hatch-backups:
   workspace:
