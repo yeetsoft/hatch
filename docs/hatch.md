@@ -3241,41 +3241,31 @@ rename underneath this endpoint.
 
 ### The colour, and the two bars
 
-Every row's colour, and the battery's own, is decided on the client from its
-**pace** — the share of the window's allowance it is on course to have spent
-by its own reset — rather than the percentage alone. Pace is
-`used / max(gone, GRACE)`: the percentage spent divided by the share of the
-window's time gone, with `GRACE` a floor on that share (the first fifteen
-minutes of a five-hour window) so the opening minutes of a window cannot
-project to several times the allowance before a rate means anything. `100` is
-level — the window refreshes at the very moment the allowance runs out; below
-it there is headroom left at the reset, above it the allowance goes first. The
-ramp has five control points over this projected percentage, interpolated
-linearly in sRGB one shade per whole projected percent: bright green at 0
-("allowance to spare"), green at 60 ("well ahead of the reset"), yellow at 90
-("just ahead of the reset"), orange at 100 ("level with the reset"), and red
-at 150 ("spending ahead of the reset")
-(`src/Hatch.Web/apps/hatch/src/lib/utilization.ts`). The endpoint sends no
-colour and no tone: a ramp on the client beside a three-tone decision on the
-server would be two answers to one question, so the percentage and the reset
-instant are the whole of what crosses the wire, and pace is computed from
-them alone.
+Every row's colour, and the battery's own, is decided on the client from the
+**percentage used** alone, in three bands: green under 50% ("plenty left"),
+yellow from 50% to 79% ("over half spent"), and red from 80% ("nearly spent")
+(`src/Hatch.Web/apps/hatch/src/lib/utilization.ts`). The percentage is rounded
+to the whole number the badge shows before it is compared, so 49.6% is yellow.
+How fast a window is being spent against its own clock paints nothing; the time
+bar below still shows it. The endpoint sends no colour and no tone: bands on the
+client beside a tone decided on the server would be two answers to one
+question, so the percentage and the reset instant are the whole of what crosses
+the wire. The server's own pace gates, which fold economy and low work for an
+unattended pass, are a separate question and are unchanged.
 
-The battery takes the colour of the **worst window** — the highest pace among
-the rows — never the `extra` row's: a spent credit line is a monthly budget
-the operator chose to buy, not a window the account will refuse on, and
+The battery takes the colour of the **worst window** — the highest percentage
+among the rows — never the `extra` row's: a spent credit line is a monthly
+budget the operator chose to buy, not a window the account will refuse on, and
 painting the nav red over it would say "stop" about an account that can still
-run. A window standing at 100% used at the very moment it resets is not bad
-news on its own — it is a window spent exactly as intended, its allowance and
-its clock running out together — so only spending faster than the window
-refreshes reddens it. The battery's tooltip and accessible name say in words
-what the colour says in colour, and name the window that decided it whenever
-it is not the session's own.
+run. A weekly window at 90% therefore reddens a badge that shows the session at
+10%. The battery's tooltip and accessible name say in words what the colour says
+in colour, and name the window that decided it, with its percentage, whenever it
+is not the session's own.
 
 A window whose reset instant has already passed reads as **not started**: 0%
-used, pace 0, the ramp's brightest colour, and a phrase saying it has reset,
-rather than the stale percentage sitting there in whatever colour it last
-was.
+used, the lowest band's green, and a phrase saying it has reset, rather than the
+stale percentage sitting there in whatever colour it last was. Being 0, it
+cannot be the worst window.
 
 Opened, every row in the panel is two bars on one scale rather than a
 percentage and a `resets in` clause left for the reader to do the arithmetic
