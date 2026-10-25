@@ -187,6 +187,12 @@ public sealed class Tally
     public DateTimeOffset? UntilAt { get; set; }
     public string? StopFile { get; init; }
 
+    /// <summary>
+    /// The directory a runner set's host owns, where a <c>stop</c> file says the
+    /// whole set is done - null for a runner that belongs to no set.
+    /// </summary>
+    public string? SetDir { get; init; }
+
     /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
     public Controls? Controls { get; init; }
 
@@ -223,6 +229,14 @@ public sealed class Tally
         if (StopFile is { Length: > 0 } stop && Path.Exists(stop))
         {
             StopWhy = $"{stop} exists";
+            return true;
+        }
+
+        // The same idea one level up: the set's host drops a file for all of its
+        // runners at once, and each reads it between its own increments.
+        if (RunnerSet.Signalled(SetDir, RunnerSet.StopFileName))
+        {
+            StopWhy = "this runner's set was told to stop";
             return true;
         }
 
@@ -862,6 +876,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // to the night.
                 UntilAt = carried?.UntilAt ?? untilAt,
                 StopFile = stopFile,
+                SetDir = runtime.SetDir,
                 Controls = runtime.Controls,
                 Standby = standby,
             };
@@ -946,7 +961,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// the new source as <em>its</em> baseline, and will not ask again for the
     /// same change.
     /// </remarks>
-    private sealed record Restarts(bool On, TimeSpan? After, SelfPrint Baseline, DateTimeOffset Born)
+    private sealed record Restarts(bool On, TimeSpan? After, SelfPrint Baseline, DateTimeOffset Born, string? SetDir)
     {
         public static Restarts Armed(Runtime runtime, bool noRestart, bool once, int afterMinutes)
         {
@@ -959,11 +974,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 On: on,
                 After: afterMinutes > 0 ? TimeSpan.FromMinutes(afterMinutes) : null,
                 Baseline: on ? runtime.Self().Take() : SelfPrint.Nothing,
-                Born: runtime.Clock.GetUtcNow());
+                Born: runtime.Clock.GetUtcNow(),
+                SetDir: runtime.SetDir);
         }
 
-        /// <summary>Whether this incarnation - not the night - has been up long enough.</summary>
-        public bool TooOld(DateTimeOffset now) => On && After is { } age && now - Born >= age;
+        /// <summary>Whether another runner in this one's set has asked the set to restart.</summary>
+        public bool SetRestarting => On && RunnerSet.Signalled(SetDir, RunnerSet.RestartFileName);
+
+        /// <summary>Whether this incarnation - not the night - has been up long enough, or its set is restarting.</summary>
+        public bool TooOld(DateTimeOffset now) => On && (After is { } age && now - Born >= age || SetRestarting);
     }
 
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
@@ -1927,7 +1946,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// print is not even read then.
     /// </summary>
     private IReadOnlyList<string> Changed(Restarts restart) =>
-        restart.On ? runtime.Self().Take().ChangedFrom(restart.Baseline) : [];
+        !restart.On ? [] :
+        restart.SetRestarting ? ["(another runner in this set is restarting)"] :
+        runtime.Self().Take().ChangedFrom(restart.Baseline);
 
     /// <summary>
     /// Which trigger fired and what it saw - because a terminal at three in the

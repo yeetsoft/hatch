@@ -164,4 +164,14 @@ public static class RunnerSet
     /// pass a signal to every member between increments.
     /// </summary>
     public const string DirVariable = "HATCH_SET_DIR";
+
+    /// <summary>The file in <see cref="DirVariable"/>'s directory that tells every member to stop.</summary>
+    public const string StopFileName = "stop";
+
+    /// <summary>The file in <see cref="DirVariable"/>'s directory that asks every member to restart.</summary>
+    public const string RestartFileName = "restart";
+
+    /// <summary>Whether the set's host has left <paramref name="fileName"/> in <paramref name="setDir"/>.</summary>
+    public static bool Signalled(string? setDir, string fileName) =>
+        setDir is { Length: > 0 } && Path.Exists(Path.Combine(setDir, fileName));
 }
