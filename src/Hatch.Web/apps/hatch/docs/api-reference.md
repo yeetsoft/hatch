@@ -847,7 +847,9 @@ failing builds, how many sit in review with no pull request at all, the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
-or through a chain, on something itself waiting on it.
+or through a chain, on something itself waiting on it - and the backup's
+own trouble (`backup`), null when `Hatch__BackupPath` is unset or the
+backup is healthy.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.

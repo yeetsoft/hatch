@@ -3097,7 +3097,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
@@ -3321,10 +3321,11 @@ has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
-The panel draws two groups, in this order: **Human** — trunk builds that fail,
-then pull requests to review, then pull requests approved but not merging,
-then questions to answer — and **Agent** — branches that conflict, then
-branch builds that fail. A pull request only ever appears under one of the two:
+The panel draws two groups, in this order: **Human** — a backup that is
+failing or stale, then deadlocked issues, then trunk builds that fail, then
+pull requests to review, then pull requests approved but not merging, then
+issues landed but not done, then questions to answer — and **Agent** —
+branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both. A
@@ -3482,10 +3483,10 @@ Neither half restates a rule that already lives somewhere:
 that is `failed`, or `pending` with a check that has already failed, ordered by
 canonical then trunk, whether or not there is a review column at all — a
 repository's trunk is checked whether or not anything of its is in review, and
-the section reads it the same way. The panel draws it first in the Human half,
-as *Trunk builds that fail*, naming the trunk as the runner reported it and the
-repository, the short sha, and every failing check as a link that opens its
-job in a new tab.
+the section reads it the same way. The panel draws it after Backups and
+Deadlocked in the Human half, as *Trunk builds that fail*, naming the trunk as
+the runner reported it and the repository, the short sha, and every failing
+check as a link that opens its job in a new tab.
 
 **It counts, unlike a branch's conflict or its failing build**, because the
 reasoning that keeps those two quiet does not hold here — except that it now
@@ -3519,6 +3520,25 @@ is the same outage — and is let go the moment a later build on the trunk
 passes, so the next failure offers the button again. A second press, a second
 person, or the poll finding one already attached, gets the bug already filed
 rather than a second one.
+
+### The backup that is failing or stale
+
+`backup` is `{ sentence, lastSuccessfulAt }` or null, read off the same
+`BackupService.Attention()` call as everything else here — never a second
+poll of its own. First match wins: a path configured and the last attempt
+`failed` carries its own error as `sentence`; a folder that cannot be listed
+with no copy ever written carries the folder's own problem; a newest copy
+older than twice the job's 24-hour interval, or no copy at all once a
+five-minute startup grace has passed, is stale. The stale sentence is *no
+backup in the last 48 hours*. `lastSuccessfulAt` is the newest copy's own
+stamp, never the last attempt's, and null when there is no copy.
+
+The folder listing underneath is cached for a minute and dropped the moment
+any attempt finishes, so a backup that just ran is seen on the very next
+read. It counts towards the badge like `approvedHeld` — nothing in the loop
+will fix a folder, so a row here is a person's, every time. No path
+configured (`Hatch__BackupPath` unset) and a healthy backup both answer
+null, and the badge is unchanged either way.
 
 ### The branch in review that has stopped merging
 

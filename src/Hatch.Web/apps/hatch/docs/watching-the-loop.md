@@ -198,9 +198,11 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Deadlocked**, **Trunk builds that fail**, **Pull requests to
-review**, **Approved, not merging**, **Landed, not done**, **Questions to
-answer**. **Agent** - things the loop is already on: **Branches that
+them: **Backups**, **Deadlocked**, **Trunk builds that fail**, **Pull
+requests to review**, **Approved, not merging**, **Landed, not done**,
+**Questions to answer**. **Backups** appears only when the configured
+backup is failing or stale, and links to Settings, where the folder is
+fixed. **Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.
