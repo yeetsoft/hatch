@@ -35,6 +35,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   exhaustedUntil: null,
   for: null,
   canControl: true,
+  yours: true,
   order: null,
   revision: null,
   sequence: null,

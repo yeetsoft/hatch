@@ -1799,6 +1799,85 @@ public class RunnersControllerTests
         Assert.True(open.CanControl);
     }
 
+    [Fact]
+    public async Task GetRunners_AnswersYours()
+    {
+        var h = await NewAsync(wall: true);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, new Actor(ActorKind.Person, h.PersonId, "Nathan"));
+        await h.LoopBeatAsync("here:/checkouts/alice", alice);
+        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+
+        var rows = await h.ListAsync();
+
+        Assert.True(Assert.Single(rows, r => r.Name == Runner).Yours);
+        Assert.False(Assert.Single(rows, r => r.Name == "here:/checkouts/alice").Yours);
+        Assert.False(Assert.Single(rows, r => r.Name == "here:/checkouts/nobody").Yours);
+    }
+
+    [Fact]
+    public async Task GetRunners_WithTheWallOff_EveryRowIsYours()
+    {
+        var h = await NewAsync();
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+
+        var rows = await h.ListAsync();
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r => Assert.True(r.Yours));
+    }
+
+    [Fact]
+    public async Task GetRunners_AnAdminOverSomeoneElsesRow_CanControlButIsNotYours()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+
+        var row = Assert.Single(await h.ListAsync());
+
+        Assert.True(row.CanControl);
+        Assert.False(row.Yours);
+    }
+
+    [Fact]
+    public async Task GetRunners_AKeyWithTheWallOn_OwnsNothing()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.LoopBeatAsync(Runner, alice);
+        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+
+        var rows = await h.ListAsync();
+
+        Assert.NotEmpty(rows);
+        Assert.All(rows, r => Assert.False(r.Yours));
+    }
+
+    [Fact]
+    public async Task PatchRunner_AnswersYours()
+    {
+        var h = await NewAsync(wall: true);
+        await h.LoopBeatAsync(Runner, new Actor(ActorKind.Person, h.PersonId, "Nathan"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.True(patched.Yours);
+    }
+
+    [Fact]
+    public async Task PostRunnerOrder_AnswersYours()
+    {
+        var h = await NewAsync(wall: true);
+        await h.LoopBeatAsync(Runner, new Actor(ActorKind.Person, h.PersonId, "Nathan"));
+
+        var ordered = await h.OrderAsync(Runner, new RunnerOrderRequest("pass"));
+
+        Assert.True(ordered.Yours);
+    }
+
     // ---- Who sees which runner ----
 
     /// <summary>Three rows: Alice's, Bob's, and nobody's - ending with the caller's own <c>Principal</c> left at null, the last beat's.</summary>

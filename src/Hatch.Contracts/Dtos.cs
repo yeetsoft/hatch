@@ -3486,6 +3486,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// caller being an admin. True whenever the wall is off, so a client never
 /// has to know the wall exists to draw its own controls.
 /// </param>
+/// <param name="Yours">
+/// Whether this row is the caller's own: the wall off, or the caller being
+/// <see cref="For"/>. Unlike <see cref="CanControl"/>, an admin does not have it
+/// on someone else's row, nor anyone on a row that belongs to nobody.
+/// </param>
 /// <param name="Order">The standing order this runner's next loop heartbeat will read and clear, or null for none.</param>
 /// <param name="Revision">
 /// This runner's own build identity - the full sha it was built from, or
@@ -3548,7 +3553,8 @@ public record RunnerDto(
     DateTimeOffset? BuiltAt = null,
     RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown,
     RunnerBoardDrift SourceDrift = RunnerBoardDrift.Unknown,
-    IReadOnlyList<string> Projects = null!)
+    IReadOnlyList<string> Projects = null!,
+    bool Yours = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
