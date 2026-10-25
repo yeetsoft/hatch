@@ -162,15 +162,39 @@ export const matchesAssignee = (card: IssueCard, assignee: string): boolean => {
   return card.assignee !== null && assigneeToken(card.assignee) === assignee;
 };
 
-export const matchesFilter = (card: IssueCard, filter: CardFilter): boolean =>
-  filter.types.includes(card.type) &&
-  (!filter.waiting || card.openQuestions > 0) &&
-  matchesAssignee(card, filter.assignee) &&
-  (filter.project === '' || card.projectKey === filter.project) &&
-  matchesQuery(card, filter.query);
+/**
+ * Whether a card passes the filter. `stories` is each epic's carried stories
+ * (`storiesByEpic` from `carried()`, lib/storiesOnEpics.ts); an epic answers
+ * the waiting, assignee and query clauses for the group of itself and its
+ * stories, each clause decided on its own. The types and project clauses stay
+ * the card's own. With no stories the group is the card alone.
+ */
+export const matchesFilter = (
+  card: IssueCard,
+  filter: CardFilter,
+  stories: Map<string, IssueCard[]> = new Map(),
+): boolean => {
+  const group = [card, ...(stories.get(card.key) ?? [])];
+  return (
+    filter.types.includes(card.type) &&
+    (!filter.waiting || group.some((c) => c.openQuestions > 0)) &&
+    group.some((c) => matchesAssignee(c, filter.assignee)) &&
+    (filter.project === '' || card.projectKey === filter.project) &&
+    group.some((c) => matchesQuery(c, filter.query))
+  );
+};
 
-export const filterCards = (cards: IssueCard[], filter: CardFilter): IssueCard[] =>
-  cards.filter((card) => matchesFilter(card, filter));
+/**
+ * The cards that pass the filter. A carried story has no card of its own - it
+ * is drawn inside its epic's - so its epic answers for it (`stories`): finding
+ * the story finds the epic. Carried stories that are in `cards` are not removed
+ * here; the page's `carriedKeys` filter stays the one place they leave.
+ */
+export const filterCards = (
+  cards: IssueCard[],
+  filter: CardFilter,
+  stories: Map<string, IssueCard[]> = new Map(),
+): IssueCard[] => cards.filter((card) => matchesFilter(card, filter, stories));
 
 /**
  * The assignees the board actually has cards for, in picker order and with
