@@ -413,6 +413,15 @@ account once; a clone carries no mark of the web, so `RemoteSigned` is
 enough. Group Policy outranks both: if it is what refuses, it is the thing
 to change, and no flag will get round it.
 
+A loop that follows the active profile (one started without `--profile` or
+`HATCH_PROFILE`) also restarts when `hatch use` moves the pointer. It looks
+at the top of each pass, between increments and never inside one, and comes
+back on the new profile's board with the night's totals carried. Unsupervised,
+or with `--no-restart`, it stops instead and says why, since there is nothing
+to bring it back. A pointer naming a profile with no file, or no valid name, is
+ignored: the loop says so once and stays on the profile it started under. A
+loop pinned with `--profile` or `HATCH_PROFILE` never looks.
+
 The container runner never asks.
 
 Exit codes:

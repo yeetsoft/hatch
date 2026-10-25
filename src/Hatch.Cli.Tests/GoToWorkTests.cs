@@ -2106,6 +2106,225 @@ public sealed class GoToWorkTests
         Assert.Single(carried.LetGo);
     }
 
+    // ---- Following the active profile ----
+
+    /// <summary>
+    /// A runtime that follows the active-profile pointer rather than naming its
+    /// profile: the pointer says <c>day</c>, and both profiles have a file.
+    /// </summary>
+    private static (Runtime Runtime, string Pointer) Following(Harness h, bool supervised = true)
+    {
+        var pointer = Path.Combine(h.Temp, "profile");
+        var profiles = Path.Combine(h.Temp, "profiles");
+        Directory.CreateDirectory(profiles);
+        File.WriteAllText(pointer, "day");
+        File.WriteAllText(Path.Combine(profiles, "day"), "");
+        File.WriteAllText(Path.Combine(profiles, "night"), "");
+
+        var runtime = (supervised ? h.Supervised : h.Runtime) with
+        {
+            ProfileName = "day",
+            ActiveProfilePath = pointer,
+            ProfilesDirectory = profiles,
+        };
+
+        return (runtime, pointer);
+    }
+
+    /// <summary>Runs <paramref name="then"/> once the first session has finished, as <c>hatch use</c> would from another terminal.</summary>
+    private static void AfterTheFirstSession(Harness h, Action then)
+    {
+        var finished = h.Sessions.Behaviour;
+        var seen = 0;
+        h.Sessions.Behaviour = async (request, onLine, ct) =>
+        {
+            var result = await finished(request, onLine, ct);
+            if (++seen == 1) then();
+            return result;
+        };
+    }
+
+    private static bool Restarted(Harness h) =>
+        h.Say.Said.Any(l => l.Contains("restarting", StringComparison.Ordinal));
+
+    [Fact]
+    public async Task A_loop_following_the_active_profile_restarts_when_the_pointer_moves_mid_increment()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("changed from day to night", StringComparison.Ordinal));
+
+        var carried = NightState.Read(h.NightState);
+        Assert.NotNull(carried);
+        Assert.Equal(1, carried.Runs);
+        Assert.Equal(1, carried.Restarts);
+        Assert.Equal(1.5m, carried.Spent);
+    }
+
+    [Fact]
+    public async Task A_pointer_that_moves_during_an_increment_is_not_acted_on_until_the_next_pass()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        // The cap would have allowed a second increment; the move is found at
+        // the top of the next pass, before one starts.
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_restart_for_a_moved_profile_carries_the_totals_of_the_night()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Runs = 3, Spent = 4m });
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        var carried = NightState.Read(h.NightState);
+        Assert.NotNull(carried);
+        Assert.Equal(4, carried.Runs);
+    }
+
+    [Fact]
+    public async Task A_pinned_loop_ignores_the_pointer_moving()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (followed, pointer) = Following(h);
+        var runtime = followed with { ActiveProfilePath = null };
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.False(Restarted(h));
+    }
+
+    [Fact]
+    public async Task An_unsupervised_loop_stops_saying_why_when_the_pointer_moves()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h, supervised: false);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("cannot restart onto it", StringComparison.Ordinal));
+        Assert.False(File.Exists(h.NightState));
+    }
+
+    [Fact]
+    public async Task A_loop_run_with_no_restart_stops_saying_why_when_the_pointer_moves()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--no-restart"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("cannot restart onto it", StringComparison.Ordinal));
+        Assert.False(File.Exists(h.NightState));
+    }
+
+    [Fact]
+    public async Task A_pointer_removed_by_use_none_restarts_the_loop_onto_no_profile()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.Delete(pointer));
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("to <none>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_pointer_that_has_not_moved_leaves_the_loop_alone()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, _) = Following(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.False(Restarted(h));
+    }
+
+    [Fact]
+    public async Task A_pointer_naming_a_profile_with_no_file_is_said_once_and_ignored()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "ghost"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "3"], default));
+
+        Assert.Equal(3, h.Sessions.Spawned.Count);
+        Assert.False(Restarted(h));
+        Assert.Single(h.Say.Said, l => l.Contains("no profile file has that name", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_pointer_that_is_not_a_profile_name_is_ignored()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (runtime, pointer) = Following(h);
+        File.WriteAllText(Path.Combine(h.Temp, "x"), "");
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "../x"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.False(Restarted(h));
+    }
+
+    [Fact]
+    public async Task Two_loops_sharing_a_pointer_move_only_the_one_that_follows_it()
+    {
+        using var a = new Harness();
+        using var b = new Harness();
+        OneTicket(a, "AER-1");
+        OneTicket(b, "AER-2");
+
+        var (following, pointer) = Following(a);
+        var (pinnedFrom, _) = Following(b);
+        var pinned = pinnedFrom with { ActiveProfilePath = null };
+        AfterTheFirstSession(a, () => File.WriteAllText(pointer, "night"));
+
+        var first = new GoToWorkCommand(following).RunAsync(["--max-runs", "2"], default);
+        var second = new GoToWorkCommand(pinned).RunAsync(["--max-runs", "2"], default);
+        var exits = await Task.WhenAll(first, second);
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, exits[0]);
+        Assert.Single(a.Sessions.Spawned);
+        Assert.Equal(0, exits[1]);
+        Assert.Equal(2, b.Sessions.Spawned.Count);
+        Assert.Empty(a.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(b.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+    }
+
     [Fact]
     public async Task A_loop_whose_source_did_not_change_carries_on_and_leaves_nothing_behind()
     {

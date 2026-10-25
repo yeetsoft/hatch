@@ -128,6 +128,10 @@ so it works with nothing configured.
 
 It touches no ticket and no column, so it writes nothing to the board.
 
+A running `go-to-work` that follows the active profile restarts, or stops
+saying why, when this moves the pointer; see
+[Restarts](one-increment-and-the-loop#restarts).
+
 ### board
 
 ```
