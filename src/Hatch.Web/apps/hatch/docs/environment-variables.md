@@ -71,6 +71,8 @@ saying so; those are read from the environment alone.
 | `HATCH_RETRY_SECONDS` | `hatch` | `90` | Seconds a call keeps retrying Hatch. `0` means exactly one attempt; a value that is not a whole number, or is negative, falls back to `90`. Settings file: **no**. |
 | `HATCH_ROOT` | `hatch` | unset: the nearest ancestor of the working directory that has a `.git` | The checkout to work in. Set to a directory that does not exist, there is no fallback: `hatch` has no checkout. Settings file: **no**. |
 | `HATCH_NIGHT_STATE` | `hatch` | unset | Where a night's totals are handed to the loop that restarts into. Set only by `scripts/hatch.sh` and `scripts/hatch.ps1`, which is how a hand-started `hatch` knows nothing will restart it. Settings file: **no**. |
+| `HATCH_SET_SLOT` | `hatch` | unset | Which member of a runner set this process is, 1-based - set only by the set host, never by hand. Settings file: **no**. |
+| `HATCH_SET_DIR` | `hatch` | unset | The set host's own temp directory, where `stop`/`restart` files pass a signal to every member between increments - set only by the set host, never by hand. Settings file: **no**. |
 | `HATCH_RTK` | `hatch` | unset | `off`, in any case, keeps RTK's Bash hook out of a session. Anything else uses it when `rtk` is on `PATH`. Settings file: **no**. |
 | **The wrapper scripts** | | | |
 | `HATCH_RUNNER_BIN` | `scripts/hatch.sh`, `scripts/hatch.ps1` | unset: the script finds or builds the binary | The path of a `hatch` binary you already have, for a machine with no SDK. It must be an executable file. With it set there is nothing to rebuild. |
