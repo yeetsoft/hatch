@@ -198,3 +198,22 @@ The filter bar finds a carried story through its epic. Searching a carried
 story's key or words from its title, the Waiting switch and the assignee facet
 each draw the epic whose carried story matches. The Types and Project filters
 judge the epic itself. The story is never drawn as a card.
+
+An epic's card shows its stories two ways. Expanded, which is how every epic
+starts, it draws one line under the dots for each story: the status icon in
+the colour of the column the story stands in, its title cut to one line, and
+the name of that column. Clicking a line opens that story's summary on the
+desk without leaving the board; at phone width, where the board has no desk
+behind it, it goes to the story instead.
+
+The strip of dots and the count is a button. Pressing it collapses the card to
+that strip alone and pressing it again brings the lines back. It can be
+reached with Tab and toggled with Enter or Space, and it reports whether it is
+expanded to a screen reader. Dragging the epic by its face still moves it; a
+press on the strip is never a drag.
+
+Which epics are collapsed is remembered per browser, under the key
+`hatch.board.collapsedEpics` in its local storage. Only collapsed epics are
+kept, so expanded is the default and a browser that has never collapsed one
+holds nothing. A fresh browser, or one whose storage was cleared, sees every
+epic expanded.

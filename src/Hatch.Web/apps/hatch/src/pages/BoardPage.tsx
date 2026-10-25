@@ -50,7 +50,7 @@ import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
 import { planGoToWork } from '../lib/goToWork';
-import { carried } from '../lib/storiesOnEpics';
+import { carried, readCollapsedEpics, toggleCollapsed, writeCollapsedEpics } from '../lib/storiesOnEpics';
 import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
@@ -309,6 +309,15 @@ export function BoardPage() {
     () => carried(board?.issues ?? [], board?.pastHorizon ?? [], board?.statuses ?? [], projectsByKey),
     [board, projectsByKey],
   );
+  /* Which epics have folded their stories away, kept per browser. */
+  const [collapsedEpics, setCollapsedEpics] = useState(readCollapsedEpics);
+  const toggleEpic = useCallback((key: string) => {
+    setCollapsedEpics((prev) => {
+      const next = toggleCollapsed(prev, key);
+      writeCollapsedEpics(next);
+      return next;
+    });
+  }, []);
   /* Grouped once per status, right where the filter's own output would
      otherwise have been a flat list: `Column`/`PhoneColumn` just filter this
      by statusId (unchanged), so a column's drawn order falls out of this one
@@ -735,6 +744,8 @@ export function BoardPage() {
                 doneHorizonHours={board.doneHorizonHours ?? null}
                 statuses={board.statuses}
                 stories={storiesByEpic}
+                collapsedEpics={collapsedEpics}
+                onToggleEpic={toggleEpic}
               />
             ))}
           </div>
@@ -783,6 +794,8 @@ export function BoardPage() {
                   spots={spots}
                   statuses={board.statuses}
                   stories={storiesByEpic}
+                  collapsedEpics={collapsedEpics}
+                  onToggleEpic={toggleEpic}
                 />
               ))}
             </div>
@@ -901,6 +914,8 @@ function Column({
   spots,
   statuses,
   stories,
+  collapsedEpics,
+  onToggleEpic,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -939,6 +954,10 @@ function Column({
   statuses: Status[];
   /** Each epic's carried stories by epic key; an epic with none has no entry. */
   stories: Map<string, IssueCard[]>;
+  /** The keys of the epics whose stories are folded away. */
+  collapsedEpics: Set<string>;
+  /** Fold or unfold one epic's stories. */
+  onToggleEpic: (key: string) => void;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -1002,6 +1021,8 @@ function Column({
                 spot={spots.get(card.key)}
                 statuses={statuses}
                 stories={stories.get(card.key)}
+                collapsed={collapsedEpics.has(card.key)}
+                onToggle={onToggleEpic}
               />
             );
           })}
@@ -1051,6 +1072,8 @@ function PhoneColumn({
   doneHorizonHours,
   statuses,
   stories,
+  collapsedEpics,
+  onToggleEpic,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -1070,6 +1093,10 @@ function PhoneColumn({
   statuses: Status[];
   /** Each epic's carried stories by epic key; an epic with none has no entry. */
   stories: Map<string, IssueCard[]>;
+  /** The keys of the epics whose stories are folded away. */
+  collapsedEpics: Set<string>;
+  /** Fold or unfold one epic's stories. */
+  onToggleEpic: (key: string) => void;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
   const [open, setOpen] = useState(() => !startsCollapsed(status));
@@ -1111,6 +1138,8 @@ function PhoneColumn({
                 project={project}
                 statuses={statuses}
                 stories={stories.get(card.key)}
+                collapsed={collapsedEpics.has(card.key)}
+                onToggle={onToggleEpic}
               />
             );
           })}
