@@ -489,7 +489,7 @@ describe('pageForAnchor', () => {
     ['prerequisites', '/docs/getting-started#prerequisites'],
     ['the-one-line', '/docs/getting-started#the-one-line'],
     ['how-to-stop', '/docs/deployment-overview#how-to-stop'],
-    ['where-the-data-is-and-how-to-back-it-up', '/docs/backup-restore-and-replication#where-the-data-is-and-how-to-back-it-up'],
+    ['where-the-data-is', '/docs/backup-restore-and-replication#where-the-data-is'],
     ['putting-a-front-door-on-it', '/docs/the-wall-off-on-and-required#putting-a-front-door-on-it'],
     ['if-something-is-wrong', '/docs/troubleshooting#if-something-is-wrong'],
   ])('resolves %s to %s against the real pages', (id, to) => {
