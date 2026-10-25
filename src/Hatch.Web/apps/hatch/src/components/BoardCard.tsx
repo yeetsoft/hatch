@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Link } from 'react-router-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -8,7 +9,7 @@ import { MomentChip } from './MomentChip';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
 import { projectLogoUrl } from '../lib/projectLogo';
-import { isPlainClick } from '../lib/pointer';
+import { isPlainClick, type ClickIntent } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
 import type { Spot } from '../lib/spotlight';
 import { countWords, storyCount } from '../lib/storiesOnEpics';
@@ -52,6 +53,14 @@ interface BoardCardProps {
   /** HA-973's paint for HA-972's spotlight - absent from CardPreview on
       purpose: the card under the cursor during a drag never wears one. */
   spot?: Spot;
+  /** The epic's stories are hidden - only meaningful once `stories.length > 0`.
+      Default false (expanded). Absent from CardPreview, which draws no lines
+      at all and so has nothing to collapse. */
+  collapsed?: boolean;
+  /** Pressed on the strip, with the card's own key - BoardPage's own state
+      decides what `collapsed` is next. Absent wherever `onToggle` would have
+      nothing to toggle: CardPreview, and every card with no stories. */
+  onToggle?: (key: string) => void;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -88,6 +97,15 @@ const hasMarks = (card: IssueCard) =>
  * The pointer sensor on the board requires a few pixels of movement before a
  * drag starts, which is what lets the same element be a link, a card and a
  * handle at once.
+ *
+ * An epic carrying stories (HA-1560) is the one card that is not only the
+ * <Link>: `useSortable`'s `setNodeRef` moves to a wrapper `<div>`, and the
+ * <Link> becomes `setActivatorNodeRef` instead - the drag handle, carrying
+ * `attributes`/`listeners` as it always has, but no longer the only thing on
+ * the card. The toggle strip and the story lines below it sit beside the
+ * <Link> rather than inside it, so a press on either of them is never a press
+ * on the activator and never starts a drag. Every card with no stories still
+ * renders the bare <Link> it always has (AC6).
  */
 export function BoardCard({
   card,
@@ -102,42 +120,98 @@ export function BoardCard({
   band = null,
   sentence = null,
   spot,
+  collapsed = false,
+  onToggle,
 }: CardProps & BoardCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.key,
+  });
   // Called whether or not there is a band - a hook cannot sit behind one. Only
   // the listeners and the description are conditional, so with flow-viz off
   // nothing is attached. The key is what Callout.Group's onOpenChange reports
   // as open, which is how BoardPage spotlights the board.
   const tip = useCallout(card.key);
   const nested = depth > 0;
+  // Always called, even on a card with no stories, where it goes unused -
+  // a hook cannot sit behind the branch below.
+  const storiesId = useId();
+
+  const classes = (carrying: boolean) =>
+    `hatch-card${carrying ? ' hatch-card--carrying' : ''}${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`;
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(nested ? { '--card-depth': String(depth) } : null),
+  };
+  const onFaceClick = (e: ClickIntent & { preventDefault: () => void }) => {
+    if (!isPlainClick(e) || !onPeek) return;
+    e.preventDefault();
+    onPeek(card);
+  };
+  // After the spreads: dnd-kit's attributes carry an aria-describedby of
+  // their own, which a plain prop set earlier would lose to.
+  const describedBy =
+    [attributes['aria-describedby'], band ? tip.describedBy : null].filter(Boolean).join(' ') || undefined;
+
+  if (stories.length === 0) {
+    return (
+      <Link
+        ref={setNodeRef}
+        to={`/issues/${card.key}`}
+        className={classes(false)}
+        // How the board finds the element again: the console's take scrolls to it and focuses it.
+        data-issue-key={card.key}
+        style={style}
+        onClick={onFaceClick}
+        {...(band ? tip.focus : null)}
+        {...attributes}
+        {...listeners}
+        aria-describedby={describedBy}
+      >
+        <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
+        <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
+      </Link>
+    );
+  }
+
+  const { total, done } = storyCount(stories, statuses);
 
   return (
-    <Link
-      ref={setNodeRef}
-      to={`/issues/${card.key}`}
-      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`}
-      // How the board finds the element again: the console's take scrolls to it and focuses it.
-      data-issue-key={card.key}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        ...(nested ? { '--card-depth': String(depth) } : null),
-      }}
-      onClick={(e) => {
-        if (!isPlainClick(e) || !onPeek) return;
-        e.preventDefault();
-        onPeek(card);
-      }}
-      {...(band ? tip.focus : null)}
-      {...attributes}
-      {...listeners}
-      // After the spreads: dnd-kit's attributes carry an aria-describedby of
-      // their own, which a plain prop set earlier would lose to.
-      aria-describedby={[attributes['aria-describedby'], band ? tip.describedBy : null].filter(Boolean).join(' ') || undefined}
-    >
-      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
-      <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
-    </Link>
+    <div ref={setNodeRef} className={classes(true)} style={style}>
+      <Link
+        ref={setActivatorNodeRef}
+        to={`/issues/${card.key}`}
+        className="hatch-card-face"
+        data-issue-key={card.key}
+        onClick={onFaceClick}
+        {...(band ? tip.focus : null)}
+        {...attributes}
+        {...listeners}
+        aria-describedby={describedBy}
+      >
+        <CardFace
+          card={card}
+          waiting={waiting}
+          terminal={terminal}
+          project={project}
+          stories={stories}
+          statuses={statuses}
+          showStrip={false}
+        />
+        <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
+      </Link>
+      <button
+        type="button"
+        className="hatch-card-stories"
+        aria-expanded={!collapsed}
+        aria-controls={storiesId}
+        aria-label={`${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`}
+        onClick={() => onToggle?.(card.key)}
+      >
+        <StoryStrip stories={stories} statuses={statuses} />
+      </button>
+      {!collapsed && <StoryLines id={storiesId} stories={stories} statuses={statuses} onPeek={onPeek} />}
+    </div>
   );
 }
 
@@ -172,7 +246,8 @@ function CardFace({
   project,
   stories,
   statuses,
-}: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
+  showStrip = true,
+}: Required<Omit<CardProps, 'card'>> & { card: IssueCard; showStrip?: boolean }) {
   const { total, done } = storyCount(stories, statuses);
   return (
     <>
@@ -296,20 +371,9 @@ function CardFace({
         {truncate(card.title)}
       </div>
       {card.parentKey && <div className="hatch-card-parent">↳ {card.parentKey}</div>}
-      {stories.length > 0 && (
+      {stories.length > 0 && showStrip && (
         <div className="hatch-card-stories" aria-label={`${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`}>
-          {stories.map((story) => {
-            const column = statuses.find((s) => s.id === story.statusId);
-            return (
-              <span
-                key={story.key}
-                className="hatch-card-story-dot"
-                style={statusVars(column?.color)}
-                title={`${story.key} - ${column?.name ?? ''}`}
-              />
-            );
-          })}
-          <span className="hatch-card-stories-words">{countWords(total, done)}</span>
+          <StoryStrip stories={stories} statuses={statuses} />
         </div>
       )}
       {(card.dueAt || waiting) && (
@@ -321,5 +385,88 @@ function CardFace({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The dots-and-count a story strip draws, with no wrapper of its own - the
+ * non-interactive `<div>` (CardPreview, and CardFace's own strip) and the
+ * toggle `<button>` (BoardCard, once there is something to collapse) each
+ * supply their own element and their own `aria-*`, and share only this.
+ */
+export function StoryStrip({ stories, statuses }: { stories: IssueCard[]; statuses: Status[] }) {
+  const { total, done } = storyCount(stories, statuses);
+  return (
+    <>
+      {stories.map((story) => {
+        const column = statuses.find((s) => s.id === story.statusId);
+        return (
+          <span
+            key={story.key}
+            className="hatch-card-story-dot"
+            style={statusVars(column?.color)}
+            title={`${story.key} - ${column?.name ?? ''}`}
+          />
+        );
+      })}
+      <span className="hatch-card-stories-words">{countWords(total, done)}</span>
+    </>
+  );
+}
+
+/**
+ * Whether a click on a story line is the app's to take over - the same
+ * question `isPlainClick` settles for the card's own `<Link>`, curried over
+ * the story and the peek callback so the event handler is a pure function of
+ * the two: a test calls `lineClick(story, onPeek)` once and exercises the
+ * result against a plain object, with no DOM in the run at all.
+ *
+ * A modified click, or no `onPeek` to call (the phone, which draws no lines),
+ * is left to the browser's own navigation to `/issues/{key}`.
+ */
+export const lineClick =
+  (story: IssueCard, onPeek?: (card: IssueCard) => void) =>
+  (event: ClickIntent & { preventDefault: () => void }): void => {
+    if (!isPlainClick(event) || !onPeek) return;
+    event.preventDefault();
+    onPeek(story);
+  };
+
+/**
+ * One line per story, each its own `<Link>` and a sibling of the card's own -
+ * never nested inside it, since an anchor inside an anchor is never valid
+ * markup and the epic's own click would otherwise win every time.
+ */
+export function StoryLines({
+  id,
+  stories,
+  statuses,
+  onPeek,
+}: {
+  id: string;
+  stories: IssueCard[];
+  statuses: Status[];
+  onPeek?: (card: IssueCard) => void;
+}) {
+  return (
+    <ul id={id} className="hatch-card-story-lines">
+      {stories.map((story) => {
+        const column = statuses.find((s) => s.id === story.statusId);
+        return (
+          <li key={story.key} style={statusVars(column?.color)}>
+            <Link
+              className="hatch-card-story-line"
+              to={`/issues/${story.key}`}
+              title={`${story.key} - ${column?.name ?? ''}`}
+              onClick={lineClick(story, onPeek)}
+            >
+              <span className="hatch-card-story-icon" />
+              <span className="hatch-card-story-title">{truncate(story.title)}</span>
+              <span className="hatch-card-story-column">{column?.name ?? ''}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
