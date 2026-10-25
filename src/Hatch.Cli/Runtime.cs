@@ -89,6 +89,9 @@ public sealed record Runtime(
     /// <summary>The directory a runner set's host owns, from <c>HATCH_SET_DIR</c>; null outside a set.</summary>
     public string? SetDir { get; init; }
 
+    /// <summary>This member's slot in a runner set, from <c>HATCH_SET_SLOT</c>; null for slot 1 and for a lone runner.</summary>
+    public int? Slot { get; init; }
+
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);

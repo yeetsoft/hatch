@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -203,8 +204,10 @@ public sealed class SystemBackupProcess : IBackupProcess
 /// Dumps the <c>hatch</c> database to <see cref="HatchOptions.BackupPath"/>,
 /// atomically and without ever throwing - every failure becomes a <c>failed</c>
 /// <see cref="BackupAttempt"/> recorded in <see cref="BackupStatus"/> instead.
-/// Pruning old copies is a later task; this one writes and deletes only its
-/// own <c>.partial</c>.
+/// After an <c>ok</c> run it prunes: a finished copy goes only when it is past
+/// the <see cref="HatchOptions.BackupKeepDays"/> newest and older than that
+/// many days, a <c>.partial</c> only when it is over an hour old, and nothing
+/// that is not Hatch's own name is ever touched.
 /// </summary>
 /// <remarks>
 /// A <see cref="SemaphoreSlim"/> around the whole body, so the job that runs
@@ -219,19 +222,31 @@ public sealed class BackupService
     private readonly IBackupProcess _process;
     private readonly BackupStatus _status;
     private readonly TimeProvider _clock;
+    private readonly ILogger<BackupService> _logger;
     private readonly TimeSpan _timeout;
+    private readonly int _keepDays;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public BackupService(
         IOptions<HatchOptions> options, IConfiguration configuration, IBackupProcess process,
-        BackupStatus status, TimeProvider clock, TimeSpan? timeout = null)
+        BackupStatus status, TimeProvider clock, ILogger<BackupService> logger, TimeSpan? timeout = null)
     {
         _options = options.Value;
         _configuration = configuration;
         _process = process;
         _status = status;
         _clock = clock;
+        _logger = logger;
         _timeout = timeout ?? TimeSpan.FromMinutes(30);
+
+        // Zero is the operator turning pruning off, so it is kept; only a
+        // negative value, which nothing could mean, falls back.
+        _keepDays = options.Value.BackupKeepDays switch
+        {
+            0 => 0,
+            > 0 => options.Value.BackupKeepDays,
+            _ => new HatchOptions().BackupKeepDays,
+        };
     }
 
     /// <summary>
@@ -348,7 +363,12 @@ public sealed class BackupService
             }
 
             File.Move(partialPath, finalPath);
-            return Record(new BackupAttempt(now, BackupOutcome.Ok, null, finalName, new FileInfo(finalPath).Length));
+            var attempt = Record(new BackupAttempt(now, BackupOutcome.Ok, null, finalName, new FileInfo(finalPath).Length));
+
+            // After the record, and never throwing: a prune problem must not
+            // turn a good dump into a failed one.
+            Prune(now);
+            return attempt;
         }
         catch (OperationCanceledException)
         {
@@ -359,6 +379,72 @@ public sealed class BackupService
         {
             DeletePartial(partialPath);
             return Record(Failed(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Deletes what an <c>ok</c> run at <paramref name="now"/> makes stale, and
+    /// never throws. Candidates come only from <see cref="BackupNames"/>'s
+    /// parsers, and age is read from the name's stamp, never the mtime.
+    /// </summary>
+    private void Prune(DateTimeOffset now)
+    {
+        var path = _options.BackupPath;
+
+        // Partials go whatever the keep setting says: they are never a copy.
+        try
+        {
+            var cutoff = now.AddHours(-1);
+            foreach (var file in new DirectoryInfo(path).EnumerateFiles())
+            {
+                if (BackupNames.TryParsePartial(file.Name, out var at) && at < cutoff)
+                {
+                    Delete(path, file.Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backup pruning of stale partials failed in {Folder}", path);
+        }
+
+        if (_keepDays <= 0) return;
+
+        try
+        {
+            var copies = BackupFolder.List(path);
+            if (copies.Problem is not null)
+            {
+                _logger.LogWarning("Backup pruning skipped: {Problem}", copies.Problem);
+                return;
+            }
+
+            // Newest first, so an index is the count of newer copies: the
+            // floor is the first _keepDays, and age decides only past it.
+            var cutoff = now.AddDays(-_keepDays);
+            for (var i = _keepDays; i < copies.Items.Count; i++)
+            {
+                if (copies.Items[i].At < cutoff)
+                {
+                    Delete(path, copies.Items[i].Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backup pruning of old copies failed in {Folder}", path);
+        }
+    }
+
+    private void Delete(string folder, string name)
+    {
+        try
+        {
+            File.Delete(Path.Combine(folder, name));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Backup pruning could not delete {File} in {Folder}", name, folder);
         }
     }
 

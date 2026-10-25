@@ -3042,6 +3042,76 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_members_siblings_count_against_the_set_budget()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
+
+            Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-spend", "6"], default));
+
+            Assert.Single(h.Sessions.Spawned);
+            Assert.Contains(h.Say.Said, l => l.Contains("--max-spend 6 reached across the set at $6.50", StringComparison.Ordinal));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_members_siblings_count_against_the_set_run_cap()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
+
+            Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "3"], default));
+
+            Assert.Single(h.Sessions.Spawned);
+            Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 3 reached across the set at 3", StringComparison.Ordinal));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_restarted_member_puts_what_it_carried_back_in_the_sets_ledger()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Runs = 1, Spent = 0.5m });
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            // The host recreated the directory, so only the sibling that already
+            // re-seeded is in it: 2 + 1 carried is 3, and one more increment is 4.
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
+
+            Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "4"], default));
+
+            Assert.Single(h.Sessions.Spawned);
+            Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 4 reached across the set at 4", StringComparison.Ordinal));
+            Assert.Equal((2, 2m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task The_hour_a_night_was_given_is_the_hour_it_was_given_and_not_one_re_read_after_midnight()
     {
         using var h = new Harness();

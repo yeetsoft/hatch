@@ -1,5 +1,6 @@
 using Hatch.Api.Modules.Hatch;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -179,16 +180,163 @@ public sealed class BackupServiceTests : IDisposable
         Assert.Empty(Directory.GetFiles(_dir));
     }
 
+    [Fact]
+    public async Task RunAsync_TwentyCopies_KeepsTheFourteenNewest()
+    {
+        SeedDaysOld(19);
+
+        await RunOk();
+
+        Assert.Equal(ExpectedDaysOld(13), Names("*.sql"));
+    }
+
+    [Fact]
+    public async Task RunAsync_FreshCopyAndAMonthOfOld_KeepsTheFloor()
+    {
+        for (var j = 1; j <= 20; j++) Seed(Now.AddDays(-30).AddMinutes(-j));
+
+        await RunOk();
+
+        var expected = new List<string> { BackupNames.Final(Now) };
+        for (var j = 1; j <= 13; j++) expected.Add(BackupNames.Final(Now.AddDays(-30).AddMinutes(-j)));
+        Assert.Equal(expected.Order(StringComparer.Ordinal), Names("*.sql"));
+    }
+
+    [Fact]
+    public async Task RunAsync_KeepDaysZero_DeletesNoCopyHoweverOld()
+    {
+        for (var i = 1; i <= 5; i++) Seed(Now.AddYears(-i));
+
+        await RunOk(keepDays: 0);
+
+        Assert.Equal(6, Names("*.sql").Count);
+    }
+
+    [Fact]
+    public async Task RunAsync_NegativeKeepDays_BehavesAsFourteen()
+    {
+        SeedDaysOld(19);
+
+        await RunOk(keepDays: -3);
+
+        Assert.Equal(ExpectedDaysOld(13), Names("*.sql"));
+    }
+
+    [Fact]
+    public async Task RunAsync_FilesThatAreNotHatchsOwn_AreNeverDeleted()
+    {
+        var strangers = new[]
+        {
+            "notes.txt", "hatch-backup.sql", "hatch-99999999T999999Z.sql", "hatch-20200101T000000Z.sql.bak",
+        };
+        foreach (var name in strangers)
+        {
+            var path = Path.Combine(_dir, name);
+            File.WriteAllBytes(path, [1]);
+            File.SetLastWriteTimeUtc(path, new DateTime(2015, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        }
+
+        SeedDaysOld(20);
+
+        await RunOk();
+
+        var remaining = Names("*");
+        foreach (var name in strangers) Assert.Contains(name, remaining);
+        Assert.Equal(14, Names("*.sql").Count(n => BackupNames.TryParseCopy(n, out _)));
+    }
+
+    [Fact]
+    public async Task RunAsync_AgeComesFromTheName()
+    {
+        // Fourteen fresh-named copies (the own one and 13 more) meet the
+        // floor, so only age is left to decide the other two.
+        SeedDaysOld(13);
+        var oldName = BackupNames.Final(Now.AddYears(-2));
+        var freshName = BackupNames.Final(Now.AddDays(-13).AddHours(-1));
+        File.WriteAllBytes(Path.Combine(_dir, oldName), [1]);
+        File.WriteAllBytes(Path.Combine(_dir, freshName), [1]);
+        File.SetLastWriteTimeUtc(Path.Combine(_dir, oldName), Now.UtcDateTime);
+        File.SetLastWriteTimeUtc(Path.Combine(_dir, freshName), new DateTime(2015, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await RunOk();
+
+        var remaining = Names("*.sql");
+        Assert.DoesNotContain(oldName, remaining);
+        Assert.Contains(freshName, remaining);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public async Task RunAsync_StalePartial_IsRemovedButARecentOneKept(int? keepDays)
+    {
+        var stale = BackupNames.Partial(Now.AddHours(-2));
+        var recent = BackupNames.Partial(Now.AddMinutes(-10));
+        File.WriteAllBytes(Path.Combine(_dir, stale), [1]);
+        File.WriteAllBytes(Path.Combine(_dir, recent), [1]);
+
+        await RunOk(keepDays);
+
+        var remaining = Names("*.partial");
+        Assert.DoesNotContain(stale, remaining);
+        Assert.Contains(recent, remaining);
+    }
+
+    [Fact]
+    public async Task RunAsync_Failed_PrunesNothing()
+    {
+        SeedDaysOld(20);
+        File.WriteAllBytes(Path.Combine(_dir, BackupNames.Partial(Now.AddHours(-2))), [1]);
+        var before = Names("*");
+        var (service, status) = NewService(new FakeBackupProcess { ExitCode = 1 }, _dir);
+
+        await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(BackupOutcome.Failed, status.Last!.Outcome);
+        Assert.Equal(before, Names("*"));
+    }
+
+    private async Task RunOk(int? keepDays = null)
+    {
+        var (service, status) = NewService(new FakeBackupProcess { Stdout = [1], ExitCode = 0 }, _dir, keepDays: keepDays);
+
+        await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(BackupOutcome.Ok, status.Last!.Outcome);
+    }
+
+    private void Seed(DateTimeOffset at) => File.WriteAllBytes(Path.Combine(_dir, BackupNames.Final(at)), [1, 2, 3]);
+
+    // Copies i = 1..count days (and a minute) before Now, so none sits on a boundary.
+    private void SeedDaysOld(int count)
+    {
+        for (var i = 1; i <= count; i++) Seed(Now.AddDays(-i).AddMinutes(-1));
+    }
+
+    // The run's own copy and i = 1..count of SeedDaysOld, in the order Names returns.
+    private static List<string> ExpectedDaysOld(int count) =>
+        new[] { BackupNames.Final(Now) }
+            .Concat(Enumerable.Range(1, count).Select(i => BackupNames.Final(Now.AddDays(-i).AddMinutes(-1))))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+    private List<string> Names(string pattern) =>
+        Directory.GetFiles(_dir, pattern).Select(p => Path.GetFileName(p)).Order(StringComparer.Ordinal).ToList();
+
     private static (BackupService Service, BackupStatus Status) NewService(
-        FakeBackupProcess process, string path, TimeSpan? timeout = null)
+        FakeBackupProcess process, string path, TimeSpan? timeout = null, int? keepDays = null)
     {
         var status = new BackupStatus();
+        var options = new HatchOptions { BackupPath = path };
+        if (keepDays is { } keep) options.BackupKeepDays = keep;
+
         var service = new BackupService(
-            Options.Create(new HatchOptions { BackupPath = path }),
+            Options.Create(options),
             Configuration(),
             process,
             status,
             new FakeTimeProvider(Now),
+            NullLogger<BackupService>.Instance,
             timeout);
 
         return (service, status);
