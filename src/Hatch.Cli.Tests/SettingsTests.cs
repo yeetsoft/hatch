@@ -998,6 +998,61 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal("", refusal);
     }
 
+    [Fact]
+    public void ReadActiveProfile_a_missing_file_names_nothing()
+    {
+        Assert.Null(Settings.ReadActiveProfile(Path.Combine(_temp, "absent")));
+    }
+
+    [Fact]
+    public void ReadActiveProfile_an_empty_file_names_nothing()
+    {
+        Assert.Null(Settings.ReadActiveProfile(Write("empty")));
+    }
+
+    [Fact]
+    public void ReadActiveProfile_a_whitespace_line_names_nothing()
+    {
+        Assert.Null(Settings.ReadActiveProfile(Write("blank", "   \t")));
+    }
+
+    [Fact]
+    public void ReadActiveProfile_names_the_trimmed_first_line()
+    {
+        Assert.Equal("night", Settings.ReadActiveProfile(Write("one", "  night  ")));
+    }
+
+    [Fact]
+    public void ReadActiveProfile_ignores_a_second_line()
+    {
+        Assert.Equal("night", Settings.ReadActiveProfile(Write("two", "night", "day")));
+    }
+
+    [Fact]
+    public void Pinned_when_a_name_is_given()
+    {
+        Assert.True(Settings.Pinned("night", Env()));
+    }
+
+    [Fact]
+    public void Pinned_when_HATCH_PROFILE_is_set()
+    {
+        Assert.True(Settings.Pinned(null, Env(("HATCH_PROFILE", "night"))));
+    }
+
+    [Fact]
+    public void Pinned_is_not_true_of_a_whitespace_HATCH_PROFILE()
+    {
+        Assert.False(Settings.Pinned(null, Env(("HATCH_PROFILE", "  "))));
+    }
+
+    [Fact]
+    public void Pinned_is_false_with_neither()
+    {
+        Assert.False(Settings.Pinned(null, Env()));
+        Assert.False(Settings.Pinned("", Env()));
+    }
+
     // ---- a runner name belongs to a checkout ----
 
     [Fact]

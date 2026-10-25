@@ -263,6 +263,7 @@ try
             // is nothing standing over it to build the new source and run it
             // again. See docs/hatch.md, "What it stops for".
             ProfileName = profileName,
+            ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
             Readout = readoutState,
             Controls = controls,

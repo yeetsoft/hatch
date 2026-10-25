@@ -59,10 +59,5 @@ public sealed record UseCommand(Terminal Say)
         return 0;
     }
 
-    private string ActiveName()
-    {
-        if (!File.Exists(ActiveProfilePath)) return "<none>";
-        var line = File.ReadLines(ActiveProfilePath).FirstOrDefault()?.Trim();
-        return line is { Length: > 0 } ? line : "<none>";
-    }
+    private string ActiveName() => Settings.ReadActiveProfile(ActiveProfilePath) ?? "<none>";
 }
