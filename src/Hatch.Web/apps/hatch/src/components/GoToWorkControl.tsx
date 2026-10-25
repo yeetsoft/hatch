@@ -3,30 +3,25 @@ import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
 import { message } from '../lib/errors';
 import { applyGoToWork } from '../lib/goToWork';
-import type { GoToWorkPlan } from '../lib/goToWork';
+import type { GoToWorkPlan, StatusLine } from '../lib/goToWork';
+import { GoToWorkStatus } from './GoToWorkStatus';
 
 /**
- * What the button cannot do, said beside it: the two modes it is disabled in
- * for a reason a person can act on. Null for every other mode. Exported so the
- * board can draw it under the bar on a phone, where a note inside the bar
- * would push New off it.
+ * What the button cannot do, said beside it: the way out of the one mode it is
+ * disabled in for a reason a person can act on (the status line says the
+ * reason itself). Null for every other mode. Exported so the board can draw it
+ * under the bar on a phone, where a note inside the bar would push New off it.
  */
 export function GoToWorkNote({ plan }: { plan: GoToWorkPlan }) {
-  if (plan.mode === 'none') {
-    return (
-      <>
-        No runner of yours is on. <Link to="/docs/the-runner#starting-it-at-login">Start one at login</Link>
-      </>
-    );
-  }
-  if (plan.mode === 'stopping') return <>Your runner is stopping.</>;
+  if (plan.mode === 'none') return <Link to="/docs/the-runner#starting-it-at-login">Start one at login</Link>;
   return null;
 }
 
 /**
  * One press to start or pause the viewer's own loops - the board's header
- * button, built on `planGoToWork`'s verdict. The plan and the page's single
- * runners read are the board's; this owns only the press in flight.
+ * button, built on `planGoToWork`'s verdict, with the status line beside it on
+ * desktop. The plan, the line and the page's single runners read are the
+ * board's; this owns only the press in flight.
  *
  * A press shows its result at once (go reads Pause, pause reads Go to Work)
  * and the optimistic mode is dropped when the re-read lands, so the label never
@@ -35,11 +30,13 @@ export function GoToWorkNote({ plan }: { plan: GoToWorkPlan }) {
  */
 export function GoToWorkControl({
   plan,
+  status,
   project,
   reload,
   isPhone,
 }: {
   plan: GoToWorkPlan;
+  status: StatusLine;
   project: string;
   reload: () => Promise<void>;
   isPhone: boolean;
@@ -90,7 +87,8 @@ export function GoToWorkControl({
           {error}
         </span>
       )}
-      {!isPhone && (plan.mode === 'none' || plan.mode === 'stopping') && (
+      {!isPhone && <GoToWorkStatus status={status} />}
+      {!isPhone && plan.mode === 'none' && (
         <span className="hatch-go-to-work-note text-muted">
           <GoToWorkNote plan={plan} />
         </span>
