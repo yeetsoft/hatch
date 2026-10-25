@@ -317,12 +317,12 @@ export function BoardPage() {
      the whole board, exactly as lib/lineage.ts's docstring requires, so a
      parent hidden by the type filter still costs its children no depth. */
   const visible: LineageCard[] = useMemo(() => {
-    const vis = filterCards(cards ?? [], filter);
+    const vis = filterCards(cards ?? [], filter, storiesByEpic);
     const carriedCards = vis.filter((c) => !carriedKeys.has(c.key));
     const statusIds: number[] = [];
     for (const c of carriedCards) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
     return statusIds.flatMap((id) => lineage(cards ?? [], carriedCards.filter((c) => c.statusId === id)));
-  }, [cards, filter, carriedKeys]);
+  }, [cards, filter, carriedKeys, storiesByEpic]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
