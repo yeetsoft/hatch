@@ -6,10 +6,10 @@ namespace Hatch.Cli;
 /// path and arguments that slot's own child gets.
 /// </summary>
 /// <remarks>
-/// Pure, and wired to nothing yet - every method here takes what it needs as
-/// an argument rather than reading <see cref="Settings"/> or the environment
-/// itself, so a set host (HA-1530) can compute a child's whole command line
-/// before it ever spawns one.
+/// Pure - every method here takes what it needs as an argument rather than
+/// reading <see cref="Settings"/> or the environment itself, so a set host can
+/// compute a child's whole command line before it ever spawns one, and a
+/// member can ask what it is before it has loaded anything.
 /// </remarks>
 public static class RunnerSet
 {
@@ -157,6 +157,48 @@ public static class RunnerSet
     /// which member of the set a process is, 1-based.
     /// </summary>
     public const string SlotVariable = "HATCH_SET_SLOT";
+
+    /// <summary>
+    /// Which member of a set this process is, from <see cref="SlotVariable"/>:
+    /// the number where it is 2 or more, else <c>null</c>. Absent, blank,
+    /// <c>1</c> and anything that is not a positive integer all read as an
+    /// ordinary runner - the first slot is the set host's own checkout, and
+    /// serves it exactly as a lone runner would.
+    /// </summary>
+    public static int? SlotFrom(IReadOnlyDictionary<string, string?> environment) =>
+        environment.TryGetValue(SlotVariable, out var value)
+        && int.TryParse(value?.Trim(), out var slot)
+        && slot >= 2
+            ? slot
+            : null;
+
+    /// <summary>
+    /// <paramref name="settings"/> as a member of a set (slot 2 or more) runs
+    /// them: no named checkouts and no pinned name. It is handed one workspace
+    /// and serves that alone; a <c>HATCH_REPOS</c> checkout would be locked by
+    /// the first runner to reach it and refused to every sibling, and a
+    /// <c>HATCH_RUNNER</c> would give every member the same name.
+    /// </summary>
+    public static Settings ForMember(Settings settings) => settings with { Repos = [], Runner = null };
+
+    /// <summary>
+    /// The value after the last <c>--workspace</c> in <paramref name="args"/>,
+    /// or <c>null</c> where there is none (or the flag is the final token) -
+    /// the same rule <see cref="GoToWorkCommand"/> reads it by, so the answer
+    /// here is the workspace the command will end up serving.
+    /// </summary>
+    internal static string? WorkspaceFrom(string[] args)
+    {
+        string? found = null;
+        for (var i = 0; i + 1 < args.Length; i++)
+        {
+            if (args[i] != "--workspace") continue;
+            found = args[i + 1];
+            i++;
+        }
+
+        return found;
+    }
 
     /// <summary>
     /// Set only by the set host on each child's environment, never by hand -

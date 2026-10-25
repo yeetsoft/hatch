@@ -88,6 +88,11 @@ var root = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), here);
 // only.
 var checkoutEnv = root is null ? null : Path.Combine(root, "scripts", ".env");
 
+// A member of a set (HATCH_SET_SLOT of 2 or more) stands in no checkout of its
+// own: it serves the workspace it is handed and nothing else. It still reads
+// this checkout's scripts/.env above - that is where the origin and key live.
+var memberSlot = RunnerSet.SlotFrom(environment);
+
 // `config` is the one command that has to run before there is anything to
 // require, so it reads the layers itself rather than through a load that would
 // refuse for want of the origin it is there to ask for.
@@ -143,13 +148,25 @@ if (command == "inbox")
 if (settings.KeyNote is { } keyNote) say.Complain(keyNote);
 if (settings.RunnerNote is { } runnerNote) say.Complain(runnerNote);
 
+// The handed --workspace is applied before the first discovery, not left for
+// go-to-work to apply: discovery names the runner, and a name record keyed on
+// the default workspace would be slot 1's, claimed by a member that never
+// served it.
+if (memberSlot is { } slot)
+{
+    settings = RunnerSet.ForMember(settings);
+    if (RunnerSet.WorkspaceFrom(rest) is { } handed)
+        settings = settings.WithWorkspace(settings.WorkspaceFor(handed).Workspace, defaulted: false);
+    say.Line($"hatch: runner {slot} of a set - serves its own workspace only");
+}
+
 // The standing checkout, if there is one, then every checkout HATCH_REPOS
 // names - refused here, before any lock is taken and before anything is
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
 // exactly as broken for `hatch board` as for the loop. `work` and
 // `go-to-work` may override this list with their own --repo, below.
 if (!Checkouts.TryDiscoverServing(
-        root, settings.Repos, settings.Workspace, settings.WorkspaceDefaulted,
+        memberSlot is null ? root : null, settings.Repos, settings.Workspace, settings.WorkspaceDefaulted,
         out var checkouts, out var strays, out var badRepo, out var servedWorkspace, out var workspaceNote))
 {
     say.Complain(badRepo);
