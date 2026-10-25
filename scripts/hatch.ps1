@@ -77,6 +77,18 @@ function Remove-Quietly([string]$Path) {
   }
 }
 
+# The files a set host keeps beside the night's state, one per member, named as
+# that path plus `.<n>`. Matched on the name's start rather than with a wildcard,
+# so a `[` in a temp path means itself.
+function Remove-Siblings([string]$Path) {
+  if (-not $Path) { return }
+  $dir = Split-Path -Parent $Path
+  $prefix = (Split-Path -Leaf $Path) + '.'
+  Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name.StartsWith($prefix, [StringComparison]::Ordinal) } |
+    ForEach-Object { Remove-Quietly $_.FullName }
+}
+
 # The CLI as a built binary if there is one, and `dotnet run` if there is not,
 # as runner_cmd does. HATCH_RUNNER_BIN names one directly, for a machine with no
 # SDK. Resolved again before every launch, since a rebuild between two of them
@@ -330,6 +342,7 @@ try {
   exit $code
 } finally {
   Remove-Quietly $script:NightState
+  Remove-Siblings $script:NightState
   Remove-Quietly $script:Making
   Remove-Quietly $script:RunCopy
 }
