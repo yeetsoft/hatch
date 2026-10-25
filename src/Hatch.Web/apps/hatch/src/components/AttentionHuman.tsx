@@ -160,7 +160,10 @@ export function AttentionHuman({
                 <span className="hatch-attention-row-head">
                   <span className="hatch-attention-key">Backups</span>
                 </span>
-                <span className="hatch-attention-files">{backup.sentence}</span>
+                {/* nowrap and ellipsis, and a failure is a free-form error: the title keeps the whole of it reachable. */}
+                <span className="hatch-attention-files" title={backup.sentence}>
+                  {backup.sentence}
+                </span>
                 <span className="hatch-attention-files">{lastSuccessWords(backup)}</span>
               </Link>
             </li>

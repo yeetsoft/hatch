@@ -337,6 +337,7 @@ describe('attentionLabel', () => {
     const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
 
     expect(attentionLabel(attention({ backup }))).toContain('backup needs attention');
+    expect(attentionLabel(attention({ backup: null }))).toBe('Nothing is waiting on you');
     expect(attentionLabel(attention({ trunkBuilds: [trunkBuild()], backup, reviews: [review()] }))).toBe(
       '1 trunk build failing, backup needs attention, 1 pull request to review',
     );
