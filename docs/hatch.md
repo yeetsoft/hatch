@@ -7640,7 +7640,13 @@ end of that, and it is how a night is paused, bounded or ended from a browser.
 picked up by the loop itself, between increments, which is what makes it work
 for a runner in a container and for one on a laptop behind a router nothing can
 reach. The cost is honest and is stated on the page: a press takes effect at the
-top of the next pass, *after* whatever increment is in flight has finished.
+top of the next pass, *after* whatever increment is in flight has finished. A
+runner can just as well be left alive and paused from login onward - [Starting
+it at
+login](../src/Hatch.Web/apps/hatch/docs/the-runner.md#starting-it-at-login)
+registers a platform login item that starts the loop paused at every sign-in -
+and the board still starts nothing: it only sets that paused row running at its
+next heartbeat.
 
 **The runner is named as its claim names it** — a character off the cast list
 in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from three
