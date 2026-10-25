@@ -94,6 +94,11 @@ AER`, or `--project off` for none. It narrows which tickets this runner picks
 up, and nothing else: the merge train is unaffected, and an approved pull
 request in any project still merges on its own clock.
 
+The board's own **Go to Work** / **Pause** button writes this row's `state`
+the same way Pause/Resume here do, and a **Go to Work** press also writes
+`Projects`, the one bound above that is a list — both from the board, not
+from this page.
+
 An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one
 at a time, so the Order control is replaced by that line while it stands.
