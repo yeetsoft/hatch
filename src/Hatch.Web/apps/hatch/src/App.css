@@ -377,7 +377,8 @@
   }
 
   .hatch-queue-control,
-  .hatch-flow-viz-control {
+  .hatch-flow-viz-control,
+  .hatch-go-to-work > button {
     height: var(--facet-h);
   }
 
@@ -1373,7 +1374,43 @@
   align-items: center;
   gap: var(--sp-2);
   flex: none;
+  /* The anchor for the Go to Work refusal, which hangs off the bar's right edge. */
+  position: relative;
   margin-left: auto;
+}
+
+/* Go to Work: the button, then whatever it has to say - the reason it is
+   disabled, or why a press failed. The note stays on one line on desktop,
+   where there is room; on a phone it is a line of its own under the bar. */
+.hatch-go-to-work {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-go-to-work-note {
+  font-size: var(--t-small);
+}
+
+.hatch-go-to-work .hatch-go-to-work-note {
+  white-space: nowrap;
+}
+
+/* A refusal can be a sentence long, and the bar is as wide as it can be: drawn
+   inline it widens the bar (and, on a phone, the page), so it hangs below the
+   button instead, over what follows, and takes no room in the row. */
+.hatch-go-to-work-error {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  z-index: 91;
+  width: max-content;
+  max-width: min(24rem, calc(100vw - 2 * var(--sp-4)));
+  padding: var(--sp-1-5) var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  font-size: var(--t-small);
 }
 
 /* ---- The summary dialog ---- */

@@ -45,6 +45,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public const string GearSelector = "header.hatch-topbar button[aria-label=\"Settings and theme\"]";
 
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
+    public const string BoardTrailingSelector = ".hatch-filter-trailing";
+
     public const string RunnersCardSelector = ".hatch-card--flush";
 
     /// <summary>Every control a Runners row draws in its group: the buttons, and the ticket input.</summary>
@@ -80,6 +82,31 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
             primaryNavDrawn: document.querySelector('.hatch-primary-nav') !== null,
             controls: selectors.map(([name, selector]) => [name, box(selector)]),
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Runs in the page and reads the board's filter bar trailing group: every
+    /// element child, named by its <c>aria-label</c> or text. The Go to Work
+    /// button is drawn inside a wrapper, so it is read as the wrapper: a span
+    /// named for its visible label, <c>Go</c> on a phone.
+    /// </summary>
+    private const string MeasureBoardBarScript = """
+        (trailingSelector) => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const trailing = document.querySelector(trailingSelector);
+          if (trailing === null) return null;
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            trailing: [...trailing.children].map((element) => ({
+              name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
+              box: plain(element.getBoundingClientRect()),
+            })),
           };
         }
         """;
@@ -288,6 +315,22 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             read.GetProperty("controls").EnumerateArray().ToDictionary(
                 pair => pair[0].GetString()!,
                 pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));
+    }
+
+    /// <summary>The board filter bar's trailing group as the page stands; the board must be drawn first.</summary>
+    public async Task<BoardBarMeasurement> MeasureBoardBarAsync(Deadline deadline)
+    {
+        var read = await deadline.BoundAsync("measuring the board filter bar", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureBoardBarScript, BoardTrailingSelector));
+
+        return new BoardBarMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            read.GetProperty("trailing").EnumerateArray()
+                .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
+                .ToList());
     }
 
     /// <summary>The Runners page's card, table and row controls as the page stands; the card is reported inside its 1px border.</summary>

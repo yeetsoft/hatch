@@ -98,3 +98,32 @@ internal sealed record RunnersMeasurement(
         return string.Join(Environment.NewLine, lines);
     }
 }
+
+/// <summary>
+/// What the board's filter bar looks like at the moment it was read: the
+/// viewport, the document's width against it, whether a coarse pointer matches,
+/// and each child of <c>.hatch-filter-trailing</c> by name and box, in bar
+/// order. The top bar's <see cref="BarMeasurement"/> does not reach these.
+/// </summary>
+internal sealed record BoardBarMeasurement(
+    int InnerWidth,
+    int ScrollWidth,
+    int ClientWidth,
+    bool CoarsePointerMatches,
+    IReadOnlyList<(string Name, Box Box)> Trailing)
+{
+    public override string ToString()
+    {
+        var lines = new List<string>
+        {
+            $"innerWidth: {InnerWidth}",
+            $"(pointer: coarse) matches: {CoarsePointerMatches}",
+            $"document scrollWidth: {ScrollWidth}",
+            $"document clientWidth: {ClientWidth}",
+        };
+
+        lines.AddRange(Trailing.Select(t => $"{t.Name}: {t.Box}"));
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}

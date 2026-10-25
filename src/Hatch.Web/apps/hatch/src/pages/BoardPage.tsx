@@ -20,6 +20,7 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { ColumnHead } from '../components/ColumnHead';
 import { FlowArrows } from '../components/FlowArrows';
 import { FlowVizControl } from '../components/FlowVizControl';
+import { GoToWorkControl, GoToWorkNote } from '../components/GoToWorkControl';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
@@ -48,6 +49,7 @@ import { aimAt } from '../lib/aim';
 import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
+import { planGoToWork } from '../lib/goToWork';
 import { carried } from '../lib/storiesOnEpics';
 import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
@@ -67,6 +69,7 @@ import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
+import { useRunners } from '../lib/useRunners';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone, useStandalone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
@@ -154,6 +157,11 @@ export function BoardPage() {
   });
   const { projects, byKey: projectsByKey, loaded } = useProjects();
   const showProjectMark = hasMultipleProjects(projects);
+  /* The one runners read on this page: the queue modal lists the rows and the
+     Go to Work button plans from them. The 20s poll re-renders, which is enough
+     to age a silent runner to gone, since the plan takes its own clock. */
+  const { runners, reload: reloadRunners } = useRunners(true);
+  const goToWork = useMemo(() => planGoToWork(runners, new Date()), [runners]);
   /* Who is signed in, read once for the whole board rather than once per card
      opened. The summary needs it to know whether to offer the expedite press -
      the write is a person's - and a dialog that fetched its own copy would ask
@@ -669,7 +677,8 @@ export function BoardPage() {
         }
         trailing={
           <>
-            <QueueControl cards={board.issues} onTake={onTake} />
+            <GoToWorkControl plan={goToWork} project={filter.project} reload={reloadRunners} isPhone={isPhone} />
+            <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
               <button
@@ -691,6 +700,12 @@ export function BoardPage() {
           </>
         }
       />
+
+      {isPhone && (goToWork.mode === 'none' || goToWork.mode === 'stopping') && (
+        <p className="hatch-go-to-work-note text-muted">
+          <GoToWorkNote plan={goToWork} />
+        </p>
+      )}
 
       {boardError && <p className="text-danger">{boardError}</p>}
 
