@@ -24,7 +24,7 @@ export const OFF_WORDS = 'No backup folder is set, so nothing is being backed up
 /** `Last successful backup: <local date and time>`, or the sentence for a
     folder that has never produced one - which is the normal state the moment
     a folder is first set, not a failure. */
-export function lastSuccessWords(s: BackupStatus, locale?: string, timeZone?: string): string {
+export function lastSuccessWords(s: Pick<BackupStatus, 'lastSuccessfulAt'>, locale?: string, timeZone?: string): string {
   if (s.lastSuccessfulAt === null) return 'There has never been a successful backup.';
   return `Last successful backup: ${localDateTime(s.lastSuccessfulAt, locale, timeZone)}`;
 }

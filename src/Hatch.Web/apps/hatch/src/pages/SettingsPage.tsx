@@ -11,6 +11,7 @@ import { message } from '../lib/errors';
 import { credentialClear, credentialIsSet, credentialPlaceholder, credentialSave, nameSave } from '../lib/hatchSettings';
 import type { CredentialField } from '../lib/hatchSettings';
 import { announceLocalPersonChanged } from '../lib/localPerson';
+import { useAttentionContext } from '../lib/useAttentionContext';
 import { useLoaded } from '../lib/useLoaded';
 import type { BackupStatus, HatchSettings, HatchSettingsWriteRequest } from '../types';
 
@@ -149,6 +150,7 @@ export function SettingsPage() {
     error: backupError,
     reload: reloadBackup,
   } = useLoaded<BackupStatus>(getBackup);
+  const { reload: reloadAttention } = useAttentionContext();
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupRunError, setBackupRunError] = useState<string | null>(null);
 
@@ -159,6 +161,8 @@ export function SettingsPage() {
       // only a refusal throws. setData also drops any read still in flight.
       setBackup(await runBackup());
       setBackupRunError(null);
+      // So the badge drops at once rather than a poll later.
+      void reloadAttention();
     } catch (err) {
       setBackupRunError(message(err));
       // A 409 means a run is finishing: show the card's truth, not the refusal's.

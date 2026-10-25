@@ -123,6 +123,53 @@ describe('AttentionHuman', () => {
     expect(landingHeldAt).toBeLessThan(questionAt);
   });
 
+  it('draws Backups first, above Deadlocked, with the sentence, the last success and a link to Settings', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman
+          attention={attention({ backup: { sentence: 'The last backup failed.', lastSuccessfulAt: '2026-09-09T12:00:00Z' } })}
+          now={new Date()}
+          reload={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
+    expect(headings[0]).toBe('Backups');
+    expect(headings[1]).toBe('Deadlocked');
+    expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
+    expect(html).toContain('The last backup failed.');
+    expect(html).toContain('Last successful backup:');
+    expect(html).toContain('href="/settings"');
+  });
+
+  it('says a backup that never succeeded has never succeeded', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman
+          attention={attention({ backup: { sentence: 'The last backup failed.', lastSuccessfulAt: null } })}
+          now={new Date()}
+          reload={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('There has never been a successful backup.');
+  });
+
+  it('draws no Backups section for a null backup or an absent one', () => {
+    for (const over of [{ backup: null }, {}]) {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <AttentionHuman attention={attention(over)} now={new Date()} reload={noop} />
+        </MemoryRouter>,
+      );
+
+      expect(html).not.toContain('Backups');
+      expect(html).not.toContain('href="/settings"');
+    }
+  });
+
   it('shows the empty words when nothing is deadlocked', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
