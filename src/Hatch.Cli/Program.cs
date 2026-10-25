@@ -265,6 +265,7 @@ try
             ProfileName = profileName,
             ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
             NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
+            SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Readout = readoutState,
             Controls = controls,
         }.WithGit();

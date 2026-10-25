@@ -2113,6 +2113,53 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
     }
 
+    [Fact]
+    public async Task A_loop_in_a_set_whose_host_asked_for_a_restart_comes_back_without_having_claimed_anything()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "restart"), "");
+
+            Assert.Equal(
+                GoToWorkCommand.RestartExitCode,
+                await new GoToWorkCommand(h.Supervised with { SetDir = dir.FullName }).RunAsync([], default));
+
+            Assert.True(File.Exists(h.NightState));
+            Assert.Empty(h.Sessions.Spawned);
+            Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_loop_in_a_set_whose_host_asked_it_to_stop_ends_the_night_and_leaves_nothing_behind()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "stop"), "");
+
+            Assert.Equal(0, await new GoToWorkCommand(h.Supervised with { SetDir = dir.FullName }).RunAsync([], default));
+
+            Assert.Empty(h.Sessions.Spawned);
+            Assert.False(File.Exists(h.NightState));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
     // ---- A usage limit's own wait ----
 
     /// <summary>

@@ -86,6 +86,9 @@ public sealed record Runtime(
     /// </summary>
     public string? NightStatePath { get; init; }
 
+    /// <summary>The directory a runner set's host owns, from <c>HATCH_SET_DIR</c>; null outside a set.</summary>
+    public string? SetDir { get; init; }
+
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
