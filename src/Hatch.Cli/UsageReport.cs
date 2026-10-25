@@ -1,4 +1,7 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Hatch.Cli;
 
@@ -11,15 +14,45 @@ namespace Hatch.Cli;
 /// The CLI's own schema calls this shape experimental, so every way it can
 /// fail - no <c>usage_report</c>, a null <c>rate_limits</c>, a field that does
 /// not deserialize - is read as "nothing to report" rather than an error.
+/// Newer CLIs send no <c>usage_report</c> at all, only the <c>/usage</c> text
+/// in the assistant line's content, which is read where the structure is absent.
 /// </remarks>
-public static class UsageReport
+public static partial class UsageReport
 {
     /// <summary>
     /// The account's windows, out of the probe's raw stream-json lines - null
     /// where nothing usable arrived at all. A limit whose <c>kind</c> this does
-    /// not know is skipped rather than guessed at.
+    /// not know is skipped rather than guessed at. A structured
+    /// <c>usage_report</c> wins; failing that, the <c>Current …</c> lines of the
+    /// assistant's text are read, their resets relative to <paramref name="at"/>
+    /// (now, when not given).
     /// </summary>
-    public static IReadOnlyList<UsageWindow>? Parse(IEnumerable<string> lines)
+    public static IReadOnlyList<UsageWindow>? Parse(
+        IEnumerable<string> lines, DateTimeOffset? at = null, TimeZoneInfo? runnerZone = null)
+    {
+        var all = lines as IReadOnlyList<string> ?? lines.ToList();
+        return Structured(all) ?? FromText(all, at ?? DateTimeOffset.UtcNow, runnerZone);
+    }
+
+    /// <summary>
+    /// What the CLI said, for a diagnostic: the assistant's text, else the
+    /// result line's, else every line that is not <c>system</c> chatter - never
+    /// the <c>init</c> line, which says nothing about the reading.
+    /// </summary>
+    public static string Said(IEnumerable<string> lines)
+    {
+        var all = lines as IReadOnlyList<string> ?? lines.ToList();
+        if (AssistantText(all) is { Length: > 0 } text) return text;
+
+        foreach (var e in Objects(all))
+            if (Text(e, "type") == "result" && Text(e, "result") is { Length: > 0 } result)
+                return result;
+
+        var kept = all.Where(l => !Objects([l]).Any(e => Text(e, "type") == "system"));
+        return string.Join('\n', kept);
+    }
+
+    private static IReadOnlyList<UsageWindow>? Structured(IReadOnlyList<string> lines)
     {
         foreach (var e in Objects(lines))
         {
@@ -43,6 +76,59 @@ public static class UsageReport
 
         return null;
     }
+
+    private static IReadOnlyList<UsageWindow>? FromText(
+        IReadOnlyList<string> lines, DateTimeOffset at, TimeZoneInfo? runnerZone)
+    {
+        if (AssistantText(lines) is not { Length: > 0 } text) return null;
+
+        var windows = new List<UsageWindow>();
+        foreach (var line in text.Split('\n'))
+        {
+            var match = CurrentLine().Match(line);
+            if (!match.Success) continue;
+
+            var scope = match.Groups["scope"].Value.Trim();
+            var (window, label) = match.Groups["kind"].Value.ToLowerInvariant() switch
+            {
+                "session" => ("session", "Session"),
+                // A week that names no scope is the account's whole week, not a model's.
+                _ when scope.Length == 0 || scope.Equals("all models", StringComparison.OrdinalIgnoreCase) => ("weekly", "Weekly"),
+                _ => ("weeklyModel", $"Weekly ({scope})"),
+            };
+
+            var percent = double.Parse(match.Groups["percent"].Value, CultureInfo.InvariantCulture);
+            windows.Add(new UsageWindow(
+                window, label, percent / 100, UsageLimit.ResetNamed(match.Groups["rest"].Value, at, runnerZone)));
+        }
+
+        return windows.Count > 0 ? windows : null;
+    }
+
+    /// <summary>The text blocks of the first assistant line that has any, joined by newlines.</summary>
+    private static string? AssistantText(IEnumerable<string> lines)
+    {
+        foreach (var e in Objects(lines))
+        {
+            if (Text(e, "type") != "assistant") continue;
+            if (Object(e, "message") is not { } message) continue;
+            if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) continue;
+
+            var text = new StringBuilder();
+            foreach (var block in content.EnumerateArray())
+                if (Text(block, "type") == "text" && Text(block, "text") is { } t)
+                    text.Append(t).Append('\n');
+
+            if (text.Length > 0) return text.ToString();
+        }
+
+        return null;
+    }
+
+    [GeneratedRegex(
+        @"^\s*Current\s+(?<kind>session|week)(?:\s*\((?<scope>[^)]+)\))?\s*:\s*(?<percent>\d+(?:\.\d+)?)\s*%\s*used(?<rest>.*)$",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex CurrentLine();
 
     /// <summary>
     /// The result line's own turn count, out of the same lines - above zero

@@ -34,9 +34,10 @@ export interface CardFilter {
       holds a string and the three states have to be told apart - and "nobody"
       is a choice somebody makes, not the absence of one. */
   assignee: string;
-  /** Which project's cards to draw, by key - `''` is every project's. Lives in
-      the URL rather than local state (see BoardFilters), so the half of the
-      filter that answers "whose board is this" survives a reload. */
+  /** Which project's cards to draw, by key - `''` is every project's. The
+      URL's project wins when the URL names one; absent, it is this browser's
+      last choice (`readBoardProject`/`initialProject`, below) - a pasted link
+      always wins. */
   project: string;
 }
 
@@ -46,8 +47,8 @@ export interface CardFilter {
 export const DEFAULT_TYPES: IssueType[] = [...ISSUE_TYPES];
 
 /** What a browser's first visit opens the board on, and what Reset returns to.
-    Only the types are remembered between visits; the rest of this opens as it
-    is here. */
+    The types are remembered between visits; the rest of this opens as it is
+    here. */
 export const DEFAULT_FILTER: CardFilter = { types: DEFAULT_TYPES, query: '', waiting: false, assignee: '', project: '' };
 
 /** Where the chosen types are persisted - namespaced next to
@@ -82,6 +83,40 @@ export function writeBoardTypes(types: IssueType[]): void {
     /* See above. */
   }
 }
+
+/** Where the chosen project is persisted - namespaced next to
+    BOARD_TYPES_STORAGE_KEY. */
+export const BOARD_PROJECT_STORAGE_KEY = 'hatch.board.project';
+
+/** The stored project key, or '' when nothing is stored, the stored value
+    is not a string, or storage throws - same try/catch as readBoardTypes,
+    same reason. '' means "every project", a choice worth remembering, not
+    an absence. */
+export function readBoardProject(): string {
+  try {
+    const stored = window.localStorage.getItem(BOARD_PROJECT_STORAGE_KEY);
+    if (typeof stored === 'string') return stored;
+  } catch {
+    /* See above. */
+  }
+  return '';
+}
+
+/** Persists the choice, '' included - All is a choice like any other. A
+    store that cannot be written is not worth surfacing, as writeBoardTypes
+    already treats its own store. */
+export function writeBoardProject(key: string): void {
+  try {
+    window.localStorage.setItem(BOARD_PROJECT_STORAGE_KEY, key);
+  } catch {
+    /* See above. */
+  }
+}
+
+/** Which project a board opens on: a link somebody pasted wins over what
+    this browser remembers, since it names a project somebody meant to land
+    on; absent or empty, this browser's last choice stands. */
+export const initialProject = (fromUrl: string | null): string => fromUrl || readBoardProject();
 
 /** Whether this filter is hiding anything, which is what decides if the board
     says so out loud, and if Reset is drawn. */
