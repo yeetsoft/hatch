@@ -165,6 +165,52 @@ describe('filterCards', () => {
   });
 });
 
+describe('carried stories', () => {
+  const ada = person('Ada');
+  const epic = card({ key: 'AER-10', type: 'epic', title: 'Key hygiene' });
+  const s1 = card({ key: 'AER-11', type: 'story', title: 'Rotate the keys', assignee: ada, parentKey: 'AER-10' });
+  const s2 = card({ key: 'AER-12', type: 'story', title: 'Audit access', openQuestions: 1, parentKey: 'AER-10' });
+  const stories = new Map([['AER-10', [s1, s2]]]);
+  const keys = (f: ReturnType<typeof filter>, cards = [epic], map = stories) =>
+    filterCards(cards, f, map).map((c) => c.key);
+
+  it('finds the epic by a key or the words of a story it carries', () => {
+    expect(keys(filter({ query: 'AER-11' }))).toEqual(['AER-10']);
+    expect(keys(filter({ query: 'rotate keys' }))).toEqual(['AER-10']);
+    expect(keys(filter({ query: 'thermostat' }))).toEqual([]);
+  });
+
+  it('is waiting when only a story asks', () => {
+    expect(keys(filter({ waiting: true }))).toEqual(['AER-10']);
+    expect(keys(filter({ waiting: true }), [epic], new Map([['AER-10', [s1]]]))).toEqual([]);
+  });
+
+  it('belongs to the assignee of a story it carries', () => {
+    expect(keys(filter({ assignee: assigneeToken(ada) }))).toEqual(['AER-10']);
+    expect(keys(filter({ assignee: assigneeToken(person('Grace')) }))).toEqual([]);
+  });
+
+  it('decides each clause on its own, so two stories can satisfy two clauses', () => {
+    expect(keys(filter({ assignee: assigneeToken(ada), waiting: true, query: 'audit' }))).toEqual(['AER-10']);
+  });
+
+  it("keeps the types and project clauses the epic's own", () => {
+    expect(keys(filter({ types: ['story'], query: 'AER-11' }))).toEqual([]);
+    expect(keys(filter({ project: 'OTHER', query: 'AER-11' }))).toEqual([]);
+  });
+
+  it('does not remove a carried story that is in the cards', () => {
+    expect(keys(filter({ query: 'AER-11' }), [epic, s1, s2])).toEqual(['AER-10', 'AER-11']);
+  });
+
+  it('behaves as before with an empty or omitted map', () => {
+    const board = [epic, s1, s2];
+    expect(keys(filter({ query: 'AER-11' }), board, new Map())).toEqual(['AER-11']);
+    expect(filterCards(board, filter({ query: 'AER-11' })).map((c) => c.key)).toEqual(['AER-11']);
+    expect(filterCards(board, filter({ waiting: true })).map((c) => c.key)).toEqual(['AER-12']);
+  });
+});
+
 describe('isFiltering', () => {
   it('is false at the default, when every type is drawn', () => {
     expect(isFiltering(DEFAULT_FILTER)).toBe(false);
