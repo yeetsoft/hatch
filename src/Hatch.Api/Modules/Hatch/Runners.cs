@@ -134,7 +134,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             ToBoardDrift(sourceDrift),
             // Not sorted, unlike Tags: the order given is the order kept.
             runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            yours);
+            yours,
+            runner.Runs,
+            runner.Spent,
+            runner.Host);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch

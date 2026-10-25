@@ -632,7 +632,11 @@ state rather than a stall.
 
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
-clones, `mine`, `standing`, where it runs, which agent spawned it - and
+clones, `mine`, `standing`, where it runs, which agent spawned it, and
+`host`, `runs` and `spent`, the machine's short name and the increments run and
+dollars spent so far, running totals the loop keeps (written every beat, with
+none of the gating the bounds have; an absent one leaves the row alone, and a
+`once` beat sends only `host`) - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
 stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
 running within, and `Projects`, the project keys it is bound to. Those four

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -68,7 +70,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Bound(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Bound(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -77,6 +79,20 @@ public sealed class RunnersCommand(Cli cli)
         return table
             .Select(r => r.Runner.PadRight(runnerWidth) + "  " + r.State.PadRight(stateWidth) + "  " + r.Ticket.PadRight(ticketWidth) + "  " + r.Heard)
             .ToList();
+    }
+
+    /// <summary>
+    /// What a runner reports about its own process - the machine, the increments
+    /// run and the dollars spent - each only where it has said so, so a row from
+    /// an older runner reads as it always has.
+    /// </summary>
+    private static string Facts(RunnerDto row)
+    {
+        var parts = new List<string>();
+        if (row.Host is { Length: > 0 } host) parts.Add($"on {host}");
+        if (row.Runs is { } runs) parts.Add($"{runs} runs");
+        if (row.Spent is { } spent) parts.Add(string.Create(CultureInfo.InvariantCulture, $"${spent:F2}"));
+        return parts.Count > 0 ? "  " + string.Join(" ", parts) : "";
     }
 
     /// <summary>

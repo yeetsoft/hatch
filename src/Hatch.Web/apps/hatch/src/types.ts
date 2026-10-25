@@ -2049,6 +2049,12 @@ export interface Runner {
   canControl: boolean;
   /** Whether this row is the caller's own - the wall off, or the caller being its owner. Mirrors RunnerDto.Yours; not canControl, which an admin also has on others' rows. */
   yours: boolean;
+  /** The increments this loop has run, as it last reported them - a fact about the process, never operator-set. Mirrors RunnerDto.Runs; null until a beat carries it. */
+  runs: number | null;
+  /** The priced spend of those increments, in dollars. Mirrors RunnerDto.Spent. */
+  spent: number | null;
+  /** The short name of the machine the runner is on. Mirrors RunnerDto.Host. */
+  host: string | null;
   /** The standing order this loop has not yet read back, or null. Mirrors RunnerOrderDto. */
   order: { kind: 'work' | 'pass'; key: string | null; by: string | null; at: string | null } | null;
   /** The sha this runner's own build was published from, `'dev'` for an

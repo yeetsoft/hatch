@@ -3491,6 +3491,13 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// <see cref="For"/>. Unlike <see cref="CanControl"/>, an admin does not have it
 /// on someone else's row, nor anyone on a row that belongs to nobody.
 /// </param>
+/// <param name="Runs">
+/// The increments this runner's loop has run so far, as it last reported them -
+/// a fact about the process, never set by an operator. Null until a beat has
+/// carried it.
+/// </param>
+/// <param name="Spent">The priced spend of those increments, in dollars, reported beside <see cref="Runs"/>.</param>
+/// <param name="Host">The short name of the machine this runner is on, reported beside <see cref="Runs"/>.</param>
 /// <param name="Order">The standing order this runner's next loop heartbeat will read and clear, or null for none.</param>
 /// <param name="Revision">
 /// This runner's own build identity - the full sha it was built from, or
@@ -3554,7 +3561,10 @@ public record RunnerDto(
     RunnerBoardDrift BoardDrift = RunnerBoardDrift.Unknown,
     RunnerBoardDrift SourceDrift = RunnerBoardDrift.Unknown,
     IReadOnlyList<string> Projects = null!,
-    bool Yours = false)
+    bool Yours = false,
+    int? Runs = null,
+    decimal? Spent = null,
+    string? Host = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -3663,6 +3673,13 @@ public enum RunnerBoardDrift
 /// </param>
 /// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
 /// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
+/// <param name="Runs">
+/// The increments this runner's loop has run so far - a fact about the
+/// process, written on every beat with none of the gating the five bounds have.
+/// Absent leaves the row's value alone.
+/// </param>
+/// <param name="Spent">The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</param>
+/// <param name="Host">The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3688,7 +3705,10 @@ public record RunnerHeartbeatRequest(
     string? SourceRevision = null,
     int? SourceSequence = null,
     bool? Standby = null,
-    IReadOnlyList<string>? Projects = null);
+    IReadOnlyList<string>? Projects = null,
+    int? Runs = null,
+    decimal? Spent = null,
+    string? Host = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

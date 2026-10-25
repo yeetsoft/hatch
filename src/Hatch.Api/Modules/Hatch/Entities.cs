@@ -2698,6 +2698,7 @@ public class EfHatchRunner
     public const int MaxKindLength = 16;
     public const int MaxStateLength = 16;
     public const int MaxAgentLength = 16;
+    public const int MaxHostLength = 64;
 
     /// <summary>Room for a full git sha, or "dev" for an unstamped build.</summary>
     public const int MaxRevisionLength = 40;
@@ -2831,6 +2832,20 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxNameLength)]
     public string? Where { get; set; }
+
+    /// <summary>
+    /// The increments this runner's loop has run so far - a fact about the
+    /// running process, overwritten on every heartbeat that names one, never a
+    /// bound an operator sets (unlike <see cref="MaxRuns"/>).
+    /// </summary>
+    public int? Runs { get; set; }
+
+    /// <summary>The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</summary>
+    public decimal? Spent { get; set; }
+
+    /// <summary>The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</summary>
+    [MaxLength(MaxHostLength)]
+    public string? Host { get; set; }
 
     /// <summary>
     /// The agent that spawned this process, <c>claude</c> today - a fact about
