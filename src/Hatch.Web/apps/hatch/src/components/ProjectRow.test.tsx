@@ -33,6 +33,9 @@ const BASE: Project = {
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
   storiesOnEpics: false,
+  checkApprovesMerge: false,
+  checkApprovesMergeBy: null,
+  checkApprovesMergeAt: null,
 };
 
 const noop = () => undefined;

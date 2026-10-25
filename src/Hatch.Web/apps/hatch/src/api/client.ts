@@ -54,6 +54,7 @@ import type {
   ProjectBindsTrackerResponse,
   ProjectBindsTrackerWriteRequest,
   ProjectStoriesOnEpicsWriteRequest,
+  ProjectCheckApprovesMergeWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
@@ -153,6 +154,9 @@ export const putProjectBindsTracker = (id: number, request: ProjectBindsTrackerW
 /** Sets whether a project's board shows stories on their epics. */
 export const putProjectStoriesOnEpics = (id: number, request: ProjectStoriesOnEpicsWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/stories-on-epics`, { method: 'PUT', ...asJson(request) });
+/** Sets whether a green check on a pull request approves its merge. */
+export const putProjectCheckApprovesMerge = (id: number, request: ProjectCheckApprovesMergeWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/check-approves-merge`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember =(id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>
